@@ -1,15 +1,22 @@
 {
   "name": "holmgard-lore-mcp",
+  "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
+    "dev": "wrangler dev dist/index.js --local",
+    "deploy": "wrangler deploy --name holmgard-lore-mcp",
+    "clean": "rimraf dist"
   },
   "dependencies": {
-    "hono": "^4.12.21"
+    "hono": "^3.0.0",
+    "zod": "^4.20.0"
   },
   "devDependencies": {
-    "wrangler": "^4.4.0"
+    "esbuild": "^0.18.0",
+    "typescript": "^5.2.0",
+    "@cloudflare/workers-types": "^4.202",
+    "rimraf": "^5.0.0"
   }
 }
