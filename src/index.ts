@@ -242,7 +242,8 @@ app.post('/admin/set-lore', async (c) => {
 
     if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
 
-    const ADMIN_SECRET = process.env.ADMIN_SECRET ?? (c.env ? (c.env as any).ADMIN_SECRET : undefined)
+    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+
     if (!ADMIN_SECRET || secret !== ADMIN_SECRET) return c.json({ ok: false, error: 'unauthorized' }, 401)
 
     // Try KV put if available
