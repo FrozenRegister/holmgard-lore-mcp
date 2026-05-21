@@ -72,6 +72,14 @@ async function kvPut(c: any, key: string, value: string): Promise<boolean> {
   return false
 }
 
+async function kvDelete(c: any, key: string): Promise<boolean> {
+  try {
+    const kv = getKV(c)
+    if (kv) { await kv.delete(key); return true }
+  } catch (e) { console.warn('KV delete failed', e) }
+  return false
+}
+
 // ── In-memory fallback ────────────────────────────────────────────────────────
 const loreDB: Record<string, string> = {}
 
@@ -166,7 +174,20 @@ app.post('/mcp', async (c) => {
             required: ['key', 'text'], additionalProperties: false
           },
           examples: [{ arguments: { key: 'lamia', text: 'Lamia are subterranean predators...' } }]
+        },
+        {
+          name: 'delete_lore', title: 'Delete Lore', version: '0.1.0',
+          description: 'Permanently delete a lore entry by key.',
+          inputSchema: {
+            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+            properties: {
+              key: { type: 'string', description: 'Topic key to delete', minLength: 1 }
+            },
+            required: ['key'], additionalProperties: false
+          },
+          examples: [{ arguments: { key: 'thornwall' } }]
         }
+
       ]}), 200)
     }
 
@@ -200,21 +221,57 @@ app.post('/mcp', async (c) => {
       }
 
       if (toolName === 'set_lore') {
-        const schema = z.object({ key: z.string().min(1), text: z.string().min(1) })
+        const schema = z.object({ key: z.string().min(1), text: z.string() })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const key  = parsed.data.key.trim().toLowerCase()
-        const text = parsed.data.text.trim()
+        const key = parsed.data.key.trim().toLowerCase()
+        const text = parsed.data.text
 
-        const saved = await kvPut(c, key, text)
-        if (!saved) loreDB[key] = text
+        // ── Read existing entry to preserve/increment version ──────────────────
+        const existing = await kvGet(c, key)
+        let existingMeta: Record<string, unknown> = {}
+        if (existing) {
+          try { existingMeta = JSON.parse(existing).meta ?? {} } catch { }
+        }
+
+        const now = new Date().toISOString()
+        const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+
+        const payload = JSON.stringify({
+          text,
+          meta: {
+            version,
+            updatedAt: now,
+            createdAt: existingMeta.createdAt ?? now,
+          },
+        })
+
+        await kvPut(c, key, payload)
+        loreDB[key] = text
 
         return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Lore saved for "${key}".` }],
-          metadata: { source: saved ? 'kv' : 'in-memory', key }
+          content: [{ type: 'text', text: `Lore saved for "${key}" (v${version}).` }],
+          metadata: { key, version }
         }), 200)
       }
+
+      
+      if (toolName === 'delete_lore') {
+        const schema = z.object({ key: z.string().min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const deleted = await kvDelete(c, key)
+        delete loreDB[key]
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Lore deleted for "${key}".` }],
+          metadata: { source: deleted ? 'kv' : 'in-memory', key }
+        }), 200)
+      }
+
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
@@ -263,6 +320,27 @@ app.post('/admin/set-lore', async (c) => {
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
+
+app.post('/admin/delete-lore', async (c) => {
+  try {
+    const body = await c.req.json()
+    const key    = (body?.key    ?? '').toString().trim().toLowerCase()
+    const secret = (body?.secret ?? '').toString()
+
+    if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
+
+    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+
+    const deleted = await kvDelete(c, key)
+    delete loreDB[key]
+    return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
 
 app.all('*', (c) => c.text('Not Found', 404))
 
