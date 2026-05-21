@@ -233,6 +233,38 @@ app.post('/mcp', async (c) => {
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
+    // Direct method: list_topics — returns { keys: string[] }
+    if (method === 'list_topics') {
+      let keys = Object.keys(loreDB);
+      try {
+        const kv = (c.env as any)?.LORE_DB;
+        if (kv && typeof kv.list === 'function') {
+          const listed = await kv.list();
+          if (listed?.keys?.length) keys = listed.keys.map((k: any) => k.name);
+        }
+      } catch (e) {
+        console.warn('KV list failed, using in-memory', e);
+      }
+      return c.json(makeResult(id, { keys }), 200);
+    }
+
+      // Direct method: get_lore — returns { key, text, meta }
+      if (method === 'get_lore') {
+        const key = (params?.key ?? params?.query ?? '').toString().toLowerCase();
+        if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200);
+
+        let text: string | null = null;
+        try {
+          const kv = (c.env as any)?.LORE_DB;
+          if (kv && typeof kv.get === 'function') text = await kv.get(key);
+        } catch (e) {
+          console.warn('KV get failed, using in-memory', e);
+        }
+        if (!text) text = loreDB[key] ?? null;
+        if (!text) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200);
+
+        return c.json(makeResult(id, { key, text, meta: {} }), 200);
+      }
 
     // method not found
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
