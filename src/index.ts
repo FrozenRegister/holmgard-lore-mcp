@@ -156,7 +156,25 @@ app.post('/mcp', async (c) => {
           description: 'Return available lore topics.',
           inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
           examples: [{ arguments: {} }]
+        },
+        {
+          name: 'set_lore',
+          title: 'Set Lore',
+          version: '0.1.0',
+          description: 'Write or update a lore entry by key. Use this to record new worldbuilding, anatomy, factions, or location details.',
+          inputSchema: {
+            $schema: 'http://json-schema.org/draft-07/schema#',
+            type: 'object',
+            properties: {
+              key: { type: 'string', description: 'Topic key (e.g. "lamia", "undercity"). Lowercase, no spaces.', minLength: 1 },
+              text: { type: 'string', description: 'Full lore text to store for this topic.', minLength: 1 }
+            },
+            required: ['key', 'text'],
+            additionalProperties: false
+          },
+          examples: [{ arguments: { key: 'lamia', text: 'Lamia are subterranean predators...' } }]
         }
+
       ]}), 200)
     }
 
@@ -190,6 +208,23 @@ app.post('/mcp', async (c) => {
         const resultText = raw ?? 'No lore found.'
         const source = raw ? (loreDB[query] === raw ? 'in-memory' : 'kv') : 'none'
         return c.json(makeResult(id, { content: [{ type: 'text', text: resultText }], metadata: { source, query, limit } }), 200)
+      }
+
+      if (toolName === 'set_lore') {
+        const schema = z.object({ key: z.string().min(1), text: z.string().min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const text = parsed.data.text.trim()
+
+        const saved = await kvPut(c, key, text)
+        if (!saved) loreDB[key] = text  // ephemeral fallback
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Lore saved for "${key}".` }],
+          metadata: { source: saved ? 'kv' : 'in-memory', key }
+        }), 200)
       }
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
