@@ -305,10 +305,14 @@ app.post('/mcp', async (c) => {
     if (method === 'get_lore') {
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
       if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
-      const text = (await kvGet(c, key)) ?? loreDB[key] ?? null
-      if (!text) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200)
-      return c.json(makeResult(id, { key, text, meta: {} }), 200)
+
+      const raw = (await kvGet(c, key)) ?? loreDB[key] ?? null
+      if (!raw) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200)
+
+      const { text, meta } = parseKvEntry(raw)
+      return c.json(makeResult(id, { key, text, meta }), 200)
     }
+
 
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
 
