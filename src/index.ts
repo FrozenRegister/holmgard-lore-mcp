@@ -34,6 +34,12 @@ type JsonRpcResponse = {
   error?: { code: number; message: string; data?: any }
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Secret',
+};
+
 const makeResult = (id: string | number | null, result: unknown): JsonRpcResponse => ({
   jsonrpc: '2.0',
   id,
@@ -56,6 +62,16 @@ const validateRequest = (body: any): { ok: true; req: JsonRpcRequest } | { ok: f
 }
 
 const app = new Hono()
+
+// Add CORS headers to every response
+app.use('*', async (c, next) => {
+  await next()
+  Object.entries(CORS_HEADERS).forEach(([k, v]) => c.header(k, v))
+})
+
+// Handle OPTIONS preflight for all routes
+app.options('*', (c) => new Response(null, { status: 204, headers: CORS_HEADERS }))
+
 
 /**
  * In-memory fallback lore DB.
