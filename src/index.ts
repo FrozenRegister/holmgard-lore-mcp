@@ -300,7 +300,7 @@ app.post('/mcp', async (c) => {
 
 app.post('/admin/set-lore', async (c) => {
   try {
-    const body = await c.req.json()
+    const body   = await c.req.json()
     const key    = (body?.key    ?? '').toString().trim().toLowerCase()
     const text   = (body?.text   ?? '').toString()
     const secret = (body?.secret ?? '').toString()
@@ -311,15 +311,34 @@ app.post('/admin/set-lore', async (c) => {
     if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
       return c.json({ ok: false, error: 'unauthorized' }, 401)
 
-    const saved = await kvPut(c, key, text)
-    if (saved) return c.json({ ok: true, source: 'kv' }, 200)
+    // ── Read existing entry to preserve/increment version ───────────────────
+    const existing = await kvGet(c, key)
+    let existingMeta: Record<string, unknown> = {}
+    if (existing) {
+      try { existingMeta = JSON.parse(existing).meta ?? {} } catch {}
+    }
 
+    const now     = new Date().toISOString()
+    const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+
+    const payload = JSON.stringify({
+      text,
+      meta: {
+        version,
+        updatedAt: now,
+        createdAt: existingMeta.createdAt ?? now,
+      },
+    })
+
+    await kvPut(c, key, payload)
     loreDB[key] = text
-    return c.json({ ok: true, source: 'in-memory' }, 200)
+
+    return c.json({ ok: true, version }, 200)
   } catch (e) {
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
+
 
 app.post('/admin/delete-lore', async (c) => {
   try {
