@@ -2,24 +2,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-/**
- * Holmgard Lore MCP Worker
- *
- * - JSON-RPC 2.0 endpoint at POST /mcp
- * - GET /mcp returns a JSON-RPC error (discovery should use POST)
- * - Tools: ping_tool, get_lore, list_topics
- * - Optional KV binding: LORE_DB (for persistent storage)
- * - Optional admin endpoint: POST /admin/set-lore (protected by ADMIN_SECRET env var)
- *
- * Notes:
- * - If you bind a KV namespace in wrangler.toml, add:
- *   [[kv_namespaces]]
- *   binding = "LORE_DB"
- *   id = "<your-kv-id>"
- *
- * - Keep Cache-Control: no-store on initialize and tools/list responses so Shapes re-fetches manifests.
- */
-
 type JsonRpcRequest = {
   jsonrpc?: string
   id?: string | number | null
@@ -38,18 +20,14 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Secret',
-};
+}
 
 const makeResult = (id: string | number | null, result: unknown): JsonRpcResponse => ({
-  jsonrpc: '2.0',
-  id,
-  result
+  jsonrpc: '2.0', id, result
 })
 
 const makeError = (id: string | number | null, code: number, message: string, data?: any): JsonRpcResponse => ({
-  jsonrpc: '2.0',
-  id,
-  error: { code, message, data }
+  jsonrpc: '2.0', id, error: { code, message, data }
 })
 
 const validateRequest = (body: any): { ok: true; req: JsonRpcRequest } | { ok: false; error: JsonRpcResponse } => {
@@ -61,53 +39,68 @@ const validateRequest = (body: any): { ok: true; req: JsonRpcRequest } | { ok: f
   return { ok: true, req }
 }
 
+// ── KV helpers ────────────────────────────────────────────────────────────────
+
+function getKV(c: any): KVNamespace | null {
+  return (c.env as any)?.LORE_DB ?? null
+}
+
+async function kvGet(c: any, key: string): Promise<string | null> {
+  try {
+    const kv = getKV(c)
+    if (kv) return await kv.get(key)
+  } catch (e) { console.warn('KV get failed', e) }
+  return null
+}
+
+async function kvList(c: any): Promise<string[]> {
+  try {
+    const kv = getKV(c)
+    if (kv) {
+      const listed = await kv.list()
+      return listed.keys.map((k: any) => k.name)
+    }
+  } catch (e) { console.warn('KV list failed', e) }
+  return []
+}
+
+async function kvPut(c: any, key: string, value: string): Promise<boolean> {
+  try {
+    const kv = getKV(c)
+    if (kv) { await kv.put(key, value); return true }
+  } catch (e) { console.warn('KV put failed', e) }
+  return false
+}
+
+// ── In-memory fallback (empty — KV is now the source of truth) ────────────────
+const loreDB: Record<string, string> = {}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
 const app = new Hono()
 
-// Add CORS headers to every response
 app.use('*', async (c, next) => {
   await next()
   Object.entries(CORS_HEADERS).forEach(([k, v]) => c.header(k, v))
 })
 
-// Handle OPTIONS preflight for all routes
 app.options('*', (c) => new Response(null, { status: 204, headers: CORS_HEADERS }))
 
-
-/**
- * In-memory fallback lore DB.
- * If you bind Workers KV (LORE_DB), the code will prefer KV values.
- */
-const loreDB: Record<string, string> = {
-  holmgard: `Holmgard is the capital of Sommerlund, a fortress city of stone and fjord. Its longhouses ring the central keep; the Kai Lords maintain order through ritual and blade. The city is known for the Hall of Oaths, the salt markets, and the lighthouse of the First Watch.`,
-  lamia: `Lamia are subterranean humanoid predators adapted for burrowing.`,
-  undercity: `The Undercity is a sprawling network of damp tunnels beneath ancient ruins.`
-}
-
-/**
- * GET /mcp
- * Return a JSON-RPC error telling callers to use POST.
- */
 app.get('/mcp', (c) => {
   c.header('Content-Type', 'application/json')
   c.header('Cache-Control', 'no-store')
   return c.json(makeError(null, -32600, 'Invalid Request: use POST JSON-RPC'), 200)
 })
 
-/**
- * POST /mcp
- * Main JSON-RPC handler for initialize, tools/list, tools/call
- */
 app.post('/mcp', async (c) => {
   let body: any
   try {
     body = await c.req.json()
   } catch (e) {
-    console.error('Failed to parse JSON body', e)
     return c.json(makeError(null, -32700, 'Parse error: invalid JSON'), 200)
   }
 
   try {
-    // Log incoming request for wrangler tail
     try { console.log('MCP incoming:', JSON.stringify(body)) } catch (e) {}
 
     const validated = validateRequest(body)
@@ -120,86 +113,72 @@ app.post('/mcp', async (c) => {
 
     // initialize
     if (method === 'initialize') {
-      const result = {
+      c.header('Cache-Control', 'no-store')
+      c.header('Content-Type', 'application/json')
+      return c.json(makeResult(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { list: true, call: true } },
         serverInfo: { name: 'holmgard-lore-mcp', version: '0.1.0', description: 'Holmgard lore MCP' }
-      }
-      c.header('Cache-Control', 'no-store')
-      c.header('Content-Type', 'application/json')
-      console.log('MCP initialize ->', JSON.stringify(result))
-      return c.json(makeResult(id, result), 200)
+      }), 200)
     }
 
-    // ping (simple health)
+    // ping
     if (method === 'ping') {
       return c.json(makeResult(id, {}), 200)
     }
 
-    // tools/list (discovery)
+    // tools/list
     if (method === 'tools/list') {
-      const tools = [
+      c.header('Cache-Control', 'no-store')
+      c.header('Content-Type', 'application/json')
+      return c.json(makeResult(id, { tools: [
         {
-          name: 'ping_tool',
-          title: 'Ping Tool',
-          version: '0.0.1',
+          name: 'ping_tool', title: 'Ping Tool', version: '0.0.1',
           description: 'Trivial tool used to validate discovery.',
           inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
           examples: [{ arguments: {} }]
         },
         {
-          name: 'get_lore',
-          title: 'Get Lore',
-          version: '0.1.2',
+          name: 'get_lore', title: 'Get Lore', version: '0.1.2',
           description: 'Retrieve lore, anatomy, factions, and worldbuilding information.',
           inputSchema: {
-            $schema: 'http://json-schema.org/draft-07/schema#',
-            type: 'object',
+            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
             properties: {
-              query: { type: 'string', description: 'Lore topic to retrieve (e.g., "lamia", "undercity")', minLength: 1 },
-              limit: { type: 'integer', description: 'Optional maximum number of results', minimum: 1, default: 1 }
+              query: { type: 'string', description: 'Lore topic to retrieve', minLength: 1 },
+              limit: { type: 'integer', minimum: 1, default: 1 }
             },
-            required: ['query'],
-            additionalProperties: false
+            required: ['query'], additionalProperties: false
           },
-          examples: [{ arguments: { query: 'lamia' } }, { arguments: { query: 'undercity', limit: 1 } }]
+          examples: [{ arguments: { query: 'lamia' } }]
         },
         {
-          name: 'list_topics',
-          title: 'List Topics',
-          version: '0.1.0',
+          name: 'list_topics', title: 'List Topics', version: '0.1.0',
           description: 'Return available lore topics.',
           inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
           examples: [{ arguments: {} }]
         }
-      ]
-
-      try { console.log('MCP tools/list ->', JSON.stringify({ tools })) } catch (e) {}
-      c.header('Cache-Control', 'no-store')
-      c.header('Content-Type', 'application/json')
-      return c.json(makeResult(id, { tools }), 200)
+      ]}), 200)
     }
 
     // tools/call
     if (method === 'tools/call') {
       const toolName = params?.name
       const args = params?.arguments ?? {}
-      if (!toolName || typeof toolName !== 'string') return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
+      if (!toolName || typeof toolName !== 'string')
+        return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
-      // ping_tool
       if (toolName === 'ping_tool') {
-        return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal', tool: 'ping_tool' } }), 200)
+        return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
       }
 
-      // list_topics
+      // list_topics — reads KV first, falls back to in-memory
       if (toolName === 'list_topics') {
-        // If KV is bound, prefer listing keys from KV is expensive; here we list in-memory keys.
-        const topics = Object.keys(loreDB)
-        const toolResult = { content: [{ type: 'text', text: topics.join(', ') }], metadata: { count: topics.length } }
-        return c.json(makeResult(id, toolResult), 200)
+        let keys = await kvList(c)
+        if (!keys.length) keys = Object.keys(loreDB)
+        return c.json(makeResult(id, { content: [{ type: 'text', text: keys.join(', ') }], metadata: { count: keys.length } }), 200)
       }
 
-      // get_lore (supports KV if bound)
+      // get_lore — reads KV first, falls back to in-memory
       if (toolName === 'get_lore') {
         const schema = z.object({ query: z.string().min(1), limit: z.number().int().positive().optional() })
         const parsed = schema.safeParse(args)
@@ -207,106 +186,57 @@ app.post('/mcp', async (c) => {
 
         const query = parsed.data.query.toLowerCase()
         const limit = parsed.data.limit ?? 1
-
-        // If KV binding exists, try KV first
-        let raw: string | null | undefined = undefined
-        try {
-          // @ts-ignore - LORE_DB is injected by Wrangler if bound
-          if (typeof (globalThis as any).LORE_DB !== 'undefined' || (c.env && (c.env as any).LORE_DB)) {
-            // Hono exposes bindings via c.env in some setups; try both
-            const kv = (c.env as any)?.LORE_DB ?? (globalThis as any).LORE_DB
-            if (kv && typeof kv.get === 'function') {
-              raw = await kv.get(query)
-            }
-          }
-        } catch (e) {
-          console.warn('KV read failed, falling back to in-memory', e)
-        }
-
-        // Fallback to in-memory DB
-        if (!raw) raw = loreDB[query]
-
+        const raw = (await kvGet(c, query)) ?? loreDB[query] ?? null
         const resultText = raw ?? 'No lore found.'
-        const toolResult = { content: [{ type: 'text', text: resultText }], metadata: { source: raw ? (raw === loreDB[query] ? 'in-memory' : 'kv') : 'none', query, limit } }
-        return c.json(makeResult(id, toolResult), 200)
+        const source = raw ? (loreDB[query] === raw ? 'in-memory' : 'kv') : 'none'
+        return c.json(makeResult(id, { content: [{ type: 'text', text: resultText }], metadata: { source, query, limit } }), 200)
       }
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
-    // Direct method: list_topics — returns { keys: string[] }
+
+    // Direct method: list_topics (called by the lore editor frontend)
     if (method === 'list_topics') {
-      let keys = Object.keys(loreDB);
-      try {
-        const kv = (c.env as any)?.LORE_DB;
-        if (kv && typeof kv.list === 'function') {
-          const listed = await kv.list();
-          if (listed?.keys?.length) keys = listed.keys.map((k: any) => k.name);
-        }
-      } catch (e) {
-        console.warn('KV list failed, using in-memory', e);
-      }
-      return c.json(makeResult(id, { keys }), 200);
+      let keys = await kvList(c)
+      if (!keys.length) keys = Object.keys(loreDB)
+      return c.json(makeResult(id, { keys }), 200)
     }
 
-      // Direct method: get_lore — returns { key, text, meta }
-      if (method === 'get_lore') {
-        const key = (params?.key ?? params?.query ?? '').toString().toLowerCase();
-        if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200);
+    // Direct method: get_lore (called by the lore editor frontend)
+    if (method === 'get_lore') {
+      const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
+      if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
+      const text = (await kvGet(c, key)) ?? loreDB[key] ?? null
+      if (!text) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200)
+      return c.json(makeResult(id, { key, text, meta: {} }), 200)
+    }
 
-        let text: string | null = null;
-        try {
-          const kv = (c.env as any)?.LORE_DB;
-          if (kv && typeof kv.get === 'function') text = await kv.get(key);
-        } catch (e) {
-          console.warn('KV get failed, using in-memory', e);
-        }
-        if (!text) text = loreDB[key] ?? null;
-        if (!text) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200);
-
-        return c.json(makeResult(id, { key, text, meta: {} }), 200);
-      }
-
-    // method not found
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
+
   } catch (e) {
     console.error('Unhandled exception in MCP handler', e)
     return c.json(makeError(null, -32603, 'Internal error', { message: String(e) }), 200)
   }
 })
 
-/**
- * Admin endpoint to set lore into KV (if bound) or in-memory fallback.
- * POST /admin/set-lore
- * Body: { key: string, text: string, secret: string }
- *
- * WARNING: This endpoint is intentionally minimal. Protect ADMIN_SECRET and do not expose publicly.
- */
+// Admin: write a lore entry into KV
 app.post('/admin/set-lore', async (c) => {
   try {
     const body = await c.req.json()
-    const key = (body?.key ?? '').toString().trim().toLowerCase()
-    const text = (body?.text ?? '').toString()
+    const key    = (body?.key    ?? '').toString().trim().toLowerCase()
+    const text   = (body?.text   ?? '').toString()
     const secret = (body?.secret ?? '').toString()
 
     if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
 
     const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
 
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) return c.json({ ok: false, error: 'unauthorized' }, 401)
+    const saved = await kvPut(c, key, text)
+    if (saved) return c.json({ ok: true, source: 'kv' }, 200)
 
-    // Try KV put if available
-    try {
-      // @ts-ignore
-      const kv = (c.env as any)?.LORE_DB ?? (globalThis as any).LORE_DB
-      if (kv && typeof kv.put === 'function') {
-        await kv.put(key, text)
-        return c.json({ ok: true, source: 'kv' }, 200)
-      }
-    } catch (e) {
-      console.warn('KV put failed, falling back to in-memory', e)
-    }
-
-    // Fallback to in-memory (ephemeral)
+    // KV not available — fall back to in-memory (ephemeral)
     loreDB[key] = text
     return c.json({ ok: true, source: 'in-memory' }, 200)
   } catch (e) {
