@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "hono": "^3.0.0",
-    "zod": "^4.20.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260521.1",
     "esbuild": "^0.18.0",
-    "typescript": "^5.2.0",
-    "@cloudflare/workers-types": "^4.202",
-    "rimraf": "^5.0.0"
+    "rimraf": "^5.0.0",
+    "typescript": "^5.2.0"
   }
 }
