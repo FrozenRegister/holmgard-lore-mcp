@@ -88,9 +88,10 @@ function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown
       return { text: parsed.text, meta: parsed.meta ?? {} };
     }
   } catch {}
-  // Legacy: raw text stored directly
+  // Covers: parse failure OR parsed but no text field
   return { text: raw, meta: {} };
 }
+
 
 // ── In-memory fallback ────────────────────────────────────────────────────────
 const loreDB: Record<string, string> = {}
@@ -220,11 +221,15 @@ app.post('/mcp', async (c) => {
       }
 
       if (toolName === 'get_lore') {
-        const schema = z.object({ key: z.string().min(1) })
+        const schema = z.object({
+          key: z.string().min(1).optional(),
+          query: z.string().min(1).optional(),
+        }).refine(d => d.key || d.query, { message: 'key or query is required' })
+
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const key = parsed.data.key.trim().toLowerCase()
+        const key = (parsed.data.key ?? parsed.data.query ?? '').trim().toLowerCase()
         const raw = await kvGet(c, key)
 
         if (!raw) return c.json(makeError(id, -32602, `No lore found for key "${key}"`, null), 200)
@@ -238,6 +243,7 @@ app.post('/mcp', async (c) => {
           meta,
         }), 200)
       }
+
 
 
       if (toolName === 'set_lore') {
