@@ -80,6 +80,18 @@ async function kvDelete(c: any, key: string): Promise<boolean> {
   return false
 }
 
+// Handles both old (raw string) and new ({ text, meta }) KV formats
+function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown> } {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.text === 'string') {
+      return { text: parsed.text, meta: parsed.meta ?? {} };
+    }
+  } catch {}
+  // Legacy: raw text stored directly
+  return { text: raw, meta: {} };
+}
+
 // ── In-memory fallback ────────────────────────────────────────────────────────
 const loreDB: Record<string, string> = {}
 
@@ -208,17 +220,25 @@ app.post('/mcp', async (c) => {
       }
 
       if (toolName === 'get_lore') {
-        const schema = z.object({ query: z.string().min(1), limit: z.number().int().positive().optional() })
+        const schema = z.object({ key: z.string().min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const query = parsed.data.query.toLowerCase()
-        const limit = parsed.data.limit ?? 1
-        const raw = (await kvGet(c, query)) ?? loreDB[query] ?? null
-        const resultText = raw ?? 'No lore found.'
-        const source = raw ? (loreDB[query] === raw ? 'in-memory' : 'kv') : 'none'
-        return c.json(makeResult(id, { content: [{ type: 'text', text: resultText }], metadata: { source, query, limit } }), 200)
+        const key = parsed.data.key.trim().toLowerCase()
+        const raw = await kvGet(c, key)
+
+        if (!raw) return c.json(makeError(id, -32602, `No lore found for key "${key}"`, null), 200)
+
+        const { text, meta } = parseKvEntry(raw)
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text }],
+          key,
+          text,
+          meta,
+        }), 200)
       }
+
 
       if (toolName === 'set_lore') {
         const schema = z.object({ key: z.string().min(1), text: z.string() })
