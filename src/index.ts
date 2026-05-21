@@ -72,7 +72,7 @@ async function kvPut(c: any, key: string, value: string): Promise<boolean> {
   return false
 }
 
-// ── In-memory fallback (empty — KV is now the source of truth) ────────────────
+// ── In-memory fallback ────────────────────────────────────────────────────────
 const loreDB: Record<string, string> = {}
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -111,23 +111,20 @@ app.post('/mcp', async (c) => {
     const method = req.method!
     const params = req.params ?? {}
 
-    // initialize
     if (method === 'initialize') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
       return c.json(makeResult(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { list: true, call: true } },
-        serverInfo: { name: 'holmgard-lore-mcp', version: '0.1.0', description: 'Holmgard lore MCP' }
+        serverInfo: { name: 'holmgard-lore-mcp', version: '0.2.0', description: 'Holmgard lore MCP' }
       }), 200)
     }
 
-    // ping
     if (method === 'ping') {
       return c.json(makeResult(id, {}), 200)
     }
 
-    // tools/list
     if (method === 'tools/list') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
@@ -144,7 +141,7 @@ app.post('/mcp', async (c) => {
           inputSchema: {
             $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
             properties: {
-              query: { type: 'string', description: 'Lore topic to retrieve', minLength: 1 },
+              query: { type: 'string', description: 'Lore topic to retrieve (e.g. "lamia", "undercity")', minLength: 1 },
               limit: { type: 'integer', minimum: 1, default: 1 }
             },
             required: ['query'], additionalProperties: false
@@ -153,32 +150,26 @@ app.post('/mcp', async (c) => {
         },
         {
           name: 'list_topics', title: 'List Topics', version: '0.1.0',
-          description: 'Return available lore topics.',
+          description: 'Return all available lore topic keys.',
           inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
           examples: [{ arguments: {} }]
         },
         {
-          name: 'set_lore',
-          title: 'Set Lore',
-          version: '0.1.0',
-          description: 'Write or update a lore entry by key. Use this to record new worldbuilding, anatomy, factions, or location details.',
+          name: 'set_lore', title: 'Set Lore', version: '0.1.0',
+          description: 'Write or update a lore entry. Use this to record new worldbuilding, anatomy, factions, or location details so they persist for future queries.',
           inputSchema: {
-            $schema: 'http://json-schema.org/draft-07/schema#',
-            type: 'object',
+            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
             properties: {
-              key: { type: 'string', description: 'Topic key (e.g. "lamia", "undercity"). Lowercase, no spaces.', minLength: 1 },
+              key:  { type: 'string', description: 'Topic key — lowercase, no spaces (e.g. "lamia", "undercity")', minLength: 1 },
               text: { type: 'string', description: 'Full lore text to store for this topic.', minLength: 1 }
             },
-            required: ['key', 'text'],
-            additionalProperties: false
+            required: ['key', 'text'], additionalProperties: false
           },
           examples: [{ arguments: { key: 'lamia', text: 'Lamia are subterranean predators...' } }]
         }
-
       ]}), 200)
     }
 
-    // tools/call
     if (method === 'tools/call') {
       const toolName = params?.name
       const args = params?.arguments ?? {}
@@ -189,14 +180,12 @@ app.post('/mcp', async (c) => {
         return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
       }
 
-      // list_topics — reads KV first, falls back to in-memory
       if (toolName === 'list_topics') {
         let keys = await kvList(c)
         if (!keys.length) keys = Object.keys(loreDB)
         return c.json(makeResult(id, { content: [{ type: 'text', text: keys.join(', ') }], metadata: { count: keys.length } }), 200)
       }
 
-      // get_lore — reads KV first, falls back to in-memory
       if (toolName === 'get_lore') {
         const schema = z.object({ query: z.string().min(1), limit: z.number().int().positive().optional() })
         const parsed = schema.safeParse(args)
@@ -215,11 +204,11 @@ app.post('/mcp', async (c) => {
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const key = parsed.data.key.trim().toLowerCase()
+        const key  = parsed.data.key.trim().toLowerCase()
         const text = parsed.data.text.trim()
 
         const saved = await kvPut(c, key, text)
-        if (!saved) loreDB[key] = text  // ephemeral fallback
+        if (!saved) loreDB[key] = text
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Lore saved for "${key}".` }],
@@ -230,14 +219,12 @@ app.post('/mcp', async (c) => {
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
 
-    // Direct method: list_topics (called by the lore editor frontend)
     if (method === 'list_topics') {
       let keys = await kvList(c)
       if (!keys.length) keys = Object.keys(loreDB)
       return c.json(makeResult(id, { keys }), 200)
     }
 
-    // Direct method: get_lore (called by the lore editor frontend)
     if (method === 'get_lore') {
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
       if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
@@ -254,7 +241,6 @@ app.post('/mcp', async (c) => {
   }
 })
 
-// Admin: write a lore entry into KV
 app.post('/admin/set-lore', async (c) => {
   try {
     const body = await c.req.json()
@@ -271,11 +257,9 @@ app.post('/admin/set-lore', async (c) => {
     const saved = await kvPut(c, key, text)
     if (saved) return c.json({ ok: true, source: 'kv' }, 200)
 
-    // KV not available — fall back to in-memory (ephemeral)
     loreDB[key] = text
     return c.json({ ok: true, source: 'in-memory' }, 200)
   } catch (e) {
-    console.error('admin/set-lore error', e)
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
