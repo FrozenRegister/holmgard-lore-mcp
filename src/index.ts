@@ -280,9 +280,12 @@ app.post('/mcp', async (c) => {
     // ── Helper: Extract numeric/string fields from lore text ────────────────────
     function extractFieldFromText(text: string, fieldPath: string): unknown {
       try {
-        const lines = text.split('\n')
+        // Normalize line endings to \n
+        const normalizedText = text.replace(/\r\n/g, '\n')
+        const lines = normalizedText.split('\n')
+
         for (const line of lines) {
-          // Match both **field:** and **field** patterns
+          // Match **field:** or **field** patterns, case-insensitive
           const match = line.match(new RegExp(`^\\*\\*${fieldPath}\\*\\*:?\\s*(.+)$`, 'i'))
           if (match) {
             const value = match[1].trim()
@@ -303,7 +306,9 @@ app.post('/mcp', async (c) => {
     // ── Helper: Update field in lore text ─────────────────────────────────────
     function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
       try {
-        const lines = text.split('\n')
+        // Normalize line endings to \n
+        const normalizedText = text.replace(/\r\n/g, '\n')
+        const lines = normalizedText.split('\n')
         const searchRegex = new RegExp(`^\\*\\*${fieldPath}\\*\\*:?\\s*(.+)$`, 'i')
         let found = false
 
