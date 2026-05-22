@@ -200,7 +200,7 @@ app.post('/mcp', async (c) => {
               required: ['key'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'thornwall' } }]
-          },
+          }
 
 
         ]
