@@ -87,7 +87,7 @@ function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown
     if (parsed && typeof parsed.text === 'string') {
       return { text: parsed.text, meta: parsed.meta ?? {} };
     }
-  } catch {}
+  } catch { }
   // Covers: parse failure OR parsed but no text field
   return { text: raw, meta: {} };
 }
@@ -122,7 +122,7 @@ app.post('/mcp', async (c) => {
   }
 
   try {
-    try { console.log('MCP incoming:', JSON.stringify(body)) } catch (e) {}
+    try { console.log('MCP incoming:', JSON.stringify(body)) } catch (e) { }
 
     const validated = validateRequest(body)
     if (!validated.ok) return c.json(validated.error, 200)
@@ -149,59 +149,62 @@ app.post('/mcp', async (c) => {
     if (method === 'tools/list') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
-      return c.json(makeResult(id, { tools: [
-        {
-          name: 'ping_tool', title: 'Ping Tool', version: '0.0.1',
-          description: 'Trivial tool used to validate discovery.',
-          inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
-          examples: [{ arguments: {} }]
-        },
-        {
-          name: 'get_lore', title: 'Get Lore', version: '0.1.2',
-          description: 'Retrieve lore, anatomy, factions, and worldbuilding information.',
-          inputSchema: {
-            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
-            properties: {
-              query: { type: 'string', description: 'Lore topic to retrieve (e.g. "lamia", "undercity")', minLength: 1 },
-              limit: { type: 'integer', minimum: 1, default: 1 }
-            },
-            required: ['query'], additionalProperties: false
+      return c.json(makeResult(id, {
+        tools: [
+          {
+            name: 'ping_tool', title: 'Ping Tool', version: '0.0.1',
+            description: 'Trivial tool used to validate discovery.',
+            inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
+            examples: [{ arguments: {} }]
           },
-          examples: [{ arguments: { query: 'lamia' } }]
-        },
-        {
-          name: 'list_topics', title: 'List Topics', version: '0.1.0',
-          description: 'Return all available lore topic keys.',
-          inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
-          examples: [{ arguments: {} }]
-        },
-        {
-          name: 'set_lore', title: 'Set Lore', version: '0.1.0',
-          description: 'Write or update a lore entry. Use this to record new worldbuilding, anatomy, factions, or location details so they persist for future queries.',
-          inputSchema: {
-            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
-            properties: {
-              key:  { type: 'string', description: 'Topic key — lowercase, no spaces (e.g. "lamia", "undercity")', minLength: 1 },
-              text: { type: 'string', description: 'Full lore text to store for this topic.', minLength: 1 }
+          {
+            name: 'get_lore', title: 'Get Lore', version: '0.1.2',
+            description: 'Retrieve lore, anatomy, factions, and worldbuilding information.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                query: { type: 'string', description: 'Lore topic to retrieve (e.g. "lamia", "undercity")', minLength: 1 },
+                limit: { type: 'integer', minimum: 1, default: 1 }
+              },
+              required: ['query'], additionalProperties: false
             },
-            required: ['key', 'text'], additionalProperties: false
+            examples: [{ arguments: { query: 'lamia' } }]
           },
-          examples: [{ arguments: { key: 'lamia', text: 'Lamia are subterranean predators...' } }]
-        },
-        {
-          name: 'delete_lore', title: 'Delete Lore', version: '0.1.0',
-          description: 'Permanently delete a lore entry by key.',
-          inputSchema: {
-            $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
-            properties: {
-              key: { type: 'string', description: 'Topic key to delete', minLength: 1 }
+          {
+            name: 'list_topics', title: 'List Topics', version: '0.1.0',
+            description: 'Return all available lore topic keys.',
+            inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
+            examples: [{ arguments: {} }]
+          },
+          {
+            name: 'set_lore', title: 'Set Lore', version: '0.1.0',
+            description: 'Write or update a lore entry. Use this to record new worldbuilding, anatomy, factions, or location details so they persist for future queries.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key — lowercase, no spaces (e.g. "lamia", "undercity")', minLength: 1 },
+                text: { type: 'string', description: 'Full lore text to store for this topic.', minLength: 1 }
+              },
+              required: ['key', 'text'], additionalProperties: false
             },
-            required: ['key'], additionalProperties: false
+            examples: [{ arguments: { key: 'lamia', text: 'Lamia are subterranean predators...' } }]
           },
-          examples: [{ arguments: { key: 'thornwall' } }]
-        }
+          {
+            name: 'delete_lore', title: 'Delete Lore', version: '0.1.0',
+            description: 'Permanently delete a lore entry by key.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to delete', minLength: 1 }
+              },
+              required: ['key'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'thornwall' } }]
+          },
 
-      ]}), 200)
+
+        ]
+      }), 200)
     }
 
     if (method === 'tools/call') {
@@ -282,7 +285,7 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
-      
+
       if (toolName === 'delete_lore') {
         const schema = z.object({ key: z.string().min(1) })
         const parsed = schema.safeParse(args)
@@ -330,9 +333,9 @@ app.post('/mcp', async (c) => {
 
 app.post('/admin/set-lore', async (c) => {
   try {
-    const body   = await c.req.json()
-    const key    = (body?.key    ?? '').toString().trim().toLowerCase()
-    const text   = (body?.text   ?? '').toString()
+    const body = await c.req.json()
+    const key = (body?.key ?? '').toString().trim().toLowerCase()
+    const text = (body?.text ?? '').toString()
     const secret = (body?.secret ?? '').toString()
 
     if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
@@ -345,10 +348,10 @@ app.post('/admin/set-lore', async (c) => {
     const existing = await kvGet(c, key)
     let existingMeta: Record<string, unknown> = {}
     if (existing) {
-      try { existingMeta = JSON.parse(existing).meta ?? {} } catch {}
+      try { existingMeta = JSON.parse(existing).meta ?? {} } catch { }
     }
 
-    const now     = new Date().toISOString()
+    const now = new Date().toISOString()
     const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
     const payload = JSON.stringify({
@@ -373,7 +376,7 @@ app.post('/admin/set-lore', async (c) => {
 app.post('/admin/delete-lore', async (c) => {
   try {
     const body = await c.req.json()
-    const key    = (body?.key    ?? '').toString().trim().toLowerCase()
+    const key = (body?.key ?? '').toString().trim().toLowerCase()
     const secret = (body?.secret ?? '').toString()
 
     if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
