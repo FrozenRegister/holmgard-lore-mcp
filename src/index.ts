@@ -200,11 +200,178 @@ app.post('/mcp', async (c) => {
               required: ['key'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'thornwall' } }]
+          },
+          {
+            name: 'get_lore_batch', title: 'Get Lore Batch', version: '0.1.0',
+            description: 'Retrieve multiple lore entries in one call. Optimized for reducing API round-trips.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                keys: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1 },
+                  description: 'Array of topic keys to retrieve (e.g. ["character:sarah-weaver", "location:fernveil:outpost:deep-forest-cafe", "system:active-narratives"])',
+                  minItems: 1
+                }
+              },
+              required: ['keys'], additionalProperties: false
+            },
+            examples: [{ arguments: { keys: ['character:sarah-weaver', 'location:fernveil:outpost:deep-forest-cafe'] } }]
+          },
+          {
+            name: 'list_consumption_timelines', title: 'List Consumption Timelines', version: '0.1.0',
+            description: 'Return all prey-characters with current consumption-status and timeline-remaining.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                status_filter: {
+                  type: 'string',
+                  enum: ['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed'],
+                  default: 'all',
+                  description: 'Filter by consumption status'
+                }
+              },
+              additionalProperties: false
+            },
+            examples: [{ arguments: { status_filter: 'imminent' } }]
+          },
+          {
+            name: 'list_prophecy_vectors', title: 'List Prophecy Vectors', version: '0.1.0',
+            description: 'Return all active prophecy-vectors with current convergence-status.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {},
+              additionalProperties: false
+            },
+            examples: [{ arguments: {} }]
+          },
+          {
+            name: 'increment_topic_field', title: 'Increment Topic Field', version: '0.1.0',
+            description: 'Atomically increment a numeric field in a topic without full rewrite.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key (e.g. "character:lucinda-prime-livestock")', minLength: 1 },
+                field_path: { type: 'string', description: 'Field to increment (e.g. "days_remaining", "version")', minLength: 1 },
+                increment: { type: 'integer', description: 'Positive or negative integer to add', default: 1 },
+                reason: { type: 'string', description: 'Reason for the change (logged)', default: 'system-update' }
+              },
+              required: ['key', 'field_path'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'character:lucinda-prime-livestock', field_path: 'days_remaining', increment: -1, reason: 'daily-decrement' } }]
+          },
+          {
+            name: 'validate_topic_exists', title: 'Validate Topic Exists', version: '0.1.0',
+            description: 'Check if a topic exists and return namespace-suggestions if not.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                query_string: { type: 'string', description: 'What the user asked for (e.g. "molly")', minLength: 1 }
+              },
+              required: ['query_string'], additionalProperties: false
+            },
+            examples: [{ arguments: { query_string: 'molly' } }]
           }
 
 
         ]
       }), 200)
+    }
+    // ── Helper: Extract numeric/string fields from lore text ────────────────────
+    function extractFieldFromText(text: string, fieldPath: string): unknown {
+      try {
+        const lines = text.split('\n')
+        for (const line of lines) {
+          // Match both **field:** and **field** patterns
+          const match = line.match(new RegExp(`^\\*\\*${fieldPath}\\*\\*:?\\s*(.+)$`, 'i'))
+          if (match) {
+            const value = match[1].trim()
+            // Try to parse as number (including negative)
+            const numMatch = value.match(/^-?\d+/)
+            if (numMatch) return parseInt(numMatch[0], 10)
+            // Try to parse as JSON
+            try { return JSON.parse(value) } catch { }
+            return value
+          }
+        }
+      } catch (e) {
+        console.warn('extractFieldFromText error', e)
+      }
+      return null
+    }
+
+    // ── Helper: Update field in lore text ─────────────────────────────────────
+    function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
+      try {
+        const lines = text.split('\n')
+        const searchRegex = new RegExp(`^\\*\\*${fieldPath}\\*\\*:?\\s*(.+)$`, 'i')
+        let found = false
+
+        const updated = lines.map(line => {
+          if (searchRegex.test(line)) {
+            found = true
+            return `**${fieldPath}:** ${newValue}`
+          }
+          return line
+        })
+
+        // If not found, append to end
+        if (!found) {
+          updated.push(`**${fieldPath}:** ${newValue}`)
+        }
+
+        return updated.join('\n')
+      } catch (e) {
+        console.warn('updateFieldInText error', e)
+        return text
+      }
+    }
+
+    // ── Helper: Parse prophecy vectors from system:active-narratives ──────────
+    function extractProphecyVectors(narrativeText: string): Array<any> {
+      const vectors: Array<any> = []
+      try {
+        // Look for prophecy-vector patterns in the text
+        const lines = narrativeText.split('\n')
+        let inProphecySection = false
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]
+          if (line.includes('Prophecy') || line.includes('prophecy')) {
+            inProphecySection = true
+          }
+          if (inProphecySection && line.includes('Vector:')) {
+            const vectorMatch = line.match(/Vector:\s*(\w+[\w_]*)/i)
+            if (vectorMatch) {
+              vectors.push({
+                vector_name: vectorMatch[1],
+                status: 'Active',
+                character: 'unknown', // Would need more sophisticated parsing
+              })
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('extractProphecyVectors error', e)
+      }
+      return vectors
+    }
+
+    // ── Helper: Parse consumption timelines from character entries ──────────────
+    function extractConsumptionInfo(characterText: string): any {
+      try {
+        const timelineMatch = characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
+        const statusMatch = characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
+        const processorMatch = characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
+
+        return {
+          timeline_remaining: timelineMatch ? timelineMatch[1].trim() : 'unknown',
+          status: statusMatch ? statusMatch[1].trim() : 'active',
+          processor: processorMatch ? processorMatch[1].trim() : 'unknown'
+        }
+      } catch (e) {
+        return { timeline_remaining: 'unknown', status: 'active', processor: 'unknown' }
+      }
     }
 
     if (method === 'tools/call') {
@@ -300,7 +467,200 @@ app.post('/mcp', async (c) => {
           metadata: { source: deleted ? 'kv' : 'in-memory', key }
         }), 200)
       }
+      if (toolName === 'get_lore_batch') {
+        const schema = z.object({
+          keys: z.array(z.string().min(1)).min(1)
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
+        const results: Record<string, any> = {}
+        for (const key of parsed.data.keys) {
+          const cleanKey = key.trim().toLowerCase()
+          const raw = await kvGet(c, cleanKey)
+          if (raw) {
+            const { text, meta } = parseKvEntry(raw)
+            results[cleanKey] = { text, meta }
+          } else {
+            results[cleanKey] = null
+          }
+        }
+
+        const text = Object.entries(results)
+          .map(([k, v]) => v ? `${k}: [retrieved]` : `${k}: [not found]`)
+          .join('\n')
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text }],
+          metadata: { retrieved: Object.values(results).filter(v => v !== null).length, total: parsed.data.keys.length },
+          results
+        }), 200)
+      }
+
+      if (toolName === 'list_consumption_timelines') {
+        const schema = z.object({
+          status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all')
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const allKeys = await kvList(c)
+        const characterKeys = allKeys.filter(k => k.startsWith('character:') && (k.includes('livestock') || k.includes('prisoner')))
+
+        const timelines: Array<any> = []
+        for (const key of characterKeys) {
+          const raw = await kvGet(c, key)
+          if (raw) {
+            const { text } = parseKvEntry(raw)
+            const info = extractConsumptionInfo(text)
+
+            // Filter by status
+            if (parsed.data.status_filter !== 'all') {
+              const statusLower = info.timeline_remaining.toLowerCase()
+              if (parsed.data.status_filter === 'imminent' && !statusLower.includes('days')) continue
+              if (parsed.data.status_filter === 'days-to-weeks' && !statusLower.includes('days')) continue
+              if (parsed.data.status_filter === 'weeks-to-months' && !statusLower.includes('week')) continue
+              if (parsed.data.status_filter === 'consumed' && !statusLower.includes('consumed')) continue
+            }
+
+            timelines.push({
+              character_key: key,
+              current_status: info.status,
+              timeline_remaining: info.timeline_remaining,
+              processor: info.processor,
+              location: 'unknown'
+            })
+          }
+        }
+
+        const text = timelines.map(t => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text }],
+          metadata: { count: timelines.length },
+          timelines
+        }), 200)
+      }
+
+      if (toolName === 'list_prophecy_vectors') {
+        const narrativeKey = 'system:active-narratives'
+        const raw = await kvGet(c, narrativeKey)
+
+        if (!raw) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: 'No active narratives found.' }],
+            vectors: [],
+            metadata: { count: 0 }
+          }), 200)
+        }
+
+        const { text } = parseKvEntry(raw)
+        const vectors = extractProphecyVectors(text)
+
+        const summaryText = vectors.length > 0
+          ? vectors.map(v => `${v.vector_name}: ${v.status}`).join('\n')
+          : 'No prophecy vectors found.'
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { count: vectors.length },
+          vectors
+        }), 200)
+      }
+
+      if (toolName === 'increment_topic_field') {
+        const schema = z.object({
+          key: z.string().min(1),
+          field_path: z.string().min(1),
+          increment: z.number().default(1),
+          reason: z.string().default('system-update')
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const raw = await kvGet(c, key)
+
+        if (!raw) {
+          return c.json(makeError(id, -32602, `Topic "${key}" not found`, null), 200)
+        }
+
+        const { text, meta } = parseKvEntry(raw)
+        const currentValue = extractFieldFromText(text, parsed.data.field_path)
+
+        if (typeof currentValue !== 'number') {
+          return c.json(makeError(id, -32602, `Field "${parsed.data.field_path}" is not numeric`, { current: currentValue }), 200)
+        }
+
+        const newValue = currentValue + parsed.data.increment
+        const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
+
+        // Save updated entry
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+
+        const payload = JSON.stringify({
+          text: updatedText,
+          meta: {
+            version,
+            updatedAt: now,
+            createdAt: meta.createdAt ?? now,
+            lastIncrementReason: parsed.data.reason,
+            lastIncrementValue: parsed.data.increment
+          }
+        })
+
+        await kvPut(c, key, payload)
+        loreDB[key] = updatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Incremented ${parsed.data.field_path} from ${currentValue} to ${newValue} (reason: ${parsed.data.reason})` }],
+          metadata: { key, version, field_path: parsed.data.field_path, old_value: currentValue, new_value: newValue }
+        }), 200)
+      }
+
+      if (toolName === 'validate_topic_exists') {
+        const schema = z.object({
+          query_string: z.string().min(1)
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const allKeys = await kvList(c)
+        const query = parsed.data.query_string.trim().toLowerCase()
+
+        // Exact match
+        if (allKeys.includes(query)) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Found: ${query}` }],
+            exists: true,
+            exact_match: query,
+            namespace_matches: [],
+            suggestion: query
+          }), 200)
+        }
+
+        // Namespace suggestions
+        const suggestions = allKeys.filter(k => k.includes(query))
+
+        if (suggestions.length > 0) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `No exact match for "${query}", but found: ${suggestions.join(', ')}` }],
+            exists: false,
+            exact_match: null,
+            namespace_matches: suggestions,
+            suggestion: suggestions[0] || null
+          }), 200)
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `No lore found matching "${query}".` }],
+          exists: false,
+          exact_match: null,
+          namespace_matches: [],
+          suggestion: null
+        }), 200)
+      }
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
