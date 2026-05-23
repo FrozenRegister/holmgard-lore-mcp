@@ -9,7 +9,13 @@
 			"id": "67b47914eb094043ab777f4f34da8bfc",
 			"remote": true
 		}
-	]
+	],
+	"observability": {
+		"logs": {
+			"enabled": false,
+			"invocation_logs": true
+		}
+	}
 	// "compatibility_flags": [
 	//   "nodejs_compat"
 	// ],

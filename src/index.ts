@@ -288,8 +288,8 @@ app.post('/mcp', async (c) => {
         const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
         for (const line of lines) {
-          // Match **field:** or **field** patterns, case-insensitive
-          const match = line.match(new RegExp(`^\\*\\*${escapedField}\\*\\*:\\s*(.+)$`, 'i'))
+          // Match **field:** pattern (markdown bold with colon before closing asterisks), case-insensitive
+          const match = line.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i'))
           if (match) {
             const value = match[1].trim()
             // Try to parse as number (including negative)
@@ -315,7 +315,7 @@ app.post('/mcp', async (c) => {
         
         // Escape special regex characters in fieldPath
         const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const searchRegex = new RegExp(`^\\*\\*${escapedField}\\*\\*:\\s*(.+)$`, 'i')
+        const searchRegex = new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i')
         let found = false
 
         const updated = lines.map(line => {
