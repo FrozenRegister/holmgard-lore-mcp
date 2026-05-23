@@ -339,34 +339,34 @@ app.post('/mcp', async (c) => {
     }
 
     // ── Helper: Parse active threads from system:active-narratives ──────────
-// ── Helper: Parse active threads from system:active-narratives ──────────  
-function extractActiveThreads(narrativeText: string): Array<any> {  
-  const threads: Array<any> = []  
-  try {  
-    const lines = narrativeText.split('\n')  
-    let currentCategory = ''
+    function extractActiveThreads(narrativeText: string): Array<any> {
+      const threads: Array<any> = []
+      try {
+        // Look for active thread patterns in the text
+        const lines = narrativeText.split('\n')
+        let inThreadSection = false
 
-    for (const line of lines) {  
-      // Detect category headers  
-      if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'  
-      if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
-
-      // Match: - **Thread_Name** (Character): Description  
-      const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)  
-      if (threadMatch) {  
-        threads.push({  
-          thread_name: threadMatch[1],  
-          category: currentCategory,  
-          character: threadMatch[2] || 'unknown',  
-          status: 'Active'  
-        })  
-      }  
-    }  
-  } catch (e) {  
-    console.warn('extractActiveThreads error', e)  
-  }  
-  return threads  
-}  
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]
+          if (line.includes('Thread') || line.includes('thread')) {
+            inThreadSection = true
+          }
+          if (inThreadSection && line.includes('Thread:')) {
+            const threadMatch = line.match(/Thread:\s*(\w+[\w_]*)/i)
+            if (threadMatch) {
+              threads.push({
+                thread_name: threadMatch[1],
+                status: 'Active',
+                character: 'unknown', // Would need more sophisticated parsing
+              })
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('extractActiveThreads error', e)
+      }
+      return threads
+    }
 
     // ── Helper: Parse consumption timelines from character entries ──────────────
     function extractConsumptionInfo(characterText: string): any {
