@@ -172,18 +172,30 @@ function extractActiveThreads(narrativeText: string): Array<any> {
 }
 
 // Extracts timeline/status/processor fields from a character lore entry.
+// v0.2.0 — strengthened to match **Consumption-Timeline:** (new standard) with fallbacks.
 function extractConsumptionInfo(characterText: string): any {
   try {
-    const timelineMatch = characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
-    const statusMatch = characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
-    const processorMatch = characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
+    // Match **Consumption-Timeline:** first (new standard), then legacy formats
+    const timelineMatch =
+      characterText.match(/\*\*Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
+      characterText.match(/\*\*Projected[- ]Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
+      characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
+
+    const statusMatch =
+      characterText.match(/\*\*Status:\*\*\s*(.+?)(?:\n|$)/i) ||
+      characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
+
+    const processorMatch =
+      characterText.match(/\*\*Processor:\*\*\s*(.+?)(?:\n|$)/i) ||
+      characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
+
     return {
-      timeline_remaining: timelineMatch ? timelineMatch[1].trim() : 'unknown',
+      timeline_remaining: timelineMatch ? timelineMatch[1].trim() : null,
       status: statusMatch ? statusMatch[1].trim() : 'active',
       processor: processorMatch ? processorMatch[1].trim() : 'unknown'
     }
   } catch (e) {
-    return { timeline_remaining: 'unknown', status: 'active', processor: 'unknown' }
+    return { timeline_remaining: null, status: 'active', processor: 'unknown' }
   }
 }
 
@@ -230,7 +242,7 @@ app.post('/mcp', async (c) => {
       return c.json(makeResult(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { list: true, call: true } },
-        serverInfo: { name: 'holmgard-lore-mcp', version: '0.2.0', description: 'Holmgard lore MCP' }
+        serverInfo: { name: 'holmgard-lore-mcp', version: '0.3.0', description: 'Holmgard lore MCP' }
       }), 200)
     }
 
@@ -311,8 +323,8 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { keys: ['character:sarah-weaver', 'location:fernveil:outpost:deep-forest-cafe'] } }]
           },
           {
-            name: 'list_consumption_timelines', title: 'List Consumption Timelines', version: '0.1.0',
-            description: 'Return all prey-characters with current consumption-status and timeline-remaining.',
+            name: 'list_consumption_timelines', title: 'List Consumption Timelines', version: '0.2.0',
+            description: 'Return all prey-characters with current consumption-status and timeline-remaining. Scans all character:* keys for Consumption-Timeline fields.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
@@ -491,6 +503,7 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
+      // ── list_consumption_timelines (v0.2.0 — broad character scan) ──────────
       if (toolName === 'list_consumption_timelines') {
         const schema = z.object({
           status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all')
@@ -499,7 +512,8 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const allKeys = await kvList(c)
-        const characterKeys = allKeys.filter(k => k.startsWith('character:') && (k.includes('livestock') || k.includes('prisoner')))
+        // v0.2.0: scan ALL character:* keys, not just livestock/prisoner
+        const characterKeys = allKeys.filter(k => k.startsWith('character:'))
 
         const timelines: Array<any> = []
         for (const key of characterKeys) {
@@ -508,12 +522,14 @@ app.post('/mcp', async (c) => {
           const { text } = parseKvEntry(raw)
           const info = extractConsumptionInfo(text)
 
+          // Skip characters with no timeline (predators, ascended staff, etc.)
+          if (!info.timeline_remaining) continue
+
           if (parsed.data.status_filter !== 'all') {
             const tl = info.timeline_remaining.toLowerCase()
-            // 'imminent' = hours away or exactly "1 day"; 'days-to-weeks' catches multi-day ranges
             if (parsed.data.status_filter === 'imminent' && !tl.includes('hour') && !/\b1\s*day\b/.test(tl)) continue
-            if (parsed.data.status_filter === 'days-to-weeks' && !tl.includes('day')) continue
-            if (parsed.data.status_filter === 'weeks-to-months' && !tl.includes('week')) continue
+            if (parsed.data.status_filter === 'days-to-weeks' && !tl.includes('day') && !tl.includes('week')) continue
+            if (parsed.data.status_filter === 'weeks-to-months' && !tl.includes('week') && !tl.includes('month') && !tl.includes('year')) continue
             if (parsed.data.status_filter === 'consumed' && !tl.includes('consumed')) continue
           }
 
@@ -526,7 +542,10 @@ app.post('/mcp', async (c) => {
           })
         }
 
-        const text = timelines.map(t => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
+        const text = timelines.length > 0
+          ? timelines.map(t => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
+          : 'No consumption timelines found.'
+
         return c.json(makeResult(id, {
           content: [{ type: 'text', text }],
           metadata: { count: timelines.length },
