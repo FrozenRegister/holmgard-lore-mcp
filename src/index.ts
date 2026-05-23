@@ -696,6 +696,9 @@ app.post('/mcp', async (c) => {
           }), 200)
         }
 
+        if ((operation === 'replace' || operation === 'delete_field') && target === undefined) {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: `Parameter "target" required for ${operation}.` }] }), 200)
+        }
         if (operation === 'replace' && value === undefined) {
           return c.json(makeResult(id, { content: [{ type: 'text', text: 'Parameter "value" required for replace.' }] }), 200)
         }
@@ -740,7 +743,8 @@ app.post('/mcp', async (c) => {
             updatedText = text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
             successMessage = `Appended after "${target}" in "${key}".`
           } else {
-            updatedText = text.endsWith('\n') ? text + value! : text + '\n' + value!
+            const needsSeparator = !text.endsWith('\n') && !value!.startsWith('\n')
+            updatedText = text + (needsSeparator ? '\n' : '') + value!
             successMessage = `Appended to end of "${key}".`
           }
 
@@ -749,7 +753,7 @@ app.post('/mcp', async (c) => {
           if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
           if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
           const idx = text.indexOf(target!)
-          updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{3,}/g, '\n\n')
+          updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{2,}/g, '\n')
           successMessage = value !== undefined
             ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
             : `Deleted 1 occurrence of "${target}" from "${key}".`
