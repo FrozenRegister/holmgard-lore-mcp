@@ -2,6 +2,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 type JsonRpcRequest = {
   jsonrpc?: string
   id?: string | number | null
@@ -16,11 +18,15 @@ type JsonRpcResponse = {
   error?: { code: number; message: string; data?: any }
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Secret',
 }
+
+// ── JSON-RPC helpers ──────────────────────────────────────────────────────────
 
 const makeResult = (id: string | number | null, result: unknown): JsonRpcResponse => ({
   jsonrpc: '2.0', id, result
@@ -39,7 +45,13 @@ const validateRequest = (body: any): { ok: true; req: JsonRpcRequest } | { ok: f
   return { ok: true, req }
 }
 
+// ── In-memory fallback ────────────────────────────────────────────────────────
+// Keeps the server functional when Cloudflare KV is unavailable (e.g. local dev).
+// Not persisted across worker restarts — KV is the source of truth.
+const loreDB: Record<string, string> = {}
+
 // ── KV helpers ────────────────────────────────────────────────────────────────
+// Reads fall back to loreDB automatically so callers don't need to handle it.
 
 function getKV(c: any): KVNamespace | null {
   return (c.env as any)?.LORE_DB ?? null
@@ -48,9 +60,9 @@ function getKV(c: any): KVNamespace | null {
 async function kvGet(c: any, key: string): Promise<string | null> {
   try {
     const kv = getKV(c)
-    if (kv) return await kv.get(key)
+    if (kv) return (await kv.get(key)) ?? loreDB[key] ?? null
   } catch (e) { console.warn('KV get failed', e) }
-  return null
+  return loreDB[key] ?? null
 }
 
 async function kvList(c: any): Promise<string[]> {
@@ -58,10 +70,11 @@ async function kvList(c: any): Promise<string[]> {
     const kv = getKV(c)
     if (kv) {
       const listed = await kv.list()
-      return listed.keys.map((k: any) => k.name)
+      const keys = listed.keys.map((k: any) => k.name)
+      if (keys.length) return keys
     }
   } catch (e) { console.warn('KV list failed', e) }
-  return []
+  return Object.keys(loreDB)
 }
 
 async function kvPut(c: any, key: string, value: string): Promise<boolean> {
@@ -80,21 +93,99 @@ async function kvDelete(c: any, key: string): Promise<boolean> {
   return false
 }
 
-// Handles both old (raw string) and new ({ text, meta }) KV formats
+// ── Lore entry helpers ────────────────────────────────────────────────────────
+
+// Handles both the legacy plain-string format and the current { text, meta } JSON format.
 function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown> } {
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw)
     if (parsed && typeof parsed.text === 'string') {
-      return { text: parsed.text, meta: parsed.meta ?? {} };
+      return { text: parsed.text, meta: parsed.meta ?? {} }
     }
   } catch { }
-  // Covers: parse failure OR parsed but no text field
-  return { text: raw, meta: {} };
+  return { text: raw, meta: {} }
 }
 
+// Reads a **Field:** value from markdown-formatted lore text. Returns a number if parseable.
+function extractFieldFromText(text: string, fieldPath: string): unknown {
+  try {
+    const lines = text.replace(/\r\n/g, '\n').split('\n')
+    const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    for (const line of lines) {
+      const match = line.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i'))
+      if (match) {
+        const value = match[1].trim()
+        const numMatch = value.match(/^-?\d+/)
+        if (numMatch) return parseInt(numMatch[0], 10)
+        try { return JSON.parse(value) } catch { }
+        return value
+      }
+    }
+  } catch (e) {
+    console.warn('extractFieldFromText error', e)
+  }
+  return null
+}
 
-// ── In-memory fallback ────────────────────────────────────────────────────────
-const loreDB: Record<string, string> = {}
+// Replaces a **Field:** line in place, or appends it if not found.
+function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
+  try {
+    const lines = text.replace(/\r\n/g, '\n').split('\n')
+    const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const searchRegex = new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i')
+    let found = false
+    const updated = lines.map(line => {
+      if (searchRegex.test(line)) { found = true; return `**${fieldPath}:** ${newValue}` }
+      return line
+    })
+    if (!found) updated.push(`**${fieldPath}:** ${newValue}`)
+    return updated.join('\n')
+  } catch (e) {
+    console.warn('updateFieldInText error', e)
+    return text
+  }
+}
+
+// Parses the system:active-narratives entry into structured thread objects.
+function extractActiveThreads(narrativeText: string): Array<any> {
+  const threads: Array<any> = []
+  try {
+    const lines = narrativeText.split('\n')
+    let currentCategory = ''
+    for (const line of lines) {
+      if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'
+      if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
+      const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)
+      if (threadMatch) {
+        threads.push({
+          thread_name: threadMatch[1],
+          category: currentCategory,
+          character: threadMatch[2] || 'unknown',
+          status: 'Active'
+        })
+      }
+    }
+  } catch (e) {
+    console.warn('extractActiveThreads error', e)
+  }
+  return threads
+}
+
+// Extracts timeline/status/processor fields from a character lore entry.
+function extractConsumptionInfo(characterText: string): any {
+  try {
+    const timelineMatch = characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
+    const statusMatch = characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
+    const processorMatch = characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
+    return {
+      timeline_remaining: timelineMatch ? timelineMatch[1].trim() : 'unknown',
+      status: statusMatch ? statusMatch[1].trim() : 'active',
+      processor: processorMatch ? processorMatch[1].trim() : 'unknown'
+    }
+  } catch (e) {
+    return { timeline_remaining: 'unknown', status: 'active', processor: 'unknown' }
+  }
+}
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -105,7 +196,7 @@ app.use('*', async (c, next) => {
   Object.entries(CORS_HEADERS).forEach(([k, v]) => c.header(k, v))
 })
 
-app.options('*', (c) => new Response(null, { status: 204, headers: CORS_HEADERS }))
+app.options('*', (_c) => new Response(null, { status: 204, headers: CORS_HEADERS }))
 
 app.get('/mcp', (c) => {
   c.header('Content-Type', 'application/json')
@@ -132,6 +223,7 @@ app.post('/mcp', async (c) => {
     const method = req.method!
     const params = req.params ?? {}
 
+    // ── initialize ────────────────────────────────────────────────────────────
     if (method === 'initialize') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
@@ -146,6 +238,7 @@ app.post('/mcp', async (c) => {
       return c.json(makeResult(id, {}), 200)
     }
 
+    // ── tools/list ────────────────────────────────────────────────────────────
     if (method === 'tools/list') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
@@ -158,13 +251,12 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: {} }]
           },
           {
-            name: 'get_lore', title: 'Get Lore', version: '0.1.2',
-            description: 'Retrieve lore, anatomy, factions, and worldbuilding information.',
+            name: 'get_lore', title: 'Get Lore', version: '0.1.3',
+            description: 'Retrieve lore, anatomy, factions, and worldbuilding information by topic key.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
-                query: { type: 'string', description: 'Lore topic to retrieve (e.g. "lamia", "undercity")', minLength: 1 },
-                limit: { type: 'integer', minimum: 1, default: 1 }
+                query: { type: 'string', description: 'Exact topic key to retrieve (e.g. "lamia", "location:undercity")', minLength: 1 }
               },
               required: ['query'], additionalProperties: false
             },
@@ -228,7 +320,7 @@ app.post('/mcp', async (c) => {
                   type: 'string',
                   enum: ['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed'],
                   default: 'all',
-                  description: 'Filter by consumption status'
+                  description: 'Filter by consumption status. "imminent" = hours or 1 day remaining.'
                 }
               },
               additionalProperties: false
@@ -271,120 +363,25 @@ app.post('/mcp', async (c) => {
               required: ['query_string'], additionalProperties: false
             },
             examples: [{ arguments: { query_string: 'molly' } }]
+          },
+          {
+            name: 'search_lore', title: 'Search Lore', version: '0.1.0',
+            description: 'Full-text search across all lore entry bodies. Returns matching keys with excerpt snippets.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                query: { type: 'string', description: 'Search term (case-insensitive substring match)', minLength: 1 },
+                max_results: { type: 'integer', minimum: 1, maximum: 50, default: 10 }
+              },
+              required: ['query'], additionalProperties: false
+            },
+            examples: [{ arguments: { query: 'lamia', max_results: 5 } }]
           }
-
-
         ]
       }), 200)
     }
-    // ── Helper: Extract numeric/string fields from lore text ────────────────────
-    function extractFieldFromText(text: string, fieldPath: string): unknown {
-      try {
-        // Normalize line endings to \n
-        const normalizedText = text.replace(/\r\n/g, '\n')
-        const lines = normalizedText.split('\n')
-        
-        // Escape special regex characters in fieldPath
-        const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-        for (const line of lines) {
-          // Match **field:** pattern (markdown bold with colon before closing asterisks), case-insensitive
-          const match = line.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i'))
-          if (match) {
-            const value = match[1].trim()
-            // Try to parse as number (including negative)
-            const numMatch = value.match(/^-?\d+/)
-            if (numMatch) return parseInt(numMatch[0], 10)
-            // Try to parse as JSON
-            try { return JSON.parse(value) } catch { }
-            return value
-          }
-        }
-      } catch (e) {
-        console.warn('extractFieldFromText error', e)
-      }
-      return null
-    }
-
-    // ── Helper: Update field in lore text ─────────────────────────────────────
-    function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
-      try {
-        // Normalize line endings to \n
-        const normalizedText = text.replace(/\r\n/g, '\n')
-        const lines = normalizedText.split('\n')
-        
-        // Escape special regex characters in fieldPath
-        const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const searchRegex = new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i')
-        let found = false
-
-        const updated = lines.map(line => {
-          if (searchRegex.test(line)) {
-            found = true
-            return `**${fieldPath}:** ${newValue}`
-          }
-          return line
-        })
-
-        // If not found, append to end
-        if (!found) {
-          updated.push(`**${fieldPath}:** ${newValue}`)
-        }
-
-        return updated.join('\n')
-      } catch (e) {
-        console.warn('updateFieldInText error', e)
-        return text
-      }
-    }
-
-    // ── Helper: Parse active threads from system:active-narratives ──────────
-// ── Helper: Parse active threads from system:active-narratives ──────────  
-function extractActiveThreads(narrativeText: string): Array<any> {  
-  const threads: Array<any> = []  
-  try {  
-    const lines = narrativeText.split('\n')  
-    let currentCategory = ''
-
-    for (const line of lines) {  
-      // Detect category headers  
-      if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'  
-      if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
-
-      // Match: - **Thread_Name** (Character): Description  
-      const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)  
-      if (threadMatch) {  
-        threads.push({  
-          thread_name: threadMatch[1],  
-          category: currentCategory,  
-          character: threadMatch[2] || 'unknown',  
-          status: 'Active'  
-        })  
-      }  
-    }  
-  } catch (e) {  
-    console.warn('extractActiveThreads error', e)  
-  }  
-  return threads  
-}  
-
-    // ── Helper: Parse consumption timelines from character entries ──────────────
-    function extractConsumptionInfo(characterText: string): any {
-      try {
-        const timelineMatch = characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
-        const statusMatch = characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
-        const processorMatch = characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
-
-        return {
-          timeline_remaining: timelineMatch ? timelineMatch[1].trim() : 'unknown',
-          status: statusMatch ? statusMatch[1].trim() : 'active',
-          processor: processorMatch ? processorMatch[1].trim() : 'unknown'
-        }
-      } catch (e) {
-        return { timeline_remaining: 'unknown', status: 'active', processor: 'unknown' }
-      }
-    }
-
+    // ── tools/call ────────────────────────────────────────────────────────────
     if (method === 'tools/call') {
       const toolName = params?.name
       const args = params?.arguments ?? {}
@@ -396,62 +393,40 @@ function extractActiveThreads(narrativeText: string): Array<any> {
       }
 
       if (toolName === 'list_topics') {
-        let keys = await kvList(c)
-        if (!keys.length) keys = Object.keys(loreDB)
+        const keys = await kvList(c)
         return c.json(makeResult(id, { content: [{ type: 'text', text: keys.join(', ') }], metadata: { count: keys.length } }), 200)
       }
 
       if (toolName === 'get_lore') {
-        const schema = z.object({
-          key: z.string().min(1).optional(),
-          query: z.string().min(1).optional(),
-        }).refine(d => d.key || d.query, { message: 'key or query is required' })
-
+        const schema = z.object({ query: z.string().min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const key = (parsed.data.key ?? parsed.data.query ?? '').trim().toLowerCase()
+        const key = parsed.data.query.trim().toLowerCase()
         const raw = await kvGet(c, key)
-
         if (!raw) return c.json(makeError(id, -32602, `No lore found for key "${key}"`, null), 200)
 
         const { text, meta } = parseKvEntry(raw)
-
-        return c.json(makeResult(id, {
-          content: [{ type: 'text', text }],
-          key,
-          text,
-          meta,
-        }), 200)
+        return c.json(makeResult(id, { content: [{ type: 'text', text }], key, text, meta }), 200)
       }
 
-
-
       if (toolName === 'set_lore') {
-        const schema = z.object({ key: z.string().min(1), text: z.string() })
+        const schema = z.object({ key: z.string().min(1), text: z.string().min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const key = parsed.data.key.trim().toLowerCase()
         const text = parsed.data.text
 
-        // ── Read existing entry to preserve/increment version ──────────────────
-        const existing = await kvGet(c, key)
-        let existingMeta: Record<string, unknown> = {}
-        if (existing) {
-          try { existingMeta = JSON.parse(existing).meta ?? {} } catch { }
-        }
+        const existingRaw = await kvGet(c, key)
+        const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
 
         const now = new Date().toISOString()
         const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
         const payload = JSON.stringify({
           text,
-          meta: {
-            version,
-            updatedAt: now,
-            createdAt: existingMeta.createdAt ?? now,
-          },
+          meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
         })
 
         await kvPut(c, key, payload)
@@ -462,7 +437,6 @@ function extractActiveThreads(narrativeText: string): Array<any> {
           metadata: { key, version }
         }), 200)
       }
-
 
       if (toolName === 'delete_lore') {
         const schema = z.object({ key: z.string().min(1) })
@@ -478,10 +452,9 @@ function extractActiveThreads(narrativeText: string): Array<any> {
           metadata: { source: deleted ? 'kv' : 'in-memory', key }
         }), 200)
       }
+
       if (toolName === 'get_lore_batch') {
-        const schema = z.object({
-          keys: z.array(z.string().min(1)).min(1)
-        })
+        const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
@@ -489,12 +462,7 @@ function extractActiveThreads(narrativeText: string): Array<any> {
         for (const key of parsed.data.keys) {
           const cleanKey = key.trim().toLowerCase()
           const raw = await kvGet(c, cleanKey)
-          if (raw) {
-            const { text, meta } = parseKvEntry(raw)
-            results[cleanKey] = { text, meta }
-          } else {
-            results[cleanKey] = null
-          }
+          results[cleanKey] = raw ? parseKvEntry(raw) : null
         }
 
         const text = Object.entries(results)
@@ -521,31 +489,29 @@ function extractActiveThreads(narrativeText: string): Array<any> {
         const timelines: Array<any> = []
         for (const key of characterKeys) {
           const raw = await kvGet(c, key)
-          if (raw) {
-            const { text } = parseKvEntry(raw)
-            const info = extractConsumptionInfo(text)
+          if (!raw) continue
+          const { text } = parseKvEntry(raw)
+          const info = extractConsumptionInfo(text)
 
-            // Filter by status
-            if (parsed.data.status_filter !== 'all') {
-              const statusLower = info.timeline_remaining.toLowerCase()
-              if (parsed.data.status_filter === 'imminent' && !statusLower.includes('days')) continue
-              if (parsed.data.status_filter === 'days-to-weeks' && !statusLower.includes('days')) continue
-              if (parsed.data.status_filter === 'weeks-to-months' && !statusLower.includes('week')) continue
-              if (parsed.data.status_filter === 'consumed' && !statusLower.includes('consumed')) continue
-            }
-
-            timelines.push({
-              character_key: key,
-              current_status: info.status,
-              timeline_remaining: info.timeline_remaining,
-              processor: info.processor,
-              location: 'unknown'
-            })
+          if (parsed.data.status_filter !== 'all') {
+            const tl = info.timeline_remaining.toLowerCase()
+            // 'imminent' = hours away or exactly "1 day"; 'days-to-weeks' catches multi-day ranges
+            if (parsed.data.status_filter === 'imminent' && !tl.includes('hour') && !/\b1\s*day\b/.test(tl)) continue
+            if (parsed.data.status_filter === 'days-to-weeks' && !tl.includes('day')) continue
+            if (parsed.data.status_filter === 'weeks-to-months' && !tl.includes('week')) continue
+            if (parsed.data.status_filter === 'consumed' && !tl.includes('consumed')) continue
           }
+
+          timelines.push({
+            character_key: key,
+            current_status: info.status,
+            timeline_remaining: info.timeline_remaining,
+            processor: info.processor,
+            location: 'unknown'
+          })
         }
 
         const text = timelines.map(t => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
-
         return c.json(makeResult(id, {
           content: [{ type: 'text', text }],
           metadata: { count: timelines.length },
@@ -554,20 +520,17 @@ function extractActiveThreads(narrativeText: string): Array<any> {
       }
 
       if (toolName === 'list_active_threads') {
-        const narrativeKey = 'system:active-narratives'
-        const raw = await kvGet(c, narrativeKey)
+        const raw = await kvGet(c, 'system:active-narratives')
 
         if (!raw) {
           return c.json(makeResult(id, {
             content: [{ type: 'text', text: 'No active narratives found.' }],
-            threads: [],
-            metadata: { count: 0 }
+            threads: [], metadata: { count: 0 }
           }), 200)
         }
 
         const { text } = parseKvEntry(raw)
         const threads = extractActiveThreads(text)
-
         const summaryText = threads.length > 0
           ? threads.map(v => `${v.thread_name}: ${v.status}`).join('\n')
           : 'No active threads found.'
@@ -591,10 +554,7 @@ function extractActiveThreads(narrativeText: string): Array<any> {
 
         const key = parsed.data.key.trim().toLowerCase()
         const raw = await kvGet(c, key)
-
-        if (!raw) {
-          return c.json(makeError(id, -32602, `Topic "${key}" not found`, null), 200)
-        }
+        if (!raw) return c.json(makeError(id, -32602, `Topic "${key}" not found`, null), 200)
 
         const { text, meta } = parseKvEntry(raw)
         const currentValue = extractFieldFromText(text, parsed.data.field_path)
@@ -606,7 +566,6 @@ function extractActiveThreads(narrativeText: string): Array<any> {
         const newValue = currentValue + parsed.data.increment
         const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
 
-        // Save updated entry
         const now = new Date().toISOString()
         const version = typeof meta.version === 'number' ? meta.version + 1 : 1
 
@@ -631,54 +590,82 @@ function extractActiveThreads(narrativeText: string): Array<any> {
       }
 
       if (toolName === 'validate_topic_exists') {
-        const schema = z.object({
-          query_string: z.string().min(1)
-        })
+        const schema = z.object({ query_string: z.string().min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const allKeys = await kvList(c)
         const query = parsed.data.query_string.trim().toLowerCase()
 
-        // Exact match
         if (allKeys.includes(query)) {
           return c.json(makeResult(id, {
             content: [{ type: 'text', text: `Found: ${query}` }],
-            exists: true,
-            exact_match: query,
-            namespace_matches: [],
-            suggestion: query
+            exists: true, exact_match: query, namespace_matches: [], suggestion: query
           }), 200)
         }
 
-        // Namespace suggestions
         const suggestions = allKeys.filter(k => k.includes(query))
-
         if (suggestions.length > 0) {
           return c.json(makeResult(id, {
             content: [{ type: 'text', text: `No exact match for "${query}", but found: ${suggestions.join(', ')}` }],
-            exists: false,
-            exact_match: null,
-            namespace_matches: suggestions,
-            suggestion: suggestions[0] || null
+            exists: false, exact_match: null, namespace_matches: suggestions, suggestion: suggestions[0] || null
           }), 200)
         }
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `No lore found matching "${query}".` }],
-          exists: false,
-          exact_match: null,
-          namespace_matches: [],
-          suggestion: null
+          exists: false, exact_match: null, namespace_matches: [], suggestion: null
+        }), 200)
+      }
+
+      if (toolName === 'search_lore') {
+        const schema = z.object({
+          query: z.string().min(1),
+          max_results: z.number().min(1).max(50).default(10)
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const searchQuery = parsed.data.query.toLowerCase()
+        const allKeys = await kvList(c)
+        const results: Array<{ key: string; excerpt: string }> = []
+
+        for (const key of allKeys) {
+          if (results.length >= parsed.data.max_results) break
+          const raw = await kvGet(c, key)
+          if (!raw) continue
+          const { text } = parseKvEntry(raw)
+          const lowerText = text.toLowerCase()
+          const idx = lowerText.indexOf(searchQuery)
+          if (idx === -1) continue
+
+          // Extract ~80 chars around the first match for context
+          const start = Math.max(0, idx - 30)
+          const end = Math.min(text.length, idx + searchQuery.length + 50)
+          let excerpt = text.slice(start, end)
+          if (start > 0) excerpt = '…' + excerpt
+          if (end < text.length) excerpt = excerpt + '…'
+
+          results.push({ key, excerpt })
+        }
+
+        const summaryText = results.length > 0
+          ? results.map(r => `${r.key}: "${r.excerpt}"`).join('\n')
+          : `No lore entries matching "${parsed.data.query}".`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { query: parsed.data.query, match_count: results.length },
+          results
         }), 200)
       }
 
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
 
+    // ── Legacy bare-method handlers (pre-tools/call clients) ──────────────────
     if (method === 'list_topics') {
-      let keys = await kvList(c)
-      if (!keys.length) keys = Object.keys(loreDB)
+      const keys = await kvList(c)
       return c.json(makeResult(id, { keys }), 200)
     }
 
@@ -686,13 +673,12 @@ function extractActiveThreads(narrativeText: string): Array<any> {
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
       if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
 
-      const raw = (await kvGet(c, key)) ?? loreDB[key] ?? null
+      const raw = await kvGet(c, key)
       if (!raw) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200)
 
       const { text, meta } = parseKvEntry(raw)
       return c.json(makeResult(id, { key, text, meta }), 200)
     }
-
 
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
 
@@ -701,6 +687,8 @@ function extractActiveThreads(narrativeText: string): Array<any> {
     return c.json(makeError(null, -32603, 'Internal error', { message: String(e) }), 200)
   }
 })
+
+// ── Admin routes ──────────────────────────────────────────────────────────────
 
 app.post('/admin/set-lore', async (c) => {
   try {
@@ -715,23 +703,15 @@ app.post('/admin/set-lore', async (c) => {
     if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
       return c.json({ ok: false, error: 'unauthorized' }, 401)
 
-    // ── Read existing entry to preserve/increment version ───────────────────
-    const existing = await kvGet(c, key)
-    let existingMeta: Record<string, unknown> = {}
-    if (existing) {
-      try { existingMeta = JSON.parse(existing).meta ?? {} } catch { }
-    }
+    const existingRaw = await kvGet(c, key)
+    const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
 
     const now = new Date().toISOString()
     const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
     const payload = JSON.stringify({
       text,
-      meta: {
-        version,
-        updatedAt: now,
-        createdAt: existingMeta.createdAt ?? now,
-      },
+      meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
     })
 
     await kvPut(c, key, payload)
@@ -742,7 +722,6 @@ app.post('/admin/set-lore', async (c) => {
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
-
 
 app.post('/admin/delete-lore', async (c) => {
   try {
@@ -763,7 +742,6 @@ app.post('/admin/delete-lore', async (c) => {
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
-
 
 app.all('*', (c) => c.text('Not Found', 404))
 
