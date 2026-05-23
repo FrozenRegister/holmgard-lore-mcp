@@ -178,8 +178,7 @@ function extractConsumptionInfo(characterText: string): any {
     // Match **Consumption-Timeline:** first (new standard), then legacy formats
     const timelineMatch =
       characterText.match(/\*\*Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
-      characterText.match(/\*\*Projected[- ]Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
-      characterText.match(/Timeline[*-:]*\s*(.+?)(?:\n|$)/i)
+      characterText.match(/\*\*Projected[- ]Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i)
 
     const statusMatch =
       characterText.match(/\*\*Status:\*\*\s*(.+?)(?:\n|$)/i) ||

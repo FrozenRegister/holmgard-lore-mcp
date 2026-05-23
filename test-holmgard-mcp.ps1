@@ -1,5 +1,8 @@
 ﻿# Holmgard MCP Test Script
 # Tests the MCP JSON-RPC endpoint, all tools, and admin endpoints when configured.
+#
+# Note: admin endpoint tests require ADMIN_SECRET to be configured in the PowerShell environment.
+# Set it with: $env:ADMIN_SECRET = "your-secret-value"
 
 $BaseUrl = "https://holmgard-lore-mcp.frozenregister.workers.dev"
 $MCP_URL = "$BaseUrl/mcp"
@@ -198,6 +201,11 @@ $testContent = @"
 **character:** test-subject
 "@
 
+$searchKey         = "test:search-key"
+$searchText        = @"
+Lore search test content.
+Magic is contained here.
+"@
 $patchReplaceKey   = "test:patch-replace"
 $patchAmbigKey     = "test:patch-ambig"
 $patchAppendKey    = "test:patch-append"
@@ -249,7 +257,16 @@ Invoke-MCPTool -ToolName "validate_topic_exists" -Arguments @{ query_string = "m
 Write-Section "TEST 15: validate_topic_exists - no match"
 Invoke-MCPTool -ToolName "validate_topic_exists" -Arguments @{ query_string = "nonexistent-thing-12345" } -RequestId 15
 
-Write-Section "TEST 16: set_lore (tool)"
+Write-Section "TEST 16A: search_lore setup"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $searchKey; text = $searchText } -RequestId 100
+
+Write-Section "TEST 16B: search_lore"
+Invoke-MCPToolAssert -ToolName "search_lore" -Arguments @{ query = "magic"; max_results = 5 } -ExpectContains $searchKey -RequestId 101
+
+Write-Section "TEST 16C: search_lore cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $searchKey } -RequestId 102
+
+Write-Section "TEST 19: set_lore (tool)"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $testKey; text = $testContent } -RequestId 16
 
 Write-Section "TEST 17: increment_topic_field"
