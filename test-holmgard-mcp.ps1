@@ -206,6 +206,12 @@ $searchText        = @"
 Lore search test content.
 Magic is contained here.
 "@
+$timelineTestKey   = "test:consumption-timeline-entry"
+$timelineText      = @"
+**Status:** Imminent
+**Consumption-Timeline:** 1 day
+**Processor:** Alpha
+"@
 $patchReplaceKey   = "test:patch-replace"
 $patchAmbigKey     = "test:patch-ambig"
 $patchAppendKey    = "test:patch-append"
@@ -265,6 +271,12 @@ Invoke-MCPToolAssert -ToolName "search_lore" -Arguments @{ query = "magic"; max_
 
 Write-Section "TEST 16C: search_lore cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $searchKey } -RequestId 102
+
+Write-Section "TEST 16D: list_consumption_timelines parser"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $timelineTestKey; text = $timelineText } -RequestId 103
+Invoke-MCPToolAssert -ToolName "list_consumption_timelines" -Arguments @{ status_filter = "imminent" } -ExpectContains $timelineTestKey -RequestId 104
+Write-Section "TEST 16E: list_consumption_timelines cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $timelineTestKey } -RequestId 105
 
 Write-Section "TEST 19: set_lore (tool)"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $testKey; text = $testContent } -RequestId 16

@@ -116,6 +116,8 @@ Tool names and parameters:
   - `keys` (array of strings)
 - `list_consumption_timelines`
   - `status_filter` (enum: `all`, `imminent`, `days-to-weeks`, `weeks-to-months`, `consumed`)
+  - Scans `character:*` lore entries for `**Consumption-Timeline:**` or `**Projected-Consumption-Timeline:**` fields.
+  - Legacy generic `Timeline:` patterns are not supported.
 - `list_active_threads`
   - no arguments
 - `increment_topic_field`
