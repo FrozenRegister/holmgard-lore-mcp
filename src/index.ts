@@ -236,8 +236,8 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { status_filter: 'imminent' } }]
           },
           {
-            name: 'list_prophecy_vectors', title: 'List Prophecy Vectors', version: '0.1.0',
-            description: 'Return all active prophecy-vectors with current convergence-status.',
+            name: 'list_active_threads', title: 'List Active Threads', version: '0.1.0',
+            description: 'Return all active consumption/predation threads with current status.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {},
@@ -338,24 +338,24 @@ app.post('/mcp', async (c) => {
       }
     }
 
-    // ── Helper: Parse prophecy vectors from system:active-narratives ──────────
-    function extractProphecyVectors(narrativeText: string): Array<any> {
-      const vectors: Array<any> = []
+    // ── Helper: Parse active threads from system:active-narratives ──────────
+    function extractActiveThreads(narrativeText: string): Array<any> {
+      const threads: Array<any> = []
       try {
-        // Look for prophecy-vector patterns in the text
+        // Look for active thread patterns in the text
         const lines = narrativeText.split('\n')
-        let inProphecySection = false
+        let inThreadSection = false
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i]
-          if (line.includes('Prophecy') || line.includes('prophecy')) {
-            inProphecySection = true
+          if (line.includes('Thread') || line.includes('thread')) {
+            inThreadSection = true
           }
-          if (inProphecySection && line.includes('Vector:')) {
-            const vectorMatch = line.match(/Vector:\s*(\w+[\w_]*)/i)
-            if (vectorMatch) {
-              vectors.push({
-                vector_name: vectorMatch[1],
+          if (inThreadSection && line.includes('Thread:')) {
+            const threadMatch = line.match(/Thread:\s*(\w+[\w_]*)/i)
+            if (threadMatch) {
+              threads.push({
+                thread_name: threadMatch[1],
                 status: 'Active',
                 character: 'unknown', // Would need more sophisticated parsing
               })
@@ -363,9 +363,9 @@ app.post('/mcp', async (c) => {
           }
         }
       } catch (e) {
-        console.warn('extractProphecyVectors error', e)
+        console.warn('extractActiveThreads error', e)
       }
-      return vectors
+      return threads
     }
 
     // ── Helper: Parse consumption timelines from character entries ──────────────
@@ -553,29 +553,29 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
-      if (toolName === 'list_prophecy_vectors') {
+      if (toolName === 'list_active_threads') {
         const narrativeKey = 'system:active-narratives'
         const raw = await kvGet(c, narrativeKey)
 
         if (!raw) {
           return c.json(makeResult(id, {
             content: [{ type: 'text', text: 'No active narratives found.' }],
-            vectors: [],
+            threads: [],
             metadata: { count: 0 }
           }), 200)
         }
 
         const { text } = parseKvEntry(raw)
-        const vectors = extractProphecyVectors(text)
+        const threads = extractActiveThreads(text)
 
-        const summaryText = vectors.length > 0
-          ? vectors.map(v => `${v.vector_name}: ${v.status}`).join('\n')
-          : 'No prophecy vectors found.'
+        const summaryText = threads.length > 0
+          ? threads.map(v => `${v.thread_name}: ${v.status}`).join('\n')
+          : 'No active threads found.'
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: summaryText }],
-          metadata: { count: vectors.length },
-          vectors
+          metadata: { count: threads.length },
+          threads
         }), 200)
       }
 
