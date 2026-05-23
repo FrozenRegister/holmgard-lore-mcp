@@ -116,7 +116,7 @@ Tool names and parameters:
   - `keys` (array of strings)
 - `list_consumption_timelines`
   - `status_filter` (enum: `all`, `imminent`, `days-to-weeks`, `weeks-to-months`, `consumed`)
-- `list_prophecy_vectors`
+- `list_active_threads`
   - no arguments
 - `increment_topic_field`
   - `key` (string)
