@@ -139,12 +139,70 @@ function Write-Section {
     Write-Host "════════════════════════════════════════════════════════\n" -ForegroundColor Cyan
 }
 
+# Like Invoke-MCPTool but also asserts that result.content[0].text contains $ExpectContains.
+# Fails the test if the text is absent, even when there is no JSON-RPC error.
+function Invoke-MCPToolAssert {
+    param(
+        [string]$ToolName,
+        [hashtable]$Arguments = @{},
+        [string]$ExpectContains = "",
+        [int]$RequestId = 1
+    )
+
+    $params = @{
+        name      = $ToolName
+        arguments = $Arguments
+    }
+    $body = @{
+        jsonrpc = "2.0"
+        id      = $RequestId
+        method  = "tools/call"
+        params  = $params
+    } | ConvertTo-Json -Depth 10
+
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    Write-Host "Testing tool: $ToolName" -ForegroundColor Yellow
+    Write-Host "Args: $($Arguments | ConvertTo-Json -Compress)" -ForegroundColor Gray
+    if ($ExpectContains) { Write-Host "Expected to contain: $ExpectContains" -ForegroundColor DarkGray }
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+
+    $success = $false
+    try {
+        $response = Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $body -UseBasicParsing
+        $result = $response.Content | ConvertFrom-Json
+
+        if ($result.error) {
+            Write-Host "❌ JSON-RPC ERROR: $($result.error.message)" -ForegroundColor Red
+        } else {
+            $contentText = $result.result.content[0].text
+            Write-Host "Content: $contentText" -ForegroundColor White
+            if ($ExpectContains -and $contentText -notlike "*$ExpectContains*") {
+                Write-Host "❌ ASSERT FAILED: '$ExpectContains' not found in content" -ForegroundColor Red
+            } else {
+                Write-Host "✅ SUCCESS" -ForegroundColor Green
+                $success = $true
+            }
+        }
+    } catch {
+        Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
+    }
+
+    Record-TestResult -Success:$success
+    Write-Host ""
+}
+
 $testKey = "test:timeline-entry"
 $testContent = @"
 **Status:** Test
 **days_remaining:** 10
 **character:** test-subject
 "@
+
+$patchReplaceKey   = "test:patch-replace"
+$patchAmbigKey     = "test:patch-ambig"
+$patchAppendKey    = "test:patch-append"
+$patchAppendTKey   = "test:patch-append-target"
+$patchDeleteKey    = "test:patch-delete"
 
 Write-Section "TEST 1: initialize"
 Invoke-JsonRpc -Method "initialize" -RequestId 1
@@ -211,6 +269,52 @@ Invoke-AdminEndpoint -Url $ADMIN_SET_URL -Body @{ key = $testKey; text = $testCo
 
 Write-Section "TEST 22: admin/delete-lore endpoint"
 Invoke-AdminEndpoint -Url $ADMIN_DELETE_URL -Body @{ key = $testKey } -TestName "admin/delete-lore"
+
+Write-Section "TEST 23: patch_lore - setup replace key"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $patchReplaceKey; text = "Status: Alive`nDays: 14" } -RequestId 23
+
+Write-Section "TEST 24: patch_lore - replace success"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchReplaceKey; operation = "replace"; target = "Status: Alive"; value = "Status: Sedated" } -ExpectContains "Replaced 1 occurrence" -RequestId 24
+
+Write-Section "TEST 25: patch_lore - verify replace via get_lore"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $patchReplaceKey } -ExpectContains "Status: Sedated" -RequestId 25
+
+Write-Section "TEST 26: patch_lore - replace target not found"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchReplaceKey; operation = "replace"; target = "Nonexistent"; value = "X" } -ExpectContains "not found in" -RequestId 26
+
+Write-Section "TEST 27: patch_lore - setup ambiguous key"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $patchAmbigKey; text = "the cat chased the cat" } -RequestId 27
+
+Write-Section "TEST 28: patch_lore - replace ambiguous target"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchAmbigKey; operation = "replace"; target = "the cat"; value = "a dog" } -ExpectContains "Ambiguous" -RequestId 28
+
+Write-Section "TEST 29: patch_lore - setup append key"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $patchAppendKey; text = "Line 1" } -RequestId 29
+
+Write-Section "TEST 30: patch_lore - append to end"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchAppendKey; operation = "append"; value = "`nLine 2" } -ExpectContains "Appended to end" -RequestId 30
+
+Write-Section "TEST 31: patch_lore - setup append-after-target key"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $patchAppendTKey; text = "Header`nBody" } -RequestId 31
+
+Write-Section "TEST 32: patch_lore - append after target"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchAppendTKey; operation = "append"; target = "Header"; value = "`nSubheader" } -ExpectContains "Appended after" -RequestId 32
+
+Write-Section "TEST 33: patch_lore - setup delete key"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $patchDeleteKey; text = "Keep this.`nDelete this.`nKeep that." } -RequestId 33
+
+Write-Section "TEST 34: patch_lore - delete_field"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = $patchDeleteKey; operation = "delete_field"; target = "Delete this.`n" } -ExpectContains "Deleted 1 occurrence" -RequestId 34
+
+Write-Section "TEST 35: patch_lore - key not found"
+Invoke-MCPToolAssert -ToolName "patch_lore" -Arguments @{ key = "nonexistent:key-99999"; operation = "replace"; target = "X"; value = "Y" } -ExpectContains "not found" -RequestId 35
+
+Write-Section "TEST 36: patch_lore - cleanup test keys"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $patchReplaceKey } -RequestId 36
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $patchAmbigKey } -RequestId 37
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $patchAppendKey } -RequestId 38
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $patchAppendTKey } -RequestId 39
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $patchDeleteKey } -RequestId 40
 
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "All tests complete!" -ForegroundColor Green

@@ -376,6 +376,21 @@ app.post('/mcp', async (c) => {
               required: ['query'], additionalProperties: false
             },
             examples: [{ arguments: { query: 'lamia', max_results: 5 } }]
+          },
+          {
+            name: 'patch_lore', title: 'Patch Lore', version: '0.1.0',
+            description: 'Surgically modify a lore entry without full overwrite. Supports replace, append, and delete_field operations on substrings.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to modify', minLength: 1 },
+                operation: { type: 'string', enum: ['replace', 'append', 'delete_field'], description: 'Operation to perform: replace, append, or delete_field' },
+                target: { type: 'string', description: 'Exact substring to match. Required for replace and delete_field. Optional for append (if omitted, appends to end of text).' },
+                value: { type: 'string', description: 'New text. Required for replace and append. Ignored for delete_field.' }
+              },
+              required: ['key', 'operation'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'character:example', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' } }]
           }
         ]
       }), 200)
@@ -657,6 +672,103 @@ app.post('/mcp', async (c) => {
           content: [{ type: 'text', text: summaryText }],
           metadata: { query: parsed.data.query, match_count: results.length },
           results
+        }), 200)
+      }
+
+      if (toolName === 'patch_lore') {
+        const schema = z.object({
+          key: z.string().min(1),
+          operation: z.string().min(1),
+          target: z.string().optional(),
+          value: z.string().optional()
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const operation = parsed.data.operation
+        const target = parsed.data.target
+        const value = parsed.data.value
+
+        if (!['replace', 'append', 'delete_field'].includes(operation)) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Unknown operation "${operation}". Use replace, append, or delete_field.` }]
+          }), 200)
+        }
+
+        if (operation === 'replace' && value === undefined) {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: 'Parameter "value" required for replace.' }] }), 200)
+        }
+        if (operation === 'append' && value === undefined) {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: 'Parameter "value" required for append.' }] }), 200)
+        }
+
+        const raw = await kvGet(c, key)
+        if (!raw) {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: `Key "${key}" not found. Check list_topics.` }] }), 200)
+        }
+
+        const { text, meta } = parseKvEntry(raw)
+
+        const countOccurrences = (haystack: string, needle: string): number => {
+          let count = 0; let pos = 0
+          while (true) {
+            const idx = haystack.indexOf(needle, pos)
+            if (idx === -1) break
+            count++; pos = idx + needle.length
+          }
+          return count
+        }
+
+        let updatedText: string
+        let successMessage: string
+
+        if (operation === 'replace') {
+          const count = countOccurrences(text, target!)
+          if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
+          if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+          const idx = text.indexOf(target!)
+          updatedText = text.slice(0, idx) + value! + text.slice(idx + target!.length)
+          successMessage = `Replaced 1 occurrence of "${target}" in "${key}".`
+
+        } else if (operation === 'append') {
+          if (target !== undefined) {
+            const count = countOccurrences(text, target)
+            if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
+            if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+            const idx = text.indexOf(target)
+            updatedText = text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
+            successMessage = `Appended after "${target}" in "${key}".`
+          } else {
+            updatedText = text.endsWith('\n') ? text + value! : text + '\n' + value!
+            successMessage = `Appended to end of "${key}".`
+          }
+
+        } else { // delete_field
+          const count = countOccurrences(text, target!)
+          if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
+          if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+          const idx = text.indexOf(target!)
+          updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{3,}/g, '\n\n')
+          successMessage = value !== undefined
+            ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
+            : `Deleted 1 occurrence of "${target}" from "${key}".`
+        }
+
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+
+        const payload = JSON.stringify({
+          text: updatedText,
+          meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now }
+        })
+
+        await kvPut(c, key, payload)
+        loreDB[key] = updatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: successMessage }],
+          metadata: { key, version }
         }), 200)
       }
 
