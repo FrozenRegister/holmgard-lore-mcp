@@ -7,7 +7,8 @@
     "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
     "dev": "wrangler dev dist/index.js --local",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "hono": "^4.12.22",
@@ -15,9 +16,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
     "@cloudflare/workers-types": "^4.20260521.1",
     "esbuild": "^0.18.0",
     "rimraf": "^5.0.0",
-    "typescript": "^5.2.0"
+    "typescript": "^5.2.0",
+    "vitest": "^4.1.7"
   }
 }
