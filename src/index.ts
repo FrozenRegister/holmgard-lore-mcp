@@ -70,11 +70,11 @@ async function kvList(c: any): Promise<string[]> {
     const kv = getKV(c)
     if (kv) {
       const listed = await kv.list()
-      const keys = listed.keys.map((k: any) => k.name)
+      const keys = listed.keys.map((k: any) => k.name).filter((k: string) => !k.startsWith('_history:'))
       if (keys.length) return keys
     }
   } catch (e) { console.warn('KV list failed', e) }
-  return Object.keys(loreDB)
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:'))
 }
 
 async function kvPut(c: any, key: string, value: string): Promise<boolean> {
@@ -91,6 +91,26 @@ async function kvDelete(c: any, key: string): Promise<boolean> {
     if (kv) { await kv.delete(key); return true }
   } catch (e) { console.warn('KV delete failed', e) }
   return false
+}
+
+// ── History helpers ───────────────────────────────────────────────────────────
+
+const HISTORY_DEPTH = 5
+
+// Pushes currentRaw (the value about to be overwritten) onto _history:{key}.
+// Pass the already-read raw string to avoid an extra KV round-trip.
+async function pushHistory(c: any, key: string, currentRaw: string): Promise<void> {
+  const kv = getKV(c)
+  if (!kv) return
+  const historyKey = `_history:${key}`
+  let history: string[] = []
+  try {
+    const existing = await kv.get(historyKey)
+    if (existing) history = JSON.parse(existing)
+  } catch { }
+  history.unshift(currentRaw)
+  history = history.slice(0, HISTORY_DEPTH)
+  await kv.put(historyKey, JSON.stringify(history))
 }
 
 // ── Lore entry helpers ────────────────────────────────────────────────────────
@@ -402,6 +422,18 @@ app.post('/mcp', async (c) => {
               required: ['key', 'operation'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'character:example', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' } }]
+          },
+          {
+            name: 'restore_lore', title: 'Restore Lore', version: '0.1.0',
+            description: 'Restore a lore entry to its previous state by popping the history stack. Writes to the same key are snapshotted automatically (up to 5 deep).',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to restore', minLength: 1 }
+              },
+              required: ['key'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'character:sarah-weaver' } }]
           }
         ]
       }), 200)
@@ -446,6 +478,8 @@ app.post('/mcp', async (c) => {
 
         const existingRaw = await kvGet(c, key)
         const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
+
+        if (existingRaw) await pushHistory(c, key, existingRaw)
 
         const now = new Date().toISOString()
         const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
@@ -598,6 +632,8 @@ app.post('/mcp', async (c) => {
 
         const newValue = currentValue + parsed.data.increment
         const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
+
+        await pushHistory(c, key, raw)
 
         const now = new Date().toISOString()
         const version = typeof meta.version === 'number' ? meta.version + 1 : 1
@@ -777,6 +813,8 @@ app.post('/mcp', async (c) => {
             : `Deleted 1 occurrence of "${target}" from "${key}".`
         }
 
+        await pushHistory(c, key, raw)
+
         const now = new Date().toISOString()
         const version = typeof meta.version === 'number' ? meta.version + 1 : 1
 
@@ -791,6 +829,48 @@ app.post('/mcp', async (c) => {
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: successMessage }],
           metadata: { key, version }
+        }), 200)
+      }
+
+      if (toolName === 'restore_lore') {
+        const schema = z.object({ key: z.string().min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const kv = getKV(c)
+        if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
+
+        const historyKey = `_history:${key}`
+        let history: string[] = []
+        try {
+          const existing = await kv.get(historyKey)
+          if (existing) history = JSON.parse(existing)
+        } catch {
+          return c.json(makeError(id, -32603, 'Failed to read history', null), 200)
+        }
+
+        if (history.length === 0) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `No history found for "${key}".` }],
+            metadata: { key, restored: false }
+          }), 200)
+        }
+
+        const previous = history.shift()!
+        await kv.put(key, previous)
+        loreDB[key] = parseKvEntry(previous).text
+
+        if (history.length > 0) {
+          await kv.put(historyKey, JSON.stringify(history))
+        } else {
+          await kv.delete(historyKey)
+        }
+
+        const { meta } = parseKvEntry(previous)
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.` }],
+          metadata: { key, restored: true, restored_version: meta.version ?? null, remaining_history: history.length }
         }), 200)
       }
 
@@ -839,6 +919,8 @@ app.post('/admin/set-lore', async (c) => {
 
     const existingRaw = await kvGet(c, key)
     const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
+
+    if (existingRaw) await pushHistory(c, key, existingRaw)
 
     const now = new Date().toISOString()
     const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1

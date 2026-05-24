@@ -43,10 +43,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 12 tools', async () => {
+  it('tools/list returns exactly 13 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(12)
+    expect(tools).toHaveLength(13)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('list_topics')
@@ -60,6 +60,7 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('validate_topic_exists')
     expect(names).toContain('search_lore')
     expect(names).toContain('patch_lore')
+    expect(names).toContain('restore_lore')
   })
 
   it('rejects requests with wrong jsonrpc version', async () => {
@@ -610,6 +611,86 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/delete-lore', { secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
     })
+  })
+})
+
+// ── restore_lore ──────────────────────────────────────────────────────────────
+
+describe('restore_lore', () => {
+  it('returns no-history message when key has never been written', async () => {
+    await seedKV('restore:fresh', 'initial text')
+    const res = await callTool('restore_lore', { key: 'restore:fresh' })
+    expect(res.result.metadata.restored).toBe(false)
+    expect(res.result.content[0].text).toContain('No history')
+  })
+
+  it('restores to the previous value after one write', async () => {
+    await seedKV('restore:target', 'original text')
+    await callTool('set_lore', { key: 'restore:target', text: 'overwritten text' })
+    const restore = await callTool('restore_lore', { key: 'restore:target' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const get = await callTool('get_lore', { query: 'restore:target' })
+    expect(get.result.text).toBe('original text')
+  })
+
+  it('pops the stack — each restore goes one step further back', async () => {
+    await seedKV('restore:stack', 'v1')
+    await callTool('set_lore', { key: 'restore:stack', text: 'v2' })
+    await callTool('set_lore', { key: 'restore:stack', text: 'v3' })
+    await callTool('restore_lore', { key: 'restore:stack' })
+    const after1 = await callTool('get_lore', { query: 'restore:stack' })
+    expect(after1.result.text).toBe('v2')
+    await callTool('restore_lore', { key: 'restore:stack' })
+    const after2 = await callTool('get_lore', { query: 'restore:stack' })
+    expect(after2.result.text).toBe('v1')
+  })
+
+  it('reports remaining snapshots in metadata', async () => {
+    await seedKV('restore:count', 'a')
+    await callTool('set_lore', { key: 'restore:count', text: 'b' })
+    await callTool('set_lore', { key: 'restore:count', text: 'c' })
+    const res = await callTool('restore_lore', { key: 'restore:count' })
+    expect(res.result.metadata.remaining_history).toBe(1)
+  })
+
+  it('caps history at 5 — oldest entry is dropped on the 6th write', async () => {
+    await seedKV('restore:cap', 'v0')
+    for (let i = 1; i <= 6; i++) {
+      await callTool('set_lore', { key: 'restore:cap', text: `v${i}` })
+    }
+    // Restore 5 times — should reach v2 (v1 was evicted)
+    for (let i = 0; i < 5; i++) {
+      await callTool('restore_lore', { key: 'restore:cap' })
+    }
+    const get = await callTool('get_lore', { query: 'restore:cap' })
+    expect(get.result.text).toBe('v1')
+    // One more restore should report no history
+    const last = await callTool('restore_lore', { key: 'restore:cap' })
+    expect(last.result.metadata.restored).toBe(false)
+  })
+
+  it('history is invisible to list_topics', async () => {
+    await seedKV('restore:hidden', 'text')
+    await callTool('set_lore', { key: 'restore:hidden', text: 'updated' })
+    const list = await callTool('list_topics')
+    const text = list.result.content[0].text as string
+    expect(text).not.toContain('_history:')
+  })
+
+  it('works after patch_lore writes', async () => {
+    await seedKV('restore:patched', 'Status: Alive\nNotes: clean')
+    await callTool('patch_lore', { key: 'restore:patched', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' })
+    await callTool('restore_lore', { key: 'restore:patched' })
+    const get = await callTool('get_lore', { query: 'restore:patched' })
+    expect(get.result.text).toContain('Status: Alive')
+  })
+
+  it('works after increment_topic_field writes', async () => {
+    await seedKV('restore:incremented', '**days_remaining:** 10')
+    await callTool('increment_topic_field', { key: 'restore:incremented', field_path: 'days_remaining', increment: -3 })
+    await callTool('restore_lore', { key: 'restore:incremented' })
+    const get = await callTool('get_lore', { query: 'restore:incremented' })
+    expect(get.result.text).toContain('**days_remaining:** 10')
   })
 })
 
