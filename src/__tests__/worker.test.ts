@@ -876,6 +876,139 @@ describe('batch_mutate', () => {
   })
 })
 
+// ── list_consumption_timelines — legacy Projected-Consumption-Timeline ────────
+
+describe('list_consumption_timelines — Projected-Consumption-Timeline fallback', () => {
+  it('parses legacy Projected-Consumption-Timeline field', async () => {
+    await seedKV('character:legacy-prey', '**Status:** Imminent\n**Projected-Consumption-Timeline:** 2 days\n**Processor:** Beta')
+    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    expect(res.result.timelines).toHaveLength(1)
+    expect(res.result.timelines[0].character_key).toBe('character:legacy-prey')
+    expect(res.result.timelines[0].timeline_remaining).toBe('2 days')
+  })
+
+  it('prefers primary Consumption-Timeline over Projected fallback when both present', async () => {
+    await seedKV(
+      'character:dual-field',
+      '**Status:** Active\n**Consumption-Timeline:** 5 days\n**Projected-Consumption-Timeline:** 10 days\n**Processor:** Gamma',
+    )
+    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    expect(res.result.timelines[0].timeline_remaining).toBe('5 days')
+  })
+
+  it('legacy fallback entry appears in status_filter=imminent when matching', async () => {
+    await seedKV('character:legacy-imminent', '**Status:** Imminent\n**Projected-Consumption-Timeline:** 3 hours\n**Processor:** Alpha')
+    const res = await callTool('list_consumption_timelines', { status_filter: 'imminent' })
+    expect(res.result.timelines).toHaveLength(1)
+    expect(res.result.timelines[0].character_key).toBe('character:legacy-imminent')
+  })
+})
+
+// ── batch_mutate — content text summary ───────────────────────────────────────
+
+describe('batch_mutate — content[0].text summary', () => {
+  it('reports "Applied N mutations." when all succeed', async () => {
+    await seedKV('mutate:sum-alpha', 'Alpha batch content.')
+    await seedKV('mutate:sum-beta', 'Beta batch content.')
+    const res = await callTool('batch_mutate', {
+      mutations: [
+        { key: 'mutate:sum-alpha', action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
+        { key: 'mutate:sum-beta', action: 'patch', operation: 'append', value: '\nAppended line.' },
+      ],
+    })
+    expect(res.result.content[0].text).toContain('Applied 2')
+    expect(res.result.metadata.ok_count).toBe(2)
+    expect(res.result.metadata.failed_count).toBe(0)
+  })
+
+  it('reports "Applied X/Y mutations. N failed" on partial failure', async () => {
+    await seedKV('mutate:sum-partial', 'Status: Alive')
+    const res = await callTool('batch_mutate', {
+      mutations: [
+        { key: 'nonexistent:sum-missing', action: 'increment', field_path: 'days_remaining' },
+        { key: 'mutate:sum-partial', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' },
+      ],
+    })
+    expect(res.result.content[0].text).toContain('Applied 1/2')
+    expect(res.result.content[0].text).toContain('failed')
+    expect(res.result.metadata.ok_count).toBe(1)
+    expect(res.result.metadata.failed_count).toBe(1)
+  })
+
+  it('reports "Applied 1 mutation." (singular) when exactly one succeeds', async () => {
+    await seedKV('mutate:sum-single', 'Note: initial')
+    const res = await callTool('batch_mutate', {
+      mutations: [
+        { key: 'mutate:sum-single', action: 'patch', operation: 'replace', target: 'Note: initial', value: 'Note: updated' },
+      ],
+    })
+    expect(res.result.content[0].text).toMatch(/Applied 1 mutation\./)
+  })
+})
+
+// ── increment_topic_field — field not present ─────────────────────────────────
+
+describe('increment_topic_field — field not present in text', () => {
+  it('returns error when field_path does not exist in lore text', async () => {
+    await seedKV('character:no-field', '**Status:** Active\n**character:** test-subject')
+    const res = await callTool('increment_topic_field', {
+      key: 'character:no-field',
+      field_path: 'days_remaining',
+      increment: -1,
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('days_remaining')
+  })
+
+  it('returns error when text has matching field name but no numeric value', async () => {
+    await seedKV('character:non-numeric-field', '**Status:** Test\n**days_remaining:** pending\n**character:** test-subject')
+    const res = await callTool('increment_topic_field', {
+      key: 'character:non-numeric-field',
+      field_path: 'days_remaining',
+      increment: -1,
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.message).toContain('not numeric')
+  })
+})
+
+// ── batch_set_lore + batch_mutate integration ─────────────────────────────────
+
+describe('batch_set_lore + batch_mutate integration', () => {
+  it('writes two entries then mutates both: replace on one, append on the other', async () => {
+    const alphaKey = 'integration:batch-alpha'
+    const betaKey = 'integration:batch-beta'
+
+    const setRes = await callTool('batch_set_lore', {
+      entries: [
+        { key: alphaKey, text: 'Alpha batch content.' },
+        { key: betaKey, text: 'Beta batch content.' },
+      ],
+    })
+    expect(setRes.result.content[0].text).toContain('Saved 2')
+
+    const alphaGet = await callTool('get_lore', { query: alphaKey })
+    expect(alphaGet.result.content[0].text).toContain('Alpha batch content')
+
+    const mutRes = await callTool('batch_mutate', {
+      mutations: [
+        { key: alphaKey, action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
+        { key: betaKey, action: 'patch', operation: 'append', value: '\nAppended line.' },
+      ],
+    })
+    expect(mutRes.result.content[0].text).toContain('Applied 2')
+    expect(mutRes.result.metadata.ok_count).toBe(2)
+
+    const alphaVerify = await callTool('get_lore', { query: alphaKey })
+    expect(alphaVerify.result.content[0].text).toContain('Alpha mutated')
+    expect(alphaVerify.result.content[0].text).not.toContain('Alpha batch content')
+
+    const betaVerify = await callTool('get_lore', { query: betaKey })
+    expect(betaVerify.result.content[0].text).toContain('Appended line')
+  })
+})
+
 // ── Legacy bare-method handlers ───────────────────────────────────────────────
 
 describe('legacy bare methods (pre-tools/call)', () => {
