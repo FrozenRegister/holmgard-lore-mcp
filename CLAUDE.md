@@ -31,7 +31,7 @@ npm test -- --reporter=verbose src/__tests__/worker.test.ts
 - `POST /mcp` — JSON-RPC 2.0 endpoint. Handles MCP protocol methods (`initialize`, `ping`, `tools/list`, `tools/call`) plus legacy bare methods (`list_topics`, `get_lore`).
 - `POST /admin/set-lore` / `POST /admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET` env var (set via `wrangler secret put ADMIN_SECRET` in production; injected via `vitest.config.ts` miniflare bindings in tests).
 
-**12 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`.
+**15 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`, `restore_lore`, `batch_set_lore`, `batch_mutate`.
 
 ## Key logic worth knowing
 
@@ -40,6 +40,12 @@ npm test -- --reporter=verbose src/__tests__/worker.test.ts
 **`increment_topic_field`** parses `**fieldname:** 10` markdown syntax from lore text, increments the numeric prefix, and writes back. Non-numeric fields return a JSON-RPC error.
 
 **`list_consumption_timelines`** scans only `character:*` keys. It looks for `**Consumption-Timeline:**` (primary) or `**Projected-Consumption-Timeline:**` (legacy fallback). The `status_filter` param (`all`/`imminent`/`days-to-weeks`/`weeks-to-months`/`consumed`) filters by substring patterns in the timeline value.
+
+**`batch_set_lore`** writes multiple entries in parallel (`Promise.all`). Not transactional — partial success is possible; per-key results are returned in `results`. Pushes history for each overwritten key.
+
+**`batch_mutate`** applies a list of `increment` or `patch` mutations sequentially (order matters; same key may appear twice). Each mutation reads, modifies, and writes its key. Failures are recorded per-mutation and do not stop the remaining mutations.
+
+**`countOccurrences`** is a module-level helper (extracted from the `patch_lore` handler) used by both `patch_lore` and `batch_mutate` for exact substring counting.
 
 ## Tests
 

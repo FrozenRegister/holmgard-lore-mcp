@@ -43,10 +43,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 13 tools', async () => {
+  it('tools/list returns exactly 15 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(13)
+    expect(tools).toHaveLength(15)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('list_topics')
@@ -61,6 +61,8 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('search_lore')
     expect(names).toContain('patch_lore')
     expect(names).toContain('restore_lore')
+    expect(names).toContain('batch_set_lore')
+    expect(names).toContain('batch_mutate')
   })
 
   it('rejects requests with wrong jsonrpc version', async () => {
@@ -691,6 +693,186 @@ describe('restore_lore', () => {
     await callTool('restore_lore', { key: 'restore:incremented' })
     const get = await callTool('get_lore', { query: 'restore:incremented' })
     expect(get.result.text).toContain('**days_remaining:** 10')
+  })
+})
+
+// ── batch_set_lore ────────────────────────────────────────────────────────────
+
+describe('batch_set_lore', () => {
+  it('writes multiple new keys and reports set_count', async () => {
+    const res = await callTool('batch_set_lore', {
+      entries: [
+        { key: 'batch:alpha', text: 'Alpha content' },
+        { key: 'batch:beta', text: 'Beta content' },
+      ],
+    })
+    expect(res.result.metadata.total).toBe(2)
+    expect(res.result.metadata.set_count).toBe(2)
+    expect(res.result.metadata.failed_count).toBe(0)
+    expect(res.result.content[0].text).toContain('Saved 2')
+    expect(res.result.results['batch:alpha'].ok).toBe(true)
+    expect(res.result.results['batch:beta'].ok).toBe(true)
+  })
+
+  it('entries are retrievable via get_lore after batch write', async () => {
+    await callTool('batch_set_lore', {
+      entries: [
+        { key: 'batch:verify-a', text: 'Verify A' },
+        { key: 'batch:verify-b', text: 'Verify B' },
+      ],
+    })
+    const a = await callTool('get_lore', { query: 'batch:verify-a' })
+    expect(a.result.content[0].text).toBe('Verify A')
+    const b = await callTool('get_lore', { query: 'batch:verify-b' })
+    expect(b.result.content[0].text).toBe('Verify B')
+  })
+
+  it('increments version when overwriting an existing key', async () => {
+    await seedKV('batch:existing', 'original text')
+    const res = await callTool('batch_set_lore', {
+      entries: [{ key: 'batch:existing', text: 'updated text' }],
+    })
+    expect(res.result.results['batch:existing'].version).toBe(2)
+    const get = await callTool('get_lore', { query: 'batch:existing' })
+    expect(get.result.text).toBe('updated text')
+  })
+
+  it('pushes history for overwritten keys', async () => {
+    await seedKV('batch:hist', 'v1 text')
+    await callTool('batch_set_lore', { entries: [{ key: 'batch:hist', text: 'v2 text' }] })
+    const restore = await callTool('restore_lore', { key: 'batch:hist' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const get = await callTool('get_lore', { query: 'batch:hist' })
+    expect(get.result.text).toBe('v1 text')
+  })
+
+  it('returns validation error for empty entries array', async () => {
+    const res = await callTool('batch_set_lore', { entries: [] })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('normalizes keys to lowercase', async () => {
+    await callTool('batch_set_lore', { entries: [{ key: 'Batch:UPPER', text: 'lower key test' }] })
+    const get = await callTool('get_lore', { query: 'batch:upper' })
+    expect(get.result.content[0].text).toBe('lower key test')
+  })
+})
+
+// ── batch_mutate ──────────────────────────────────────────────────────────────
+
+describe('batch_mutate', () => {
+  it('applies an increment mutation and returns old/new values', async () => {
+    await seedKV('mutate:counter', '**days_remaining:** 10\n**status:** active')
+    const res = await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:counter', action: 'increment', field_path: 'days_remaining', increment: -1, reason: 'test-decrement' }],
+    })
+    expect(res.result.metadata.ok_count).toBe(1)
+    expect(res.result.metadata.failed_count).toBe(0)
+    expect(res.result.results[0].ok).toBe(true)
+    expect(res.result.results[0].old_value).toBe(10)
+    expect(res.result.results[0].new_value).toBe(9)
+  })
+
+  it('increment is reflected in KV', async () => {
+    await seedKV('mutate:kv-check', '**days_remaining:** 5')
+    await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:kv-check', action: 'increment', field_path: 'days_remaining', increment: -2 }],
+    })
+    const get = await callTool('get_lore', { query: 'mutate:kv-check' })
+    expect(get.result.text).toContain('**days_remaining:** 3')
+  })
+
+  it('applies a patch replace mutation', async () => {
+    await seedKV('mutate:patch-test', 'Status: Alive\nNotes: none')
+    const res = await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:patch-test', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' }],
+    })
+    expect(res.result.results[0].ok).toBe(true)
+    const get = await callTool('get_lore', { query: 'mutate:patch-test' })
+    expect(get.result.text).toContain('Status: Sedated')
+    expect(get.result.text).not.toContain('Status: Alive')
+  })
+
+  it('applies a patch append mutation', async () => {
+    await seedKV('mutate:append-test', 'Line 1')
+    await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:append-test', action: 'patch', operation: 'append', value: '\nLine 2' }],
+    })
+    const get = await callTool('get_lore', { query: 'mutate:append-test' })
+    expect(get.result.text).toContain('Line 2')
+  })
+
+  it('applies two mutations to the same key sequentially', async () => {
+    await seedKV('mutate:double', 'Status: Alive\n**count:** 5')
+    const res = await callTool('batch_mutate', {
+      mutations: [
+        { key: 'mutate:double', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' },
+        { key: 'mutate:double', action: 'increment', field_path: 'count', increment: -1 },
+      ],
+    })
+    expect(res.result.metadata.ok_count).toBe(2)
+    const get = await callTool('get_lore', { query: 'mutate:double' })
+    expect(get.result.text).toContain('Status: Sedated')
+    expect(get.result.text).toContain('**count:** 4')
+  })
+
+  it('reports failure for missing key', async () => {
+    const res = await callTool('batch_mutate', {
+      mutations: [{ key: 'nonexistent:key-99999', action: 'increment', field_path: 'days_remaining' }],
+    })
+    expect(res.result.results[0].ok).toBe(false)
+    expect(res.result.results[0].message).toContain('not found')
+    expect(res.result.metadata.failed_count).toBe(1)
+  })
+
+  it('reports failure for non-numeric increment field', async () => {
+    await seedKV('mutate:non-numeric', '**status:** active')
+    const res = await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:non-numeric', action: 'increment', field_path: 'status' }],
+    })
+    expect(res.result.results[0].ok).toBe(false)
+    expect(res.result.results[0].message).toContain('not numeric')
+  })
+
+  it('reports failure for ambiguous patch target', async () => {
+    await seedKV('mutate:ambig', 'cat cat cat')
+    const res = await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:ambig', action: 'patch', operation: 'replace', target: 'cat', value: 'dog' }],
+    })
+    expect(res.result.results[0].ok).toBe(false)
+    expect(res.result.results[0].message).toContain('ambiguous')
+  })
+
+  it('continues applying remaining mutations after a failure', async () => {
+    await seedKV('mutate:mixed', 'Status: Alive')
+    const res = await callTool('batch_mutate', {
+      mutations: [
+        { key: 'nonexistent:missing', action: 'increment', field_path: 'x' },
+        { key: 'mutate:mixed', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' },
+      ],
+    })
+    expect(res.result.metadata.ok_count).toBe(1)
+    expect(res.result.metadata.failed_count).toBe(1)
+    const get = await callTool('get_lore', { query: 'mutate:mixed' })
+    expect(get.result.text).toContain('Status: Dead')
+  })
+
+  it('returns validation error for empty mutations array', async () => {
+    const res = await callTool('batch_mutate', { mutations: [] })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('pushes history for mutated keys', async () => {
+    await seedKV('mutate:hist', 'Status: Alive')
+    await callTool('batch_mutate', {
+      mutations: [{ key: 'mutate:hist', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' }],
+    })
+    const restore = await callTool('restore_lore', { key: 'mutate:hist' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const get = await callTool('get_lore', { query: 'mutate:hist' })
+    expect(get.result.text).toContain('Status: Alive')
   })
 })
 

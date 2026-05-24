@@ -166,6 +166,16 @@ function updateFieldInText(text: string, fieldPath: string, newValue: any): stri
   }
 }
 
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0; let pos = 0
+  while (true) {
+    const idx = haystack.indexOf(needle, pos)
+    if (idx === -1) break
+    count++; pos = idx + needle.length
+  }
+  return count
+}
+
 // Parses the system:active-narratives entry into structured thread objects.
 function extractActiveThreads(narrativeText: string): Array<any> {
   const threads: Array<any> = []
@@ -424,6 +434,56 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { key: 'character:example', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' } }]
           },
           {
+            name: 'batch_set_lore', title: 'Batch Set Lore', version: '0.1.0',
+            description: 'Write or overwrite multiple lore entries in one call. Returns per-key success/failure. Uses parallel writes — not transactional; partial success is possible.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entries: {
+                  type: 'array', minItems: 1,
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', minLength: 1 },
+                      text: { type: 'string', minLength: 1 }
+                    },
+                    required: ['key', 'text'], additionalProperties: false
+                  }
+                }
+              },
+              required: ['entries'], additionalProperties: false
+            },
+            examples: [{ arguments: { entries: [{ key: 'character:zira', text: 'Zira lore...' }, { key: 'character:vex', text: 'Vex lore...' }] } }]
+          },
+          {
+            name: 'batch_mutate', title: 'Batch Mutate', version: '0.1.0',
+            description: 'Apply multiple mutations (increment or patch) across multiple keys in one call. Each mutation is applied sequentially. Returns per-mutation outcome.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                mutations: {
+                  type: 'array', minItems: 1,
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', minLength: 1 },
+                      action: { type: 'string', enum: ['increment', 'patch'] },
+                      field_path: { type: 'string' },
+                      increment: { type: 'integer' },
+                      reason: { type: 'string' },
+                      operation: { type: 'string', enum: ['replace', 'append', 'delete_field'] },
+                      target: { type: 'string' },
+                      value: { type: 'string' }
+                    },
+                    required: ['key', 'action'], additionalProperties: false
+                  }
+                }
+              },
+              required: ['mutations'], additionalProperties: false
+            },
+            examples: [{ arguments: { mutations: [{ key: 'character:zira', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' }, { key: 'character:zira', action: 'increment', field_path: 'Days-Remaining', increment: -1 }] } }]
+          },
+          {
             name: 'restore_lore', title: 'Restore Lore', version: '0.1.0',
             description: 'Restore a lore entry to its previous state by popping the history stack. Writes to the same key are snapshotted automatically (up to 5 deep).',
             inputSchema: {
@@ -518,12 +578,10 @@ app.post('/mcp', async (c) => {
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
+        const cleanKeys = parsed.data.keys.map(k => k.trim().toLowerCase())
+        const rawValues = await Promise.all(cleanKeys.map(k => kvGet(c, k)))
         const results: Record<string, any> = {}
-        for (const key of parsed.data.keys) {
-          const cleanKey = key.trim().toLowerCase()
-          const raw = await kvGet(c, cleanKey)
-          results[cleanKey] = raw ? parseKvEntry(raw) : null
-        }
+        cleanKeys.forEach((k, i) => { results[k] = rawValues[i] ? parseKvEntry(rawValues[i]!) : null })
 
         const text = Object.entries(results)
           .map(([k, v]) => v ? `${k}: [retrieved]` : `${k}: [not found]`)
@@ -767,16 +825,6 @@ app.post('/mcp', async (c) => {
 
         const { text, meta } = parseKvEntry(raw)
 
-        const countOccurrences = (haystack: string, needle: string): number => {
-          let count = 0; let pos = 0
-          while (true) {
-            const idx = haystack.indexOf(needle, pos)
-            if (idx === -1) break
-            count++; pos = idx + needle.length
-          }
-          return count
-        }
-
         let updatedText: string
         let successMessage: string
 
@@ -829,6 +877,174 @@ app.post('/mcp', async (c) => {
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: successMessage }],
           metadata: { key, version }
+        }), 200)
+      }
+
+      if (toolName === 'batch_set_lore') {
+        const schema = z.object({
+          entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1)
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const now = new Date().toISOString()
+        const batchResults: Record<string, { ok: boolean; version?: number; error?: string }> = {}
+
+        const cleanedEntries = parsed.data.entries.map(e => ({ ...e, key: e.key.trim().toLowerCase() }))
+
+        const rawValues = await Promise.all(cleanedEntries.map(e => kvGet(c, e.key)))
+
+        await Promise.all(cleanedEntries.map((e, i) =>
+          rawValues[i] ? pushHistory(c, e.key, rawValues[i]!) : Promise.resolve()
+        ))
+
+        await Promise.all(cleanedEntries.map(async (e, i) => {
+          const existingMeta = rawValues[i] ? parseKvEntry(rawValues[i]!).meta : {}
+          const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+          const payload = JSON.stringify({
+            text: e.text,
+            meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now }
+          })
+          try {
+            await kvPut(c, e.key, payload)
+            loreDB[e.key] = e.text
+            batchResults[e.key] = { ok: true, version }
+          } catch (err) {
+            batchResults[e.key] = { ok: false, error: String(err) }
+          }
+        }))
+
+        const okCount = Object.values(batchResults).filter(r => r.ok).length
+        const failCount = cleanedEntries.length - okCount
+        const summaryText = failCount === 0
+          ? `Saved ${okCount} lore entr${okCount === 1 ? 'y' : 'ies'}.`
+          : `Saved ${okCount}/${cleanedEntries.length} entries. ${failCount} failed — see results.`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { total: cleanedEntries.length, set_count: okCount, failed_count: failCount },
+          results: batchResults
+        }), 200)
+      }
+
+      if (toolName === 'batch_mutate') {
+        const mutationSchema = z.object({
+          key: z.string().min(1),
+          action: z.enum(['increment', 'patch']),
+          field_path: z.string().optional(),
+          increment: z.number().int().optional(),
+          reason: z.string().optional(),
+          operation: z.enum(['replace', 'append', 'delete_field']).optional(),
+          target: z.string().optional(),
+          value: z.string().optional(),
+        })
+        const schema = z.object({ mutations: z.array(mutationSchema).min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const now = new Date().toISOString()
+        const mutationResults: Array<{ key: string; action: string; ok: boolean; message: string; old_value?: any; new_value?: any }> = []
+
+        for (const mut of parsed.data.mutations) {
+          const key = mut.key.trim().toLowerCase()
+          const raw = await kvGet(c, key)
+
+          if (!raw) {
+            mutationResults.push({ key, action: mut.action, ok: false, message: `Key "${key}" not found.` })
+            continue
+          }
+
+          const { text, meta } = parseKvEntry(raw)
+
+          if (mut.action === 'increment') {
+            if (!mut.field_path) {
+              mutationResults.push({ key, action: 'increment', ok: false, message: 'field_path required for increment.' })
+              continue
+            }
+            const currentValue = extractFieldFromText(text, mut.field_path)
+            if (typeof currentValue !== 'number') {
+              mutationResults.push({ key, action: 'increment', ok: false, message: `Field "${mut.field_path}" is not numeric.`, old_value: currentValue })
+              continue
+            }
+            const delta = mut.increment ?? 1
+            const newValue = currentValue + delta
+            const updatedText = updateFieldInText(text, mut.field_path, newValue)
+            await pushHistory(c, key, raw)
+            const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+            await kvPut(c, key, JSON.stringify({
+              text: updatedText,
+              meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta }
+            }))
+            loreDB[key] = updatedText
+            mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
+
+          } else { // patch
+            if (!mut.operation) {
+              mutationResults.push({ key, action: 'patch', ok: false, message: 'operation required for patch.' })
+              continue
+            }
+            const op = mut.operation
+            const target = mut.target
+            const value = mut.value
+
+            if ((op === 'replace' || op === 'delete_field') && !target) {
+              mutationResults.push({ key, action: 'patch', ok: false, message: `target required for ${op}.` })
+              continue
+            }
+            if ((op === 'replace' || op === 'append') && value === undefined) {
+              mutationResults.push({ key, action: 'patch', ok: false, message: `value required for ${op}.` })
+              continue
+            }
+
+            let updatedText: string
+            let msg: string
+
+            if (op === 'replace') {
+              const count = countOccurrences(text, target!)
+              if (count === 0) { mutationResults.push({ key, action: 'patch:replace', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
+              if (count > 1) { mutationResults.push({ key, action: 'patch:replace', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+              const idx = text.indexOf(target!)
+              updatedText = text.slice(0, idx) + value! + text.slice(idx + target!.length)
+              msg = `Replaced "${target}" in "${key}".`
+            } else if (op === 'append') {
+              if (target !== undefined) {
+                const count = countOccurrences(text, target)
+                if (count === 0) { mutationResults.push({ key, action: 'patch:append', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
+                if (count > 1) { mutationResults.push({ key, action: 'patch:append', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+                const idx = text.indexOf(target)
+                updatedText = text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
+                msg = `Appended after "${target}" in "${key}".`
+              } else {
+                updatedText = text + (!text.endsWith('\n') && !value!.startsWith('\n') ? '\n' : '') + value!
+                msg = `Appended to end of "${key}".`
+              }
+            } else { // delete_field
+              const count = countOccurrences(text, target!)
+              if (count === 0) { mutationResults.push({ key, action: 'patch:delete_field', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
+              if (count > 1) { mutationResults.push({ key, action: 'patch:delete_field', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+              const idx = text.indexOf(target!)
+              updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{2,}/g, '\n')
+              msg = `Deleted "${target}" from "${key}".`
+            }
+
+            await pushHistory(c, key, raw)
+            const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+            await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+            loreDB[key] = updatedText
+            mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
+          }
+        }
+
+        const okCount = mutationResults.filter(r => r.ok).length
+        const failCount = mutationResults.length - okCount
+        const summaryText = failCount === 0
+          ? `Applied ${okCount} mutation${okCount === 1 ? '' : 's'}.`
+          : `Applied ${okCount}/${mutationResults.length} mutations. ${failCount} failed — see results.`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { total: mutationResults.length, ok_count: okCount, failed_count: failCount },
+          results: mutationResults
         }), 200)
       }
 
