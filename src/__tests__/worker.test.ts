@@ -1,3 +1,4 @@
+// eslint-disable-next-line deprecation/deprecation
 import { env, SELF, reset } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -7,6 +8,7 @@ afterEach(() => reset())
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function rpc(method: string, params?: unknown) {
+  // eslint-disable-next-line deprecation/deprecation
   const res = await SELF.fetch('http://example.com/mcp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,6 +23,7 @@ function callTool(name: string, args: Record<string, unknown> = {}) {
 
 // Seed KV directly — avoids writing to the worker's in-memory loreDB fallback.
 function seedKV(key: string, text: string) {
+  // eslint-disable-next-line deprecation/deprecation
   return env.LORE_DB.put(key, JSON.stringify({ text, meta: { version: 1 } }))
 }
 
@@ -43,10 +46,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 15 tools', async () => {
+  it('tools/list returns exactly 19 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(15)
+    expect(tools).toHaveLength(19)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('list_topics')
@@ -61,6 +64,10 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('search_lore')
     expect(names).toContain('patch_lore')
     expect(names).toContain('restore_lore')
+    expect(names).toContain('resolve_interaction')
+    expect(names).toContain('analyze_utility')
+    expect(names).toContain('map_integration')
+    expect(names).toContain('thread_tick')
     expect(names).toContain('batch_set_lore')
     expect(names).toContain('batch_mutate')
   })
@@ -1006,6 +1013,376 @@ describe('batch_set_lore + batch_mutate integration', () => {
 
     const betaVerify = await callTool('get_lore', { query: betaKey })
     expect(betaVerify.result.content[0].text).toContain('Appended line')
+  })
+})
+
+// ── resolve_interaction ───────────────────────────────────────────────────────
+
+describe('resolve_interaction', () => {
+  it('returns error when entity_a not found', async () => {
+    await seedKV('character:defender', '**Weight-2:** 5')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'nonexistent:attacker',
+      entity_b_id: 'character:defender',
+      action_type: 'test',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('not found')
+  })
+
+  it('returns error when entity_b not found', async () => {
+    await seedKV('character:attacker', '**Weight-1:** 5')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:attacker',
+      entity_b_id: 'nonexistent:defender',
+      action_type: 'test',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('returns error when entity_a is missing Weight-1 field', async () => {
+    await seedKV('character:no-weight', 'no numeric fields here')
+    await seedKV('character:has-weight-2', '**Weight-2:** 3')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:no-weight',
+      entity_b_id: 'character:has-weight-2',
+      action_type: 'test',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.message).toContain('Weight-1')
+  })
+
+  it('always succeeds when P=1 (high W1, zero W2)', async () => {
+    // P = (10 * 0.7) - (0 * 0.3) = 7.0, clamped to 1.0 → roll always < 1
+    await seedKV('character:strong', '**Weight-1:** 10\n**State-Level:** 0')
+    await seedKV('character:weak', '**Weight-2:** 0')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:strong',
+      entity_b_id: 'character:weak',
+      action_type: 'consume',
+    })
+    expect(res.result.success).toBe(true)
+    expect(res.result.delta_value).toBeGreaterThan(0)
+    expect(res.result.metadata.probability).toBe(1)
+  })
+
+  it('always fails when P=0 (zero W1, high W2)', async () => {
+    // P = (0 * 0.7) - (10 * 0.3) = -3.0, clamped to 0 → roll always >= 0
+    await seedKV('character:zero-attacker', '**Weight-1:** 0')
+    await seedKV('character:strong-defender', '**Weight-2:** 10')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:zero-attacker',
+      entity_b_id: 'character:strong-defender',
+      action_type: 'consume',
+    })
+    expect(res.result.success).toBe(false)
+    expect(res.result.delta_value).toBe(0)
+    expect(res.result.metadata.probability).toBe(0)
+  })
+
+  it('increments State-Level in KV on success', async () => {
+    await seedKV('character:winner', '**Weight-1:** 10\n**State-Level:** 5')
+    await seedKV('character:loser', '**Weight-2:** 0')
+    await callTool('resolve_interaction', {
+      entity_a_id: 'character:winner',
+      entity_b_id: 'character:loser',
+      action_type: 'consume',
+    })
+    const get = await callTool('get_lore', { query: 'character:winner' })
+    const level = parseInt(get.result.text.match(/\*\*State-Level:\*\*\s*(\d+)/)?.[1] ?? '5')
+    expect(level).toBeGreaterThan(5)
+  })
+
+  it('does not modify KV on failure', async () => {
+    await seedKV('character:guaranteed-fail', '**Weight-1:** 0\n**State-Level:** 3')
+    await seedKV('character:guaranteed-win', '**Weight-2:** 10')
+    await callTool('resolve_interaction', {
+      entity_a_id: 'character:guaranteed-fail',
+      entity_b_id: 'character:guaranteed-win',
+      action_type: 'consume',
+    })
+    const get = await callTool('get_lore', { query: 'character:guaranteed-fail' })
+    expect(get.result.text).toContain('**State-Level:** 3')
+  })
+
+  it('returns metadata with weight_1, weight_2, probability, and roll', async () => {
+    await seedKV('character:meta-a', '**Weight-1:** 6')
+    await seedKV('character:meta-b', '**Weight-2:** 2')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:meta-a',
+      entity_b_id: 'character:meta-b',
+      action_type: 'test-action',
+    })
+    expect(res.result.metadata.weight_1).toBe(6)
+    expect(res.result.metadata.weight_2).toBe(2)
+    expect(typeof res.result.metadata.probability).toBe('number')
+    expect(typeof res.result.metadata.roll).toBe('number')
+    expect(res.result.metadata.action_type).toBe('test-action')
+  })
+})
+
+// ── analyze_utility ───────────────────────────────────────────────────────────
+
+describe('analyze_utility', () => {
+  it('returns error when entity not found', async () => {
+    const res = await callTool('analyze_utility', { entity_id: 'nonexistent:entity', utility_vector: 'VECTOR_A' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('returns Grade D when entity has no numeric fields', async () => {
+    await seedKV('character:blank', 'No numeric fields here.')
+    const res = await callTool('analyze_utility', { entity_id: 'character:blank', utility_vector: 'VECTOR_E' })
+    expect(res.result.grade).toBe('Grade D')
+    expect(res.result.compatibility_score).toBe('0%')
+  })
+
+  it('returns Grade S when all four fields are equal and high (VECTOR_E)', async () => {
+    // VECTOR_E is balanced [0.25, 0.25, 0.25, 0.25]; with all 4 fields equal, score = 100
+    await seedKV('character:perfect', '**Field-1:** 100\n**Field-2:** 100\n**Field-3:** 100\n**Field-4:** 100')
+    const res = await callTool('analyze_utility', { entity_id: 'character:perfect', utility_vector: 'VECTOR_E' })
+    expect(res.result.grade).toBe('Grade S')
+    expect(res.result.compatibility_score).toBe('100%')
+  })
+
+  it('VECTOR_A heavily weights the first field', async () => {
+    // First field dominates (w=0.5); second field is minimal (w=0.3); third/fourth nearly 0
+    await seedKV('character:vector-a-test', '**Power:** 100\n**Support:** 10\n**Stealth:** 5\n**Endurance:** 5')
+    const res = await callTool('analyze_utility', { entity_id: 'character:vector-a-test', utility_vector: 'VECTOR_A' })
+    expect(res.result.grade).not.toBe('Grade D')
+    expect(res.result.metadata.fields_analyzed).toContain('Power')
+  })
+
+  it('grade is one of the five valid strings', async () => {
+    await seedKV('character:grade-check', '**X:** 50\n**Y:** 25')
+    const res = await callTool('analyze_utility', { entity_id: 'character:grade-check', utility_vector: 'VECTOR_B' })
+    expect(['Grade S', 'Grade A', 'Grade B', 'Grade C', 'Grade D']).toContain(res.result.grade)
+  })
+
+  it('compatibility_score is a percentage string', async () => {
+    await seedKV('character:pct-check', '**A:** 40\n**B:** 60')
+    const res = await callTool('analyze_utility', { entity_id: 'character:pct-check', utility_vector: 'VECTOR_C' })
+    expect(res.result.compatibility_score).toMatch(/^\d+%$/)
+  })
+
+  it('projected_yield differs across vectors', async () => {
+    await seedKV('character:vector-compare', '**F1:** 50\n**F2:** 50\n**F3:** 50\n**F4:** 50')
+    const [rA, rD] = await Promise.all([
+      callTool('analyze_utility', { entity_id: 'character:vector-compare', utility_vector: 'VECTOR_A' }),
+      callTool('analyze_utility', { entity_id: 'character:vector-compare', utility_vector: 'VECTOR_D' }),
+    ])
+    expect(rA.result.projected_yield).not.toBe(rD.result.projected_yield)
+  })
+
+  it('fields_analyzed metadata lists found field names', async () => {
+    await seedKV('character:fields-meta', '**Strength:** 80\n**Speed:** 60\n**Status:** active')
+    const res = await callTool('analyze_utility', { entity_id: 'character:fields-meta', utility_vector: 'VECTOR_A' })
+    expect(res.result.metadata.fields_analyzed).toContain('Strength')
+    expect(res.result.metadata.fields_analyzed).toContain('Speed')
+  })
+})
+
+// ── map_integration ───────────────────────────────────────────────────────────
+
+describe('map_integration', () => {
+  it('returns error when source not found', async () => {
+    await seedKV('character:target-only', 'Target lore.')
+    const res = await callTool('map_integration', {
+      source_id: 'nonexistent:source',
+      target_id: 'character:target-only',
+      integration_depth: 0.5,
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('nonexistent:source')
+  })
+
+  it('returns error when target not found', async () => {
+    await seedKV('character:source-only', 'Source lore. [Transferable]')
+    const res = await callTool('map_integration', {
+      source_id: 'character:source-only',
+      target_id: 'nonexistent:target',
+      integration_depth: 0.5,
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('returns empty updated_traits when source has no [Transferable] lines', async () => {
+    await seedKV('character:plain-source', 'No transferable traits here.')
+    await seedKV('character:plain-target', 'Target entry.')
+    const res = await callTool('map_integration', {
+      source_id: 'character:plain-source',
+      target_id: 'character:plain-target',
+      integration_depth: 1.0,
+    })
+    expect(res.result.updated_traits).toHaveLength(0)
+    expect(res.result.content[0].text).toContain('No [Transferable]')
+  })
+
+  it('returns 0 traits when integration_depth is 0', async () => {
+    await seedKV('character:depth-zero-src', 'Trait A [Transferable]\nTrait B [Transferable]')
+    await seedKV('character:depth-zero-tgt', 'Target.')
+    const res = await callTool('map_integration', {
+      source_id: 'character:depth-zero-src',
+      target_id: 'character:depth-zero-tgt',
+      integration_depth: 0,
+    })
+    expect(res.result.updated_traits).toHaveLength(0)
+  })
+
+  it('transfers all traits at depth=1.0', async () => {
+    await seedKV('character:full-src', 'Trait A [Transferable]\nTrait B [Transferable]\nTrait C [Transferable]')
+    await seedKV('character:full-tgt', 'Target lore.')
+    const res = await callTool('map_integration', {
+      source_id: 'character:full-src',
+      target_id: 'character:full-tgt',
+      integration_depth: 1.0,
+    })
+    expect(res.result.updated_traits).toHaveLength(3)
+    expect(res.result.metadata.transferred_count).toBe(3)
+    expect(res.result.metadata.total_transferable).toBe(3)
+  })
+
+  it('floors the trait count at partial depth', async () => {
+    // 3 traits × depth 0.6 = floor(1.8) = 1
+    await seedKV('character:partial-src', 'Trait A [Transferable]\nTrait B [Transferable]\nTrait C [Transferable]')
+    await seedKV('character:partial-tgt', 'Target.')
+    const res = await callTool('map_integration', {
+      source_id: 'character:partial-src',
+      target_id: 'character:partial-tgt',
+      integration_depth: 0.6,
+    })
+    expect(res.result.updated_traits).toHaveLength(1)
+  })
+
+  it('writes transferred traits into target lore', async () => {
+    await seedKV('character:write-src', 'Unique-Trait-XYZ [Transferable]')
+    await seedKV('character:write-tgt', 'Base target.')
+    await callTool('map_integration', {
+      source_id: 'character:write-src',
+      target_id: 'character:write-tgt',
+      integration_depth: 1.0,
+    })
+    const get = await callTool('get_lore', { query: 'character:write-tgt' })
+    expect(get.result.text).toContain('Unique-Trait-XYZ')
+    expect(get.result.text).toContain('Integrated-From')
+  })
+
+  it('pushes history for the target before writing', async () => {
+    await seedKV('character:hist-src', 'Trait [Transferable]')
+    await seedKV('character:hist-tgt', 'Original target text.')
+    await callTool('map_integration', {
+      source_id: 'character:hist-src',
+      target_id: 'character:hist-tgt',
+      integration_depth: 1.0,
+    })
+    const restore = await callTool('restore_lore', { key: 'character:hist-tgt' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const get = await callTool('get_lore', { query: 'character:hist-tgt' })
+    expect(get.result.text).toBe('Original target text.')
+  })
+
+  it('also matches **Transferable-* prefixed fields', async () => {
+    await seedKV('character:prefixed-src', '**Transferable-Skill:** combat mastery\n**Non-Transferable:** secret')
+    await seedKV('character:prefixed-tgt', 'Target.')
+    const res = await callTool('map_integration', {
+      source_id: 'character:prefixed-src',
+      target_id: 'character:prefixed-tgt',
+      integration_depth: 1.0,
+    })
+    expect(res.result.updated_traits).toHaveLength(1)
+    expect(res.result.updated_traits[0]).toContain('Transferable-Skill')
+  })
+})
+
+// ── thread_tick ───────────────────────────────────────────────────────────────
+
+describe('thread_tick', () => {
+  it('returns no-entities message when no entities match the thread', async () => {
+    await seedKV('character:unthreaded', '**Status:** Active\n**Timeline-Value:** 5')
+    const res = await callTool('thread_tick', { thread_id: 'thread-alpha' })
+    expect(res.result.content[0].text).toContain('No entities')
+    expect(res.result.local_shifts).toHaveLength(0)
+  })
+
+  it('decrements Timeline-Value for all entities in the thread', async () => {
+    await seedKV('character:thread-member', '**Thread:** thread-alpha\n**Timeline-Value:** 8')
+    await callTool('thread_tick', { thread_id: 'thread-alpha' })
+    const get = await callTool('get_lore', { query: 'character:thread-member' })
+    expect(get.result.text).toContain('**Timeline-Value:** 7')
+  })
+
+  it('reports old_value and new_value in local_shifts', async () => {
+    await seedKV('character:shift-check', '**Thread:** shift-thread\n**Timeline-Value:** 4')
+    const res = await callTool('thread_tick', { thread_id: 'shift-thread' })
+    expect(res.result.local_shifts).toHaveLength(1)
+    expect(res.result.local_shifts[0].old_value).toBe(4)
+    expect(res.result.local_shifts[0].new_value).toBe(3)
+    expect(res.result.local_shifts[0].key).toBe('character:shift-check')
+  })
+
+  it('marks status_change=true when Timeline-Value crosses zero', async () => {
+    await seedKV('character:crossing-zero', '**Thread:** cross-thread\n**Timeline-Value:** 1')
+    const res = await callTool('thread_tick', { thread_id: 'cross-thread' })
+    expect(res.result.local_shifts[0].status_change).toBe(true)
+  })
+
+  it('marks status_change=false when Timeline-Value stays positive', async () => {
+    await seedKV('character:stays-positive', '**Thread:** positive-thread\n**Timeline-Value:** 5')
+    const res = await callTool('thread_tick', { thread_id: 'positive-thread' })
+    expect(res.result.local_shifts[0].status_change).toBe(false)
+  })
+
+  it('ticks multiple entities in the same thread', async () => {
+    await seedKV('character:multi-a', '**Thread:** multi-thread\n**Timeline-Value:** 10')
+    await seedKV('character:multi-b', '**Thread:** multi-thread\n**Timeline-Value:** 3')
+    const res = await callTool('thread_tick', { thread_id: 'multi-thread' })
+    expect(res.result.local_shifts).toHaveLength(2)
+    expect(res.result.metadata.entities_ticked).toBe(2)
+  })
+
+  it('does not decrement entities on other threads', async () => {
+    await seedKV('character:thread-a-member', '**Thread:** thread-a\n**Timeline-Value:** 5')
+    await seedKV('character:thread-b-member', '**Thread:** thread-b\n**Timeline-Value:** 5')
+    await callTool('thread_tick', { thread_id: 'thread-a' })
+    const get = await callTool('get_lore', { query: 'character:thread-b-member' })
+    expect(get.result.text).toContain('**Timeline-Value:** 5')
+  })
+
+  it('skips entities in thread that lack a Timeline-Value field', async () => {
+    await seedKV('character:no-timeline', '**Thread:** skip-thread\n**Status:** Active')
+    const res = await callTool('thread_tick', { thread_id: 'skip-thread' })
+    expect(res.result.local_shifts).toHaveLength(0)
+    expect(res.result.content[0].text).toContain('No entities')
+  })
+
+  it('pushes history for decremented entities', async () => {
+    await seedKV('character:tick-hist', '**Thread:** hist-thread\n**Timeline-Value:** 3')
+    await callTool('thread_tick', { thread_id: 'hist-thread' })
+    const restore = await callTool('restore_lore', { key: 'character:tick-hist' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const get = await callTool('get_lore', { query: 'character:tick-hist' })
+    expect(get.result.text).toContain('**Timeline-Value:** 3')
+  })
+
+  it('populates global_snapshot with other-thread entities sharing Current-Date', async () => {
+    await seedKV('character:tick-source', '**Thread:** date-thread-a\n**Timeline-Value:** 2\n**Current-Date:** 2026-05-24')
+    await seedKV('character:other-thread', '**Thread:** date-thread-b\n**Current-Date:** 2026-05-24\n**Status:** Waiting')
+    const res = await callTool('thread_tick', { thread_id: 'date-thread-a' })
+    expect(res.result.global_snapshot).toHaveLength(1)
+    expect(res.result.global_snapshot[0].key).toBe('character:other-thread')
+    expect(res.result.global_snapshot[0].thread).toBe('date-thread-b')
+    expect(res.result.global_snapshot[0].status).toBe('Waiting')
+  })
+
+  it('global_snapshot is empty when no shared Current-Date exists', async () => {
+    await seedKV('character:isolated-tick', '**Thread:** isolated-thread\n**Timeline-Value:** 1\n**Current-Date:** 2099-01-01')
+    await seedKV('character:different-date', '**Thread:** other-thread\n**Current-Date:** 2026-05-24')
+    const res = await callTool('thread_tick', { thread_id: 'isolated-thread' })
+    expect(res.result.global_snapshot).toHaveLength(0)
   })
 })
 

@@ -201,6 +201,13 @@ function extractActiveThreads(narrativeText: string): Array<any> {
   return threads
 }
 
+// Extracts the raw string value of a **Field:** line without numeric coercion.
+function extractRawField(text: string, fieldPath: string): string | null {
+  const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = text.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'im'))
+  return match ? match[1].trim() : null
+}
+
 // Extracts timeline/status/processor fields from a character lore entry.
 // v0.2.0 — strengthened to match **Consumption-Timeline:** (new standard) with fallbacks.
 function extractConsumptionInfo(characterText: string): any {
@@ -494,6 +501,63 @@ app.post('/mcp', async (c) => {
               required: ['key'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'character:sarah-weaver' } }]
+          },
+          {
+            name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.0',
+            description: 'Determine the outcome of an entity interaction via weighted probability. Reads Weight-1 from entity_a and Weight-2 from entity_b, computes P(success) = (W1×0.7)−(W2×0.3), rolls against it, and returns a boolean outcome with state delta. Atomically increments entity_a State-Level on success.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_a_id: { type: 'string', description: 'Lore key of the acting entity (must have **Weight-1:** field)', minLength: 1 },
+                entity_b_id: { type: 'string', description: 'Lore key of the opposing entity (must have **Weight-2:** field)', minLength: 1 },
+                action_type: { type: 'string', description: 'Label for the action being attempted (e.g. "consume", "resist")', minLength: 1 }
+              },
+              required: ['entity_a_id', 'entity_b_id', 'action_type'], additionalProperties: false
+            },
+            examples: [{ arguments: { entity_a_id: 'character:predator', entity_b_id: 'character:prey', action_type: 'consume' } }]
+          },
+          {
+            name: 'analyze_utility', title: 'Analyze Utility', version: '0.1.0',
+            description: 'Quantify an entity\'s value against a specific objective vector. Scans the entity\'s numeric lore fields and applies vector-specific weights to produce a grade (S–D), projected yield narrative, and compatibility percentage.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_id: { type: 'string', description: 'Lore key of the entity to analyse', minLength: 1 },
+                utility_vector: {
+                  type: 'string',
+                  enum: ['VECTOR_A', 'VECTOR_B', 'VECTOR_C', 'VECTOR_D', 'VECTOR_E'],
+                  description: 'Objective vector: A=direct output, B=support/multiplier, C=precision, D=endurance, E=balanced'
+                }
+              },
+              required: ['entity_id', 'utility_vector'], additionalProperties: false
+            },
+            examples: [{ arguments: { entity_id: 'character:target', utility_vector: 'VECTOR_A' } }]
+          },
+          {
+            name: 'map_integration', title: 'Map Integration', version: '0.1.0',
+            description: 'Permanently transfer [Transferable]-tagged traits from a source entity to a target entity on a state-merge event. integration_depth (0.0–1.0) controls the fraction of available traits transferred.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                source_id: { type: 'string', description: 'Lore key of the source entity (traits are read from here)', minLength: 1 },
+                target_id: { type: 'string', description: 'Lore key of the target entity (traits are written here)', minLength: 1 },
+                integration_depth: { type: 'number', minimum: 0, maximum: 1, description: 'Fraction of Transferable traits to integrate (0.0 = none, 1.0 = all)' }
+              },
+              required: ['source_id', 'target_id', 'integration_depth'], additionalProperties: false
+            },
+            examples: [{ arguments: { source_id: 'character:donor', target_id: 'character:recipient', integration_depth: 0.75 } }]
+          },
+          {
+            name: 'thread_tick', title: 'Thread Tick', version: '0.1.0',
+            description: 'Advance a named timeline thread by one tick. Decrements the **Timeline-Value:** field on every entity whose lore contains **Thread:** <thread_id>. Then performs a global sync: finds entities on other threads that share a Current-Date with the ticked entities and returns their status.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                thread_id: { type: 'string', description: 'Thread identifier matching the **Thread:** field in entity lore', minLength: 1 }
+              },
+              required: ['thread_id'], additionalProperties: false
+            },
+            examples: [{ arguments: { thread_id: 'thread-alpha' } }]
           }
         ]
       }), 200)
@@ -1087,6 +1151,258 @@ app.post('/mcp', async (c) => {
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.` }],
           metadata: { key, restored: true, restored_version: meta.version ?? null, remaining_history: history.length }
+        }), 200)
+      }
+
+      if (toolName === 'resolve_interaction') {
+        const schema = z.object({
+          entity_a_id: z.string().min(1),
+          entity_b_id: z.string().min(1),
+          action_type: z.string().min(1),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const keyA = parsed.data.entity_a_id.trim().toLowerCase()
+        const keyB = parsed.data.entity_b_id.trim().toLowerCase()
+        const actionType = parsed.data.action_type
+
+        const [rawA, rawB] = await Promise.all([kvGet(c, keyA), kvGet(c, keyB)])
+        if (!rawA) return c.json(makeError(id, -32602, `Entity "${keyA}" not found`, null), 200)
+        if (!rawB) return c.json(makeError(id, -32602, `Entity "${keyB}" not found`, null), 200)
+
+        const { text: textA, meta: metaA } = parseKvEntry(rawA)
+        const { text: textB } = parseKvEntry(rawB)
+
+        const w1Raw = extractFieldFromText(textA, 'Weight-1')
+        const w2Raw = extractFieldFromText(textB, 'Weight-2')
+
+        if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field`, null), 200)
+        if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field`, null), 200)
+
+        const probability = Math.max(0, Math.min(1, (w1Raw * 0.7) - (w2Raw * 0.3)))
+        const roll = Math.random()
+        const success = roll < probability
+        const delta_value = success ? Math.max(1, Math.round(probability * 10)) : 0
+
+        if (success && delta_value > 0) {
+          const currentStateLevel = extractFieldFromText(textA, 'State-Level')
+          if (typeof currentStateLevel === 'number') {
+            const updatedTextA = updateFieldInText(textA, 'State-Level', currentStateLevel + delta_value)
+            await pushHistory(c, keyA, rawA)
+            const now = new Date().toISOString()
+            const version = typeof metaA.version === 'number' ? metaA.version + 1 : 1
+            await kvPut(c, keyA, JSON.stringify({
+              text: updatedTextA,
+              meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType }
+            }))
+            loreDB[keyA] = updatedTextA
+          }
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `${actionType}: ${success ? 'SUCCESS' : 'FAILURE'} (roll ${roll.toFixed(3)} vs P=${probability.toFixed(3)}) — delta_value: ${delta_value}` }],
+          metadata: { entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1Raw, weight_2: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000 },
+          success,
+          delta_value
+        }), 200)
+      }
+
+      if (toolName === 'analyze_utility') {
+        const schema = z.object({
+          entity_id: z.string().min(1),
+          utility_vector: z.enum(['VECTOR_A', 'VECTOR_B', 'VECTOR_C', 'VECTOR_D', 'VECTOR_E'])
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.entity_id.trim().toLowerCase()
+        const vector = parsed.data.utility_vector
+
+        const raw = await kvGet(c, key)
+        if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
+
+        const { text } = parseKvEntry(raw)
+
+        const numericFields: Array<{ name: string; value: number }> = []
+        const fieldRegex = /^\*\*([^:*]+):\*\*\s*(-?\d+(?:\.\d+)?)/gim
+        let fMatch
+        while ((fMatch = fieldRegex.exec(text)) !== null && numericFields.length < 4) {
+          numericFields.push({ name: fMatch[1].trim(), value: parseFloat(fMatch[2]) })
+        }
+
+        const f = [0, 1, 2, 3].map(i => numericFields[i]?.value ?? 0)
+        const vectorWeights: Record<string, [number, number, number, number]> = {
+          VECTOR_A: [0.50, 0.30, 0.15, 0.05],
+          VECTOR_B: [0.05, 0.50, 0.15, 0.30],
+          VECTOR_C: [0.35, 0.15, 0.40, 0.10],
+          VECTOR_D: [0.10, 0.20, 0.60, 0.10],
+          VECTOR_E: [0.25, 0.25, 0.25, 0.25],
+        }
+        const weights = vectorWeights[vector]
+        const maxFieldValue = Math.max(...f, 1)
+        const normalizedF = f.map(v => Math.max(0, (v / maxFieldValue) * 100))
+        const rawScore = weights.reduce((sum, w, i) => sum + w * normalizedF[i], 0)
+        const score = Math.round(Math.min(100, Math.max(0, rawScore)))
+
+        const grade = score >= 80 ? 'Grade S' : score >= 65 ? 'Grade A' : score >= 50 ? 'Grade B' : score >= 35 ? 'Grade C' : 'Grade D'
+        const yieldLabels: Record<string, string> = {
+          VECTOR_A: 'High direct output, low efficiency overhead.',
+          VECTOR_B: 'Moderate yield with strong multiplier potential.',
+          VECTOR_C: 'Precision yield — low variance, context-dependent.',
+          VECTOR_D: 'Long-duration yield, high sustainability index.',
+          VECTOR_E: 'Balanced yield across all operational domains.',
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): ${grade} — ${score}% compatibility` }],
+          metadata: { entity_id: key, utility_vector: vector, fields_analyzed: numericFields.map(f => f.name), raw_score: score },
+          grade,
+          projected_yield: yieldLabels[vector],
+          compatibility_score: `${score}%`
+        }), 200)
+      }
+
+      if (toolName === 'map_integration') {
+        const schema = z.object({
+          source_id: z.string().min(1),
+          target_id: z.string().min(1),
+          integration_depth: z.number().min(0).max(1)
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const sourceKey = parsed.data.source_id.trim().toLowerCase()
+        const targetKey = parsed.data.target_id.trim().toLowerCase()
+        const depth = parsed.data.integration_depth
+
+        const [rawSource, rawTarget] = await Promise.all([kvGet(c, sourceKey), kvGet(c, targetKey)])
+        if (!rawSource) return c.json(makeError(id, -32602, `Source entity "${sourceKey}" not found`, null), 200)
+        if (!rawTarget) return c.json(makeError(id, -32602, `Target entity "${targetKey}" not found`, null), 200)
+
+        const { text: sourceText } = parseKvEntry(rawSource)
+        const { text: targetText, meta: targetMeta } = parseKvEntry(rawTarget)
+
+        const transferableLines: string[] = []
+        for (const line of sourceText.split('\n')) {
+          if (/\[Transferable\]/i.test(line) || /^\*\*Transferable-/i.test(line)) {
+            transferableLines.push(line.trim())
+          }
+        }
+
+        if (transferableLines.length === 0) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `No [Transferable] traits found in "${sourceKey}".` }],
+            metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth },
+            updated_traits: []
+          }), 200)
+        }
+
+        const transferCount = Math.floor(transferableLines.length * depth)
+        if (transferCount === 0) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `integration_depth ${depth} yields 0 traits from ${transferableLines.length} available in "${sourceKey}".` }],
+            metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth, total_transferable: transferableLines.length },
+            updated_traits: []
+          }), 200)
+        }
+
+        const traitsToTransfer = transferableLines.slice(0, transferCount)
+        const separator = targetText.endsWith('\n') ? '' : '\n'
+        const integrationBlock = `\n**Integrated-From:** ${sourceKey} (depth: ${depth})\n` + traitsToTransfer.join('\n')
+        const updatedTargetText = targetText + separator + integrationBlock
+
+        await pushHistory(c, targetKey, rawTarget)
+        const now = new Date().toISOString()
+        const version = typeof targetMeta.version === 'number' ? targetMeta.version + 1 : 1
+        await kvPut(c, targetKey, JSON.stringify({
+          text: updatedTargetText,
+          meta: { version, updatedAt: now, createdAt: targetMeta.createdAt ?? now }
+        }))
+        loreDB[targetKey] = updatedTargetText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Integrated ${traitsToTransfer.length} trait(s) from "${sourceKey}" into "${targetKey}" at depth ${depth}.` }],
+          metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth, total_transferable: transferableLines.length, transferred_count: traitsToTransfer.length, version },
+          updated_traits: traitsToTransfer
+        }), 200)
+      }
+
+      if (toolName === 'thread_tick') {
+        const schema = z.object({ thread_id: z.string().min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const threadId = parsed.data.thread_id.trim()
+        const allKeys = await kvList(c)
+
+        type ThreadEntity = { key: string; raw: string; text: string; meta: Record<string, unknown> }
+        const threadEntities: ThreadEntity[] = []
+        for (const key of allKeys) {
+          const raw = await kvGet(c, key)
+          if (!raw) continue
+          const { text, meta } = parseKvEntry(raw)
+          const threadField = extractRawField(text, 'Thread')
+          if (threadField?.toLowerCase() === threadId.toLowerCase()) {
+            threadEntities.push({ key, raw, text, meta })
+          }
+        }
+
+        const now = new Date().toISOString()
+        const local_shifts: Array<{ key: string; old_value: number; new_value: number; status_change: boolean }> = []
+
+        for (const entity of threadEntities) {
+          const timelineValue = extractFieldFromText(entity.text, 'Timeline-Value')
+          if (typeof timelineValue !== 'number') continue
+          const newValue = timelineValue - 1
+          const updatedText = updateFieldInText(entity.text, 'Timeline-Value', newValue)
+          await pushHistory(c, entity.key, entity.raw)
+          const version = typeof entity.meta.version === 'number' ? entity.meta.version + 1 : 1
+          await kvPut(c, entity.key, JSON.stringify({
+            text: updatedText,
+            meta: { version, updatedAt: now, createdAt: entity.meta.createdAt ?? now, thread_tick: threadId }
+          }))
+          loreDB[entity.key] = updatedText
+          local_shifts.push({ key: entity.key, old_value: timelineValue, new_value: newValue, status_change: timelineValue > 0 && newValue <= 0 })
+        }
+
+        const affectedDates = new Set<string>()
+        for (const entity of threadEntities) {
+          const d = extractRawField(entity.text, 'Current-Date')
+          if (d) affectedDates.add(d)
+        }
+
+        const threadEntityKeys = new Set(threadEntities.map(e => e.key))
+        const global_snapshot: Array<{ key: string; thread: string; current_date: string; status: string }> = []
+
+        if (affectedDates.size > 0) {
+          for (const key of allKeys) {
+            if (threadEntityKeys.has(key)) continue
+            const raw = await kvGet(c, key)
+            if (!raw) continue
+            const { text } = parseKvEntry(raw)
+            const entityThread = extractRawField(text, 'Thread')
+            const entityDate = extractRawField(text, 'Current-Date')
+            if (entityThread && entityDate && affectedDates.has(entityDate)) {
+              global_snapshot.push({
+                key,
+                thread: entityThread,
+                current_date: entityDate,
+                status: extractRawField(text, 'Status') ?? 'unknown'
+              })
+            }
+          }
+        }
+
+        const summaryText = local_shifts.length === 0
+          ? `No entities with **Timeline-Value:** found for thread "${threadId}".`
+          : `Thread "${threadId}" ticked: ${local_shifts.length} entity/entities decremented. ${global_snapshot.length} global entity/entities on shared dates.`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { thread_id: threadId, entities_ticked: local_shifts.length, global_entities: global_snapshot.length },
+          local_shifts,
+          global_snapshot
         }), 200)
       }
 

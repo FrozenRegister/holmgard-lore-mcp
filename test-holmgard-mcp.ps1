@@ -381,6 +381,134 @@ Write-Section "TEST 41: batch_set_lore + batch_mutate - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $batchAlphaKey } -RequestId 45
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $batchBetaKey } -RequestId 46
 
+# ── resolve_interaction ───────────────────────────────────────────────────────
+
+$resolverKeyA      = "test:resolver-entity-a"
+$resolverKeyB      = "test:resolver-entity-b"
+$resolverKeyZeroA  = "test:resolver-entity-zero-a"
+$resolverKeyHighB  = "test:resolver-entity-high-b"
+
+Write-Section "TEST 42: resolve_interaction - setup entities"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyA;     text = "**Weight-1:** 10" } -RequestId 200
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyB;     text = "**Weight-2:** 0"  } -RequestId 201
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyZeroA; text = "**Weight-1:** 0"  } -RequestId 202
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyHighB; text = "**Weight-2:** 10" } -RequestId 203
+
+Write-Section "TEST 43: resolve_interaction - guaranteed success (P=1)"
+# W1=10, W2=0 → P = (10×0.7)-(0×0.3) = 7 → clamped to 1.0 → always success
+Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyA; entity_b_id = $resolverKeyB; action_type = "consume" } -ExpectContains "SUCCESS" -RequestId 204
+
+Write-Section "TEST 44: resolve_interaction - guaranteed failure (P=0)"
+# W1=0, W2=10 → P = (0×0.7)-(10×0.3) = -3 → clamped to 0 → always failure
+Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyZeroA; entity_b_id = $resolverKeyHighB; action_type = "consume" } -ExpectContains "FAILURE" -RequestId 205
+
+Write-Section "TEST 45: resolve_interaction - missing entity returns error"
+Invoke-MCPTool -ToolName "resolve_interaction" -Arguments @{ entity_a_id = "nonexistent:entity-xyz"; entity_b_id = $resolverKeyB; action_type = "test" } -RequestId 206
+
+Write-Section "TEST 46: resolve_interaction - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyA     } -RequestId 207
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyB     } -RequestId 208
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyZeroA } -RequestId 209
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyHighB } -RequestId 210
+
+# ── analyze_utility ───────────────────────────────────────────────────────────
+
+$utilityKey = "test:utility-subject"
+$utilityText = @"
+**Power:** 100
+**Support:** 80
+**Stealth:** 60
+**Endurance:** 40
+"@
+
+Write-Section "TEST 47: analyze_utility - setup entity"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $utilityKey; text = $utilityText } -RequestId 211
+
+Write-Section "TEST 48: analyze_utility - VECTOR_A (direct output)"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_A" } -ExpectContains "Grade" -RequestId 212
+
+Write-Section "TEST 49: analyze_utility - VECTOR_E (balanced)"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_E" } -ExpectContains "%" -RequestId 213
+
+Write-Section "TEST 50: analyze_utility - VECTOR_D (endurance)"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_D" } -ExpectContains "compatibility" -RequestId 214
+
+Write-Section "TEST 51: analyze_utility - missing entity returns error"
+Invoke-MCPTool -ToolName "analyze_utility" -Arguments @{ entity_id = "nonexistent:entity-xyz"; utility_vector = "VECTOR_A" } -RequestId 215
+
+Write-Section "TEST 52: analyze_utility - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $utilityKey } -RequestId 216
+
+# ── map_integration ───────────────────────────────────────────────────────────
+
+$integrationSourceKey = "test:integration-source"
+$integrationTargetKey = "test:integration-target"
+$integrationSourceText = @"
+Base traits of the source entity.
+Trait Alpha [Transferable]
+Trait Beta [Transferable]
+**Transferable-Skill:** combat mastery
+Non-transferable secret.
+"@
+$integrationTargetText = "Target entity base lore."
+
+Write-Section "TEST 53: map_integration - setup source and target"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $integrationSourceKey; text = $integrationSourceText } -RequestId 217
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $integrationTargetKey; text = $integrationTargetText } -RequestId 218
+
+Write-Section "TEST 54: map_integration - transfer at depth 1.0"
+Invoke-MCPToolAssert -ToolName "map_integration" -Arguments @{ source_id = $integrationSourceKey; target_id = $integrationTargetKey; integration_depth = 1.0 } -ExpectContains "Integrated" -RequestId 219
+
+Write-Section "TEST 55: map_integration - verify traits written to target"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $integrationTargetKey } -ExpectContains "Integrated-From" -RequestId 220
+
+Write-Section "TEST 56: map_integration - no transferable traits returns empty"
+$plainSourceKey = "test:integration-plain-source"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $plainSourceKey; text = "No transferable traits here." } -RequestId 221
+Invoke-MCPToolAssert -ToolName "map_integration" -Arguments @{ source_id = $plainSourceKey; target_id = $integrationTargetKey; integration_depth = 1.0 } -ExpectContains "No [Transferable]" -RequestId 222
+
+Write-Section "TEST 57: map_integration - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $integrationSourceKey } -RequestId 223
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $integrationTargetKey } -RequestId 224
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $plainSourceKey       } -RequestId 225
+
+# ── thread_tick ───────────────────────────────────────────────────────────────
+
+$threadEntityKey  = "test:thread-entity-alpha"
+$threadEntityText = @"
+**Thread:** test-thread-alpha
+**Timeline-Value:** 5
+**Current-Date:** 2099-12-31
+"@
+$threadOtherKey  = "test:thread-entity-other"
+$threadOtherText = @"
+**Thread:** test-thread-beta
+**Current-Date:** 2099-12-31
+**Status:** Waiting
+"@
+
+Write-Section "TEST 58: thread_tick - setup thread entities"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadEntityKey; text = $threadEntityText } -RequestId 226
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadOtherKey;  text = $threadOtherText  } -RequestId 227
+
+Write-Section "TEST 59: thread_tick - tick the thread"
+Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "test-thread-alpha" } -ExpectContains "ticked" -RequestId 228
+
+Write-Section "TEST 60: thread_tick - verify Timeline-Value decremented"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $threadEntityKey } -ExpectContains "Timeline-Value:** 4" -RequestId 229
+
+Write-Section "TEST 61: thread_tick - global_snapshot finds other-thread entity on same date"
+# The tick result above should have included test:thread-entity-other in global_snapshot.
+# Re-tick and assert the summary mentions global entities (count > 0).
+Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "test-thread-alpha" } -ExpectContains "global" -RequestId 230
+
+Write-Section "TEST 62: thread_tick - no entities returns no-entities message"
+Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "nonexistent-thread-xyz" } -ExpectContains "No entities" -RequestId 231
+
+Write-Section "TEST 63: thread_tick - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $threadEntityKey } -RequestId 232
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $threadOtherKey  } -RequestId 233
+
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "All tests complete!" -ForegroundColor Green
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
