@@ -18,7 +18,7 @@ $Script:PassedTests = 0
 $Script:FailedTests = 0
 $Script:SkippedTests = 0
 
-function Record-TestResult {
+function Update-TestResult {
     param(
         [bool]$Success,
         [bool]$Skipped = $false
@@ -72,7 +72,7 @@ function Invoke-JsonRpc {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
     }
 
-    Record-TestResult -Success:$success
+    Update-TestResult -Success:$success
     Write-Host ""
 }
 
@@ -100,7 +100,7 @@ function Invoke-AdminEndpoint {
 
     if (-not $ADMIN_SECRET) {
         Write-Host "SKIP: $TestName (ADMIN_SECRET not configured)" -ForegroundColor DarkGray
-        Record-TestResult -Success:$false -Skipped:$true
+        Update-TestResult -Success:$false -Skipped:$true
         Write-Host ""
         return
     }
@@ -131,7 +131,7 @@ function Invoke-AdminEndpoint {
         $success = $false
     }
 
-    Record-TestResult -Success:$success
+    Update-TestResult -Success:$success
     Write-Host ""
 }
 
@@ -190,7 +190,7 @@ function Invoke-MCPToolAssert {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
     }
 
-    Record-TestResult -Success:$success
+    Update-TestResult -Success:$success
     Write-Host ""
 }
 
