@@ -1189,6 +1189,33 @@ describe('field extraction — bullet-style and float formats', () => {
     expect(res.result.metadata.old_value).toBe(0.6)
     expect(res.result.metadata.new_value).toBeCloseTo(0.7)
   })
+
+  it('stores clean float without IEEE 754 noise', async () => {
+    await seedKV('character:float-precision', '**Weight-1:** 0.75\n**Status:** active')
+    await callTool('increment_topic_field', {
+      key: 'character:float-precision',
+      field_path: 'Weight-1',
+      increment: 0.1,
+    })
+    const get = await callTool('get_lore', { query: 'character:float-precision' })
+    // Should store 0.85, not 0.8500000000000001
+    expect(get.result.text).toContain('**Weight-1:** 0.85')
+  })
+})
+
+// ── extractRawField (via thread_tick) ─────────────────────────────────────────
+
+describe('extractRawField — bullet-style format', () => {
+  it('thread_tick finds entity whose Thread field uses bullet+descriptor format', async () => {
+    await seedKV('character:bullet-thread-member', [
+      '- **Thread (Active):** bullet-thread-test',
+      '**Timeline-Value:** 5',
+      '**Current-Date:** 2099-01-01',
+    ].join('\n'))
+    const res = await callTool('thread_tick', { thread_id: 'bullet-thread-test' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entities_ticked).toBe(1)
+  })
 })
 
 // ── analyze_utility ───────────────────────────────────────────────────────────

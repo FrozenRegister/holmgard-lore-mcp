@@ -69,8 +69,15 @@ async function kvList(c: any): Promise<string[]> {
   try {
     const kv = getKV(c)
     if (kv) {
-      const listed = await kv.list()
-      const keys = listed.keys.map((k: any) => k.name).filter((k: string) => !k.startsWith('_history:'))
+      const keys: string[] = []
+      let cursor: string | undefined
+      do {
+        const listed: any = await kv.list(cursor ? { cursor } : undefined)
+        for (const k of listed.keys) {
+          if (!k.name.startsWith('_history:')) keys.push(k.name)
+        }
+        cursor = listed.list_complete ? undefined : listed.cursor
+      } while (cursor)
       if (keys.length) return keys
     }
   } catch (e) { console.warn('KV list failed', e) }
@@ -257,10 +264,14 @@ function extractActiveThreads(narrativeText: string): Array<any> {
   return threads
 }
 
-// Extracts the raw string value of a **Field:** line without numeric coercion.
+// Extracts the raw string value of a field without numeric coercion.
+// Handles the same formats as extractFieldFromText pass 1: optional bullet + optional descriptor.
 function extractRawField(text: string, fieldPath: string): string | null {
   const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = text.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'im'))
+  const match = text.match(new RegExp(
+    `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
+    'im'
+  ))
   return match ? match[1].trim() : null
 }
 
@@ -808,7 +819,7 @@ app.post('/mcp', async (c) => {
           return c.json(makeError(id, -32602, `Field "${parsed.data.field_path}" is not numeric`, { current: currentValue }), 200)
         }
 
-        const newValue = currentValue + parsed.data.increment
+        const newValue = parseFloat((currentValue + parsed.data.increment).toPrecision(10))
         const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
 
         await pushHistory(c, key, raw)
@@ -1087,7 +1098,7 @@ app.post('/mcp', async (c) => {
               continue
             }
             const delta = mut.increment ?? 1
-            const newValue = currentValue + delta
+            const newValue = parseFloat((currentValue + delta).toPrecision(10))
             const updatedText = updateFieldInText(text, mut.field_path, newValue)
             await pushHistory(c, key, raw)
             const version = typeof meta.version === 'number' ? meta.version + 1 : 1
