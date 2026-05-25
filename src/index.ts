@@ -126,40 +126,96 @@ function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown
   return { text: raw, meta: {} }
 }
 
-// Reads a **Field:** value from markdown-formatted lore text. Returns a number if parseable.
+// Reads a field value from lore text. Handles three formats:
+//   1. Markdown bold: **Field:** val  or  - **Field (desc):** val
+//   2. JSON block:    "Field": 0.9,
+//   3. Loose:         Field: 0.9  or  Field=0.9
 function extractFieldFromText(text: string, fieldPath: string): unknown {
   try {
-    const lines = text.replace(/\r\n/g, '\n').split('\n')
     const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    for (const line of lines) {
-      const match = line.match(new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i'))
-      if (match) {
-        const value = match[1].trim()
-        const numMatch = value.match(/^-?\d+/)
-        if (numMatch) return parseInt(numMatch[0], 10)
-        try { return JSON.parse(value) } catch { }
-        return value
-      }
+
+    // Pass 1: markdown bold (optional bullet + optional parenthetical descriptor)
+    const mdRegex = new RegExp(
+      `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
+      'im'
+    )
+    const mdMatch = text.match(mdRegex)
+    if (mdMatch) {
+      const value = mdMatch[1].trim()
+      const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
+      if (numMatch) return parseFloat(numMatch[0])
+      if (value === 'true') return true
+      if (value === 'false') return false
+      if (value === 'null') return null
+      try { return JSON.parse(value) } catch { /* not JSON */ }
+      return value
     }
+
+    // Pass 2: JSON block  "Field": 0.9
+    const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
+    const jsonMatch = text.match(jsonRegex)
+    if (jsonMatch) return parseFloat(jsonMatch[1])
+
+    // Pass 3: loose  Field: 0.9  or  Field=0.9
+    const looseRegex = new RegExp(`${escapedField}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
+    const looseMatch = text.match(looseRegex)
+    if (looseMatch) return parseFloat(looseMatch[1])
+
   } catch (e) {
     console.warn('extractFieldFromText error', e)
   }
   return null
 }
 
-// Replaces a **Field:** line in place, or appends it if not found.
+// Replaces a field value in place (surgical slice-replace preserving prefix/format), or appends.
 function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
   try {
-    const lines = text.replace(/\r\n/g, '\n').split('\n')
     const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const searchRegex = new RegExp(`^\\*\\*${escapedField}:\\*\\*\\s*(.+)$`, 'i')
-    let found = false
-    const updated = lines.map(line => {
-      if (searchRegex.test(line)) { found = true; return `**${fieldPath}:** ${newValue}` }
-      return line
-    })
-    if (!found) updated.push(`**${fieldPath}:** ${newValue}`)
-    return updated.join('\n')
+
+    // Pass 1: markdown bold (optional bullet + optional descriptor)
+    const mdRegex = new RegExp(
+      `^(\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*)(.+?)(\\s*)$`,
+      'im'
+    )
+    const mdMatch = text.match(mdRegex)
+    if (mdMatch) {
+      return (
+        text.slice(0, mdMatch.index!) +
+        mdMatch[1] +
+        String(newValue) +
+        mdMatch[3] +
+        text.slice(mdMatch.index! + mdMatch[0].length)
+      )
+    }
+
+    // Pass 2: JSON block  "Field": 0.9
+    const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
+    const jsonMatch = text.match(jsonRegex)
+    if (jsonMatch) {
+      return (
+        text.slice(0, jsonMatch.index!) +
+        jsonMatch[1] +
+        String(newValue) +
+        text.slice(jsonMatch.index! + jsonMatch[0].length)
+      )
+    }
+
+    // Pass 3: loose  Field: 0.9  or  Field=0.9
+    const looseRegex = new RegExp(`(${escapedField}\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
+    const looseMatch = text.match(looseRegex)
+    if (looseMatch) {
+      return (
+        text.slice(0, looseMatch.index!) +
+        looseMatch[1] +
+        String(newValue) +
+        text.slice(looseMatch.index! + looseMatch[0].length)
+      )
+    }
+
+    // Fallback: append
+    const needsSeparator = !text.endsWith('\n')
+    return text + (needsSeparator ? '\n' : '') + `**${fieldPath}:** ${newValue}`
+
   } catch (e) {
     console.warn('updateFieldInText error', e)
     return text
@@ -1174,11 +1230,16 @@ app.post('/mcp', async (c) => {
         const { text: textA, meta: metaA } = parseKvEntry(rawA)
         const { text: textB } = parseKvEntry(rawB)
 
+        console.log('[resolve_interaction] textA field sample:', textA.match(/(Weight-1)[^\n]*/i)?.[0] ?? 'NO MATCH')
+        console.log('[resolve_interaction] textB field sample:', textB.match(/(Weight-2)[^\n]*/i)?.[0] ?? 'NO MATCH')
+
         const w1Raw = extractFieldFromText(textA, 'Weight-1')
         const w2Raw = extractFieldFromText(textB, 'Weight-2')
 
-        if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field`, null), 200)
-        if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field`, null), 200)
+        console.log('[resolve_interaction] w1Raw:', w1Raw, 'w2Raw:', w2Raw)
+
+        if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field (got: ${JSON.stringify(w1Raw)})`, null), 200)
+        if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field (got: ${JSON.stringify(w2Raw)})`, null), 200)
 
         const probability = Math.max(0, Math.min(1, (w1Raw * 0.7) - (w2Raw * 0.3)))
         const roll = Math.random()

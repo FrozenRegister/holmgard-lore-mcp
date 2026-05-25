@@ -1121,6 +1121,74 @@ describe('resolve_interaction', () => {
     expect(typeof res.result.metadata.roll).toBe('number')
     expect(res.result.metadata.action_type).toBe('test-action')
   })
+
+  it('reads float weights from bullet-style descriptor fields', async () => {
+    // Format used in real character lore: - **Weight-1 (Aggression/Predator-Drive):** 0.9
+    await seedKV('character:bullet-attacker', '- **Weight-1 (Aggression/Predator-Drive):** 0.9\n**State-Level:** 0')
+    await seedKV('character:bullet-defender', '- **Weight-2 (Resilience):** 0.1')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:bullet-attacker',
+      entity_b_id: 'character:bullet-defender',
+      action_type: 'hunt',
+    })
+    // P = (0.9 * 0.7) - (0.1 * 0.3) = 0.63 - 0.03 = 0.60 — should not error
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.weight_1).toBe(0.9)
+    expect(res.result.metadata.weight_2).toBe(0.1)
+  })
+})
+
+// ── extractFieldFromText / updateFieldInText (via increment_topic_field) ──────
+
+describe('field extraction — bullet-style and float formats', () => {
+  it('extracts float from plain **Field:** format', async () => {
+    await seedKV('character:plain-float', '**Weight-1:** 0.9\n**Status:** active')
+    const res = await callTool('increment_topic_field', {
+      key: 'character:plain-float',
+      field_path: 'Weight-1',
+      increment: 0.1,
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.old_value).toBe(0.9)
+    expect(res.result.metadata.new_value).toBeCloseTo(1.0)
+  })
+
+  it('extracts float from bullet + descriptor format', async () => {
+    await seedKV('character:bullet-float', '- **Weight-1 (Aggression/Predator-Drive):** 0.75\n**Status:** active')
+    const res = await callTool('increment_topic_field', {
+      key: 'character:bullet-float',
+      field_path: 'Weight-1',
+      increment: 0.1,
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.old_value).toBe(0.75)
+    expect(res.result.metadata.new_value).toBeCloseTo(0.85)
+  })
+
+  it('preserves bullet + descriptor format when updating', async () => {
+    await seedKV('character:preserve-format', '- **Weight-1 (Aggression):** 0.5\n**Status:** active')
+    await callTool('increment_topic_field', {
+      key: 'character:preserve-format',
+      field_path: 'Weight-1',
+      increment: 0.2,
+    })
+    const get = await callTool('get_lore', { query: 'character:preserve-format' })
+    // The line should preserve its bullet and descriptor, only the value changes
+    expect(get.result.text).toMatch(/- \*\*Weight-1 \(Aggression\):\*\*\s*0\.7/)
+  })
+
+  it('extracts numeric value from JSON block format', async () => {
+    const jsonLore = '```json\n{\n  "Weight-1": 0.6,\n  "Status": "active"\n}\n```'
+    await seedKV('character:json-block', jsonLore)
+    const res = await callTool('increment_topic_field', {
+      key: 'character:json-block',
+      field_path: 'Weight-1',
+      increment: 0.1,
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.old_value).toBe(0.6)
+    expect(res.result.metadata.new_value).toBeCloseTo(0.7)
+  })
 })
 
 // ── analyze_utility ───────────────────────────────────────────────────────────

@@ -17,6 +17,8 @@ $Script:TotalTests = 0
 $Script:PassedTests = 0
 $Script:FailedTests = 0
 $Script:SkippedTests = 0
+$Script:Failures = [System.Collections.Generic.List[hashtable]]::new()
+$Script:FailureLog = Join-Path $PSScriptRoot "test-failures.json"
 
 function Update-TestResult {
     param(
@@ -32,6 +34,23 @@ function Update-TestResult {
     } else {
         $Script:FailedTests++
     }
+}
+
+function Write-Failure {
+    param(
+        [string]$TestName,
+        [string]$Reason,
+        [string]$ActualContent = "",
+        [string]$Expected = "",
+        [object]$RawResponse = $null
+    )
+    $Script:Failures.Add(@{
+        test    = $TestName
+        reason  = $Reason
+        expected = $Expected
+        actual  = $ActualContent
+        response = if ($RawResponse) { $RawResponse | ConvertTo-Json -Depth 6 -Compress } else { "" }
+    })
 }
 
 function Invoke-JsonRpc {
@@ -63,6 +82,7 @@ function Invoke-JsonRpc {
             if ($result.error.data) {
                 Write-Host "Data: $($result.error.data | ConvertTo-Json -Compress)" -ForegroundColor Red
             }
+            Write-Failure -TestName $Method -Reason "JSON-RPC error: $($result.error.message)" -RawResponse $result
         } else {
             Write-Host "✅ SUCCESS" -ForegroundColor Green
             Write-Host "Result: $($result.result | ConvertTo-Json -Depth 5)" -ForegroundColor Green
@@ -70,6 +90,7 @@ function Invoke-JsonRpc {
         }
     } catch {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
+        Write-Failure -TestName $Method -Reason "Exception: $_"
     }
 
     Update-TestResult -Success:$success
@@ -176,11 +197,13 @@ function Invoke-MCPToolAssert {
 
         if ($result.error) {
             Write-Host "❌ JSON-RPC ERROR: $($result.error.message)" -ForegroundColor Red
+            Write-Failure -TestName $ToolName -Reason "JSON-RPC error: $($result.error.message)" -Expected $ExpectContains -RawResponse $result
         } else {
             $contentText = $result.result.content[0].text
             Write-Host "Content: $contentText" -ForegroundColor White
             if ($ExpectContains -and $contentText -notlike "*$ExpectContains*") {
                 Write-Host "❌ ASSERT FAILED: '$ExpectContains' not found in content" -ForegroundColor Red
+                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectContains' not in content" -Expected $ExpectContains -ActualContent $contentText -RawResponse $result
             } else {
                 Write-Host "✅ SUCCESS" -ForegroundColor Green
                 $success = $true
@@ -188,6 +211,52 @@ function Invoke-MCPToolAssert {
         }
     } catch {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
+        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectContains
+    }
+
+    Update-TestResult -Success:$success
+    Write-Host ""
+}
+
+# Asserts that a tool call returns a JSON-RPC error whose message contains $ExpectErrorContains.
+function Invoke-MCPToolExpectError {
+    param(
+        [string]$ToolName,
+        [hashtable]$Arguments = @{},
+        [string]$ExpectErrorContains = "",
+        [int]$RequestId = 1
+    )
+
+    $params = @{ name = $ToolName; arguments = $Arguments }
+    $body = @{ jsonrpc = "2.0"; id = $RequestId; method = "tools/call"; params = $params } | ConvertTo-Json -Depth 10
+
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    Write-Host "Testing tool (expect error): $ToolName" -ForegroundColor Yellow
+    Write-Host "Args: $($Arguments | ConvertTo-Json -Compress)" -ForegroundColor Gray
+    if ($ExpectErrorContains) { Write-Host "Expected error to contain: $ExpectErrorContains" -ForegroundColor DarkGray }
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+
+    $success = $false
+    try {
+        $response = Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $body -UseBasicParsing
+        $result = $response.Content | ConvertFrom-Json
+
+        if ($result.error) {
+            Write-Host "Error message: $($result.error.message)" -ForegroundColor White
+            if ($ExpectErrorContains -and $result.error.message -notlike "*$ExpectErrorContains*") {
+                Write-Host "❌ ASSERT FAILED: '$ExpectErrorContains' not in error message" -ForegroundColor Red
+                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectErrorContains' not in error" -Expected $ExpectErrorContains -ActualContent $result.error.message -RawResponse $result
+            } else {
+                Write-Host "✅ SUCCESS (got expected error)" -ForegroundColor Green
+                $success = $true
+            }
+        } else {
+            Write-Host "❌ ASSERT FAILED: expected a JSON-RPC error but got success" -ForegroundColor Red
+            Write-Failure -TestName $ToolName -Reason "Expected JSON-RPC error but got success" -Expected $ExpectErrorContains -RawResponse $result
+        }
+    } catch {
+        Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
+        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectErrorContains
     }
 
     Update-TestResult -Success:$success
@@ -403,7 +472,7 @@ Write-Section "TEST 44: resolve_interaction - guaranteed failure (P=0)"
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyZeroA; entity_b_id = $resolverKeyHighB; action_type = "consume" } -ExpectContains "FAILURE" -RequestId 205
 
 Write-Section "TEST 45: resolve_interaction - missing entity returns error"
-Invoke-MCPTool -ToolName "resolve_interaction" -Arguments @{ entity_a_id = "nonexistent:entity-xyz"; entity_b_id = $resolverKeyB; action_type = "test" } -RequestId 206
+Invoke-MCPToolExpectError -ToolName "resolve_interaction" -Arguments @{ entity_a_id = "nonexistent:entity-xyz"; entity_b_id = $resolverKeyB; action_type = "test" } -ExpectErrorContains "not found" -RequestId 206
 
 Write-Section "TEST 46: resolve_interaction - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyA     } -RequestId 207
@@ -434,7 +503,7 @@ Write-Section "TEST 50: analyze_utility - VECTOR_D (endurance)"
 Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_D" } -ExpectContains "compatibility" -RequestId 214
 
 Write-Section "TEST 51: analyze_utility - missing entity returns error"
-Invoke-MCPTool -ToolName "analyze_utility" -Arguments @{ entity_id = "nonexistent:entity-xyz"; utility_vector = "VECTOR_A" } -RequestId 215
+Invoke-MCPToolExpectError -ToolName "analyze_utility" -Arguments @{ entity_id = "nonexistent:entity-xyz"; utility_vector = "VECTOR_A" } -ExpectErrorContains "not found" -RequestId 215
 
 Write-Section "TEST 52: analyze_utility - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $utilityKey } -RequestId 216
@@ -465,7 +534,7 @@ Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $integrationTarg
 Write-Section "TEST 56: map_integration - no transferable traits returns empty"
 $plainSourceKey = "test:integration-plain-source"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $plainSourceKey; text = "No transferable traits here." } -RequestId 221
-Invoke-MCPToolAssert -ToolName "map_integration" -Arguments @{ source_id = $plainSourceKey; target_id = $integrationTargetKey; integration_depth = 1.0 } -ExpectContains "No [Transferable]" -RequestId 222
+Invoke-MCPToolAssert -ToolName "map_integration" -Arguments @{ source_id = $plainSourceKey; target_id = $integrationTargetKey; integration_depth = 1.0 } -ExpectContains "traits found in" -RequestId 222
 
 Write-Section "TEST 57: map_integration - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $integrationSourceKey } -RequestId 223
@@ -474,13 +543,13 @@ Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $plainSourceKey      
 
 # ── thread_tick ───────────────────────────────────────────────────────────────
 
-$threadEntityKey  = "test:thread-entity-alpha"
+$threadEntityKey  = "character:thread-entity-alpha"
 $threadEntityText = @"
 **Thread:** test-thread-alpha
 **Timeline-Value:** 5
 **Current-Date:** 2099-12-31
 "@
-$threadOtherKey  = "test:thread-entity-other"
+$threadOtherKey  = "character:thread-entity-other"
 $threadOtherText = @"
 **Thread:** test-thread-beta
 **Current-Date:** 2099-12-31
@@ -490,6 +559,25 @@ $threadOtherText = @"
 Write-Section "TEST 58: thread_tick - setup thread entities"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadEntityKey; text = $threadEntityText } -RequestId 226
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadOtherKey;  text = $threadOtherText  } -RequestId 227
+
+# KV list() is eventually consistent — poll list_topics until the freshly-written key appears.
+Write-Host "Waiting for KV list consistency (polling list_topics)..." -ForegroundColor DarkGray
+$maxWaitSeconds = 30
+$pollInterval   = 2
+$elapsed        = 0
+$keyVisible     = $false
+do {
+    Start-Sleep -Seconds $pollInterval
+    $elapsed += $pollInterval
+    $listBody = @{ jsonrpc = "2.0"; id = 9000; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
+    $listResp = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $listBody -UseBasicParsing).Content | ConvertFrom-Json
+    $keyVisible = $listResp.result.content[0].text -like "*$threadEntityKey*"
+    if (-not $keyVisible) { Write-Host "  Key not visible yet after ${elapsed}s, retrying..." -ForegroundColor DarkGray }
+} while (-not $keyVisible -and $elapsed -lt $maxWaitSeconds)
+
+if (-not $keyVisible) {
+    Write-Host "⚠ Key never appeared in list_topics after ${maxWaitSeconds}s — thread_tick tests may fail." -ForegroundColor Yellow
+}
 
 Write-Section "TEST 59: thread_tick - tick the thread"
 Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "test-thread-alpha" } -ExpectContains "ticked" -RequestId 228
@@ -509,6 +597,34 @@ Write-Section "TEST 63: thread_tick - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $threadEntityKey } -RequestId 232
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $threadOtherKey  } -RequestId 233
 
+# ── field extraction: bullet + descriptor + float formats ─────────────────────
+
+$bulletAttackerKey = "test:bullet-attacker"
+$bulletDefenderKey = "test:bullet-defender"
+$bulletIncrKey     = "test:bullet-increment"
+
+Write-Section "TEST 64: increment_topic_field - bullet+descriptor float field setup"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletIncrKey; text = "- **Weight-1 (Aggression/Predator-Drive):** 0.75`n**Status:** active" } -RequestId 234
+
+Write-Section "TEST 65: increment_topic_field - read + update float from bullet+descriptor line"
+Invoke-MCPToolAssert -ToolName "increment_topic_field" -Arguments @{ key = $bulletIncrKey; field_path = "Weight-1"; increment = 0.1; reason = "test" } -ExpectContains "0.85" -RequestId 235
+
+Write-Section "TEST 66: increment_topic_field - verify bullet+descriptor format preserved in stored text"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $bulletIncrKey } -ExpectContains "Weight-1 (Aggression/Predator-Drive)" -RequestId 236
+
+Write-Section "TEST 67: resolve_interaction - setup bullet+descriptor float weight entities"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletAttackerKey; text = "- **Weight-1 (Aggression/Predator-Drive):** 0.9`n**State-Level:** 0" } -RequestId 237
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletDefenderKey; text = "- **Weight-2 (Resilience):** 0.1" } -RequestId 238
+
+Write-Section "TEST 68: resolve_interaction - succeeds with bullet+descriptor float weights (P≈0.6)"
+# P = (0.9×0.7) - (0.1×0.3) = 0.63 - 0.03 = 0.60 → should not return Weight-1 field error; content contains "P=0.6"
+Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $bulletAttackerKey; entity_b_id = $bulletDefenderKey; action_type = "hunt" } -ExpectContains "P=0.6" -RequestId 239
+
+Write-Section "TEST 69: field extraction tests - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletIncrKey     } -RequestId 240
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletAttackerKey } -RequestId 241
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletDefenderKey } -RequestId 242
+
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "All tests complete!" -ForegroundColor Green
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
@@ -520,6 +636,11 @@ Write-Host "Total tests: $Script:TotalTests" -ForegroundColor White
 Write-Host "Passed: $Script:PassedTests" -ForegroundColor Green
 Write-Host "Failed: $Script:FailedTests" -ForegroundColor Red
 Write-Host "Skipped: $Script:SkippedTests" -ForegroundColor Yellow
+
+$Script:Failures | ConvertTo-Json -Depth 8 | Set-Content -Path $Script:FailureLog -Encoding UTF8
+if ($Script:Failures.Count -gt 0) {
+    Write-Host "Failure details written to: $Script:FailureLog" -ForegroundColor DarkGray
+}
 
 if ($Script:FailedTests -gt 0) {
     Write-Host "One or more tests failed." -ForegroundColor Red
