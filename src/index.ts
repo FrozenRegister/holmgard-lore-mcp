@@ -570,14 +570,14 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { key: 'character:sarah-weaver' } }]
           },
           {
-            name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.0',
-            description: 'Determine the outcome of an entity interaction via weighted probability. Reads Weight-1 from entity_a and Weight-2 from entity_b, computes P(success) = (W1×0.7)−(W2×0.3), rolls against it, and returns a boolean outcome with state delta. Atomically increments entity_a State-Level on success.',
+            name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.1',
+            description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b (field may appear as plain "**Weight-1:** 0.9", bulleted "- **Weight-1 (descriptor):** 0.9", or JSON block format). Computes P(success) = (W1×0.7)−(W2×0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value. If successful and entity_a has a numeric State-Level field, increments it by delta_value.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
-                entity_a_id: { type: 'string', description: 'Lore key of the acting entity (must have **Weight-1:** field)', minLength: 1 },
-                entity_b_id: { type: 'string', description: 'Lore key of the opposing entity (must have **Weight-2:** field)', minLength: 1 },
-                action_type: { type: 'string', description: 'Label for the action being attempted (e.g. "consume", "resist")', minLength: 1 }
+                entity_a_id: { type: 'string', description: 'Lore key of the acting entity — must have a numeric Weight-1 field', minLength: 1 },
+                entity_b_id: { type: 'string', description: 'Lore key of the opposing entity — must have a numeric Weight-2 field', minLength: 1 },
+                action_type: { type: 'string', description: 'Label for the action being attempted (e.g. "consume", "resist", "hunt")', minLength: 1 }
               },
               required: ['entity_a_id', 'entity_b_id', 'action_type'], additionalProperties: false
             },
