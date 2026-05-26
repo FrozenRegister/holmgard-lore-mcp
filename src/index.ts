@@ -1539,6 +1539,7 @@ app.post('/mcp', async (c) => {
             await pushHistory(c, key, raw)
             const version = typeof meta.version === 'number' ? meta.version + 1 : 1
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+            await appendChangelog(c, key, version)
             loreDB[key] = updatedText
             mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
 
@@ -2387,6 +2388,7 @@ app.post('/mcp', async (c) => {
           appendChangelog(c, fromKey, fromVersion),
           appendChangelog(c, toKey, toVersion),
         ])
+        await Promise.all([appendChangelog(c, fromKey, fromVersion), appendChangelog(c, toKey, toVersion)])
         loreDB[fromKey] = newFromText
         loreDB[toKey] = newToText
 
@@ -3043,6 +3045,29 @@ app.get('/changes', async (c) => {
     if (!isNaN(sinceMs)) {
       entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
     }
+  }
+  c.header('Content-Type', 'application/json')
+  c.header('Cache-Control', 'no-store')
+  return c.json({ changes: entries, count: entries.length, generated_at: new Date().toISOString() }, 200)
+})
+
+
+// ── GET /changes ──────────────────────────────────────────────────────────────────────────────
+// 1 KV read — returns write events since ?since=<ISO>. Editor uses this for
+// delta-only auto-sync instead of re-fetching every topic each interval.
+app.get('/changes', async (c) => {
+  const since = c.req.query('since')
+  const kv = getKV(c)
+  let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
+  if (kv) {
+    try {
+      const raw = await kv.get(CHANGELOG_KEY)
+      if (raw) entries = JSON.parse(raw)
+    } catch (e) { console.warn('changelog read failed', e) }
+  }
+  if (since) {
+    const sinceMs = new Date(since).getTime()
+    if (!isNaN(sinceMs)) entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
   }
   c.header('Content-Type', 'application/json')
   c.header('Cache-Control', 'no-store')
