@@ -2031,6 +2031,22 @@ describe('advance_state_stage', () => {
     expect(lore.result.text).toContain('3')
     expect(lore.result.text).toContain('Stage-Timer')
   })
+
+  it('parses stage from embedded Stage-N-of-M narrative status and updates in-place', async () => {
+    // "Status: Active, Stage-2-of-4" has no discrete State-Stage field — Pass 4 extracts it
+    await seedKV('character:subject-alpha', 'Status: Active, Stage-2-of-4\nLocation: processing-chamber\nWeight-1: 0.30\nStage-Timer: 3')
+    const res = await callTool('advance_state_stage', { entity_key: 'character:subject-alpha' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.old_stage).toBe(2)
+    expect(res.result.new_stage).toBe(3)
+    expect(res.result.total_stages).toBe(4)
+    const lore = await callTool('get_lore', { query: 'character:subject-alpha' })
+    // Stage number updated in-place within the status string
+    expect(lore.result.text).toContain('Stage-3-of-4')
+    expect(lore.result.text).not.toContain('Stage-2-of-4')
+    // Stage-Timer decremented
+    expect(lore.result.text).toContain('Stage-Timer: 2')
+  })
 })
 
 // ── process_stage_batch ───────────────────────────────────────────────────────

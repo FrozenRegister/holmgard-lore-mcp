@@ -182,6 +182,16 @@ function extractFieldFromText(text: string, fieldPath: string): unknown {
       return value
     }
 
+    // Pass 4: embedded Stage-N-of-M narrative pattern (e.g. "Status: Active, Stage-2-of-4")
+    // Handles AI-written status strings that encode stage inline rather than as a discrete field.
+    if (fieldPath === 'State-Stage' || fieldPath === 'State-Total') {
+      const stageM = text.match(/\bStage-(\d+)(?:-of-(\d+))?\b/i)
+      if (stageM) {
+        if (fieldPath === 'State-Stage') return parseInt(stageM[1])
+        if (fieldPath === 'State-Total' && stageM[2]) return parseInt(stageM[2])
+      }
+    }
+
   } catch (e) {
     console.warn('extractFieldFromText error', e)
   }
@@ -234,6 +244,14 @@ function updateFieldInText(text: string, fieldPath: string, newValue: any): stri
         String(newValue) +
         text.slice(looseMatch.index! + looseMatch[0].length)
       )
+    }
+
+    // Pass 4: embedded Stage-N-of-M — update the inline number, preserving the -of-M suffix
+    if (fieldPath === 'State-Stage') {
+      const stageM = text.match(/\bStage-(\d+)(-of-\d+)?\b/i)
+      if (stageM) {
+        return text.replace(/\bStage-(\d+)(-of-\d+)?\b/i, (_, _n, suffix) => `Stage-${newValue}${suffix ?? ''}`)
+      }
     }
 
     // Fallback: append
