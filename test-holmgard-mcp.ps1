@@ -674,9 +674,9 @@ Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $factionKey; text = "Mem
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $knowledgeKey; text = "**Knows:** hidden-vault, patrol-routes`nI found the hidden-vault last night." } -RequestId 304
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $envLocKey; text = "Stone walls surround you.`nA gem gleams [hidden] in the rock." } -RequestId 305
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $envEntityKey; text = "**Perception:** 0.9" } -RequestId 306
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $invEntityKey; text = "**Inventory:** sword×3, shield×1, potion×10" } -RequestId 307
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferFromKey; text = "**Inventory:** sword×2, gold×50" } -RequestId 308
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferToKey; text = "**Inventory:** gold×10" } -RequestId 309
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $invEntityKey; text = "**Inventory:** sword:3, shield:1, potion:10" } -RequestId 307
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferFromKey; text = "**Inventory:** sword:2, gold:50" } -RequestId 308
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferToKey; text = "**Inventory:** gold:10" } -RequestId 309
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneLocKey2; text = "A dim tavern." } -RequestId 310
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneEntity2; text = "The innkeeper polishes a glass." } -RequestId 311
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneKey2; text = "**Description:** Dark tavern.`n**Entities:** $sceneEntity2`n**Location:** $sceneLocKey2`n**Choices:** greet,leave" } -RequestId 312
@@ -701,8 +701,8 @@ Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = "test:new-choice-entity"
 Write-Section "TEST 71: get_relationship — affinity and faction overlap detected"
 Invoke-MCPToolAssert -ToolName "get_relationship" -Arguments @{ entity_a = $relA; entity_b = $relB } -ExpectContains "Relationship data found" -RequestId 330
 
-Write-Section "TEST 72: get_relationship — no data returns suggestion"
-Invoke-MCPToolAssert -ToolName "get_relationship" -Arguments @{ entity_a = $sensoryKey; entity_b = $stageEntity } -ExpectContains "relationship:" -RequestId 331
+Write-Section "TEST 72: get_relationship — no data returns not-found message"
+Invoke-MCPToolAssert -ToolName "get_relationship" -Arguments @{ entity_a = $sensoryKey; entity_b = $stageEntity } -ExpectContains "No relationship data found" -RequestId 331
 
 Write-Section "TEST 73: get_relationship — missing entity returns error"
 Invoke-MCPToolExpectError -ToolName "get_relationship" -Arguments @{ entity_a = $relA; entity_b = "nonexistent:nobody" } -ExpectErrorContains "not found" -RequestId 332
