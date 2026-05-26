@@ -484,26 +484,34 @@ Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $resolverKeyHighB } -
 
 $utilityKey = "test:utility-subject"
 $utilityText = @"
-**Power:** 100
-**Support:** 80
-**Stealth:** 60
-**Endurance:** 40
+**Tenderness-Index:** 0.80
+**Fat-Marbling-Index:** 0.75
+**Sensory-Receptivity:** 0.70
+**Weight-2 (Prey Vulnerability):** 0.65
+**Compliance-Potential:** 0.85
+**Cortisol-Level:** 0.20
+**Caloric-Yield-Estimate:** 0.72
 "@
 
 Write-Section "TEST 47: analyze_utility - setup entity"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $utilityKey; text = $utilityText } -RequestId 211
 
-Write-Section "TEST 48: analyze_utility - VECTOR_A (direct output)"
-Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_A" } -ExpectContains "Grade" -RequestId 212
+Write-Section "TEST 48: analyze_utility - GASTRIC vector"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "GASTRIC" } -ExpectContains "Grade" -RequestId 212
 
-Write-Section "TEST 49: analyze_utility - VECTOR_E (balanced)"
-Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_E" } -ExpectContains "%" -RequestId 213
+Write-Section "TEST 49: analyze_utility - THRALL vector"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "THRALL" } -ExpectContains "Grade" -RequestId 213
 
-Write-Section "TEST 50: analyze_utility - VECTOR_D (endurance)"
-Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "VECTOR_D" } -ExpectContains "compatibility" -RequestId 214
+Write-Section "TEST 50: analyze_utility - DISTRIBUTED vector"
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = $utilityKey; utility_vector = "DISTRIBUTED" } -ExpectContains "/100" -RequestId 214
 
 Write-Section "TEST 51: analyze_utility - missing entity returns error"
-Invoke-MCPToolExpectError -ToolName "analyze_utility" -Arguments @{ entity_id = "nonexistent:entity-xyz"; utility_vector = "VECTOR_A" } -ExpectErrorContains "not found" -RequestId 215
+Invoke-MCPToolExpectError -ToolName "analyze_utility" -Arguments @{ entity_id = "nonexistent:entity-xyz"; utility_vector = "GASTRIC" } -ExpectErrorContains "not found" -RequestId 215
+
+Write-Section "TEST 51B: analyze_utility - live character:seraphine-herbalist GASTRIC Grade A"
+# All 6 GASTRIC fields must be present, Cortisol-Level inverted, Caloric-Yield-Estimate normalized.
+# Expected: Grade A (composite 75–89). Grade B or lower = field scanning or inversion still broken.
+Invoke-MCPToolAssert -ToolName "analyze_utility" -Arguments @{ entity_id = "character:seraphine-herbalist"; utility_vector = "GASTRIC"; entity_role = "subject" } -ExpectContains "Grade A" -RequestId 2150
 
 Write-Section "TEST 52: analyze_utility - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $utilityKey } -RequestId 216

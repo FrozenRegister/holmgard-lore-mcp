@@ -584,21 +584,27 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { entity_a_id: 'character:predator', entity_b_id: 'character:prey', action_type: 'consume' } }]
           },
           {
-            name: 'analyze_utility', title: 'Analyze Utility', version: '0.1.0',
-            description: 'Quantify an entity\'s value against a specific objective vector. Scans the entity\'s numeric lore fields and applies vector-specific weights to produce a grade (S–D), projected yield narrative, and compatibility percentage.',
+            name: 'analyze_utility', title: 'Analyze Utility', version: '2.0.0',
+            description: 'Quantify an entity\'s suitability for a specific Fernveil narrative pathway. Scans ALL numeric lore fields, applies vector-specific weighting with proportional redistribution for missing fields, and returns a per-field breakdown, composite score (0–100), grade (S/A/B/C/D/F), and projected yield narrative.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
                 entity_id: { type: 'string', description: 'Lore key of the entity to analyse', minLength: 1 },
                 utility_vector: {
                   type: 'string',
-                  enum: ['VECTOR_A', 'VECTOR_B', 'VECTOR_C', 'VECTOR_D', 'VECTOR_E'],
-                  description: 'Objective vector: A=direct output, B=support/multiplier, C=precision, D=endurance, E=balanced'
+                  enum: ['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED'],
+                  description: 'Narrative pathway: GASTRIC=prolonged internal processing, BUTCHERY=harvest yield, INCUBATION=brood hosting, SCULPTURE=living artwork, PARASITISM=neural hijack, THRALL=permanent conditioning, DISTRIBUTED=industrial output'
+                },
+                entity_role: {
+                  type: 'string',
+                  enum: ['subject', 'actor'],
+                  default: 'subject',
+                  description: '"subject" evaluates prey-oriented fields; "actor" evaluates predator-drive fields (Weight-1, Aggression, Hunger, etc.)'
                 }
               },
               required: ['entity_id', 'utility_vector'], additionalProperties: false
             },
-            examples: [{ arguments: { entity_id: 'character:target', utility_vector: 'VECTOR_A' } }]
+            examples: [{ arguments: { entity_id: 'character:target', utility_vector: 'GASTRIC' } }]
           },
           {
             name: 'map_integration', title: 'Map Integration', version: '0.1.0',
@@ -1283,55 +1289,270 @@ app.post('/mcp', async (c) => {
       if (toolName === 'analyze_utility') {
         const schema = z.object({
           entity_id: z.string().min(1),
-          utility_vector: z.enum(['VECTOR_A', 'VECTOR_B', 'VECTOR_C', 'VECTOR_D', 'VECTOR_E'])
+          utility_vector: z.enum(['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']),
+          entity_role: z.enum(['subject', 'actor']).default('subject'),
         })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const key = parsed.data.entity_id.trim().toLowerCase()
         const vector = parsed.data.utility_vector
+        const entityRole = parsed.data.entity_role
 
         const raw = await kvGet(c, key)
         if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
 
         const { text } = parseKvEntry(raw)
 
-        const numericFields: Array<{ name: string; value: number }> = []
-        const fieldRegex = /^\*\*([^:*]+):\*\*\s*(-?\d+(?:\.\d+)?)/gim
-        let fMatch
-        while ((fMatch = fieldRegex.exec(text)) !== null && numericFields.length < 4) {
-          numericFields.push({ name: fMatch[1].trim(), value: parseFloat(fMatch[2]) })
+        // Scan ALL numeric fields — no early exit
+        type ParsedField = { originalName: string; value: number }
+        const parsedFields = new Map<string, ParsedField>()
+        // Allow comma-formatted integers (e.g. "135,000 kcal") — commas stripped before parse
+        const fieldScanRegex = /\*\*([^*\n]+?):\*\*\s*([\d,]+\.?\d*)/g
+        let fMatch: RegExpExecArray | null
+        while ((fMatch = fieldScanRegex.exec(text)) !== null) {
+          const originalName = fMatch[1].trim()
+          const normalizedKey = originalName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase()
+          if (!parsedFields.has(normalizedKey)) {
+            parsedFields.set(normalizedKey, { originalName, value: parseFloat(fMatch[2].replace(/,/g, '')) })
+          }
         }
 
-        const f = [0, 1, 2, 3].map(i => numericFields[i]?.value ?? 0)
-        const vectorWeights: Record<string, [number, number, number, number]> = {
-          VECTOR_A: [0.50, 0.30, 0.15, 0.05],
-          VECTOR_B: [0.05, 0.50, 0.15, 0.30],
-          VECTOR_C: [0.35, 0.15, 0.40, 0.10],
-          VECTOR_D: [0.10, 0.20, 0.60, 0.10],
-          VECTOR_E: [0.25, 0.25, 0.25, 0.25],
-        }
-        const weights = vectorWeights[vector]
-        const maxFieldValue = Math.max(...f, 1)
-        const normalizedF = f.map(v => Math.max(0, (v / maxFieldValue) * 100))
-        const rawScore = weights.reduce((sum, w, i) => sum + w * normalizedF[i], 0)
-        const score = Math.round(Math.min(100, Math.max(0, rawScore)))
+        type FieldWeight = { field: string; weight: number; inverted?: boolean }
 
-        const grade = score >= 80 ? 'Grade S' : score >= 65 ? 'Grade A' : score >= 50 ? 'Grade B' : score >= 35 ? 'Grade C' : 'Grade D'
-        const yieldLabels: Record<string, string> = {
-          VECTOR_A: 'High direct output, low efficiency overhead.',
-          VECTOR_B: 'Moderate yield with strong multiplier potential.',
-          VECTOR_C: 'Precision yield — low variance, context-dependent.',
-          VECTOR_D: 'Long-duration yield, high sustainability index.',
-          VECTOR_E: 'Balanced yield across all operational domains.',
+        const SUBJECT_VECTORS: Record<string, FieldWeight[]> = {
+          GASTRIC: [
+            { field: 'tenderness-index', weight: 0.25 },
+            { field: 'fat-marbling-index', weight: 0.20 },
+            { field: 'sensory-receptivity', weight: 0.20 },
+            { field: 'weight-2', weight: 0.15 },
+            { field: 'compliance-potential', weight: 0.10 },
+            { field: 'cortisol-level', weight: 0.10, inverted: true },
+          ],
+          BUTCHERY: [
+            { field: 'caloric-yield-estimate', weight: 0.30 },
+            { field: 'fat-marbling-index', weight: 0.25 },
+            { field: 'tenderness-index', weight: 0.15 },
+            { field: 'cortisol-level', weight: 0.15, inverted: true },
+            { field: 'weight-2', weight: 0.10 },
+            { field: 'sensory-receptivity', weight: 0.05 },
+          ],
+          INCUBATION: [
+            { field: 'compliance-potential', weight: 0.25 },
+            { field: 'weight-2', weight: 0.20 },
+            { field: 'fat-marbling-index', weight: 0.15 },
+            { field: 'cortisol-level', weight: 0.15, inverted: true },
+            { field: 'sensory-receptivity', weight: 0.15 },
+            { field: 'tenderness-index', weight: 0.10 },
+          ],
+          SCULPTURE: [
+            { field: 'sensory-receptivity', weight: 0.30 },
+            { field: 'compliance-potential', weight: 0.25 },
+            { field: 'tenderness-index', weight: 0.15 },
+            { field: 'fat-marbling-index', weight: 0.15 },
+            { field: 'cortisol-level', weight: 0.10, inverted: true },
+            { field: 'weight-2', weight: 0.05 },
+          ],
+          PARASITISM: [
+            { field: 'weight-2', weight: 0.30 },
+            { field: 'compliance-potential', weight: 0.25 },
+            { field: 'sensory-receptivity', weight: 0.20 },
+            { field: 'cortisol-level', weight: 0.10, inverted: true },
+            { field: 'tenderness-index', weight: 0.10 },
+            { field: 'fat-marbling-index', weight: 0.05 },
+          ],
+          THRALL: [
+            { field: 'compliance-potential', weight: 0.35 },
+            { field: 'cortisol-level', weight: 0.20, inverted: true },
+            { field: 'weight-2', weight: 0.20 },
+            { field: 'sensory-receptivity', weight: 0.10 },
+            { field: 'tenderness-index', weight: 0.10 },
+            { field: 'fat-marbling-index', weight: 0.05 },
+          ],
+          DISTRIBUTED: [
+            { field: 'caloric-yield-estimate', weight: 0.40 },
+            { field: 'fat-marbling-index', weight: 0.25 },
+            { field: 'tenderness-index', weight: 0.15 },
+            { field: 'cortisol-level', weight: 0.10, inverted: true },
+            { field: 'weight-2', weight: 0.10 },
+          ],
         }
+
+        const ACTOR_WEIGHTS: FieldWeight[] = [
+          { field: 'weight-1', weight: 0.30 },
+          { field: 'aggression', weight: 0.20 },
+          { field: 'hunger', weight: 0.20 },
+          { field: 'patience', weight: 0.15 },
+          { field: 'metabolic-satiation', weight: 0.10, inverted: true },
+          { field: 'anatomical-integration', weight: 0.03 },
+          { field: 'state-level', weight: 0.02 },
+        ]
+
+        const CANONICAL_NAMES: Record<string, string> = {
+          'weight-1': 'Weight-1 (Predator Drive)',
+          'weight-2': 'Weight-2 (Prey Vulnerability)',
+          'fat-marbling-index': 'Fat-Marbling-Index',
+          'tenderness-index': 'Tenderness-Index',
+          'sensory-receptivity': 'Sensory-Receptivity',
+          'compliance-potential': 'Compliance-Potential',
+          'cortisol-level': 'Cortisol-Level',
+          'caloric-yield-estimate': 'Caloric-Yield-Estimate',
+          'metabolic-satiation': 'Metabolic-Satiation',
+          'anatomical-integration': 'Anatomical-Integration',
+          'state-level': 'State-Level',
+          'aggression': 'Aggression',
+          'hunger': 'Hunger',
+          'patience': 'Patience',
+        }
+
+        const weightingTable: FieldWeight[] = entityRole === 'actor' ? ACTOR_WEIGHTS : SUBJECT_VECTORS[vector]
+
+        const presentEntries: Array<{ fw: FieldWeight; field: ParsedField }> = []
+        const missingFields: string[] = []
+
+        for (const fw of weightingTable) {
+          const found = parsedFields.get(fw.field)
+          if (found !== undefined) {
+            presentEntries.push({ fw, field: found })
+          } else {
+            missingFields.push(CANONICAL_NAMES[fw.field] ?? fw.field)
+          }
+        }
+
+        if (presentEntries.length === 0) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): Grade F — 0/100` }],
+            entity_id: key,
+            vector,
+            entity_role: entityRole,
+            grade: 'F',
+            composite_score: 0,
+            fields_analyzed: [],
+            missing_fields: weightingTable.map(fw => CANONICAL_NAMES[fw.field] ?? fw.field),
+            breakdown: [],
+            projected_yield: 'No quantifiable metrics found. Entity cannot be evaluated mechanically.'
+          }), 200)
+        }
+
+        // Redistribute weights proportionally across present fields (FR4)
+        const totalPresentWeight = presentEntries.reduce((sum, { fw }) => sum + fw.weight, 0)
+
+        type BreakdownEntry = {
+          field: string; raw_value: number; weight: number; effective_value: number; note?: string; contribution: number
+        }
+
+        const breakdown: BreakdownEntry[] = []
+        let compositeSum = 0
+
+        // Fields with large absolute ranges are normalized to [0,1] before weighting
+        const FIELD_NORMALIZERS: Record<string, number> = {
+          'caloric-yield-estimate': 200000,
+        }
+
+        for (const { fw, field } of presentEntries) {
+          const rawValue = field.value
+          const redistributedWeight = fw.weight / totalPresentWeight
+          const normFactor = FIELD_NORMALIZERS[fw.field]
+          const normalizedValue = normFactor ? Math.min(1, rawValue / normFactor) : rawValue
+          const isInverted = fw.inverted ?? false
+          const effectiveValue = isInverted ? Math.max(0, 1.0 - normalizedValue) : normalizedValue
+          const contribution = Math.round(effectiveValue * redistributedWeight * 100 * 100) / 100
+          const entry: BreakdownEntry = {
+            field: field.originalName,
+            raw_value: rawValue,
+            weight: Math.round(redistributedWeight * 1000) / 1000,
+            effective_value: Math.round(effectiveValue * 1000) / 1000,
+            contribution,
+          }
+          if (isInverted) entry.note = `INVERTED: (1.0 - ${rawValue})`
+          breakdown.push(entry)
+          compositeSum += contribution
+        }
+
+        const compositeScore = Math.min(100, Math.max(0, Math.round(compositeSum)))
+
+        const grade =
+          compositeScore >= 90 ? 'S'
+          : compositeScore >= 75 ? 'A'
+          : compositeScore >= 55 ? 'B'
+          : compositeScore >= 35 ? 'C'
+          : compositeScore >= 15 ? 'D'
+          : 'F'
+
+        const VECTOR_NARRATIVES: Record<string, Record<string, string>> = {
+          GASTRIC: {
+            S: 'Exceptional gastric candidate — prime-grade tissue with pristine compliance metrics and minimal baseline stress; prolonged enzymatic integration expected over 5–8 days with optimal yield.',
+            A: 'Excellent gastric yield — soft, receptive tissue with strong compliance; smooth multi-day internal processing anticipated with minimal resistance.',
+            B: 'Viable gastric integration — adequate tissue quality and moderate compliance; standard processing timeline with some resistance expected.',
+            C: 'Marginal gastric candidate — suboptimal tissue metrics or elevated stress levels; significant preparation required before reliable integration.',
+            D: 'Poor gastric fit — significant resistance factors or insufficient tissue quality; last-resort classification only.',
+            F: 'Not viable for gastric integration — critical metric deficiencies preclude this pathway.',
+          },
+          BUTCHERY: {
+            S: 'Prime yield candidate — exceptional caloric density and marbling; harvest output will be exceptional across all material categories with negligible taint.',
+            A: 'Choice yield — high caloric density with excellent marbling; clean harvest expected with minimal cortisol taint.',
+            B: 'Standard yield — acceptable caloric output and marbling; workable harvest with normal processing overhead.',
+            C: 'Below-standard yield — low caloric density or elevated cortisol taint; additional processing required to reclaim usable material.',
+            D: 'Marginal harvest — poor material metrics; yield will be minimal and heavily tainted.',
+            F: 'Not viable for butchery — insufficient material quality for any yield pathway.',
+          },
+          INCUBATION: {
+            S: 'Ideal incubation host — exceptional compliance and pliability with pristine stress response; clutch viability projected at maximum with full brood consciousness enrichment.',
+            A: 'Excellent host candidate — high compliance and adequate nutrient reserves; brood development expected to proceed without complications.',
+            B: 'Viable incubation host — moderate compliance and sufficient pliability; clutch viability acceptable but not optimal.',
+            C: 'Marginal host — elevated stress or insufficient compliance; clutch success uncertain without substantial preparation.',
+            D: 'Poor host — critical compliance or stress deficiencies; brood viability severely compromised.',
+            F: 'Not viable for incubation — host metrics preclude clutch viability.',
+          },
+          SCULPTURE: {
+            S: 'Exceptional sculpture candidate — consciousness persistence and compliance metrics are pristine; the work will endure indefinitely as a living masterpiece of supreme expressive quality.',
+            A: 'Excellent sculptural material — strong awareness and acceptance; high-quality enduring artwork anticipated.',
+            B: 'Viable sculpture — adequate consciousness and compliance; functional artwork produced, though not remarkable.',
+            C: 'Marginal sculptural candidate — insufficient awareness or acceptance; the piece may not sustain its intended expression.',
+            D: 'Poor sculptural material — critical deficiencies in consciousness or compliance undermine the work.',
+            F: 'Not viable for sculpture — insufficient metrics to sustain living artwork.',
+          },
+          PARASITISM: {
+            S: 'Ideal hijack substrate — identity extremely displaceable with pristine compliance; neural transition expected to be seamless and immediate with full sensory inheritance.',
+            A: 'Excellent hijack candidate — high vulnerability and compliance; displacement expected with minimal residual identity resistance.',
+            B: 'Viable hijack substrate — adequate vulnerability; displacement feasible with standard conditioning effort.',
+            C: 'Marginal hijack candidate — resistance factors present; extended conditioning required before reliable displacement.',
+            D: 'Poor hijack substrate — significant identity coherence or resistance; low probability of successful takeover.',
+            F: 'Not viable for neural hijack — entity metrics preclude consciousness displacement.',
+          },
+          THRALL: {
+            S: 'Exceptional thrall candidate — compliance and stress metrics are pristine; permanent conditioning expected immediately and will hold indefinitely without reinforcement.',
+            A: 'Excellent thrall material — high compliance with manageable resistance; conditioning will hold long-term with minimal maintenance.',
+            B: 'Viable thrall candidate — moderate compliance and durability; conditioning achievable with standard investment.',
+            C: 'Marginal thrall material — compliance deficiencies or chronic stress complicate conditioning; periodic reinforcement required.',
+            D: 'Poor thrall candidate — insufficient compliance or durability for reliable permanent conditioning.',
+            F: 'Not viable for enthrallment — entity metrics preclude sustainable conditioning.',
+          },
+          DISTRIBUTED: {
+            S: 'Prime industrial substrate — exceptional caloric density and renderable yield; batch output will be maximum with minimal waste and pristine material quality throughout.',
+            A: 'Choice industrial material — high caloric output and excellent marbling ratio; efficient batch processing expected with clean output.',
+            B: 'Standard industrial yield — adequate caloric and marbling metrics; workable batch with normal processing overhead.',
+            C: 'Below-standard industrial yield — low caloric density or taint factors significantly reduce batch quality.',
+            D: 'Marginal industrial input — poor yield metrics; batch contribution will be minimal and tainted.',
+            F: 'Not viable for distributed processing — insufficient material metrics for industrial use.',
+          },
+        }
+
+        const projectedYield = entityRole === 'actor'
+          ? `Actor capability assessment complete. Grade ${grade} indicates ${compositeScore >= 75 ? 'strong' : compositeScore >= 55 ? 'adequate' : compositeScore >= 35 ? 'limited' : 'marginal'} predation drive for ${vector} pathway.`
+          : (VECTOR_NARRATIVES[vector]?.[grade] ?? 'Utility assessment complete.')
 
         return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): ${grade} — ${score}% compatibility` }],
-          metadata: { entity_id: key, utility_vector: vector, fields_analyzed: numericFields.map(f => f.name), raw_score: score },
+          content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): Grade ${grade} — ${compositeScore}/100` }],
+          entity_id: key,
+          vector,
+          entity_role: entityRole,
           grade,
-          projected_yield: yieldLabels[vector],
-          compatibility_score: `${score}%`
+          composite_score: compositeScore,
+          fields_analyzed: breakdown.map(b => b.field),
+          missing_fields: missingFields,
+          breakdown,
+          projected_yield: projectedYield,
         }), 200)
       }
 
