@@ -133,10 +133,11 @@ function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown
   return { text: raw, meta: {} }
 }
 
-// Reads a field value from lore text. Handles three formats:
+// Reads a field value from lore text. Handles four formats:
 //   1. Markdown bold: **Field:** val  or  - **Field (desc):** val
 //   2. JSON block:    "Field": 0.9,
-//   3. Loose:         Field: 0.9  or  Field=0.9
+//   3. Loose numeric: Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
+//   4. Returns string value from loose format when no number is found
 function extractFieldFromText(text: string, fieldPath: string): unknown {
   try {
     const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -163,10 +164,23 @@ function extractFieldFromText(text: string, fieldPath: string): unknown {
     const jsonMatch = text.match(jsonRegex)
     if (jsonMatch) return parseFloat(jsonMatch[1])
 
-    // Pass 3: loose  Field: 0.9  or  Field=0.9
-    const looseRegex = new RegExp(`${escapedField}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
+    // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
+    // Anchored to line start to avoid mid-sentence false matches.
+    const looseRegex = new RegExp(
+      `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
+      'im'
+    )
     const looseMatch = text.match(looseRegex)
-    if (looseMatch) return parseFloat(looseMatch[1])
+    if (looseMatch) {
+      const value = looseMatch[1].trim()
+      const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
+      if (numMatch) return parseFloat(numMatch[0])
+      if (value === 'true') return true
+      if (value === 'false') return false
+      if (value === 'null') return null
+      try { return JSON.parse(value) } catch { /* not JSON */ }
+      return value
+    }
 
   } catch (e) {
     console.warn('extractFieldFromText error', e)
@@ -207,8 +221,11 @@ function updateFieldInText(text: string, fieldPath: string, newValue: any): stri
       )
     }
 
-    // Pass 3: loose  Field: 0.9  or  Field=0.9
-    const looseRegex = new RegExp(`(${escapedField}\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
+    // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
+    const looseRegex = new RegExp(
+      `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
+      'im'
+    )
     const looseMatch = text.match(looseRegex)
     if (looseMatch) {
       return (
@@ -265,14 +282,25 @@ function extractActiveThreads(narrativeText: string): Array<any> {
 }
 
 // Extracts the raw string value of a field without numeric coercion.
-// Handles the same formats as extractFieldFromText pass 1: optional bullet + optional descriptor.
+// Pass 1: markdown bold  **Field:** value  or  - **Field (desc):** value
+// Pass 2: loose line-start  Field: value  or  # Field: value  or  - Field: value  or  Field = value
+// Handles AI-written lore that omits or mangles markdown bold syntax.
 function extractRawField(text: string, fieldPath: string): string | null {
   const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = text.match(new RegExp(
+
+  // Pass 1: markdown bold
+  const boldMatch = text.match(new RegExp(
     `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
     'im'
   ))
-  return match ? match[1].trim() : null
+  if (boldMatch) return boldMatch[1].trim()
+
+  // Pass 2: loose — any line-start field separator, no bold required
+  const looseMatch = text.match(new RegExp(
+    `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
+    'im'
+  ))
+  return looseMatch ? looseMatch[1].trim() : null
 }
 
 // Extracts timeline/status/processor fields from a character lore entry.

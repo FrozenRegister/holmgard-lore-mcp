@@ -1142,6 +1142,33 @@ describe('resolve_interaction', () => {
     expect(res.result.metadata.action_type).toBe('test-action')
   })
 
+  it('reads weights from plain loose-format fields (no bold markers)', async () => {
+    // AI-written lore may omit **bold:** syntax; loose Pass 3 should handle it
+    await seedKV('character:loose-attacker', 'Weight-1: 10\nState-Level: 0')
+    await seedKV('character:loose-defender', 'Weight-2: 0')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:loose-attacker',
+      entity_b_id: 'character:loose-defender',
+      action_type: 'hunt',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.weight_1).toBe(10)
+    expect(res.result.metadata.weight_2).toBe(0)
+  })
+
+  it('reads weights from markdown-header loose format (# Field: value)', async () => {
+    await seedKV('character:header-attacker', '# Entity: subject-alpha\nWeight-1: 0.9\nState-Level: 0')
+    await seedKV('character:header-defender', '# Entity: prey-beta\nWeight-2: 0.1')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:header-attacker',
+      entity_b_id: 'character:header-defender',
+      action_type: 'consume',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.weight_1).toBe(0.9)
+    expect(res.result.metadata.weight_2).toBe(0.1)
+  })
+
   it('reads float weights from bullet-style descriptor fields', async () => {
     // Format used in real character lore: - **Weight-1 (Aggression/Predator-Drive):** 0.9
     await seedKV('character:bullet-attacker', '- **Weight-1 (Aggression/Predator-Drive):** 0.9\n**State-Level:** 0')
@@ -1771,6 +1798,14 @@ describe('get_location_occupants', () => {
     expect(res.result.occupants).toHaveLength(0)
     expect(res.result.content[0].text).toContain('No occupants')
   })
+
+  it('finds entities with loose plain-colon Location field', async () => {
+    // AI may write "Location: chamber-x" without **bold:** — loose pass should find them
+    await seedKV('character:loose-loc-1', 'Location: location:loose-chamber\nStatus: Active')
+    await seedKV('character:loose-loc-2', 'Location: location:loose-chamber\nStatus: Dormant')
+    const res = await callTool('get_location_occupants', { location_key: 'location:loose-chamber' })
+    expect(res.result.occupants).toHaveLength(2)
+  })
 })
 
 // ── get_reachable_locations ───────────────────────────────────────────────────
@@ -1985,6 +2020,17 @@ describe('advance_state_stage', () => {
     const res = await callTool('advance_state_stage', { entity_key: 'character:no-stage' })
     expect(res.result.advanced).toBe(false)
   })
+
+  it('advances from loose plain-colon format (no bold markers)', async () => {
+    // AI may write "State-Stage: 2" without **bold:** — loose pass should parse and write back
+    await seedKV('character:loose-stage', 'State-Stage: 2\nState-Total: 4\nStage-Timer: 3')
+    const res = await callTool('advance_state_stage', { entity_key: 'character:loose-stage' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.new_stage).toBe(3)
+    const lore = await callTool('get_lore', { query: 'character:loose-stage' })
+    expect(lore.result.text).toContain('3')
+    expect(lore.result.text).toContain('Stage-Timer')
+  })
 })
 
 // ── process_stage_batch ───────────────────────────────────────────────────────
@@ -2125,6 +2171,14 @@ describe('get_sensory_profile', () => {
     await seedKV('character:blank', 'Just a blank character.')
     const res = await callTool('get_sensory_profile', { entity_key: 'character:blank' })
     expect(res.result.content[0].text).toContain('No sensory profile')
+  })
+
+  it('reads sensory fields from loose plain-colon format', async () => {
+    // AI may omit **bold:** — loose pass should still find these fields
+    await seedKV('character:loose-sensory', 'Sensory-Profile: warm-blooded, elevated cortisol\nTemperature: warm\nScent: cortisol-elevated')
+    const res = await callTool('get_sensory_profile', { entity_key: 'character:loose-sensory' })
+    expect(res.result.profile.temperature).toBe('warm')
+    expect(res.result.profile.scent).toBe('cortisol-elevated')
   })
 })
 
