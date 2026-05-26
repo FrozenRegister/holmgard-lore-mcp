@@ -8,7 +8,7 @@
     "dev": "wrangler dev dist/index.js --local",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "clean": "rimraf dist",
-    "test": "vitest run"
+    "test": "vitest run src/__tests__/worker.test.ts"
   },
   "dependencies": {
     "hono": "^4.12.22",

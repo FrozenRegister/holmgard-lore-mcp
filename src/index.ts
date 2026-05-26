@@ -299,6 +299,36 @@ function extractActiveThreads(narrativeText: string): Array<any> {
   return threads
 }
 
+// Normalises a Weight-1 / Weight-2 value to the [0, 1] float range the
+// probability formula expects. Values > 1 are treated as a 0–100 integer
+// scale and divided by 100; values already in [0, 1] pass through unchanged.
+function normalizeWeight(raw: number): number {
+  return raw > 1 ? Math.min(1, raw / 100) : raw
+}
+
+// Maps tokens from a composite Sensory-Profile string to individual profile
+// fields. Tokens are comma-separated; each is matched against keyword
+// patterns for temperature, scent, texture, sound, and visual categories.
+function inferFromSensoryComposite(composite: string): Record<string, string | null> {
+  const result: Record<string, string | null> = {
+    temperature: null, scent: null, texture: null, sound_signature: null, visual_descriptors: null,
+  }
+  for (const token of composite.split(/[,;]+/).map(t => t.trim()).filter(Boolean)) {
+    const t = token.toLowerCase()
+    if (!result.temperature && /warm|hot|cold|cool|chill|heat|blooded|thermal|endotherm|ectotherm|fever/.test(t))
+      result.temperature = token
+    else if (!result.scent && /cortisol|adrenalin|musk|scent|odou?r|smell|pheromone|hormonal|metabolic|lactic|sweat/.test(t))
+      result.scent = token
+    else if (!result.texture && /tissue|density|dense|soft|firm|tender|tough|smooth|rough|texture|marbl|fat|muscle/.test(t))
+      result.texture = token
+    else if (!result.sound_signature && /sound|audio|growl|whisper|heartbeat|pulse|breath|vocal|silent|hum|vibrat/.test(t))
+      result.sound_signature = token
+    else if (!result.visual_descriptors && /visual|appear|colou?r|pigment|translucent|opaque|glow|pattern|mark|spot|stripe/.test(t))
+      result.visual_descriptors = token
+  }
+  return result
+}
+
 // Extracts the raw string value of a field without numeric coercion.
 // Pass 1: markdown bold  **Field:** value  or  - **Field (desc):** value
 // Pass 2: loose line-start  Field: value  or  # Field: value  or  - Field: value  or  Field = value
@@ -1548,18 +1578,16 @@ app.post('/mcp', async (c) => {
         const { text: textA, meta: metaA } = parseKvEntry(rawA)
         const { text: textB } = parseKvEntry(rawB)
 
-        console.log('[resolve_interaction] textA field sample:', textA.match(/(Weight-1)[^\n]*/i)?.[0] ?? 'NO MATCH')
-        console.log('[resolve_interaction] textB field sample:', textB.match(/(Weight-2)[^\n]*/i)?.[0] ?? 'NO MATCH')
-
         const w1Raw = extractFieldFromText(textA, 'Weight-1')
         const w2Raw = extractFieldFromText(textB, 'Weight-2')
-
-        console.log('[resolve_interaction] w1Raw:', w1Raw, 'w2Raw:', w2Raw)
 
         if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field (got: ${JSON.stringify(w1Raw)})`, null), 200)
         if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field (got: ${JSON.stringify(w2Raw)})`, null), 200)
 
-        const probability = Math.max(0, Math.min(1, (w1Raw * 0.7) - (w2Raw * 0.3)))
+        const w1 = normalizeWeight(w1Raw)
+        const w2 = normalizeWeight(w2Raw)
+        // Formula: actor drive minus scaled resistance. w1=1.0 with w2=0 yields P=1 (guaranteed success).
+        const probability = Math.max(0, Math.min(1, w1 - (w2 * 0.3)))
         const roll = Math.random()
         const success = roll < probability
         const delta_value = success ? Math.max(1, Math.round(probability * 10)) : 0
@@ -1581,7 +1609,7 @@ app.post('/mcp', async (c) => {
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `${actionType}: ${success ? 'SUCCESS' : 'FAILURE'} (roll ${roll.toFixed(3)} vs P=${probability.toFixed(3)}) — delta_value: ${delta_value}` }],
-          metadata: { entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1Raw, weight_2: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000 },
+          metadata: { entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1, weight_2: w2, weight_1_raw: w1Raw, weight_2_raw: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000 },
           success,
           delta_value
         }), 200)
@@ -2777,19 +2805,22 @@ app.post('/mcp', async (c) => {
         }
 
         const get = (f: string) => extractRawField(text, f) ?? (speciesText ? extractRawField(speciesText, f) : null)
+        const compositeRaw = extractRawField(text, 'Sensory-Profile') ?? (speciesText ? extractRawField(speciesText, 'Sensory-Profile') : null)
+        const fromComposite = compositeRaw ? inferFromSensoryComposite(compositeRaw) : {}
+        const fc = (k: keyof typeof fromComposite) => fromComposite[k] ?? null
         const profile = {
-          temperature: get('Temperature') ?? get('Temperature-Range'),
-          scent: get('Scent') ?? get('Scent-Profile'),
-          texture: get('Texture') ?? get('Surface-Texture'),
-          sound_signature: get('Sound-Signature') ?? get('Sound') ?? get('Audio-Signature'),
-          visual_descriptors: get('Visual-Descriptors') ?? get('Appearance') ?? get('Description'),
+          temperature:       get('Temperature')      ?? get('Temperature-Range') ?? fc('temperature'),
+          scent:             get('Scent')             ?? get('Scent-Profile')     ?? fc('scent'),
+          texture:           get('Texture')           ?? get('Surface-Texture')   ?? fc('texture'),
+          sound_signature:   get('Sound-Signature')   ?? get('Sound')             ?? get('Audio-Signature') ?? fc('sound_signature'),
+          visual_descriptors: get('Visual-Descriptors') ?? get('Appearance')      ?? get('Description')      ?? fc('visual_descriptors'),
         }
-        const hasProfile = Object.values(profile).some(v => v !== null)
+        const hasProfile = Object.values(profile).some(v => v !== null) || compositeRaw !== null
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: hasProfile ? `Sensory profile for "${entityKey}": ${[profile.temperature && `temp:${profile.temperature}`, profile.scent && `scent:${profile.scent}`, profile.texture && `texture:${profile.texture}`].filter(Boolean).join(', ')}.` : `No sensory profile fields found for "${entityKey}".` }],
           metadata: { retrieved, written: 0 },
-          entity_key: entityKey, species: speciesKey, profile
+          entity_key: entityKey, species: speciesKey, profile, sensory_profile_raw: compositeRaw
         }), 200)
       }
 
@@ -2820,10 +2851,12 @@ app.post('/mcp', async (c) => {
           if (sizeRatio > 5) { constraints.push(`Size ratio ${sizeRatio}: entity_a far exceeds entity_b capacity`); riskScore += 2 }
         }
 
-        const w1A = extractFieldFromText(textA, 'Weight-1')
-        const w2B = extractFieldFromText(textB, 'Weight-2')
-        if (typeof w1A === 'number' && w1A < 0.2) { constraints.push(`Weight-1 too low (${w1A}): entity_a lacks drive`); riskScore++ }
-        if (typeof w2B === 'number' && w2B > 0.9) { constraints.push(`Weight-2 very high (${w2B}): entity_b extreme resistance`); riskScore += 2 }
+        const _w1A = extractFieldFromText(textA, 'Weight-1')
+        const _w2B = extractFieldFromText(textB, 'Weight-2')
+        const w1A = typeof _w1A === 'number' ? normalizeWeight(_w1A) : null
+        const w2B = typeof _w2B === 'number' ? normalizeWeight(_w2B) : null
+        if (w1A !== null && w1A < 0.2) { constraints.push(`Weight-1 too low (${w1A.toFixed(2)}): entity_a lacks drive`); riskScore++ }
+        if (w2B !== null && w2B > 0.9) { constraints.push(`Weight-2 very high (${w2B.toFixed(2)}): entity_b extreme resistance`); riskScore += 2 }
 
         const envA = extractRawField(textA, 'Environment') ?? extractRawField(textA, 'Habitat')
         const envB = extractRawField(textB, 'Environment') ?? extractRawField(textB, 'Habitat')

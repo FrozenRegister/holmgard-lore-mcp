@@ -1074,9 +1074,9 @@ describe('resolve_interaction', () => {
     expect(res.error.message).toContain('Weight-1')
   })
 
-  it('always succeeds when P=1 (high W1, zero W2)', async () => {
-    // P = (10 * 0.7) - (0 * 0.3) = 7.0, clamped to 1.0 → roll always < 1
-    await seedKV('character:strong', '**Weight-1:** 10\n**State-Level:** 0')
+  it('always succeeds when P=1 (W1=1.0, W2=0)', async () => {
+    // Formula: w1 - w2*0.3 → 1.0 - 0 = 1.0, clamped to 1.0 → roll always < 1
+    await seedKV('character:strong', '**Weight-1:** 1.0\n**State-Level:** 0')
     await seedKV('character:weak', '**Weight-2:** 0')
     const res = await callTool('resolve_interaction', {
       entity_a_id: 'character:strong',
@@ -1088,10 +1088,10 @@ describe('resolve_interaction', () => {
     expect(res.result.metadata.probability).toBe(1)
   })
 
-  it('always fails when P=0 (zero W1, high W2)', async () => {
-    // P = (0 * 0.7) - (10 * 0.3) = -3.0, clamped to 0 → roll always >= 0
+  it('always fails when P=0 (W1=0, high W2)', async () => {
+    // Formula: 0 - 1.0*0.3 = -0.3, clamped to 0 → roll always >= 0
     await seedKV('character:zero-attacker', '**Weight-1:** 0')
-    await seedKV('character:strong-defender', '**Weight-2:** 10')
+    await seedKV('character:strong-defender', '**Weight-2:** 1.0')
     const res = await callTool('resolve_interaction', {
       entity_a_id: 'character:zero-attacker',
       entity_b_id: 'character:strong-defender',
@@ -1103,7 +1103,8 @@ describe('resolve_interaction', () => {
   })
 
   it('increments State-Level in KV on success', async () => {
-    await seedKV('character:winner', '**Weight-1:** 10\n**State-Level:** 5')
+    // W1=1.0, W2=0 → P=1.0 → guaranteed success
+    await seedKV('character:winner', '**Weight-1:** 1.0\n**State-Level:** 5')
     await seedKV('character:loser', '**Weight-2:** 0')
     await callTool('resolve_interaction', {
       entity_a_id: 'character:winner',
@@ -1116,8 +1117,9 @@ describe('resolve_interaction', () => {
   })
 
   it('does not modify KV on failure', async () => {
+    // W1=0, W2=1.0 → P=0 → guaranteed failure
     await seedKV('character:guaranteed-fail', '**Weight-1:** 0\n**State-Level:** 3')
-    await seedKV('character:guaranteed-win', '**Weight-2:** 10')
+    await seedKV('character:guaranteed-win', '**Weight-2:** 1.0')
     await callTool('resolve_interaction', {
       entity_a_id: 'character:guaranteed-fail',
       entity_b_id: 'character:guaranteed-win',
@@ -1128,22 +1130,43 @@ describe('resolve_interaction', () => {
   })
 
   it('returns metadata with weight_1, weight_2, probability, and roll', async () => {
-    await seedKV('character:meta-a', '**Weight-1:** 6')
-    await seedKV('character:meta-b', '**Weight-2:** 2')
+    // 0.6 and 0.2 are in [0,1] — no normalization applied
+    await seedKV('character:meta-a', '**Weight-1:** 0.6')
+    await seedKV('character:meta-b', '**Weight-2:** 0.2')
     const res = await callTool('resolve_interaction', {
       entity_a_id: 'character:meta-a',
       entity_b_id: 'character:meta-b',
       action_type: 'test-action',
     })
-    expect(res.result.metadata.weight_1).toBe(6)
-    expect(res.result.metadata.weight_2).toBe(2)
-    expect(typeof res.result.metadata.probability).toBe('number')
+    expect(res.result.metadata.weight_1).toBe(0.6)
+    expect(res.result.metadata.weight_2).toBe(0.2)
+    // P = 0.6 - 0.2*0.3 = 0.6 - 0.06 = 0.54
+    expect(res.result.metadata.probability).toBeCloseTo(0.54, 5)
     expect(typeof res.result.metadata.roll).toBe('number')
     expect(res.result.metadata.action_type).toBe('test-action')
   })
 
+  it('normalizes integer-scale weights (>1) to [0,1] before computing probability', async () => {
+    // Integer weights like "Weight-1: 30" mean 30/100 = 0.30 in float terms
+    await seedKV('character:int-actor', '**Weight-1:** 30\n**State-Level:** 0')
+    await seedKV('character:int-target', '**Weight-2:** 55')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:int-actor',
+      entity_b_id: 'character:int-target',
+      action_type: 'hunt',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.weight_1).toBeCloseTo(0.30, 5)
+    expect(res.result.metadata.weight_2).toBeCloseTo(0.55, 5)
+    expect(res.result.metadata.weight_1_raw).toBe(30)
+    expect(res.result.metadata.weight_2_raw).toBe(55)
+    // P = 0.30 - 0.55*0.3 = 0.30 - 0.165 = 0.135 — meaningful, not clamped to 1
+    expect(res.result.metadata.probability).toBeCloseTo(0.135, 3)
+  })
+
   it('reads weights from plain loose-format fields (no bold markers)', async () => {
     // AI-written lore may omit **bold:** syntax; loose Pass 3 should handle it
+    // Weight-1: 10 → normalizes to 0.10
     await seedKV('character:loose-attacker', 'Weight-1: 10\nState-Level: 0')
     await seedKV('character:loose-defender', 'Weight-2: 0')
     const res = await callTool('resolve_interaction', {
@@ -1152,7 +1175,8 @@ describe('resolve_interaction', () => {
       action_type: 'hunt',
     })
     expect(res.error).toBeUndefined()
-    expect(res.result.metadata.weight_1).toBe(10)
+    expect(res.result.metadata.weight_1).toBeCloseTo(0.1, 5)
+    expect(res.result.metadata.weight_1_raw).toBe(10)
     expect(res.result.metadata.weight_2).toBe(0)
   })
 
@@ -1178,7 +1202,7 @@ describe('resolve_interaction', () => {
       entity_b_id: 'character:bullet-defender',
       action_type: 'hunt',
     })
-    // P = (0.9 * 0.7) - (0.1 * 0.3) = 0.63 - 0.03 = 0.60 — should not error
+    // P = 0.9 - 0.1*0.3 = 0.87 — should not error
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.weight_1).toBe(0.9)
     expect(res.result.metadata.weight_2).toBe(0.1)
@@ -2195,6 +2219,16 @@ describe('get_sensory_profile', () => {
     const res = await callTool('get_sensory_profile', { entity_key: 'character:loose-sensory' })
     expect(res.result.profile.temperature).toBe('warm')
     expect(res.result.profile.scent).toBe('cortisol-elevated')
+  })
+
+  it('decomposes Sensory-Profile composite string into individual profile fields', async () => {
+    // Entity has only a composite Sensory-Profile — no discrete Temperature/Scent/etc. fields
+    await seedKV('character:composite-sensory', '**Sensory-Profile:** warm-blooded, elevated cortisol, soft-tissue-density')
+    const res = await callTool('get_sensory_profile', { entity_key: 'character:composite-sensory' })
+    expect(res.result.sensory_profile_raw).toBe('warm-blooded, elevated cortisol, soft-tissue-density')
+    expect(res.result.profile.temperature).toBe('warm-blooded')
+    expect(res.result.profile.scent).toBe('elevated cortisol')
+    expect(res.result.profile.texture).toBe('soft-tissue-density')
   })
 })
 

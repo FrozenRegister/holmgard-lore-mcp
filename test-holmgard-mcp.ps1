@@ -290,8 +290,13 @@ if ($FailedOnly) {
             }
         }
         Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
-        Write-Host "-FailedOnly: targeting $($Script:FailedRequestIds.Count) previously failed test(s)" -ForegroundColor Yellow
-        Write-Host "Request IDs: $($Script:FailedRequestIds -join ', ')" -ForegroundColor Gray
+        if ($Script:FailedRequestIds.Count -gt 0) {
+            Write-Host "-FailedOnly: targeting $($Script:FailedRequestIds.Count) previously failed test(s)" -ForegroundColor Yellow
+            Write-Host "Request IDs: $($Script:FailedRequestIds -join ', ')" -ForegroundColor Gray
+        } else {
+            Write-Host "-FailedOnly: no filterable request IDs in $Script:FailureLog — running all assertion tests." -ForegroundColor Yellow
+            Write-Host "(Failures recorded before request_id tracking was added cannot be filtered.)" -ForegroundColor DarkGray
+        }
         Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
         Write-Host ""
     } else {
