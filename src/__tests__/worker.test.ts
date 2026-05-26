@@ -46,10 +46,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 19 tools', async () => {
+  it('tools/list returns exactly 39 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(19)
+    expect(tools).toHaveLength(39)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('list_topics')
@@ -70,6 +70,26 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('thread_tick')
     expect(names).toContain('batch_set_lore')
     expect(names).toContain('batch_mutate')
+    expect(names).toContain('get_relationship')
+    expect(names).toContain('get_faction_standing')
+    expect(names).toContain('get_entity_knowledge')
+    expect(names).toContain('get_location_occupants')
+    expect(names).toContain('get_reachable_locations')
+    expect(names).toContain('sense_environment')
+    expect(names).toContain('get_inventory')
+    expect(names).toContain('transfer_item')
+    expect(names).toContain('activate_scene')
+    expect(names).toContain('present_choices')
+    expect(names).toContain('commit_choice')
+    expect(names).toContain('get_choice_history')
+    expect(names).toContain('advance_state_stage')
+    expect(names).toContain('process_stage_batch')
+    expect(names).toContain('generate_entity')
+    expect(names).toContain('roll_encounter')
+    expect(names).toContain('get_thread_comparison')
+    expect(names).toContain('check_convergence')
+    expect(names).toContain('get_sensory_profile')
+    expect(names).toContain('get_compatibility')
   })
 
   it('rejects requests with wrong jsonrpc version', async () => {
@@ -1653,5 +1673,484 @@ describe('legacy bare methods (pre-tools/call)', () => {
     await seedKV('legacy:thing', 'Legacy content')
     const res = await rpc('get_lore', { key: 'legacy:thing' })
     expect(res.result.text).toBe('Legacy content')
+  })
+})
+
+// ── get_relationship ──────────────────────────────────────────────────────────
+
+describe('get_relationship', () => {
+  it('finds affinity field and cross-references', async () => {
+    await seedKV('character:alice', '**Affinity:** 0.8\n**Faction:** guild\nBob is a trusted ally.')
+    await seedKV('character:bob', '**Faction:** guild\nAlice mentored me.')
+    const res = await callTool('get_relationship', { entity_a: 'character:alice', entity_b: 'character:bob' })
+    expect(res.result.relationship).not.toBeNull()
+    expect(res.result.relationship.affinity).toBe(0.8)
+    expect(res.result.relationship.faction_overlap).toContain('guild')
+    expect(res.result.relationship.cross_references.a_mentions_b).toBe(true)
+    expect(res.result.relationship.cross_references.b_mentions_a).toBe(true)
+    expect(res.result.metadata.retrieved).toBe(2)
+  })
+
+  it('returns null relationship and suggestion when no data found', async () => {
+    await seedKV('character:stranger-a', 'No connections here.')
+    await seedKV('character:stranger-b', 'Likewise.')
+    const res = await callTool('get_relationship', { entity_a: 'character:stranger-a', entity_b: 'character:stranger-b' })
+    expect(res.result.relationship).toBeNull()
+    expect(res.result.suggestion).toContain('relationship:')
+  })
+
+  it('returns error for missing entity', async () => {
+    await seedKV('character:exists', 'text')
+    const res = await callTool('get_relationship', { entity_a: 'character:exists', entity_b: 'character:no-such' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
+// ── get_faction_standing ──────────────────────────────────────────────────────
+
+describe('get_faction_standing', () => {
+  it('detects membership when entity name appears in faction text', async () => {
+    await seedKV('character:knight', '**Rank:** Captain\n**Reputation:** 0.9\n**Faction:** order')
+    await seedKV('faction:order', 'Members: knight, paladin, squire.')
+    const res = await callTool('get_faction_standing', { entity_key: 'character:knight', faction_key: 'faction:order' })
+    expect(res.result.standing.is_member).toBe(true)
+    expect(res.result.standing.rank).toBe('Captain')
+    expect(res.result.standing.reputation).toBe(0.9)
+  })
+
+  it('returns non-member when entity not in faction text', async () => {
+    await seedKV('character:outsider', '**Faction:** rival-guild')
+    await seedKV('faction:order', 'Members: knight only.')
+    const res = await callTool('get_faction_standing', { entity_key: 'character:outsider', faction_key: 'faction:order' })
+    expect(res.result.standing.is_member).toBe(false)
+  })
+
+  it('returns error for missing faction', async () => {
+    await seedKV('character:x', 'text')
+    const res = await callTool('get_faction_standing', { entity_key: 'character:x', faction_key: 'faction:missing' })
+    expect(res.error).toBeDefined()
+  })
+})
+
+// ── get_entity_knowledge ──────────────────────────────────────────────────────
+
+describe('get_entity_knowledge', () => {
+  it('returns known=true and excerpts when topic appears in text', async () => {
+    await seedKV('character:spy', '**Knows:** secret-vault, patrol-routes\nI discovered the secret-vault last week.')
+    const res = await callTool('get_entity_knowledge', { entity_key: 'character:spy', topic: 'secret-vault' })
+    expect(res.result.known).toBe(true)
+    expect(res.result.known_via_field).toBe(true)
+    expect(res.result.excerpts.length).toBeGreaterThan(0)
+  })
+
+  it('returns known=false when topic is absent', async () => {
+    await seedKV('character:naive', 'No special knowledge here.')
+    const res = await callTool('get_entity_knowledge', { entity_key: 'character:naive', topic: 'hidden-base' })
+    expect(res.result.known).toBe(false)
+    expect(res.result.excerpts).toHaveLength(0)
+  })
+})
+
+// ── get_location_occupants ────────────────────────────────────────────────────
+
+describe('get_location_occupants', () => {
+  it('returns entities whose Location field matches', async () => {
+    await seedKV('character:guard-1', '**Location:** location:barracks\n**Status:** Active')
+    await seedKV('character:guard-2', '**Location:** location:barracks\n**Status:** Sleeping')
+    await seedKV('character:merchant', '**Location:** location:market')
+    const res = await callTool('get_location_occupants', { location_key: 'location:barracks' })
+    expect(res.result.occupants).toHaveLength(2)
+    const keys = res.result.occupants.map((o: { key: string }) => o.key)
+    expect(keys).toContain('character:guard-1')
+    expect(keys).toContain('character:guard-2')
+  })
+
+  it('returns empty array when no matches', async () => {
+    const res = await callTool('get_location_occupants', { location_key: 'location:empty-room' })
+    expect(res.result.occupants).toHaveLength(0)
+    expect(res.result.content[0].text).toContain('No occupants')
+  })
+})
+
+// ── get_reachable_locations ───────────────────────────────────────────────────
+
+describe('get_reachable_locations', () => {
+  it('parses Exits field and checks each destination', async () => {
+    await seedKV('location:hub', '**Exits:** location:north-road, location:cave')
+    await seedKV('location:north-road', '**Danger-Level:** 0.2\n**Travel-Cost:** 30')
+    const res = await callTool('get_reachable_locations', { origin_key: 'location:hub' })
+    expect(res.result.locations).toHaveLength(2)
+    const northRoad = res.result.locations.find((l: { key: string }) => l.key === 'location:north-road')
+    expect(northRoad.exists).toBe(true)
+    expect(northRoad.danger_level).toBe(0.2)
+    expect(northRoad.travel_cost).toBe(30)
+    const cave = res.result.locations.find((l: { key: string }) => l.key === 'location:cave')
+    expect(cave.exists).toBe(false)
+  })
+
+  it('returns empty locations when no Exits field', async () => {
+    await seedKV('location:dead-end', 'No way out.')
+    const res = await callTool('get_reachable_locations', { origin_key: 'location:dead-end' })
+    expect(res.result.locations).toHaveLength(0)
+  })
+
+  it('returns error for missing origin', async () => {
+    const res = await callTool('get_reachable_locations', { origin_key: 'location:nonexistent' })
+    expect(res.error).toBeDefined()
+  })
+})
+
+// ── sense_environment ─────────────────────────────────────────────────────────
+
+describe('sense_environment', () => {
+  it('shows all details for high-perception entity', async () => {
+    await seedKV('location:cave', 'Stalactites hang overhead.\nA shimmer in the dark [hidden] marks a gem deposit.\nA growl echoes [threat] from the east.')
+    await seedKV('character:eagle-eye', '**Perception:** 0.9')
+    const res = await callTool('sense_environment', { location_key: 'location:cave', entity_key: 'character:eagle-eye' })
+    expect(res.result.perception_score).toBe(0.9)
+    expect(res.result.hidden_count).toBe(0)
+  })
+
+  it('hides [hidden] lines for low-perception entity', async () => {
+    await seedKV('location:cave', 'A shimmer in the dark [hidden] marks a gem deposit.\nStone walls surround you.')
+    await seedKV('character:blind-fighter', '**Perception:** 0.3')
+    const res = await callTool('sense_environment', { location_key: 'location:cave', entity_key: 'character:blind-fighter' })
+    expect(res.result.hidden_count).toBeGreaterThan(0)
+  })
+})
+
+// ── get_inventory ─────────────────────────────────────────────────────────────
+
+describe('get_inventory', () => {
+  it('parses Inventory field into structured items', async () => {
+    await seedKV('character:merchant', '**Inventory:** sword×3, shield×1, potion×10')
+    const res = await callTool('get_inventory', { entity_key: 'character:merchant' })
+    expect(res.result.items).toHaveLength(3)
+    const sword = res.result.items.find((i: { item: string }) => i.item === 'sword')
+    expect(sword.quantity).toBe(3)
+  })
+
+  it('returns empty items when no Inventory field', async () => {
+    await seedKV('character:empty-handed', 'No items here.')
+    const res = await callTool('get_inventory', { entity_key: 'character:empty-handed' })
+    expect(res.result.items).toHaveLength(0)
+    expect(res.result.raw_inventory).toBeNull()
+  })
+})
+
+// ── transfer_item ─────────────────────────────────────────────────────────────
+
+describe('transfer_item', () => {
+  it('moves item from source to target and updates both entries', async () => {
+    await seedKV('character:seller', '**Inventory:** sword×2, shield×1')
+    await seedKV('character:buyer', '**Inventory:** gold×50')
+    const res = await callTool('transfer_item', { from_entity: 'character:seller', to_entity: 'character:buyer', item_key: 'sword', quantity: 1 })
+    expect(res.result.transferred).toBe(true)
+    expect(res.result.metadata.written).toBe(2)
+    const seller = await callTool('get_inventory', { entity_key: 'character:seller' })
+    const sellerSword = seller.result.items.find((i: { item: string }) => i.item === 'sword')
+    expect(sellerSword.quantity).toBe(1)
+    const buyer = await callTool('get_inventory', { entity_key: 'character:buyer' })
+    const buyerSword = buyer.result.items.find((i: { item: string }) => i.item === 'sword')
+    expect(buyerSword.quantity).toBe(1)
+  })
+
+  it('rejects when source does not have the item', async () => {
+    await seedKV('character:empty', '**Inventory:** gold×5')
+    await seedKV('character:target', '**Inventory:** gold×1')
+    const res = await callTool('transfer_item', { from_entity: 'character:empty', to_entity: 'character:target', item_key: 'magic-sword', quantity: 1 })
+    expect(res.result.transferred).toBe(false)
+    expect(res.result.content[0].text).toContain('not found')
+  })
+
+  it('rejects when insufficient quantity', async () => {
+    await seedKV('character:has-one', '**Inventory:** potion×1')
+    await seedKV('character:wants-more', '**Inventory:** gold×5')
+    const res = await callTool('transfer_item', { from_entity: 'character:has-one', to_entity: 'character:wants-more', item_key: 'potion', quantity: 5 })
+    expect(res.result.transferred).toBe(false)
+    expect(res.result.content[0].text).toContain('Insufficient')
+  })
+})
+
+// ── activate_scene ────────────────────────────────────────────────────────────
+
+describe('activate_scene', () => {
+  it('activates scene and writes system:active-scene', async () => {
+    await seedKV('scene:intro', '**Description:** A dark tavern.\n**Entities:** character:innkeeper\n**Location:** location:tavern\n**Choices:** greet,leave')
+    await seedKV('character:innkeeper', 'The innkeeper polishes a glass.')
+    await seedKV('location:tavern', 'A low-ceilinged room.')
+    const res = await callTool('activate_scene', { scene_key: 'scene:intro' })
+    expect(res.result.scene_key).toBe('scene:intro')
+    expect(res.result.present_entities).toContain('character:innkeeper')
+    expect(res.result.available_choices).toContain('greet')
+    expect(res.result.entity_data['character:innkeeper']).toBeTruthy()
+    expect(res.result.metadata.written).toBe(1)
+  })
+
+  it('returns error for missing scene', async () => {
+    const res = await callTool('activate_scene', { scene_key: 'scene:no-such' })
+    expect(res.error).toBeDefined()
+  })
+})
+
+// ── present_choices ───────────────────────────────────────────────────────────
+
+describe('present_choices', () => {
+  it('returns valid choices that meet requirements', async () => {
+    await seedKV('scene:dungeon', '**Description:** A door ahead.\n- enter: Walk through the door\n- lockpick: Pick the lock [requires: lockpick]\n- smash: Smash the door [min-weight: 0.8]')
+    await seedKV('character:rogue', '**Inventory:** lockpick×1\n**Weight-1:** 0.5')
+    const res = await callTool('present_choices', { scene_key: 'scene:dungeon', entity_key: 'character:rogue' })
+    const validIds = res.result.valid_choices.map((c: { id: string }) => c.id)
+    expect(validIds).toContain('enter')
+    expect(validIds).toContain('lockpick')
+    const blockedIds = res.result.blocked_choices.map((c: { id: string }) => c.id)
+    expect(blockedIds).toContain('smash')
+  })
+
+  it('blocks choices requiring missing item', async () => {
+    await seedKV('scene:chest', '- open: Open the chest [requires: key]')
+    await seedKV('character:no-key', '**Inventory:** rope×1')
+    const res = await callTool('present_choices', { scene_key: 'scene:chest', entity_key: 'character:no-key' })
+    expect(res.result.valid_choices).toHaveLength(0)
+    expect(res.result.blocked_choices[0].blocked_reason).toContain('key')
+  })
+})
+
+// ── commit_choice ─────────────────────────────────────────────────────────────
+
+describe('commit_choice', () => {
+  it('applies state change and appends to Choice-History', async () => {
+    await seedKV('choice:accept-quest', '**Outcome-Seed:** The hero begins the journey.\n**State-Change:** Questing\n**Next-Choices:** choice:find-clue, choice:rest')
+    await seedKV('character:hero', '**Status:** Idle\n**Choice-History:**')
+    const res = await callTool('commit_choice', { choice_id: 'choice:accept-quest', entity_key: 'character:hero' })
+    expect(res.result.outcome_seed).toContain('journey')
+    expect(res.result.state_change).toBe('Questing')
+    expect(res.result.next_choices).toContain('choice:find-clue')
+    const hero = await callTool('get_lore', { query: 'character:hero' })
+    expect(hero.result.text).toContain('Questing')
+    expect(hero.result.text).toContain('choice:accept-quest')
+  })
+
+  it('returns error for missing choice entry', async () => {
+    await seedKV('character:player', 'A player.')
+    const res = await callTool('commit_choice', { choice_id: 'choice:no-such', entity_key: 'character:player' })
+    expect(res.error).toBeDefined()
+  })
+})
+
+// ── get_choice_history ────────────────────────────────────────────────────────
+
+describe('get_choice_history', () => {
+  it('parses Choice-History into structured entries', async () => {
+    await seedKV('character:veteran', '**Choice-History:** choice:join-guild@2024-01-01T00:00:00.000Z, choice:betray-ally@2024-06-01T00:00:00.000Z')
+    const res = await callTool('get_choice_history', { entity_key: 'character:veteran' })
+    expect(res.result.history).toHaveLength(2)
+    expect(res.result.history[0].choice_id).toBe('choice:join-guild')
+    expect(res.result.history[0].timestamp).toBeTruthy()
+  })
+
+  it('returns empty history for entity with no Choice-History field', async () => {
+    await seedKV('character:fresh', 'No choices yet.')
+    const res = await callTool('get_choice_history', { entity_key: 'character:fresh' })
+    expect(res.result.history).toHaveLength(0)
+    expect(res.result.raw_history).toBeNull()
+  })
+})
+
+// ── advance_state_stage ───────────────────────────────────────────────────────
+
+describe('advance_state_stage', () => {
+  it('increments State-Stage and writes back', async () => {
+    await seedKV('character:caterpillar', '**State-Stage:** 1\n**State-Total:** 4\n**Stage-Timer:** 3')
+    const res = await callTool('advance_state_stage', { entity_key: 'character:caterpillar' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.old_stage).toBe(1)
+    expect(res.result.new_stage).toBe(2)
+    expect(res.result.is_terminal).toBe(false)
+    const lore = await callTool('get_lore', { query: 'character:caterpillar' })
+    expect(lore.result.text).toContain('**State-Stage:** 2')
+    expect(lore.result.text).toContain('**Stage-Timer:** 2')
+  })
+
+  it('detects terminal stage', async () => {
+    await seedKV('character:final', '**State-Stage:** 4\n**State-Total:** 4')
+    const res = await callTool('advance_state_stage', { entity_key: 'character:final' })
+    expect(res.result.advanced).toBe(false)
+    expect(res.result.is_terminal).toBe(true)
+  })
+
+  it('returns not-advanced when no State-Stage field', async () => {
+    await seedKV('character:no-stage', 'Just a character.')
+    const res = await callTool('advance_state_stage', { entity_key: 'character:no-stage' })
+    expect(res.result.advanced).toBe(false)
+  })
+})
+
+// ── process_stage_batch ───────────────────────────────────────────────────────
+
+describe('process_stage_batch', () => {
+  it('advances all entities at the location with a State-Stage field', async () => {
+    await seedKV('character:pupa-1', '**Location:** location:lab\n**State-Stage:** 1\n**State-Total:** 3')
+    await seedKV('character:pupa-2', '**Location:** location:lab\n**State-Stage:** 2\n**State-Total:** 3')
+    await seedKV('character:visitor', '**Location:** location:market\n**State-Stage:** 1')
+    const res = await callTool('process_stage_batch', { location_key: 'location:lab' })
+    expect(res.result.outcomes).toHaveLength(2)
+    const pupa1 = res.result.outcomes.find((o: { key: string }) => o.key === 'character:pupa-1')
+    expect(pupa1.new_stage).toBe(2)
+  })
+
+  it('skips entities without State-Stage', async () => {
+    await seedKV('character:no-stage-loc', '**Location:** location:chamber')
+    const res = await callTool('process_stage_batch', { location_key: 'location:chamber' })
+    expect(res.result.outcomes).toHaveLength(0)
+    expect(res.result.skipped).toHaveLength(1)
+    expect(res.result.skipped[0].reason).toContain('State-Stage')
+  })
+})
+
+// ── generate_entity ───────────────────────────────────────────────────────────
+
+describe('generate_entity', () => {
+  it('creates a new entity from an archetype', async () => {
+    await seedKV('archetype:guard', '**Weight-1:** 0.7\n**Weight-2:** 0.4\n**Status:** Patrol')
+    const res = await callTool('generate_entity', { archetype_key: 'archetype:guard' })
+    expect(res.result.entity_key).toMatch(/^entity:guard-\d+$/)
+    expect(res.result.entity_text).toContain('**Weight-1:** 0.7')
+    expect(res.result.metadata.written).toBe(1)
+    const lore = await callTool('get_lore', { query: res.result.entity_key })
+    expect(lore.result).toBeDefined()
+  })
+
+  it('injects Location when location_key provided', async () => {
+    await seedKV('archetype:wolf', '**Weight-1:** 0.6\n**Status:** Hunting')
+    await seedKV('location:forest', '**Danger-Level:** 0.3')
+    const res = await callTool('generate_entity', { archetype_key: 'archetype:wolf', location_key: 'location:forest' })
+    expect(res.result.entity_text).toContain('location:forest')
+  })
+
+  it('returns error for missing archetype', async () => {
+    const res = await callTool('generate_entity', { archetype_key: 'archetype:no-such' })
+    expect(res.error).toBeDefined()
+  })
+})
+
+// ── roll_encounter ────────────────────────────────────────────────────────────
+
+describe('roll_encounter', () => {
+  it('generates an entity from the encounter table', async () => {
+    await seedKV('location:woods', '**Encounter-Table:** archetype:bandit:80, archetype:deer:20')
+    await seedKV('archetype:bandit', '**Weight-1:** 0.8\n**Status:** Hostile')
+    await seedKV('archetype:deer', '**Weight-1:** 0.1\n**Status:** Grazing')
+    const res = await callTool('roll_encounter', { location_key: 'location:woods', threat_level: 5 })
+    expect(res.result.rolled).toBe(true)
+    expect(res.result.entity_key).toMatch(/^entity:/)
+  })
+
+  it('returns rolled=false when no Encounter-Table', async () => {
+    await seedKV('location:empty-field', 'Grass and wind.')
+    const res = await callTool('roll_encounter', { location_key: 'location:empty-field' })
+    expect(res.result.rolled).toBe(false)
+    expect(res.result.content[0].text).toContain('No Encounter-Table')
+  })
+})
+
+// ── get_thread_comparison ─────────────────────────────────────────────────────
+
+describe('get_thread_comparison', () => {
+  it('compares entity counts and timeline offsets across two threads', async () => {
+    await seedKV('character:alpha-1', '**Thread:** thread-a\n**Timeline-Value:** 10\n**Current-Date:** day-5')
+    await seedKV('character:alpha-2', '**Thread:** thread-a\n**Timeline-Value:** 8\n**Current-Date:** day-5')
+    await seedKV('character:beta-1', '**Thread:** thread-b\n**Timeline-Value:** 5\n**Current-Date:** day-5')
+    const res = await callTool('get_thread_comparison', { thread_a: 'thread-a', thread_b: 'thread-b' })
+    expect(res.result.thread_a.entity_count).toBe(2)
+    expect(res.result.thread_b.entity_count).toBe(1)
+    expect(res.result.timeline_offset).toBeCloseTo(4, 0)
+    expect(res.result.shared_dates).toContain('day-5')
+  })
+
+  it('returns empty threads when no entities found', async () => {
+    const res = await callTool('get_thread_comparison', { thread_a: 'no-thread-x', thread_b: 'no-thread-y' })
+    expect(res.result.thread_a.entity_count).toBe(0)
+    expect(res.result.thread_b.entity_count).toBe(0)
+    expect(res.result.timeline_offset).toBeNull()
+  })
+})
+
+// ── check_convergence ─────────────────────────────────────────────────────────
+
+describe('check_convergence', () => {
+  it('detects convergence via shared date', async () => {
+    await seedKV('character:ga', '**Thread:** ta\n**Current-Date:** day-10')
+    await seedKV('character:gb', '**Thread:** tb\n**Current-Date:** day-10')
+    const res = await callTool('check_convergence', { thread_a: 'ta', thread_b: 'tb' })
+    expect(res.result.can_converge).toBe(true)
+    expect(res.result.shared_dates).toContain('day-10')
+  })
+
+  it('returns can_converge=false when no overlap', async () => {
+    await seedKV('character:xa', '**Thread:** tx\n**Current-Date:** day-1')
+    await seedKV('character:xb', '**Thread:** ty\n**Current-Date:** day-99')
+    const res = await callTool('check_convergence', { thread_a: 'tx', thread_b: 'ty' })
+    expect(res.result.can_converge).toBe(false)
+    expect(res.result.shared_dates).toHaveLength(0)
+    expect(res.result.shared_locations).toHaveLength(0)
+  })
+})
+
+// ── get_sensory_profile ───────────────────────────────────────────────────────
+
+describe('get_sensory_profile', () => {
+  it('returns direct sensory fields from entity', async () => {
+    await seedKV('character:creature', '**Temperature:** warm\n**Scent:** musky\n**Texture:** smooth\n**Sound-Signature:** low growl\n**Visual-Descriptors:** amber eyes')
+    const res = await callTool('get_sensory_profile', { entity_key: 'character:creature' })
+    expect(res.result.profile.temperature).toBe('warm')
+    expect(res.result.profile.scent).toBe('musky')
+    expect(res.result.profile.texture).toBe('smooth')
+    expect(res.result.profile.sound_signature).toBe('low growl')
+    expect(res.result.profile.visual_descriptors).toBe('amber eyes')
+  })
+
+  it('falls back to species lore for missing fields', async () => {
+    await seedKV('character:hybrid', '**Species:** species:wolf-base\n**Texture:** scarred')
+    await seedKV('species:wolf-base', '**Temperature:** cool\n**Scent:** earthy')
+    const res = await callTool('get_sensory_profile', { entity_key: 'character:hybrid' })
+    expect(res.result.profile.texture).toBe('scarred')
+    expect(res.result.profile.temperature).toBe('cool')
+    expect(res.result.profile.scent).toBe('earthy')
+    expect(res.result.species).toBe('species:wolf-base')
+  })
+
+  it('returns no-profile message when entity has no sensory fields', async () => {
+    await seedKV('character:blank', 'Just a blank character.')
+    const res = await callTool('get_sensory_profile', { entity_key: 'character:blank' })
+    expect(res.result.content[0].text).toContain('No sensory profile')
+  })
+})
+
+// ── get_compatibility ─────────────────────────────────────────────────────────
+
+describe('get_compatibility', () => {
+  it('returns compatible=true for well-matched entities', async () => {
+    await seedKV('character:predator-c', '**Weight-1:** 0.8\n**Size:** 3.0\n**Environment:** forest')
+    await seedKV('character:prey-c', '**Weight-2:** 0.4\n**Size:** 1.0\n**Environment:** forest')
+    const res = await callTool('get_compatibility', { entity_a: 'character:predator-c', entity_b: 'character:prey-c', interaction_type: 'hunt' })
+    expect(res.result.compatible).toBe(true)
+    expect(res.result.risk_level).toBe('low')
+    expect(res.result.size_ratio).toBe(3)
+  })
+
+  it('flags incompatibility when Weight-1 is too low', async () => {
+    await seedKV('character:weak-actor', '**Weight-1:** 0.1')
+    await seedKV('character:target', '**Weight-2:** 0.5')
+    const res = await callTool('get_compatibility', { entity_a: 'character:weak-actor', entity_b: 'character:target', interaction_type: 'consume' })
+    expect(res.result.compatible).toBe(false)
+    expect(res.result.constraints.some((c: string) => c.includes('Weight-1'))).toBe(true)
+  })
+
+  it('returns error for missing entity', async () => {
+    await seedKV('character:exists-only', 'text')
+    const res = await callTool('get_compatibility', { entity_a: 'character:exists-only', entity_b: 'character:ghost', interaction_type: 'test' })
+    expect(res.error).toBeDefined()
   })
 })
