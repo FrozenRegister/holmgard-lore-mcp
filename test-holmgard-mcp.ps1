@@ -500,17 +500,17 @@ $resolverKeyZeroA  = "test:resolver-entity-zero-a"
 $resolverKeyHighB  = "test:resolver-entity-high-b"
 
 Write-Section "TEST 42: resolve_interaction - setup entities"
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyA;     text = "**Weight-1:** 10" } -RequestId 200
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyB;     text = "**Weight-2:** 0"  } -RequestId 201
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyZeroA; text = "**Weight-1:** 0"  } -RequestId 202
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyHighB; text = "**Weight-2:** 10" } -RequestId 203
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyA;     text = "**Weight-1:** 1.0" } -RequestId 200
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyB;     text = "**Weight-2:** 0"   } -RequestId 201
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyZeroA; text = "**Weight-1:** 0"   } -RequestId 202
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyHighB; text = "**Weight-2:** 1.0" } -RequestId 203
 
 Write-Section "TEST 43: resolve_interaction - guaranteed success (P=1)"
-# W1=10, W2=0 → P = (10×0.7)-(0×0.3) = 7 → clamped to 1.0 → always success
+# W1=1.0, W2=0 → P = 1.0 - 0*0.3 = 1.0 → always success
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyA; entity_b_id = $resolverKeyB; action_type = "consume" } -ExpectContains "SUCCESS" -RequestId 204
 
 Write-Section "TEST 44: resolve_interaction - guaranteed failure (P=0)"
-# W1=0, W2=10 → P = (0×0.7)-(10×0.3) = -3 → clamped to 0 → always failure
+# W1=0, W2=1.0 → P = 0 - 1.0*0.3 = -0.3 → clamped to 0 → always failure
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyZeroA; entity_b_id = $resolverKeyHighB; action_type = "consume" } -ExpectContains "FAILURE" -RequestId 205
 
 Write-Section "TEST 45: resolve_interaction - missing entity returns error"
@@ -666,9 +666,9 @@ Write-Section "TEST 67: resolve_interaction - setup bullet+descriptor float weig
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletAttackerKey; text = "- **Weight-1 (Aggression/Predator-Drive):** 0.9`n**State-Level:** 0" } -RequestId 237
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletDefenderKey; text = "- **Weight-2 (Resilience):** 0.1" } -RequestId 238
 
-Write-Section "TEST 68: resolve_interaction - succeeds with bullet+descriptor float weights (P≈0.6)"
-# P = (0.9×0.7) - (0.1×0.3) = 0.63 - 0.03 = 0.60 → should not return Weight-1 field error; content contains "P=0.6"
-Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $bulletAttackerKey; entity_b_id = $bulletDefenderKey; action_type = "hunt" } -ExpectContains "P=0.6" -RequestId 239
+Write-Section "TEST 68: resolve_interaction - succeeds with bullet+descriptor float weights (P≈0.87)"
+# P = 0.9 - 0.1*0.3 = 0.87 → should not return Weight-1 field error; content contains "P=0.870"
+Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $bulletAttackerKey; entity_b_id = $bulletDefenderKey; action_type = "hunt" } -ExpectContains "P=0.870" -RequestId 239
 
 Write-Section "TEST 69: field extraction tests - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletIncrKey     } -RequestId 240
