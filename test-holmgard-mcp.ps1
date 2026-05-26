@@ -633,6 +633,219 @@ Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletIncrKey     } 
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletAttackerKey } -RequestId 241
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletDefenderKey } -RequestId 242
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW TOOLS — Tests 70–109
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Direct-read tools (no KV-list scan; results are immediately consistent) ───
+
+$relA          = "test:new-rel-a"
+$relB          = "test:new-rel-b"
+$factionEntity = "test:new-faction-entity"
+$factionKey    = "test:new-faction"
+$knowledgeKey  = "test:new-knowledge-entity"
+$envLocKey     = "test:new-env-location"
+$envEntityKey  = "test:new-env-entity"
+$invEntityKey  = "test:new-inv-entity"
+$xferFromKey   = "test:new-xfer-from"
+$xferToKey     = "test:new-xfer-to"
+$sceneKey2     = "test:new-scene"
+$sceneEntity2  = "test:new-scene-entity"
+$sceneLocKey2  = "test:new-scene-location"
+$choiceKey2    = "test:new-choice"
+$historyEntity = "test:new-history-entity"
+$stageEntity   = "test:new-stage-entity"
+$archetypeKey2 = "test:new-archetype"
+$encounterLoc  = "test:new-encounter-location"
+$sensoryKey    = "test:new-sensory-entity"
+$compatA       = "test:new-compat-a"
+$compatB       = "test:new-compat-b"
+$reachLocKey   = "test:new-reach-location"
+$reachDestKey  = "test:new-reach-dest"
+
+# ── Setup all direct-read tool test data ─────────────────────────────────────
+
+Write-Section "TEST 70: new tools setup — write direct-read test data"
+
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $relA; text = "**Affinity:** 0.7`n**Faction:** order`nBob is a trusted ally." } -RequestId 300
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $relB; text = "**Faction:** order`nAlice mentored me." } -RequestId 301
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $factionEntity; text = "**Rank:** Captain`n**Reputation:** 0.9`n**Faction:** order" } -RequestId 302
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $factionKey; text = "Members: $(($factionEntity -split ':')[1]), paladin, squire." } -RequestId 303
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $knowledgeKey; text = "**Knows:** hidden-vault, patrol-routes`nI found the hidden-vault last night." } -RequestId 304
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $envLocKey; text = "Stone walls surround you.`nA gem gleams [hidden] in the rock." } -RequestId 305
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $envEntityKey; text = "**Perception:** 0.9" } -RequestId 306
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $invEntityKey; text = "**Inventory:** sword×3, shield×1, potion×10" } -RequestId 307
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferFromKey; text = "**Inventory:** sword×2, gold×50" } -RequestId 308
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $xferToKey; text = "**Inventory:** gold×10" } -RequestId 309
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneLocKey2; text = "A dim tavern." } -RequestId 310
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneEntity2; text = "The innkeeper polishes a glass." } -RequestId 311
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sceneKey2; text = "**Description:** Dark tavern.`n**Entities:** $sceneEntity2`n**Location:** $sceneLocKey2`n**Choices:** greet,leave" } -RequestId 312
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $choiceKey2; text = "**Outcome-Seed:** The hero accepts.`n**State-Change:** Questing`n**Next-Choices:** $choiceKey2-b" } -RequestId 313
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $historyEntity; text = "**Status:** Idle`n**Choice-History:** prev-choice@2024-01-01T00:00:00.000Z" } -RequestId 314
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $stageEntity; text = "**State-Stage:** 2`n**State-Total:** 5`n**Stage-Timer:** 4" } -RequestId 315
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $archetypeKey2; text = "**Weight-1:** 0.6`n**Weight-2:** 0.3`n**Status:** Patrol" } -RequestId 316
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = ($archetypeKey2 -replace "test:new-", "archetype:new-"); text = "**Weight-1:** 0.6`n**Status:** Roaming" } -RequestId 3160
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $encounterLoc; text = "**Encounter-Table:** $($archetypeKey2 -replace 'test:new-', 'archetype:new-'):80, archetype:deer:20" } -RequestId 317
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $sensoryKey; text = "**Temperature:** warm`n**Scent:** earthy`n**Texture:** smooth`n**Sound-Signature:** low hum`n**Visual-Descriptors:** amber glow" } -RequestId 318
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $compatA; text = "**Weight-1:** 0.8`n**Size:** 3.0`n**Environment:** forest" } -RequestId 319
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $compatB; text = "**Weight-2:** 0.4`n**Size:** 1.0`n**Environment:** forest" } -RequestId 320
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $reachDestKey; text = "**Danger-Level:** 0.3`n**Travel-Cost:** 20" } -RequestId 321
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $reachLocKey; text = "**Exits:** $reachDestKey" } -RequestId 322
+
+# Present choices needs an entity with inventory
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = "test:new-choice-scene"; text = "- enter: Walk forward`n- lockpick: Pick the lock [requires: lockpick]`n- smash: Smash [min-weight: 0.9]" } -RequestId 323
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = "test:new-choice-entity"; text = "**Inventory:** lockpick×1`n**Weight-1:** 0.6" } -RequestId 324
+
+# ── Direct-read tool tests ─────────────────────────────────────────────────────
+
+Write-Section "TEST 71: get_relationship — affinity and faction overlap detected"
+Invoke-MCPToolAssert -ToolName "get_relationship" -Arguments @{ entity_a = $relA; entity_b = $relB } -ExpectContains "Relationship data found" -RequestId 330
+
+Write-Section "TEST 72: get_relationship — no data returns suggestion"
+Invoke-MCPToolAssert -ToolName "get_relationship" -Arguments @{ entity_a = $sensoryKey; entity_b = $stageEntity } -ExpectContains "relationship:" -RequestId 331
+
+Write-Section "TEST 73: get_relationship — missing entity returns error"
+Invoke-MCPToolExpectError -ToolName "get_relationship" -Arguments @{ entity_a = $relA; entity_b = "nonexistent:nobody" } -ExpectErrorContains "not found" -RequestId 332
+
+Write-Section "TEST 74: get_faction_standing — member detected via faction text"
+Invoke-MCPToolAssert -ToolName "get_faction_standing" -Arguments @{ entity_key = $factionEntity; faction_key = $factionKey } -ExpectContains "member" -RequestId 333
+
+Write-Section "TEST 75: get_faction_standing — missing faction returns error"
+Invoke-MCPToolExpectError -ToolName "get_faction_standing" -Arguments @{ entity_key = $factionEntity; faction_key = "faction:no-such" } -ExpectErrorContains "not found" -RequestId 334
+
+Write-Section "TEST 76: get_entity_knowledge — known topic returns excerpts"
+Invoke-MCPToolAssert -ToolName "get_entity_knowledge" -Arguments @{ entity_key = $knowledgeKey; topic = "hidden-vault" } -ExpectContains "has knowledge of" -RequestId 335
+
+Write-Section "TEST 77: get_entity_knowledge — unknown topic returns not-known message"
+Invoke-MCPToolAssert -ToolName "get_entity_knowledge" -Arguments @{ entity_key = $knowledgeKey; topic = "secret-dragon" } -ExpectContains "no knowledge of" -RequestId 336
+
+Write-Section "TEST 78: get_reachable_locations — exits parsed and destination checked"
+Invoke-MCPToolAssert -ToolName "get_reachable_locations" -Arguments @{ origin_key = $reachLocKey } -ExpectContains "reachable" -RequestId 337
+
+Write-Section "TEST 79: get_reachable_locations — no Exits field returns empty"
+Invoke-MCPToolAssert -ToolName "get_reachable_locations" -Arguments @{ origin_key = $knowledgeKey } -ExpectContains "No exits defined" -RequestId 338
+
+Write-Section "TEST 80: sense_environment — high perception entity sees all details"
+Invoke-MCPToolAssert -ToolName "sense_environment" -Arguments @{ location_key = $envLocKey; entity_key = $envEntityKey } -ExpectContains "perception" -RequestId 339
+
+Write-Section "TEST 81: sense_environment — missing entity returns error"
+Invoke-MCPToolExpectError -ToolName "sense_environment" -Arguments @{ location_key = $envLocKey; entity_key = "character:ghost" } -ExpectErrorContains "not found" -RequestId 340
+
+Write-Section "TEST 82: get_inventory — parses Inventory field into structured items"
+Invoke-MCPToolAssert -ToolName "get_inventory" -Arguments @{ entity_key = $invEntityKey } -ExpectContains "sword" -RequestId 341
+
+Write-Section "TEST 83: get_inventory — returns empty for entity without inventory"
+Invoke-MCPToolAssert -ToolName "get_inventory" -Arguments @{ entity_key = $sensoryKey } -ExpectContains "No inventory" -RequestId 342
+
+Write-Section "TEST 84: transfer_item — moves item and updates both entities"
+Invoke-MCPToolAssert -ToolName "transfer_item" -Arguments @{ from_entity = $xferFromKey; to_entity = $xferToKey; item_key = "sword"; quantity = 1 } -ExpectContains "Transferred 1" -RequestId 343
+
+Write-Section "TEST 85: transfer_item — verify source decremented"
+Invoke-MCPToolAssert -ToolName "get_inventory" -Arguments @{ entity_key = $xferFromKey } -ExpectContains "sword" -RequestId 344
+
+Write-Section "TEST 86: transfer_item — rejects missing item"
+Invoke-MCPToolAssert -ToolName "transfer_item" -Arguments @{ from_entity = $xferToKey; to_entity = $xferFromKey; item_key = "magic-staff" } -ExpectContains "not found" -RequestId 345
+
+Write-Section "TEST 87: activate_scene — activates and hydrates entities"
+Invoke-MCPToolAssert -ToolName "activate_scene" -Arguments @{ scene_key = $sceneKey2 } -ExpectContains "activated" -RequestId 346
+
+Write-Section "TEST 88: activate_scene — missing scene returns error"
+Invoke-MCPToolExpectError -ToolName "activate_scene" -Arguments @{ scene_key = "scene:ghost" } -ExpectErrorContains "not found" -RequestId 347
+
+Write-Section "TEST 89: present_choices — filters by inventory requirement"
+Invoke-MCPToolAssert -ToolName "present_choices" -Arguments @{ scene_key = "test:new-choice-scene"; entity_key = "test:new-choice-entity" } -ExpectContains "valid choice" -RequestId 348
+
+Write-Section "TEST 90: commit_choice — applies state change and records history"
+Invoke-MCPToolAssert -ToolName "commit_choice" -Arguments @{ choice_id = $choiceKey2; entity_key = $historyEntity } -ExpectContains "committed" -RequestId 349
+
+Write-Section "TEST 91: commit_choice — verify state change written to entity"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $historyEntity } -ExpectContains "Questing" -RequestId 350
+
+Write-Section "TEST 92: get_choice_history — parses committed history entries"
+Invoke-MCPToolAssert -ToolName "get_choice_history" -Arguments @{ entity_key = $historyEntity } -ExpectContains "committed choice" -RequestId 351
+
+Write-Section "TEST 93: advance_state_stage — increments stage and decrements timer"
+Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = $stageEntity } -ExpectContains "stage 3" -RequestId 352
+
+Write-Section "TEST 94: advance_state_stage — verify stage written back"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $stageEntity } -ExpectContains "State-Stage:** 3" -RequestId 353
+
+Write-Section "TEST 95: get_sensory_profile — returns all five sensory fields"
+Invoke-MCPToolAssert -ToolName "get_sensory_profile" -Arguments @{ entity_key = $sensoryKey } -ExpectContains "warm" -RequestId 354
+
+Write-Section "TEST 96: get_sensory_profile — missing entity returns error"
+Invoke-MCPToolExpectError -ToolName "get_sensory_profile" -Arguments @{ entity_key = "character:no-body" } -ExpectErrorContains "not found" -RequestId 355
+
+Write-Section "TEST 97: get_compatibility — compatible entities return COMPATIBLE"
+Invoke-MCPToolAssert -ToolName "get_compatibility" -Arguments @{ entity_a = $compatA; entity_b = $compatB; interaction_type = "hunt" } -ExpectContains "COMPATIBLE" -RequestId 356
+
+Write-Section "TEST 98: generate_entity — creates new entity from archetype"
+$archetypeNameOnly = ($archetypeKey2 -replace "test:new-", "archetype:new-")
+Invoke-MCPToolAssert -ToolName "generate_entity" -Arguments @{ archetype_key = $archetypeNameOnly } -ExpectContains "Generated entity" -RequestId 357
+
+Write-Section "TEST 99: roll_encounter — rolls against encounter table"
+Invoke-MCPToolAssert -ToolName "roll_encounter" -Arguments @{ location_key = $encounterLoc; threat_level = 5 } -ExpectContains "rolled" -RequestId 358
+
+Write-Section "TEST 100: roll_encounter — no encounter table returns informative message"
+Invoke-MCPToolAssert -ToolName "roll_encounter" -Arguments @{ location_key = $knowledgeKey } -ExpectContains "No Encounter-Table" -RequestId 359
+
+# ── Scan-based tool tests (require KV list consistency) ───────────────────────
+
+$scanLocKey  = "test:new-scan-location"
+$scanEntityA = "test:new-scan-entity-a"
+$scanEntityB = "test:new-scan-entity-b"
+
+Write-Section "TEST 101: scan-based tools setup — write test data"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $scanEntityA;     text = "**Location:** $scanLocKey`n**State-Stage:** 1`n**State-Total:** 4`n**Thread:** scan-thread-ta`n**Current-Date:** scan-day-42" } -RequestId 360
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $scanEntityB;     text = "**Location:** $scanLocKey`n**State-Stage:** 2`n**State-Total:** 4`n**Thread:** scan-thread-tb`n**Current-Date:** scan-day-42" } -RequestId 361
+
+Write-Host "Polling for KV list consistency (scan-based tools)..." -ForegroundColor DarkGray
+$maxWait2 = 30; $poll2 = 2; $elapsed2 = 0; $visible2 = $false
+do {
+    Start-Sleep -Seconds $poll2; $elapsed2 += $poll2
+    $lb = @{ jsonrpc = "2.0"; id = 9001; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
+    $lr = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $lb -UseBasicParsing).Content | ConvertFrom-Json
+    $visible2 = $lr.result.content[0].text -like "*$scanEntityA*"
+    if (-not $visible2) { Write-Host "  Not visible yet after ${elapsed2}s, retrying..." -ForegroundColor DarkGray }
+} while (-not $visible2 -and $elapsed2 -lt $maxWait2)
+if (-not $visible2) { Write-Host "⚠ Key never appeared — scan tests may not detect test data." -ForegroundColor Yellow }
+
+Write-Section "TEST 102: get_location_occupants — finds entities with matching Location field"
+Invoke-MCPToolAssert -ToolName "get_location_occupants" -Arguments @{ location_key = $scanLocKey } -ExpectContains "occupant" -RequestId 362
+
+Write-Section "TEST 103: get_location_occupants — returns empty for unknown location"
+Invoke-MCPToolAssert -ToolName "get_location_occupants" -Arguments @{ location_key = "location:void-999" } -ExpectContains "No occupants" -RequestId 363
+
+Write-Section "TEST 104: process_stage_batch — advances entities at location"
+Invoke-MCPToolAssert -ToolName "process_stage_batch" -Arguments @{ location_key = $scanLocKey } -ExpectContains "Processed" -RequestId 364
+
+Write-Section "TEST 105: get_thread_comparison — compares two thread entity sets"
+Invoke-MCPToolAssert -ToolName "get_thread_comparison" -Arguments @{ thread_a = "scan-thread-ta"; thread_b = "scan-thread-tb" } -ExpectContains "vs" -RequestId 365
+
+Write-Section "TEST 106: get_thread_comparison — returns zero entities for unknown threads"
+Invoke-MCPToolAssert -ToolName "get_thread_comparison" -Arguments @{ thread_a = "no-thread-999"; thread_b = "no-thread-888" } -ExpectContains "0" -RequestId 366
+
+Write-Section "TEST 107: check_convergence — shared date detected"
+Invoke-MCPToolAssert -ToolName "check_convergence" -Arguments @{ thread_a = "scan-thread-ta"; thread_b = "scan-thread-tb" } -ExpectContains "scan-day-42" -RequestId 367
+
+Write-Section "TEST 108: check_convergence — no overlap on unrelated threads"
+Invoke-MCPToolAssert -ToolName "check_convergence" -Arguments @{ thread_a = "no-thread-xxx"; thread_b = "no-thread-yyy" } -ExpectContains "No convergence" -RequestId 368
+
+# ── Cleanup all new-tool test keys ────────────────────────────────────────────
+
+Write-Section "TEST 109: new tools — cleanup all test keys"
+foreach ($k in @(
+    $relA, $relB, $factionEntity, $factionKey, $knowledgeKey,
+    $envLocKey, $envEntityKey, $invEntityKey, $xferFromKey, $xferToKey,
+    $sceneKey2, $sceneEntity2, $sceneLocKey2, $choiceKey2, $historyEntity,
+    $stageEntity, $archetypeKey2, ($archetypeKey2 -replace "test:new-", "archetype:new-"),
+    $encounterLoc, $sensoryKey, $compatA, $compatB, $reachLocKey, $reachDestKey,
+    "test:new-choice-scene", "test:new-choice-entity",
+    $scanEntityA, $scanEntityB
+)) {
+    Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $k } -RequestId 400
+}
+
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "All tests complete!" -ForegroundColor Green
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
