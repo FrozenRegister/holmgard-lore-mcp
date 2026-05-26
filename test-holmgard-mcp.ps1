@@ -172,7 +172,7 @@ function Write-Section {
 }
 
 # Call a tool and return the raw parsed result object (does NOT register a test pass/fail).
-function Fetch-MCPToolResult {
+function Get-MCPToolResult {
     param(
         [string]$ToolName,
         [hashtable]$Arguments = @{},
@@ -951,7 +951,7 @@ Write-Section "TEST 115: canonical fixture — advance_state_stage on Stage-3-of
 Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = $canonBetaKey } -ExpectContains "Stage-4-of-4" -RequestId 411
 
 Write-Section "TEST 116: canonical fixture — resolve_interaction normalizes integer Weight-1:85 and Weight-2:55"
-$riResult116 = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonActorKey; entity_b_id = $canonAlphaKey; action_type = "process" } -RequestId 412
+$riResult116 = Get-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonActorKey; entity_b_id = $canonAlphaKey; action_type = "process" } -RequestId 412
 $w1Raw116 = $riResult116.result.metadata.weight_1_raw
 $w1Norm116 = [double]$riResult116.result.metadata.weight_1
 $w2Raw116 = $riResult116.result.metadata.weight_2_raw
@@ -967,13 +967,13 @@ Write-Section "TEST 117: canonical fixture — thread_tick finds entity via plai
 Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "canonical-primary-cycle" } -ExpectContains "entities_ticked" -RequestId 413
 
 Write-Section "TEST 118: canonical fixture — get_reachable_locations parses YAML-style Exits"
-$reachResult118 = Fetch-MCPToolResult -ToolName "get_reachable_locations" -Arguments @{ origin_key = $canonLocKey } -RequestId 414
+$reachResult118 = Get-MCPToolResult -ToolName "get_reachable_locations" -Arguments @{ origin_key = $canonLocKey } -RequestId 414
 $reachCount118 = $reachResult118.result.locations.Count
 Assert-True -TestName "TEST 118: 3 destinations from YAML exits" -Condition ($reachCount118 -eq 3) -Expected "3" -Actual "$reachCount118" -RequestId 414
 Write-Host "  locations: $($reachResult118.result.locations | ForEach-Object { $_.key } | Join-String -Separator ', ')" -ForegroundColor DarkGray
 
 Write-Section "TEST 119: canonical fixture — activate_scene extracts YAML choice IDs"
-$sceneResult119 = Fetch-MCPToolResult -ToolName "activate_scene" -Arguments @{ scene_key = $canonSceneKey } -RequestId 415
+$sceneResult119 = Get-MCPToolResult -ToolName "activate_scene" -Arguments @{ scene_key = $canonSceneKey } -RequestId 415
 $choices119 = $sceneResult119.result.available_choices
 Assert-True -TestName "TEST 119a: choice id 'investigate' extracted" -Condition ($choices119 -contains "investigate") -Expected "investigate in choices" -Actual "$choices119" -RequestId 415
 Assert-True -TestName "TEST 119b: choice id 'retreat' extracted" -Condition ($choices119 -contains "retreat") -Expected "retreat in choices" -Actual "$choices119" -RequestId 415
@@ -986,8 +986,8 @@ $canonTargetKey = "entity:canonical-passive-target"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonMinKey; text = "Weight-1 (Drive): 5`nState-Level: 0" } -RequestId 416
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonMaxKey; text = "Weight-1 (Drive): 95`nState-Level: 0" } -RequestId 417
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonTargetKey; text = "Weight-2: 0" } -RequestId 418
-$minResult = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMinKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 419
-$maxResult = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMaxKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 420
+$minResult = Get-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMinKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 419
+$maxResult = Get-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMaxKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 420
 $minW1 = [double]$minResult.result.metadata.weight_1
 $maxW1 = [double]$maxResult.result.metadata.weight_1
 Assert-True -TestName "TEST 120a: Weight-1:5 normalizes to ~0.05" -Condition ($minW1 -ge 0.049 -and $minW1 -le 0.051) -Expected "~0.05" -Actual "$minW1" -RequestId 419
