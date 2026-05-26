@@ -1,4 +1,8 @@
-﻿# Holmgard MCP Test Script
+﻿param(
+    [switch]$FailedOnly
+)
+
+# Holmgard MCP Test Script
 # Tests the MCP JSON-RPC endpoint, all tools, and admin endpoints when configured.
 #
 # Note: admin endpoint tests require ADMIN_SECRET to be configured in the PowerShell environment.
@@ -19,6 +23,8 @@ $Script:FailedTests = 0
 $Script:SkippedTests = 0
 $Script:Failures = [System.Collections.Generic.List[hashtable]]::new()
 $Script:FailureLog = Join-Path $PSScriptRoot "test-failures.json"
+$Script:FailedRequestIds = [System.Collections.Generic.HashSet[int]]::new()
+$Script:SkippedByPassFilter = 0
 
 function Update-TestResult {
     param(
@@ -42,14 +48,16 @@ function Write-Failure {
         [string]$Reason,
         [string]$ActualContent = "",
         [string]$Expected = "",
-        [object]$RawResponse = $null
+        [object]$RawResponse = $null,
+        [int]$RequestId = 0
     )
     $Script:Failures.Add(@{
-        test    = $TestName
-        reason  = $Reason
-        expected = $Expected
-        actual  = $ActualContent
-        response = if ($RawResponse) { $RawResponse | ConvertTo-Json -Depth 6 -Compress } else { "" }
+        test       = $TestName
+        reason     = $Reason
+        expected   = $Expected
+        actual     = $ActualContent
+        response   = if ($RawResponse) { $RawResponse | ConvertTo-Json -Depth 6 -Compress } else { "" }
+        request_id = $RequestId
     })
 }
 
@@ -82,7 +90,7 @@ function Invoke-JsonRpc {
             if ($result.error.data) {
                 Write-Host "Data: $($result.error.data | ConvertTo-Json -Compress)" -ForegroundColor Red
             }
-            Write-Failure -TestName $Method -Reason "JSON-RPC error: $($result.error.message)" -RawResponse $result
+            Write-Failure -TestName $Method -Reason "JSON-RPC error: $($result.error.message)" -RawResponse $result -RequestId $RequestId
         } else {
             Write-Host "✅ SUCCESS" -ForegroundColor Green
             Write-Host "Result: $($result.result | ConvertTo-Json -Depth 5)" -ForegroundColor Green
@@ -90,7 +98,7 @@ function Invoke-JsonRpc {
         }
     } catch {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
-        Write-Failure -TestName $Method -Reason "Exception: $_"
+        Write-Failure -TestName $Method -Reason "Exception: $_" -RequestId $RequestId
     }
 
     Update-TestResult -Success:$success
@@ -173,6 +181,11 @@ function Invoke-MCPToolAssert {
         [int]$RequestId = 1
     )
 
+    if ($FailedOnly -and $Script:FailedRequestIds.Count -gt 0 -and -not $Script:FailedRequestIds.Contains($RequestId)) {
+        $Script:SkippedByPassFilter++
+        return
+    }
+
     $params = @{
         name      = $ToolName
         arguments = $Arguments
@@ -197,13 +210,13 @@ function Invoke-MCPToolAssert {
 
         if ($result.error) {
             Write-Host "❌ JSON-RPC ERROR: $($result.error.message)" -ForegroundColor Red
-            Write-Failure -TestName $ToolName -Reason "JSON-RPC error: $($result.error.message)" -Expected $ExpectContains -RawResponse $result
+            Write-Failure -TestName $ToolName -Reason "JSON-RPC error: $($result.error.message)" -Expected $ExpectContains -RawResponse $result -RequestId $RequestId
         } else {
             $contentText = $result.result.content[0].text
             Write-Host "Content: $contentText" -ForegroundColor White
             if ($ExpectContains -and $contentText -notlike "*$ExpectContains*") {
                 Write-Host "❌ ASSERT FAILED: '$ExpectContains' not found in content" -ForegroundColor Red
-                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectContains' not in content" -Expected $ExpectContains -ActualContent $contentText -RawResponse $result
+                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectContains' not in content" -Expected $ExpectContains -ActualContent $contentText -RawResponse $result -RequestId $RequestId
             } else {
                 Write-Host "✅ SUCCESS" -ForegroundColor Green
                 $success = $true
@@ -211,7 +224,7 @@ function Invoke-MCPToolAssert {
         }
     } catch {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
-        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectContains
+        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectContains -RequestId $RequestId
     }
 
     Update-TestResult -Success:$success
@@ -226,6 +239,11 @@ function Invoke-MCPToolExpectError {
         [string]$ExpectErrorContains = "",
         [int]$RequestId = 1
     )
+
+    if ($FailedOnly -and $Script:FailedRequestIds.Count -gt 0 -and -not $Script:FailedRequestIds.Contains($RequestId)) {
+        $Script:SkippedByPassFilter++
+        return
+    }
 
     $params = @{ name = $ToolName; arguments = $Arguments }
     $body = @{ jsonrpc = "2.0"; id = $RequestId; method = "tools/call"; params = $params } | ConvertTo-Json -Depth 10
@@ -245,22 +263,41 @@ function Invoke-MCPToolExpectError {
             Write-Host "Error message: $($result.error.message)" -ForegroundColor White
             if ($ExpectErrorContains -and $result.error.message -notlike "*$ExpectErrorContains*") {
                 Write-Host "❌ ASSERT FAILED: '$ExpectErrorContains' not in error message" -ForegroundColor Red
-                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectErrorContains' not in error" -Expected $ExpectErrorContains -ActualContent $result.error.message -RawResponse $result
+                Write-Failure -TestName $ToolName -Reason "Assert failed: '$ExpectErrorContains' not in error" -Expected $ExpectErrorContains -ActualContent $result.error.message -RawResponse $result -RequestId $RequestId
             } else {
                 Write-Host "✅ SUCCESS (got expected error)" -ForegroundColor Green
                 $success = $true
             }
         } else {
             Write-Host "❌ ASSERT FAILED: expected a JSON-RPC error but got success" -ForegroundColor Red
-            Write-Failure -TestName $ToolName -Reason "Expected JSON-RPC error but got success" -Expected $ExpectErrorContains -RawResponse $result
+            Write-Failure -TestName $ToolName -Reason "Expected JSON-RPC error but got success" -Expected $ExpectErrorContains -RawResponse $result -RequestId $RequestId
         }
     } catch {
         Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
-        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectErrorContains
+        Write-Failure -TestName $ToolName -Reason "Exception: $_" -Expected $ExpectErrorContains -RequestId $RequestId
     }
 
     Update-TestResult -Success:$success
     Write-Host ""
+}
+
+if ($FailedOnly) {
+    if (Test-Path $Script:FailureLog) {
+        $prevFailures = Get-Content $Script:FailureLog -Raw | ConvertFrom-Json
+        foreach ($f in $prevFailures) {
+            if ($null -ne $f.request_id -and $f.request_id -ne 0) {
+                [void]$Script:FailedRequestIds.Add([int]$f.request_id)
+            }
+        }
+        Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "-FailedOnly: targeting $($Script:FailedRequestIds.Count) previously failed test(s)" -ForegroundColor Yellow
+        Write-Host "Request IDs: $($Script:FailedRequestIds -join ', ')" -ForegroundColor Gray
+        Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host ""
+    } else {
+        Write-Host "WARNING: -FailedOnly specified but $Script:FailureLog not found — running all assertion tests." -ForegroundColor Yellow
+        Write-Host ""
+    }
 }
 
 $testKey = "test:timeline-entry"
@@ -857,6 +894,9 @@ Write-Host "Total tests: $Script:TotalTests" -ForegroundColor White
 Write-Host "Passed: $Script:PassedTests" -ForegroundColor Green
 Write-Host "Failed: $Script:FailedTests" -ForegroundColor Red
 Write-Host "Skipped: $Script:SkippedTests" -ForegroundColor Yellow
+if ($FailedOnly) {
+    Write-Host "Skipped by -FailedOnly filter: $Script:SkippedByPassFilter" -ForegroundColor DarkGray
+}
 
 $Script:Failures | ConvertTo-Json -Depth 8 | Set-Content -Path $Script:FailureLog -Encoding UTF8
 if ($Script:Failures.Count -gt 0) {

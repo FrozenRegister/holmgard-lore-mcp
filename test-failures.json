@@ -1,7 +1,0 @@
-{
-  "response": "{\"jsonrpc\":\"2.0\",\"id\":239,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hunt: SUCCESS (roll 0.581 vs P=0.600) — delta_value: 6\"}],\"metadata\":{\"entity_a_id\":\"test:bullet-attacker\",\"entity_b_id\":\"test:bullet-defender\",\"action_type\":\"hunt\",\"weight_1\":0.9,\"weight_2\":0.1,\"probability\":0.6,\"roll\":0.581},\"success\":true,\"delta_value\":6}}",
-  "actual": "hunt: SUCCESS (roll 0.581 vs P=0.600) — delta_value: 6",
-  "expected": "weight_1",
-  "reason": "Assert failed: 'weight_1' not in content",
-  "test": "resolve_interaction"
-}
