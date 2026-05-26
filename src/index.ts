@@ -74,15 +74,18 @@ async function kvList(c: any): Promise<string[]> {
       do {
         const listed: any = await kv.list(cursor ? { cursor } : undefined)
         for (const k of listed.keys) {
-          if (!k.name.startsWith('_history:')) keys.push(k.name)
+          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY) keys.push(k.name)
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
       if (keys.length) return keys
     }
-  } catch (e) { console.warn('KV list failed', e) }
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:'))
+  } catch (e) {
+    console.warn('KV list failed', e)
+  }
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY)
 }
+
 
 async function kvPut(c: any, key: string, value: string): Promise<boolean> {
   try {
@@ -102,7 +105,10 @@ async function kvDelete(c: any, key: string): Promise<boolean> {
 
 // ── History helpers ───────────────────────────────────────────────────────────
 
-const HISTORY_DEPTH = 5
+const HISTORY_DEPTH = 20          // was 5 — deeper protection against bad overwrites
+const CHANGELOG_KEY = '_changelog' // hidden from topic listings, like _history:*
+const CHANGELOG_MAX = 500          // rolling window of write events
+
 
 // Pushes currentRaw (the value about to be overwritten) onto _history:{key}.
 // Pass the already-read raw string to avoid an extra KV round-trip.
@@ -118,6 +124,21 @@ async function pushHistory(c: any, key: string, currentRaw: string): Promise<voi
   history.unshift(currentRaw)
   history = history.slice(0, HISTORY_DEPTH)
   await kv.put(historyKey, JSON.stringify(history))
+}
+
+// Appends a write event to _changelog so the editor can do delta-only syncs.
+// Each entry: { key, version, updatedAt, op }. Rolls off after CHANGELOG_MAX.
+async function appendChangelog(c: any, key: string, version: number, op = 'write'): Promise<void> {
+  const kv = getKV(c)
+  if (!kv) return
+  let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
+  try {
+    const existing = await kv.get(CHANGELOG_KEY)
+    if (existing) entries = JSON.parse(existing)
+  } catch { }
+  entries.push({ key, version, updatedAt: new Date().toISOString(), op })
+  if (entries.length > CHANGELOG_MAX) entries = entries.slice(-CHANGELOG_MAX)
+  await kv.put(CHANGELOG_KEY, JSON.stringify(entries))
 }
 
 // ── Lore entry helpers ────────────────────────────────────────────────────────
@@ -1018,12 +1039,16 @@ app.post('/mcp', async (c) => {
         })
 
         await kvPut(c, key, payload)
+        await appendChangelog(c, key, version)
         loreDB[key] = text
-
         return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Lore saved for "${key}" (v${version}).` }],
+          content: [{
+            type: 'text',
+            text: `Lore saved for "${key}" (v${version}).`
+          }],
           metadata: { key, version }
         }), 200)
+
       }
 
       if (toolName === 'delete_lore') {
@@ -1033,12 +1058,18 @@ app.post('/mcp', async (c) => {
 
         const key = parsed.data.key.trim().toLowerCase()
         const deleted = await kvDelete(c, key)
+        if (deleted) await appendChangelog(c, key, 0, 'delete')
         delete loreDB[key]
+        return c.json(makeResult(id,
+          {
+            content: [{
+              type: 'text',
+              text: `Lore deleted for "${key}".`
+            }],
+            metadata: { source: deleted ? 'kv' : 'in-memory', key }
+          }),
+          200)
 
-        return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Lore deleted for "${key}".` }],
-          metadata: { source: deleted ? 'kv' : 'in-memory', key }
-        }), 200)
       }
 
       if (toolName === 'get_lore_batch') {
@@ -1176,12 +1207,16 @@ app.post('/mcp', async (c) => {
         })
 
         await kvPut(c, key, payload)
+        await appendChangelog(c, key, version)
         loreDB[key] = updatedText
+        return c.json(makeResult(id,
+          {
+            content: [{
+              type: 'text',
+              text: `Incremented ${parsed.data.field_path} from ${currentValue} to ${newValue} (reason: ${parsed.data.reason})`
+            }], metadata: { key, version, field_path: parsed.data.field_path, old_value: currentValue, new_value: newValue }
+          }), 200)
 
-        return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Incremented ${parsed.data.field_path} from ${currentValue} to ${newValue} (reason: ${parsed.data.reason})` }],
-          metadata: { key, version, field_path: parsed.data.field_path, old_value: currentValue, new_value: newValue }
-        }), 200)
       }
 
       if (toolName === 'validate_topic_exists') {
@@ -1340,12 +1375,15 @@ app.post('/mcp', async (c) => {
         })
 
         await kvPut(c, key, payload)
+        await appendChangelog(c, key, version)
         loreDB[key] = updatedText
+        return c.json(makeResult(id,
+          {
+            content: [{ type: 'text', text: successMessage }],
+            metadata: { key, version }
+          }),
+          200)
 
-        return c.json(makeResult(id, {
-          content: [{ type: 'text', text: successMessage }],
-          metadata: { key, version }
-        }), 200)
       }
 
       if (toolName === 'batch_set_lore') {
@@ -1375,11 +1413,13 @@ app.post('/mcp', async (c) => {
           })
           try {
             await kvPut(c, e.key, payload)
+            await appendChangelog(c, e.key, version)
             loreDB[e.key] = e.text
             batchResults[e.key] = { ok: true, version }
           } catch (err) {
             batchResults[e.key] = { ok: false, error: String(err) }
           }
+
         }))
 
         const okCount = Object.values(batchResults).filter(r => r.ok).length
@@ -1439,10 +1479,11 @@ app.post('/mcp', async (c) => {
             const updatedText = updateFieldInText(text, mut.field_path, newValue)
             await pushHistory(c, key, raw)
             const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-            await kvPut(c, key, JSON.stringify({
-              text: updatedText,
-              meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta }
-            }))
+            await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta } }))
+            await appendChangelog(c, key, version)
+            loreDB[key] = updatedText
+            mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
+
             loreDB[key] = updatedText
             mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
 
@@ -1500,6 +1541,7 @@ app.post('/mcp', async (c) => {
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
             loreDB[key] = updatedText
             mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
+
           }
         }
 
@@ -1599,10 +1641,10 @@ app.post('/mcp', async (c) => {
             await pushHistory(c, keyA, rawA)
             const now = new Date().toISOString()
             const version = typeof metaA.version === 'number' ? metaA.version + 1 : 1
-            await kvPut(c, keyA, JSON.stringify({
-              text: updatedTextA,
-              meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType }
-            }))
+            await kvPut(c, keyA, JSON.stringify({ text: updatedTextA, meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType } }))
+            await appendChangelog(c, keyA, version)
+            loreDB[keyA] = updatedTextA
+
             loreDB[keyA] = updatedTextA
           }
         }
@@ -1802,11 +1844,11 @@ app.post('/mcp', async (c) => {
 
         const grade =
           compositeScore >= 90 ? 'S'
-          : compositeScore >= 75 ? 'A'
-          : compositeScore >= 55 ? 'B'
-          : compositeScore >= 35 ? 'C'
-          : compositeScore >= 15 ? 'D'
-          : 'F'
+            : compositeScore >= 75 ? 'A'
+              : compositeScore >= 55 ? 'B'
+                : compositeScore >= 35 ? 'C'
+                  : compositeScore >= 15 ? 'D'
+                    : 'F'
 
         const VECTOR_NARRATIVES: Record<string, Record<string, string>> = {
           GASTRIC: {
@@ -1939,9 +1981,14 @@ app.post('/mcp', async (c) => {
         const version = typeof targetMeta.version === 'number' ? targetMeta.version + 1 : 1
         await kvPut(c, targetKey, JSON.stringify({
           text: updatedTargetText,
-          meta: { version, updatedAt: now, createdAt: targetMeta.createdAt ?? now }
+          meta: {
+            version, updatedAt: now,
+            createdAt: targetMeta.createdAt ?? now
+          }
         }))
+        await appendChangelog(c, targetKey, version)
         loreDB[targetKey] = updatedTargetText
+
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Integrated ${traitsToTransfer.length} trait(s) from "${sourceKey}" into "${targetKey}" at depth ${depth}.` }],
@@ -1980,10 +2027,8 @@ app.post('/mcp', async (c) => {
           const updatedText = updateFieldInText(entity.text, 'Timeline-Value', newValue)
           await pushHistory(c, entity.key, entity.raw)
           const version = typeof entity.meta.version === 'number' ? entity.meta.version + 1 : 1
-          await kvPut(c, entity.key, JSON.stringify({
-            text: updatedText,
-            meta: { version, updatedAt: now, createdAt: entity.meta.createdAt ?? now, thread_tick: threadId }
-          }))
+          await kvPut(c, entity.key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entity.meta.createdAt ?? now, thread_tick: threadId } }))
+          await appendChangelog(c, entity.key, version)
           loreDB[entity.key] = updatedText
           local_shifts.push({ key: entity.key, old_value: timelineValue, new_value: newValue, status_change: timelineValue > 0 && newValue <= 0 })
         }
@@ -2338,8 +2383,13 @@ app.post('/mcp', async (c) => {
           kvPut(c, fromKey, JSON.stringify({ text: newFromText, meta: { version: fromVersion, updatedAt: now, createdAt: fromMeta.createdAt ?? now } })),
           kvPut(c, toKey, JSON.stringify({ text: newToText, meta: { version: toVersion, updatedAt: now, createdAt: toMeta.createdAt ?? now } })),
         ])
+        await Promise.all([
+          appendChangelog(c, fromKey, fromVersion),
+          appendChangelog(c, toKey, toVersion),
+        ])
         loreDB[fromKey] = newFromText
         loreDB[toKey] = newToText
+
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Transferred ${qty}× "${itemKey}" from "${fromKey}" to "${toKey}".` }],
@@ -2463,7 +2513,9 @@ app.post('/mcp', async (c) => {
         await pushHistory(c, entityKey, rawEntity)
         const entityVersion = typeof entityMeta.version === 'number' ? entityMeta.version + 1 : 1
         await kvPut(c, entityKey, JSON.stringify({ text: newEntityText, meta: { version: entityVersion, updatedAt: now, createdAt: entityMeta.createdAt ?? now, last_choice: choiceId } }))
+        await appendChangelog(c, entityKey, entityVersion)
         loreDB[entityKey] = newEntityText
+
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Choice "${choiceId}" committed for "${entityKey}".${stateChange ? ` State → ${stateChange}.` : ''} ${nextChoices.length} new choice(s) unlocked.` }],
@@ -2535,8 +2587,8 @@ app.post('/mcp', async (c) => {
         const now = new Date().toISOString()
         const version = typeof meta.version === 'number' ? meta.version + 1 : 1
         await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        await appendChangelog(c, entityKey, version)
         loreDB[entityKey] = updatedText
-
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Advancing "${entityKey}" to stage ${newStage}${total ? `/${total}` : ''}. ${isTerminal ? '[TERMINAL STAGE]' : ''}` }],
           metadata: { retrieved: 1, written: 1 },
@@ -2578,6 +2630,7 @@ app.post('/mcp', async (c) => {
           await pushHistory(c, key, raw)
           const version = typeof meta.version === 'number' ? meta.version + 1 : 1
           await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+          await appendChangelog(c, key, version)
           loreDB[key] = updatedText
           outcomes.push({ key, old_stage: currentStage, new_stage: newStage, is_terminal: total !== null && newStage >= total })
         }
@@ -2813,11 +2866,11 @@ app.post('/mcp', async (c) => {
         const fromComposite = compositeRaw ? inferFromSensoryComposite(compositeRaw) : {}
         const fc = (k: keyof typeof fromComposite) => fromComposite[k] ?? null
         const profile = {
-          temperature:       get('Temperature')      ?? get('Temperature-Range') ?? fc('temperature'),
-          scent:             get('Scent')             ?? get('Scent-Profile')     ?? fc('scent'),
-          texture:           get('Texture')           ?? get('Surface-Texture')   ?? fc('texture'),
-          sound_signature:   get('Sound-Signature')   ?? get('Sound')             ?? get('Audio-Signature') ?? fc('sound_signature'),
-          visual_descriptors: get('Visual-Descriptors') ?? get('Appearance')      ?? get('Description')      ?? fc('visual_descriptors'),
+          temperature: get('Temperature') ?? get('Temperature-Range') ?? fc('temperature'),
+          scent: get('Scent') ?? get('Scent-Profile') ?? fc('scent'),
+          texture: get('Texture') ?? get('Surface-Texture') ?? fc('texture'),
+          sound_signature: get('Sound-Signature') ?? get('Sound') ?? get('Audio-Signature') ?? fc('sound_signature'),
+          visual_descriptors: get('Visual-Descriptors') ?? get('Appearance') ?? get('Description') ?? fc('visual_descriptors'),
         }
         const hasProfile = Object.values(profile).some(v => v !== null) || compositeRaw !== null
 
@@ -2937,9 +2990,10 @@ app.post('/admin/set-lore', async (c) => {
     })
 
     await kvPut(c, key, payload)
+    await appendChangelog(c, key, version)
     loreDB[key] = text
-
     return c.json({ ok: true, version }, 200)
+
   } catch (e) {
     return c.json({ ok: false, error: String(e) }, 500)
   }
@@ -2958,11 +3012,41 @@ app.post('/admin/delete-lore', async (c) => {
       return c.json({ ok: false, error: 'unauthorized' }, 401)
 
     const deleted = await kvDelete(c, key)
+    if (deleted) await appendChangelog(c, key, 0, 'delete')
     delete loreDB[key]
     return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
+
   } catch (e) {
     return c.json({ ok: false, error: String(e) }, 500)
   }
+})
+// ── GET /changes ──────────────────────────────────────────────────────────────
+// Returns write events since a given ISO timestamp (1 KV read, no per-topic reads).
+// Editor uses this for delta-only auto-sync — only fetches topics that changed.
+// Query params:
+//   since  (ISO string)  — return only events after this time, e.g. ?since=2026-05-26T12:00:00Z
+// Response: { changes: ChangelogEntry[], count: number, generated_at: string }
+app.get('/changes', async (c) => {
+  const since = c.req.query('since')
+  const kv = getKV(c)
+  let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
+  if (kv) {
+    try {
+      const raw = await kv.get(CHANGELOG_KEY)
+      if (raw) entries = JSON.parse(raw)
+    } catch (e) {
+      console.warn('changelog read failed', e)
+    }
+  }
+  if (since) {
+    const sinceMs = new Date(since).getTime()
+    if (!isNaN(sinceMs)) {
+      entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
+    }
+  }
+  c.header('Content-Type', 'application/json')
+  c.header('Cache-Control', 'no-store')
+  return c.json({ changes: entries, count: entries.length, generated_at: new Date().toISOString() }, 200)
 })
 
 app.all('*', (c) => c.text('Not Found', 404))
