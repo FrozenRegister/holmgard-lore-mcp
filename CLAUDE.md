@@ -53,6 +53,18 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 
 `reset()` from `cloudflare:test` is called `afterEach` to wipe all KV between tests. Seed KV directly with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` rather than going through `set_lore` — this avoids writing to the module-level `loreDB` fallback and keeps test isolation clean.
 
+**REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
+1. **Vitest** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime
+2. **PowerShell smoke tests** (`test-holmgard-mcp.ps1`) — end-to-end remote tests against the deployed worker
+
+Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.
+
+## Git workflow
+
+**Commit messages** should follow conventional commits (`feat:`, `fix:`, `test:`, `refactor:`) and mention the specific tools or routes affected. Example: `feat: add resolve_interaction tool with utility scoring`.
+
+**Before pushing**, always run `npm test` and confirm it passes. Push only to `main` unless working on an isolated experiment.
+
 ## Deployment notes
 
 `wrangler.toml` has the real KV namespace ID (`67b47914eb094043ab777f4f34da8bfc`). `ADMIN_SECRET` must be set as a Cloudflare secret — it is intentionally absent from `wrangler.toml`.

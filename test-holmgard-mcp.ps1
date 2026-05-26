@@ -171,6 +171,39 @@ function Write-Section {
     Write-Host "════════════════════════════════════════════════════════\n" -ForegroundColor Cyan
 }
 
+# Call a tool and return the raw parsed result object (does NOT register a test pass/fail).
+function Fetch-MCPToolResult {
+    param(
+        [string]$ToolName,
+        [hashtable]$Arguments = @{},
+        [int]$RequestId = 1
+    )
+    $params = @{ name = $ToolName; arguments = $Arguments }
+    $body = @{ jsonrpc = "2.0"; id = $RequestId; method = "tools/call"; params = $params } | ConvertTo-Json -Depth 10
+    $response = Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $body -UseBasicParsing
+    return $response.Content | ConvertFrom-Json
+}
+
+# Register a pass/fail assertion. Prints result and updates counters.
+function Assert-True {
+    param(
+        [string]$TestName,
+        [bool]$Condition,
+        [string]$Expected = "",
+        [string]$Actual = "",
+        [int]$RequestId = 0
+    )
+    $Script:TotalTests++
+    if ($Condition) {
+        Write-Host "  ✅ $TestName" -ForegroundColor Green
+        $Script:PassedTests++
+    } else {
+        Write-Host "  ❌ $TestName — Expected: $Expected, Got: $Actual" -ForegroundColor Red
+        $Script:FailedTests++
+        Write-Failure -TestName $TestName -Reason "Assertion failed" -Expected $Expected -ActualContent $Actual -RequestId $RequestId
+    }
+}
+
 # Like Invoke-MCPTool but also asserts that result.content[0].text contains $ExpectContains.
 # Fails the test if the text is absent, even when there is no JSON-RPC error.
 function Invoke-MCPToolAssert {
@@ -873,9 +906,96 @@ Invoke-MCPToolAssert -ToolName "check_convergence" -Arguments @{ thread_a = "sca
 Write-Section "TEST 108: check_convergence — no overlap on unrelated threads"
 Invoke-MCPToolAssert -ToolName "check_convergence" -Arguments @{ thread_a = "no-thread-xxx"; thread_b = "no-thread-yyy" } -ExpectContains "No convergence" -RequestId 368
 
+# ── Canonical IF state-engine fixture tests ────────────────────────────────────
+
+Write-Section "TEST 109: canonical fixture — write entity:subject-alpha (Stage-2-of-4)"
+$canonAlphaKey = "entity:canonical-subject-alpha"
+$canonAlphaLore = "# Entity: Subject Alpha`nAlias: Alpha`nAge: 24`nGender: Female`nStatus: Active, Stage-2-of-4`nLocation: canonical-chamber-primary`n`n## Weights`nWeight-1 (Drive): 30`nWeight-2 (Vulnerability): 55`n`n## State Machine`nState-Machine: standard-multi-stage-processing`nCurrent-Stage: 2`nTotal-Stages: 4`nTimeline-Value: 12`nTimeline-Unit: hours`nThread: canonical-primary-cycle`n`n## Skills`nTracking: 0.2`nPerception: 0.5"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonAlphaKey; text = $canonAlphaLore } -RequestId 400
+
+Write-Section "TEST 110: canonical fixture — write entity:actor-primary (Weight-1:85)"
+$canonActorKey = "entity:canonical-actor-primary"
+$canonActorLore = "# Entity: Actor Primary`nAlias: The Director`nStatus: Active, Processing`nLocation: canonical-chamber-primary`n`n## Weights`nWeight-1 (Drive): 85`nWeight-2 (Vulnerability): 10`nState-Level: 0`n`n## State Machine`nTimeline-Value: 8`nTimeline-Unit: hours`nThread: canonical-primary-cycle"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonActorKey; text = $canonActorLore } -RequestId 401
+
+Write-Section "TEST 111: canonical fixture — write entity:subject-beta (Stage-3-of-4)"
+$canonBetaKey = "entity:canonical-subject-beta"
+$canonBetaLore = "# Entity: Subject Beta`nStatus: Stage-3-of-4, Modified-Consciousness`nLocation: canonical-chamber-secondary`n`n## Weights`nWeight-1 (Drive): 10`nWeight-2 (Vulnerability): 75`n`n## State Machine`nTimeline-Value: 48`nTimeline-Unit: hours`nThread: canonical-secondary-cycle"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonBetaKey; text = $canonBetaLore } -RequestId 402
+
+Write-Section "TEST 112: canonical fixture — write location with YAML exits"
+$canonLocKey = "location:canonical-transit-hub"
+$canonLocLore = "# Location: Transit Hub`nType: threshold-zone`nDanger-Level: moderate`n`n## Exits`nExits:`n- target: location:canonical-dest-a`n  travel-cost: 2-hours`n  danger: high`n- target: location:canonical-dest-b`n  travel-cost: 30-minutes`n  danger: low`n- target: location:canonical-dest-c`n  travel-cost: 4-hours`n  danger: very-high"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonLocKey; text = $canonLocLore } -RequestId 403
+
+Write-Section "TEST 113: canonical fixture — write scene with YAML choice tree"
+$canonSceneKey = "scene:canonical-threshold"
+$canonSceneLore = "# Scene: Canonical Threshold`nThread: canonical-primary-cycle`nLocation: location:canonical-chamber-primary`nStatus: active`n`n## Choices`nChoices:`n- id: investigate`n  label: `"Investigate the sound`"`n  requirements: perception: 0.3`n`n- id: search`n  label: `"Search the perimeter`"`n  requirements: tracking: 0.2`n`n- id: retreat`n  label: `"Withdraw`"`n  requirements: none"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonSceneKey; text = $canonSceneLore } -RequestId 404
+
+Write-Host "Polling for KV list consistency (canonical fixtures)..." -ForegroundColor DarkGray
+$maxWaitC = 30; $pollC = 2; $elapsedC = 0; $visibleC = $false
+do {
+    Start-Sleep -Seconds $pollC; $elapsedC += $pollC
+    $lb = @{ jsonrpc = "2.0"; id = 9002; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
+    $lr = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $lb -UseBasicParsing).Content | ConvertFrom-Json
+    $visibleC = $lr.result.content[0].text -like "*$canonAlphaKey*"
+    if (-not $visibleC) { Write-Host "  Not visible yet after ${elapsedC}s, retrying..." -ForegroundColor DarkGray }
+} while (-not $visibleC -and $elapsedC -lt $maxWaitC)
+if (-not $visibleC) { Write-Host "⚠ Canonical keys never appeared — canonical tests may fail." -ForegroundColor Yellow }
+
+Write-Section "TEST 114: canonical fixture — advance_state_stage reads Stage-2-of-4 from Status"
+Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = $canonAlphaKey } -ExpectContains "Stage-3-of-4" -RequestId 410
+
+Write-Section "TEST 115: canonical fixture — advance_state_stage on Stage-3-of-4 is terminal"
+Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = $canonBetaKey } -ExpectContains "Stage-4-of-4" -RequestId 411
+
+Write-Section "TEST 116: canonical fixture — resolve_interaction normalizes integer Weight-1:85 and Weight-2:55"
+$riResult116 = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonActorKey; entity_b_id = $canonAlphaKey; action_type = "process" } -RequestId 412
+$w1Raw116 = $riResult116.result.metadata.weight_1_raw
+$w1Norm116 = [double]$riResult116.result.metadata.weight_1
+$w2Raw116 = $riResult116.result.metadata.weight_2_raw
+$w2Norm116 = [double]$riResult116.result.metadata.weight_2
+$prob116 = [double]$riResult116.result.metadata.probability
+Assert-True -TestName "TEST 116a: weight_1_raw=85" -Condition ($w1Raw116 -eq 85) -Expected "85" -Actual "$w1Raw116" -RequestId 412
+Assert-True -TestName "TEST 116b: weight_1 ~0.85" -Condition ($w1Norm116 -ge 0.849 -and $w1Norm116 -le 0.851) -Expected "~0.85" -Actual "$w1Norm116" -RequestId 412
+Assert-True -TestName "TEST 116c: weight_2_raw=55" -Condition ($w2Raw116 -eq 55) -Expected "55" -Actual "$w2Raw116" -RequestId 412
+Assert-True -TestName "TEST 116d: weight_2 ~0.55" -Condition ($w2Norm116 -ge 0.549 -and $w2Norm116 -le 0.551) -Expected "~0.55" -Actual "$w2Norm116" -RequestId 412
+Assert-True -TestName "TEST 116e: probability ~0.685" -Condition ([math]::Abs($prob116 - 0.685) -lt 0.01) -Expected "~0.685" -Actual "$prob116" -RequestId 412
+
+Write-Section "TEST 117: canonical fixture — thread_tick finds entity via plain Thread field"
+Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "canonical-primary-cycle" } -ExpectContains "entities_ticked" -RequestId 413
+
+Write-Section "TEST 118: canonical fixture — get_reachable_locations parses YAML-style Exits"
+$reachResult118 = Fetch-MCPToolResult -ToolName "get_reachable_locations" -Arguments @{ origin_key = $canonLocKey } -RequestId 414
+$reachCount118 = $reachResult118.result.locations.Count
+Assert-True -TestName "TEST 118: 3 destinations from YAML exits" -Condition ($reachCount118 -eq 3) -Expected "3" -Actual "$reachCount118" -RequestId 414
+Write-Host "  locations: $($reachResult118.result.locations | ForEach-Object { $_.key } | Join-String -Separator ', ')" -ForegroundColor DarkGray
+
+Write-Section "TEST 119: canonical fixture — activate_scene extracts YAML choice IDs"
+$sceneResult119 = Fetch-MCPToolResult -ToolName "activate_scene" -Arguments @{ scene_key = $canonSceneKey } -RequestId 415
+$choices119 = $sceneResult119.result.available_choices
+Assert-True -TestName "TEST 119a: choice id 'investigate' extracted" -Condition ($choices119 -contains "investigate") -Expected "investigate in choices" -Actual "$choices119" -RequestId 415
+Assert-True -TestName "TEST 119b: choice id 'retreat' extracted" -Condition ($choices119 -contains "retreat") -Expected "retreat in choices" -Actual "$choices119" -RequestId 415
+Assert-True -TestName "TEST 119c: 3 choices total" -Condition ($choices119.Count -eq 3) -Expected "3" -Actual "$($choices119.Count)" -RequestId 415
+
+Write-Section "TEST 120: canonical fixture — integer weight boundaries (5=min, 95=max)"
+$canonMinKey = "entity:canonical-min-drive"
+$canonMaxKey = "entity:canonical-max-drive"
+$canonTargetKey = "entity:canonical-passive-target"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonMinKey; text = "Weight-1 (Drive): 5`nState-Level: 0" } -RequestId 416
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonMaxKey; text = "Weight-1 (Drive): 95`nState-Level: 0" } -RequestId 417
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonTargetKey; text = "Weight-2: 0" } -RequestId 418
+$minResult = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMinKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 419
+$maxResult = Fetch-MCPToolResult -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $canonMaxKey; entity_b_id = $canonTargetKey; action_type = "test" } -RequestId 420
+$minW1 = [double]$minResult.result.metadata.weight_1
+$maxW1 = [double]$maxResult.result.metadata.weight_1
+Assert-True -TestName "TEST 120a: Weight-1:5 normalizes to ~0.05" -Condition ($minW1 -ge 0.049 -and $minW1 -le 0.051) -Expected "~0.05" -Actual "$minW1" -RequestId 419
+Assert-True -TestName "TEST 120b: Weight-1:95 normalizes to ~0.95" -Condition ($maxW1 -ge 0.949 -and $maxW1 -le 0.951) -Expected "~0.95" -Actual "$maxW1" -RequestId 420
+
 # ── Cleanup all new-tool test keys ────────────────────────────────────────────
 
-Write-Section "TEST 109: new tools — cleanup all test keys"
+Write-Section "TEST 121: new tools — cleanup all test keys"
 foreach ($k in @(
     $relA, $relB, $factionEntity, $factionKey, $knowledgeKey,
     $envLocKey, $envEntityKey, $invEntityKey, $xferFromKey, $xferToKey,
@@ -883,9 +1003,11 @@ foreach ($k in @(
     $stageEntity, $archetypeKey2, ($archetypeKey2 -replace "test:new-", "archetype:new-"),
     $encounterLoc, $sensoryKey, $compatA, $compatB, $reachLocKey, $reachDestKey,
     "test:new-choice-scene", "test:new-choice-entity",
-    $scanEntityA, $scanEntityB
+    $scanEntityA, $scanEntityB,
+    $canonAlphaKey, $canonActorKey, $canonBetaKey, $canonLocKey, $canonSceneKey,
+    $canonMinKey, $canonMaxKey, $canonTargetKey
 )) {
-    Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $k } -RequestId 400
+    Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $k } -RequestId 500
 }
 
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan

@@ -2179,7 +2179,9 @@ app.post('/mcp', async (c) => {
 
         const { text } = parseKvEntry(rawOrigin)
         const exitsRaw = extractRawField(text, 'Exits') ?? extractRawField(text, 'Connections') ?? extractRawField(text, 'Routes')
-        const exitKeys = exitsRaw ? exitsRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []
+        const yamlExitKeys = [...text.matchAll(/^\s*-\s+target:\s+(\S+)/gim)].map(m => m[1].toLowerCase())
+        const inlineExitKeys = exitsRaw ? exitsRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []
+        const exitKeys = yamlExitKeys.length > 0 ? yamlExitKeys : inlineExitKeys
 
         const locations = await Promise.all(exitKeys.map(async (key) => {
           const exitRaw = await kvGet(c, key)
@@ -2362,7 +2364,9 @@ app.post('/mcp', async (c) => {
         const timelineRef = extractRawField(sceneText, 'Timeline')
         const description = extractRawField(sceneText, 'Description') ?? sceneText.split('\n').find(l => l.trim() && !l.startsWith('**'))?.trim() ?? ''
         const choicesRaw = extractRawField(sceneText, 'Choices')
-        const availableChoices = choicesRaw ? choicesRaw.split(',').map(s => s.trim()).filter(Boolean) : []
+        const yamlChoiceIds = [...sceneText.matchAll(/^\s*-\s+id:\s+(\S+)/gim)].map(m => m[1])
+        const inlineChoices = choicesRaw ? choicesRaw.split(',').map(s => s.trim()).filter(Boolean) : []
+        const availableChoices = yamlChoiceIds.length > 0 ? yamlChoiceIds : inlineChoices
         const entityKeys = entitiesRaw ? entitiesRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []
         const keysToFetch = [...entityKeys, ...(locationRef ? [locationRef.trim().toLowerCase()] : [])]
 
