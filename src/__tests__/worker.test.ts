@@ -21,6 +21,16 @@ function callTool(name: string, args: Record<string, unknown> = {}) {
   return rpc('tools/call', { name, arguments: args })
 }
 
+async function callToolWithApiKey(name: string, apiKey: string, args: Record<string, unknown> = {}) {
+  // eslint-disable-next-line deprecation/deprecation
+  const res = await SELF.fetch('http://example.com/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+  })
+  return res.json() as Promise<Record<string, any>>
+}
+
 // Seed KV directly — avoids writing to the worker's in-memory loreDB fallback.
 function seedKV(key: string, text: string) {
   // eslint-disable-next-line deprecation/deprecation
@@ -46,12 +56,13 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 39 tools', async () => {
+  it('tools/list returns exactly 40 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(39)
+    expect(tools).toHaveLength(40)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
+    expect(names).toContain('check_authentication')
     expect(names).toContain('list_topics')
     expect(names).toContain('get_lore')
     expect(names).toContain('set_lore')
@@ -139,6 +150,28 @@ describe('ping_tool', () => {
     const res = await callTool('ping_tool')
     expect(res.result.content[0].text).toBe('pong')
     expect(res.result.metadata.source).toBe('internal')
+  })
+})
+
+// ── check_authentication ──────────────────────────────────────────────────────
+
+describe('check_authentication', () => {
+  it('returns authenticated when correct X-Api-Key header is sent', async () => {
+    const res = await callToolWithApiKey('check_authentication', 'test-api-key-xyz')
+    expect(res.result.content[0].text).toBe('Authenticated.')
+    expect(res.result.metadata.authenticated).toBe(true)
+  })
+
+  it('returns not authenticated when no X-Api-Key header is sent', async () => {
+    const res = await callTool('check_authentication')
+    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    expect(res.result.metadata.authenticated).toBe(false)
+  })
+
+  it('returns not authenticated when wrong X-Api-Key header is sent', async () => {
+    const res = await callToolWithApiKey('check_authentication', 'wrong-key')
+    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    expect(res.result.metadata.authenticated).toBe(false)
   })
 })
 

@@ -463,6 +463,18 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: {} }]
           },
           {
+            name: 'check_authentication',
+            title: 'Check Authentication',
+            version: '0.1.0',
+            description: 'Returns whether this request was made with a valid API key. Use this to confirm your integration is authenticated before performing sensitive operations.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#',
+              type: 'object',
+              properties: {},
+              additionalProperties: false
+            }
+          },
+          {
             name: 'get_lore', title: 'Get Lore', version: '0.1.3',
             description: 'Retrieve lore, anatomy, factions, and worldbuilding information by topic key.',
             inputSchema: {
@@ -995,8 +1007,18 @@ app.post('/mcp', async (c) => {
       if (!toolName || typeof toolName !== 'string')
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
+      const MCP_API_KEY = (c.env as any)?.MCP_API_KEY as string | undefined
+      const isAuthenticated = !!MCP_API_KEY && c.req.header('X-Api-Key') === MCP_API_KEY
+
       if (toolName === 'ping_tool') {
         return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
+      }
+
+      if (toolName === 'check_authentication') {
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: isAuthenticated ? 'Authenticated.' : 'Not authenticated — request was made without a valid API key.' }],
+          metadata: { authenticated: isAuthenticated }
+        }), 200)
       }
 
       if (toolName === 'list_topics') {
