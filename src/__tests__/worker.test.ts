@@ -3600,18 +3600,20 @@ describe('get_lore_section', () => {
     expect(res.result.warnings.some((w: string) => w.includes('duplicate_section'))).toBe(true)
   })
 
-  it('duplicate section: skips empty first occurrence, returns first non-empty, warns', async () => {
+  it('duplicate section: skips empty first occurrence, returns first non-empty, no empty_section warning', async () => {
     await seedKV('section:dup-empty-first', '## Notes\n## Personality\nKind.\n## Notes\nSecond note.')
     const res = await callTool('get_lore_section', { key: 'section:dup-empty-first', sections: ['Notes'] })
     expect(res.result.sections['Notes']).toBe('Second note.')
     expect(res.result.warnings.some((w: string) => w.includes('duplicate_section'))).toBe(true)
+    expect(res.result.warnings.some((w: string) => w.includes('empty_section'))).toBe(false)
   })
 
-  it('duplicate section: all empty → returns "", warns duplicate_section', async () => {
+  it('duplicate section: all empty → returns "", warns both duplicate_section and empty_section', async () => {
     await seedKV('section:dup-all-empty', '## Notes\n## Notes\n## Personality\nKind.')
     const res = await callTool('get_lore_section', { key: 'section:dup-all-empty', sections: ['Notes'] })
     expect(res.result.sections['Notes']).toBe('')
     expect(res.result.warnings.some((w: string) => w.includes('duplicate_section'))).toBe(true)
+    expect(res.result.warnings.some((w: string) => w.includes('empty_section'))).toBe(true)
   })
 
   it('zero sections requested: sections={}, not_found=[], no_sections_requested warning', async () => {

@@ -34,3 +34,4 @@ lerna-debug.log*
 test-failures.json
 patch-mcp.py
 get_lore_section_spec.md
+append_to_section_spec.md
