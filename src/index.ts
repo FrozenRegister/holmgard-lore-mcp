@@ -449,7 +449,7 @@ function parseLoreSections(
     return { sections, not_found, warnings }
   }
 
-  // Build normalized-heading → content map; first occurrence wins for duplicates
+  // Build normalized-heading → content map; first non-empty occurrence wins for duplicates
   const sectionMap = new Map<string, string>()
   for (let i = 0; i < boundaries.length; i++) {
     const { heading, lineIdx } = boundaries[i]
@@ -458,6 +458,10 @@ function parseLoreSections(
     const key = normalize(heading)
     if (sectionMap.has(key)) {
       warnings.push(`duplicate_section:${heading}`)
+      // Upgrade from empty to non-empty if a later occurrence has content
+      if (sectionMap.get(key) === '' && content !== '') {
+        sectionMap.set(key, content)
+      }
     } else {
       sectionMap.set(key, content)
     }
