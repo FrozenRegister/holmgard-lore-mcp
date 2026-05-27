@@ -399,6 +399,83 @@ function extractConsumptionInfo(characterText: string): any {
   }
 }
 
+// Parses lore text into named sections delimited by ## (or # as fallback).
+// Returns sections map, not_found list, and warnings array.
+function parseLoreSections(
+  text: string,
+  requestedSections: string[],
+  mode: 'strict' | 'loose' = 'loose'
+): { sections: Record<string, string>; not_found: string[]; warnings: string[] } {
+  const warnings: string[] = []
+  const sections: Record<string, string> = {}
+  const not_found: string[] = []
+
+  if (requestedSections.length === 0) {
+    warnings.push('no_sections_requested')
+    return { sections, not_found, warnings }
+  }
+
+  function normalize(h: string): string {
+    if (mode === 'loose') {
+      return h.trim().replace(/\s+/g, ' ').toLowerCase().replace(/:$/, '')
+    }
+    return h.trim().toLowerCase()
+  }
+
+  const lines = text.split('\n')
+  const hasDoubleHash = lines.some(l => /^##\s+\S/.test(l))
+  const hasSingleHash = lines.some(l => /^#\s+\S/.test(l))
+
+  let headingRe: RegExp
+  if (hasDoubleHash) {
+    headingRe = /^##\s+(.+?)[\s]*$/
+  } else if (hasSingleHash) {
+    headingRe = /^#\s+(.+?)[\s]*$/
+  } else {
+    warnings.push('no_sections_found')
+    not_found.push(...requestedSections)
+    return { sections, not_found, warnings }
+  }
+
+  const boundaries: Array<{ heading: string; lineIdx: number }> = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headingRe)
+    if (m) boundaries.push({ heading: m[1].trim(), lineIdx: i })
+  }
+
+  if (boundaries.length === 0) {
+    warnings.push('no_sections_found')
+    not_found.push(...requestedSections)
+    return { sections, not_found, warnings }
+  }
+
+  // Build normalized-heading → content map; first occurrence wins for duplicates
+  const sectionMap = new Map<string, string>()
+  for (let i = 0; i < boundaries.length; i++) {
+    const { heading, lineIdx } = boundaries[i]
+    const endIdx = i + 1 < boundaries.length ? boundaries[i + 1].lineIdx : lines.length
+    const content = lines.slice(lineIdx + 1, endIdx).join('\n').trim()
+    const key = normalize(heading)
+    if (sectionMap.has(key)) {
+      warnings.push(`duplicate_section:${heading}`)
+    } else {
+      sectionMap.set(key, content)
+    }
+  }
+
+  for (const req of requestedSections) {
+    const found = sectionMap.get(normalize(req))
+    if (found !== undefined) {
+      sections[req] = found
+      if (found === '') warnings.push(`empty_section:${req}`)
+    } else {
+      not_found.push(req)
+    }
+  }
+
+  return { sections, not_found, warnings }
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 const app = new Hono()
@@ -533,6 +610,29 @@ app.post('/mcp', async (c) => {
               required: ['keys'], additionalProperties: false
             },
             examples: [{ arguments: { keys: ['character:sarah-weaver', 'location:fernveil:outpost:deep-forest-cafe'] } }]
+          },
+          {
+            name: 'get_lore_section', title: 'Get Lore Section', version: '0.1.0',
+            description: 'Retrieve one or more named ## sections from a lore entry without fetching the full text. Returns a sections map, a not_found list for missing sections, and a warnings array for duplicates or empty sections.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to retrieve sections from (e.g. "character:kavissa-crowmark")', minLength: 1 },
+                sections: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1 },
+                  description: 'Section names to retrieve (matched against ## headings, e.g. ["Personality", "Goals"])'
+                },
+                mode: {
+                  type: 'string',
+                  enum: ['strict', 'loose'],
+                  default: 'loose',
+                  description: '"loose" (default): case-insensitive, whitespace-normalized, trailing-colon-stripped. "strict": case-insensitive, exact otherwise.'
+                }
+              },
+              required: ['key', 'sections'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'character:example', sections: ['Personality', 'Goals'] } }]
           },
           {
             name: 'list_consumption_timelines', title: 'List Consumption Timelines', version: '0.2.0',
@@ -1328,6 +1428,39 @@ app.post('/mcp', async (c) => {
           content: [{ type: 'text', text }],
           metadata: { retrieved: Object.values(results).filter(v => v !== null).length, total: parsed.data.keys.length },
           results
+        }), 200)
+      }
+
+      if (toolName === 'get_lore_section') {
+        const schema = z.object({
+          key: z.string().min(1),
+          sections: z.array(z.string().min(1)),
+          mode: z.enum(['strict', 'loose']).default('loose'),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.key.trim().toLowerCase()
+        const raw = await kvGet(c, key)
+        if (!raw) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Key not found: "${key}"` }],
+            error: 'key_not_found', key
+          }), 200)
+        }
+
+        const { text, meta } = parseKvEntry(raw)
+        const version = typeof meta.version === 'number' ? meta.version : null
+        const { sections, not_found, warnings } = parseLoreSections(text, parsed.data.sections, parsed.data.mode)
+
+        const foundCount = Object.keys(sections).length
+        const summary = foundCount > 0
+          ? `Retrieved ${foundCount} section(s) from "${key}".${not_found.length ? ` Not found: ${not_found.join(', ')}.` : ''}`
+          : `No matching sections found in "${key}".`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summary }],
+          key, version, sections, not_found, warnings
         }), 200)
       }
 

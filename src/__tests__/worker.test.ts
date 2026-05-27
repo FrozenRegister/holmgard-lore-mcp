@@ -56,10 +56,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 54 tools', async () => {
+  it('tools/list returns exactly 55 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(54)
+    expect(tools).toHaveLength(55)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('check_authentication')
@@ -68,6 +68,7 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('set_lore')
     expect(names).toContain('delete_lore')
     expect(names).toContain('get_lore_batch')
+    expect(names).toContain('get_lore_section')
     expect(names).toContain('list_consumption_timelines')
     expect(names).toContain('list_active_threads')
     expect(names).toContain('increment_topic_field')
@@ -3503,5 +3504,177 @@ describe('render_pov', () => {
     const res = await callTool('render_pov', { pov_entity_key: 'character:ghost-9999', location_key: 'location:market' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
+  })
+})
+
+// ── get_lore_section ──────────────────────────────────────────────────────────
+
+describe('get_lore_section', () => {
+  it('exact match returns section content', async () => {
+    await seedKV('section:basic', '## Personality\nCurious and kind.\n## Goals\nFind the truth.')
+    const res = await callTool('get_lore_section', { key: 'section:basic', sections: ['Personality'] })
+    expect(res.error).toBeUndefined()
+    expect(res.result.sections['Personality']).toBe('Curious and kind.')
+    expect(res.result.not_found).toEqual([])
+  })
+
+  it('case-insensitive match in loose mode', async () => {
+    await seedKV('section:case', '## PERSONALITY\nCurious and kind.')
+    const res = await callTool('get_lore_section', { key: 'section:case', sections: ['personality'] })
+    expect(res.result.sections['personality']).toBe('Curious and kind.')
+  })
+
+  it('trailing colon stripped in loose mode', async () => {
+    await seedKV('section:colon', '## Personality:\nCurious.')
+    const res = await callTool('get_lore_section', { key: 'section:colon', sections: ['Personality'] })
+    expect(res.result.sections['Personality']).toBe('Curious.')
+  })
+
+  it('whitespace collapsed in loose mode', async () => {
+    await seedKV('section:spaces', '##   Physical   Profile  \nBroad-shouldered.')
+    const res = await callTool('get_lore_section', { key: 'section:spaces', sections: ['Physical Profile'] })
+    expect(res.result.sections['Physical Profile']).toBe('Broad-shouldered.')
+  })
+
+  it('not_found lists missing sections', async () => {
+    await seedKV('section:missing', '## Personality\nCurious.')
+    const res = await callTool('get_lore_section', { key: 'section:missing', sections: ['Inventory'] })
+    expect(res.result.sections).toEqual({})
+    expect(res.result.not_found).toEqual(['Inventory'])
+  })
+
+  it('empty section returns empty string and empty_section warning', async () => {
+    await seedKV('section:empty', '## Personality\n\n## Goals\nBecome stronger.')
+    const res = await callTool('get_lore_section', { key: 'section:empty', sections: ['Personality'] })
+    expect(res.result.sections['Personality']).toBe('')
+    expect(res.result.warnings.some((w: string) => w.includes('empty_section'))).toBe(true)
+  })
+
+  it('no ## headings: returns not_found and no_sections_found warning', async () => {
+    await seedKV('section:flat', 'This is just a paragraph of text with no structure.')
+    const res = await callTool('get_lore_section', { key: 'section:flat', sections: ['Personality'] })
+    expect(res.result.sections).toEqual({})
+    expect(res.result.warnings).toContain('no_sections_found')
+    expect(res.result.not_found).toContain('Personality')
+  })
+
+  it('fallback to # headings when no ## headings exist', async () => {
+    await seedKV('section:single-hash', '# Title\nSome preamble.\n# Another\nMore text.')
+    const res = await callTool('get_lore_section', { key: 'section:single-hash', sections: ['Title'] })
+    expect(res.result.sections['Title']).toBe('Some preamble.')
+  })
+
+  it('### subheadings are content, not section boundaries', async () => {
+    await seedKV('section:sub', '## Personality\n### Strengths\nBrave.\n### Weaknesses\nImpulsive.\n## Goals\nGo home.')
+    const res = await callTool('get_lore_section', { key: 'section:sub', sections: ['Personality'] })
+    const content = res.result.sections['Personality'] as string
+    expect(content).toContain('### Strengths')
+    expect(content).toContain('Impulsive.')
+    expect(content).not.toContain('Go home.')
+  })
+
+  it('special characters in section name match exactly', async () => {
+    await seedKV('section:special', '## Weight-1 (Predator Drive):\n0.85')
+    const res = await callTool('get_lore_section', { key: 'section:special', sections: ['Weight-1 (Predator Drive)'] })
+    expect(res.result.sections['Weight-1 (Predator Drive)']).toContain('0.85')
+  })
+
+  it('substring does not cause false match (Goals vs Goals (Completed))', async () => {
+    await seedKV('section:substring', '## Goals\nShort term.\n## Goals (Completed)\nDone.')
+    const res = await callTool('get_lore_section', { key: 'section:substring', sections: ['Goals'] })
+    expect(res.result.sections['Goals']).toBe('Short term.')
+    expect(res.result.sections['Goals (Completed)']).toBeUndefined()
+  })
+
+  it('last section runs to EOF correctly', async () => {
+    await seedKV('section:last', '## Section A\nContent A\n## Section B\nContent B')
+    const res = await callTool('get_lore_section', { key: 'section:last', sections: ['Section B'] })
+    expect(res.result.sections['Section B']).toBe('Content B')
+  })
+
+  it('duplicate section: first wins, duplicate_section warning added', async () => {
+    await seedKV('section:dup', '## Notes\nFirst note.\n## Personality\nKind.\n## Notes\nSecond note.')
+    const res = await callTool('get_lore_section', { key: 'section:dup', sections: ['Notes'] })
+    expect(res.result.sections['Notes']).toBe('First note.')
+    expect(res.result.warnings.some((w: string) => w.includes('duplicate_section'))).toBe(true)
+  })
+
+  it('zero sections requested: sections={}, not_found=[], no_sections_requested warning', async () => {
+    await seedKV('section:zero', '## Personality\nCurious.')
+    const res = await callTool('get_lore_section', { key: 'section:zero', sections: [] })
+    expect(res.result.sections).toEqual({})
+    expect(res.result.not_found).toEqual([])
+    expect(res.result.warnings).toContain('no_sections_requested')
+  })
+
+  it('unicode and emoji in section name', async () => {
+    await seedKV('section:unicode', "## État d'Esprit 😤\nFrustrated and hopeful.")
+    const res = await callTool('get_lore_section', { key: 'section:unicode', sections: ["État d'Esprit 😤"] })
+    expect(res.result.sections["État d'Esprit 😤"]).toContain('Frustrated and hopeful')
+  })
+
+  it('non-existent key returns key_not_found error in result', async () => {
+    const res = await callTool('get_lore_section', { key: 'character:does-not-exist-99999', sections: ['Personality'] })
+    expect(res.error).toBeUndefined()
+    expect(res.result.error).toBe('key_not_found')
+    expect(res.result.key).toBe('character:does-not-exist-99999')
+  })
+
+  it('consecutive empty sections both get empty_section warnings', async () => {
+    await seedKV('section:consecutive', '## Section A\n## Section B\n## Section C\nReal content at last.')
+    const res = await callTool('get_lore_section', { key: 'section:consecutive', sections: ['Section A', 'Section B', 'Section C'] })
+    expect(res.result.sections['Section A']).toBe('')
+    expect(res.result.sections['Section B']).toBe('')
+    expect(res.result.sections['Section C']).toBe('Real content at last.')
+    const emptyWarnings = (res.result.warnings as string[]).filter(w => w.includes('empty_section'))
+    expect(emptyWarnings).toHaveLength(2)
+  })
+
+  it('mixed request: found sections returned, missing in not_found', async () => {
+    await seedKV('section:mixed', '## Personality\nCurious.\n## Goals\nFind truth.')
+    const res = await callTool('get_lore_section', { key: 'section:mixed', sections: ['Personality', 'Inventory', 'Goals'] })
+    expect(res.result.sections['Personality']).toBe('Curious.')
+    expect(res.result.sections['Goals']).toBe('Find truth.')
+    expect(res.result.not_found).toEqual(['Inventory'])
+  })
+
+  it('very long section returns full content without truncation', async () => {
+    const longContent = 'Very long content. '.repeat(5000)
+    await seedKV('section:long', `## Notes\n${longContent}\n## End\nDone.`)
+    const res = await callTool('get_lore_section', { key: 'section:long', sections: ['Notes'] })
+    expect((res.result.sections['Notes'] as string).length).toBeGreaterThan(50000)
+    expect(res.result.sections['Notes']).not.toContain('Done.')
+  })
+
+  it('mixed # and ## headings: # is not a boundary, ## is', async () => {
+    await seedKV('section:mixed-hash', '# Title Block\nSome preamble text.\n\n## Section A\nContent.')
+    const res = await callTool('get_lore_section', { key: 'section:mixed-hash', sections: ['Section A'] })
+    expect(res.result.sections['Section A']).toBe('Content.')
+    expect(res.result.not_found).not.toContain('Section A')
+  })
+
+  it('strict mode does not strip trailing colon', async () => {
+    await seedKV('section:strict', '## Personality:\nCurious.')
+    const res = await callTool('get_lore_section', { key: 'section:strict', sections: ['Personality'], mode: 'strict' })
+    // In strict mode, "Personality" does NOT match "Personality:" — colon is not stripped
+    expect(res.result.not_found).toContain('Personality')
+  })
+
+  it('strict mode matches when heading and request are identical (case-insensitive)', async () => {
+    await seedKV('section:strict-match', '## Personality\nCurious.')
+    const res = await callTool('get_lore_section', { key: 'section:strict-match', sections: ['PERSONALITY'], mode: 'strict' })
+    expect(res.result.sections['PERSONALITY']).toBe('Curious.')
+  })
+
+  it('result includes version from lore metadata', async () => {
+    await seedKV('section:version', '## Notes\nSome notes.')
+    const res = await callTool('get_lore_section', { key: 'section:version', sections: ['Notes'] })
+    expect(res.result.version).toBe(1)
+  })
+
+  it('result includes key', async () => {
+    await seedKV('section:key-check', '## Notes\nSome notes.')
+    const res = await callTool('get_lore_section', { key: 'section:key-check', sections: ['Notes'] })
+    expect(res.result.key).toBe('section:key-check')
   })
 })

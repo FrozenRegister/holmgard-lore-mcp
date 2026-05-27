@@ -33,3 +33,4 @@ lerna-debug.log*
 .DS_Store
 test-failures.json
 patch-mcp.py
+get_lore_section_spec.md
