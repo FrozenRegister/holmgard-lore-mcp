@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"\\(Get-Content 'c:\\\\Users\\\\kyleb\\\\holmgard-lore-mcp\\\\src\\\\index.ts'\\).Count\")",
+      "Bash(npm test *)",
+      "Bash(node node_modules/.bin/esbuild src/index.ts --bundle --platform=browser --format=esm --outfile=/dev/null)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(node_modules/.bin/esbuild.cmd src/index.ts --bundle --platform=browser --format=esm --outfile=/dev/null)"
+    ]
+  }
+}

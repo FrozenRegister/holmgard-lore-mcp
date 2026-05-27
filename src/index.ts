@@ -74,7 +74,7 @@ async function kvList(c: any): Promise<string[]> {
       do {
         const listed: any = await kv.list(cursor ? { cursor } : undefined)
         for (const k of listed.keys) {
-          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY) keys.push(k.name)
+          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:')) keys.push(k.name)
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
@@ -83,7 +83,7 @@ async function kvList(c: any): Promise<string[]> {
   } catch (e) {
     console.warn('KV list failed', e)
   }
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY)
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:'))
 }
 
 
@@ -995,6 +995,222 @@ app.post('/mcp', async (c) => {
               required: ['entity_a', 'entity_b', 'interaction_type'], additionalProperties: false
             },
             examples: [{ arguments: { entity_a: 'character:predator', entity_b: 'character:prey', interaction_type: 'consume' } }]
+          },
+          {
+            name: 'append_event', title: 'Append Event', version: '0.1.0',
+            description: 'Write a timestamped event onto an entity\'s chronicle. Idempotent on identical verb+object within a 1s window to prevent double-logging on retries.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_key: { type: 'string', description: 'Lore key of the entity (e.g. "character:zira")', minLength: 1 },
+                verb: { type: 'string', description: 'Action verb (e.g. "sedated", "moved", "revealed")', minLength: 1 },
+                object: { type: 'string', description: 'Counterparty or target of the action' },
+                location: { type: 'string', description: 'Location key where this event occurred' },
+                thread: { type: 'string', description: 'Thread identifier for attribution (e.g. "thread-alpha")' },
+                detail: { type: 'string', description: 'Freeform single-line detail' },
+                at: { type: 'string', description: 'ISO timestamp (defaults to now)' },
+              },
+              required: ['entity_key', 'verb'], additionalProperties: false
+            }
+          },
+          {
+            name: 'get_event_log', title: 'Get Event Log', version: '0.1.0',
+            description: 'Read an entity\'s chronicle of events. Accepts a single key or array of keys. Filterable by date, thread, and verb set.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_key: {
+                  description: 'Entity key or array of entity keys',
+                  oneOf: [{ type: 'string', minLength: 1 }, { type: 'array', items: { type: 'string', minLength: 1 } }]
+                },
+                since: { type: 'string', description: 'ISO timestamp — return events at or after this time' },
+                until: { type: 'string', description: 'ISO timestamp — return events at or before this time' },
+                thread: { type: 'string', description: 'Filter to events from this thread' },
+                verbs: { type: 'array', items: { type: 'string' }, description: 'Filter to these verbs only' },
+                limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 },
+              },
+              required: ['entity_key'], additionalProperties: false
+            }
+          },
+          {
+            name: 'recent_changes', title: 'Recent Changes', version: '0.1.0',
+            description: 'Feed of the most recent KV mutations across all keys. Useful for cross-thread wake-up briefings — shows what changed while you were out.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                since: { type: 'string', description: 'ISO timestamp — return only changes after this time' },
+                key_prefix: { type: 'string', description: 'Scope feed to keys starting with this prefix (e.g. "character:")' },
+                limit: { type: 'integer', minimum: 1, maximum: 200, default: 30 },
+              },
+              additionalProperties: false
+            }
+          },
+          {
+            name: 'tag_topic', title: 'Tag Topic', version: '0.1.0',
+            description: 'Attach or remove orthogonal thematic tags on any topic. Tags cross key-prefix boundaries — a scene, character, and location can all share "theme:betrayal".',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to tag', minLength: 1 },
+                add: { type: 'array', items: { type: 'string' }, description: 'Tags to add (e.g. ["theme:betrayal", "arc:zira-rescue"])' },
+                remove: { type: 'array', items: { type: 'string' }, description: 'Tags to remove' },
+              },
+              required: ['key'], additionalProperties: false
+            }
+          },
+          {
+            name: 'find_by_tag', title: 'Find By Tag', version: '0.1.0',
+            description: 'Return all topics sharing a thematic tag. Supports any (union) or all (intersection) mode with optional excerpt previews.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                tags: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, description: 'Tags to search for' },
+                mode: { type: 'string', enum: ['any', 'all'], default: 'any', description: '"any" = union, "all" = intersection' },
+                with_excerpt: { type: 'boolean', description: 'Include a short text excerpt for each result' },
+                limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+              },
+              required: ['tags'], additionalProperties: false
+            }
+          },
+          {
+            name: 'bookmark_state', title: 'Bookmark State', version: '0.1.0',
+            description: 'Pin the current world state under a named bookmark — stores key→version pointers, not copies. Use world_diff to compare snapshots.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Bookmark name (e.g. "end-of-act-1")', minLength: 1 },
+                key_prefix: { type: 'string', description: 'Scope snapshot to keys with this prefix' },
+                note: { type: 'string', description: 'Human description of this snapshot point' },
+              },
+              required: ['name'], additionalProperties: false
+            }
+          },
+          {
+            name: 'world_diff', title: 'World Diff', version: '0.1.0',
+            description: 'Diff a bookmark against now (or against another bookmark). Returns added, removed, and changed keys with version deltas.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                from: { type: 'string', description: 'Bookmark name to diff from', minLength: 1 },
+                to: { type: 'string', description: 'Bookmark name to diff to (defaults to current state)' },
+                detail: { type: 'string', enum: ['summary', 'fields', 'text'], default: 'summary' },
+                key_prefix: { type: 'string', description: 'Scope the diff to keys with this prefix' },
+              },
+              required: ['from'], additionalProperties: false
+            }
+          },
+          {
+            name: 'plant_setup', title: 'Plant Setup', version: '0.1.0',
+            description: 'Register a foreshadow, promise, or open story thread (Chekhov\'s gun). Creates a setup:* entry with tension ranking and actor list.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Human-readable setup ID (e.g. "locked-cellar-door")', minLength: 1 },
+                description: { type: 'string', description: 'What was planted / what is owed the reader', minLength: 1 },
+                planted_in: { type: 'string', description: 'Scene or chapter key where this was planted' },
+                tension: { type: 'integer', minimum: 1, maximum: 5, description: 'Tension level 1–5 (5 = most urgent)' },
+                expected_in: { type: 'string', description: 'Expected payoff scene or chapter' },
+                actors: { type: 'array', items: { type: 'string' }, description: 'Implicated entity keys' },
+              },
+              required: ['id', 'description'], additionalProperties: false
+            }
+          },
+          {
+            name: 'pay_off_setup', title: 'Pay Off Setup', version: '0.1.0',
+            description: 'Close a story setup debt — marks it paid, abandoned, or deferred with a resolution note.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Setup ID to close', minLength: 1 },
+                resolution: { type: 'string', description: 'Brief description of how it resolved', minLength: 1 },
+                paid_in: { type: 'string', description: 'Scene or chapter key where it resolved' },
+                status: { type: 'string', enum: ['paid', 'abandoned', 'deferred'], default: 'paid' },
+              },
+              required: ['id', 'resolution'], additionalProperties: false
+            }
+          },
+          {
+            name: 'list_unpaid_setups', title: 'List Unpaid Setups', version: '0.1.0',
+            description: 'Return all open story promises, sorted by tension descending. The narrator\'s "here is what you owe the reader" surface.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                actor: { type: 'string', description: 'Filter to setups involving this entity key' },
+                scope: { type: 'string', enum: ['scene', 'chapter', 'story'], description: 'Filter by expected payoff scope' },
+                min_tension: { type: 'integer', minimum: 1, maximum: 5, description: 'Minimum tension level to include' },
+              },
+              additionalProperties: false
+            }
+          },
+          {
+            name: 'set_goal', title: 'Set Goal', version: '0.1.0',
+            description: 'Push or update an entity\'s named goal. Goals are stored as **Goal:<id>:** fields in the entity\'s lore text and readable via get_lore.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_key: { type: 'string', description: 'Lore key of the entity', minLength: 1 },
+                goal_id: { type: 'string', description: 'Unique goal identifier (e.g. "find-zira")', minLength: 1 },
+                description: { type: 'string', description: 'What the entity is trying to achieve', minLength: 1 },
+                parent: { type: 'string', description: 'Parent goal ID (for sub-goals)' },
+                status: { type: 'string', enum: ['active', 'blocked', 'achieved', 'abandoned'], default: 'active' },
+                obstacle: { type: 'string', description: 'What is currently blocking this goal' },
+              },
+              required: ['entity_key', 'goal_id', 'description'], additionalProperties: false
+            }
+          },
+          {
+            name: 'check_continuity', title: 'Check Continuity', version: '0.1.0',
+            description: 'Sweep the world for continuity violations: dangling references, occupancy contradictions, and inventory ghosts. Returns categorised findings by severity.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                scope: { type: 'string', description: 'Limit scan to keys matching this prefix or substring' },
+                checks: {
+                  type: 'array',
+                  items: { type: 'string', enum: ['dangling', 'occupancy', 'knowledge', 'inventory'] },
+                  description: 'Which checks to run (default: all four)'
+                },
+                severity_floor: { type: 'string', enum: ['info', 'warn', 'error'], default: 'info' },
+              },
+              additionalProperties: false
+            }
+          },
+          {
+            name: 'scene_brief', title: 'Scene Brief', version: '0.1.0',
+            description: 'One composite call assembling everything needed to write a scene: location text, present entities with status/goal/recent-events, open setups, and relationships. Replaces 6–10 individual reads.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                location_key: { type: 'string', description: 'Lore key of the location' },
+                scene_key: { type: 'string', description: 'Lore key of an active scene (alternative to location_key)' },
+                include: {
+                  type: 'object',
+                  properties: {
+                    events: { type: 'integer', minimum: 0, description: 'Recent events per entity to include (default 5)' },
+                    open_setups: { type: 'boolean', description: 'Include open setups for present actors (default true)' },
+                    relationships: { type: 'boolean', description: 'Include relationships between present entities (default true)' },
+                    sensory: { type: 'boolean', description: 'Include sensory profile for the location' },
+                  },
+                  additionalProperties: false
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          {
+            name: 'render_pov', title: 'Render POV', version: '0.1.0',
+            description: 'Re-project a scene through one entity\'s senses and knowledge. Strips [hidden] actors below Perception threshold and facts the POV doesn\'t Know — prevents omniscience leakage.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                pov_entity_key: { type: 'string', description: 'Lore key of the POV entity', minLength: 1 },
+                scene_key: { type: 'string', description: 'Lore key of the scene to render' },
+                location_key: { type: 'string', description: 'Lore key of the location to render' },
+                include_voice_hints: { type: 'boolean', description: 'Include diction/register/fixation hints from entity profile' },
+                reveal_threshold: { type: 'number', minimum: 0, maximum: 1, description: 'Override perception threshold (0=sees nothing hidden, 1=sees all)' },
+              },
+              required: ['pov_entity_key'], additionalProperties: false
+            }
           }
         ]
       }), 200)
@@ -2951,6 +3167,829 @@ app.post('/mcp', async (c) => {
           metadata: { retrieved: 2, written: 0 },
           entity_a: keyA, entity_b: keyB, interaction_type: interactionType,
           compatible, risk_level: riskLevel, risk_score: riskScore, size_ratio: sizeRatio, constraints
+        }), 200)
+      }
+
+      // ── append_event ─────────────────────────────────────────────────────────
+      if (toolName === 'append_event') {
+        const schema = z.object({
+          entity_key: z.string().min(1),
+          verb: z.string().min(1),
+          object: z.string().optional(),
+          location: z.string().optional(),
+          thread: z.string().optional(),
+          detail: z.string().optional(),
+          at: z.string().optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const entityKey = parsed.data.entity_key.trim().toLowerCase()
+        const eventsKey = `events:${entityKey}`
+        const now = parsed.data.at ?? new Date().toISOString()
+
+        const newEvent: Record<string, string> = { at: now, verb: parsed.data.verb }
+        if (parsed.data.object !== undefined) newEvent.object = parsed.data.object
+        if (parsed.data.location !== undefined) newEvent.location = parsed.data.location
+        if (parsed.data.thread !== undefined) newEvent.thread = parsed.data.thread
+        if (parsed.data.detail !== undefined) newEvent.detail = parsed.data.detail
+
+        const kv = getKV(c)
+        let events: typeof newEvent[] = []
+        if (kv) {
+          try { const r = await kv.get(eventsKey); if (r) events = JSON.parse(r) } catch { }
+        }
+
+        const nowMs = new Date(now).getTime()
+        const duplicate = events.some(e => {
+          const diff = Math.abs(new Date(e.at).getTime() - nowMs)
+          return diff <= 1000 && e.verb === newEvent.verb && e.object === newEvent.object
+        })
+
+        if (!duplicate) {
+          events.unshift(newEvent)
+          if (events.length > 200) events = events.slice(0, 200)
+          if (kv) await kv.put(eventsKey, JSON.stringify(events))
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Event "${newEvent.verb}" appended to "${entityKey}"${duplicate ? ' (duplicate skipped)' : ''}.` }],
+          metadata: { entity_key: entityKey, event_count: events.length, duplicate }
+        }), 200)
+      }
+
+      // ── get_event_log ─────────────────────────────────────────────────────────
+      if (toolName === 'get_event_log') {
+        const schema = z.object({
+          entity_key: z.union([z.string().min(1), z.array(z.string().min(1))]),
+          since: z.string().optional(),
+          until: z.string().optional(),
+          thread: z.string().optional(),
+          verbs: z.array(z.string()).optional(),
+          limit: z.number().int().min(1).max(500).default(50),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
+        const kv = getKV(c)
+        let allEvents: Array<any> = []
+
+        for (const ek of keys) {
+          const cleanKey = ek.trim().toLowerCase()
+          if (!kv) continue
+          try {
+            const raw = await kv.get(`events:${cleanKey}`)
+            if (raw) {
+              const evts = JSON.parse(raw) as Array<any>
+              allEvents.push(...evts.map((e: any) => ({ ...e, entity_key: cleanKey })))
+            }
+          } catch { }
+        }
+
+        if (parsed.data.since) {
+          const sinceMs = new Date(parsed.data.since).getTime()
+          if (!isNaN(sinceMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() >= sinceMs)
+        }
+        if (parsed.data.until) {
+          const untilMs = new Date(parsed.data.until).getTime()
+          if (!isNaN(untilMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() <= untilMs)
+        }
+        if (parsed.data.thread) {
+          const t = parsed.data.thread.toLowerCase()
+          allEvents = allEvents.filter(e => e.thread?.toLowerCase() === t)
+        }
+        if (parsed.data.verbs && parsed.data.verbs.length > 0) {
+          const verbSet = new Set(parsed.data.verbs.map((v: string) => v.toLowerCase()))
+          allEvents = allEvents.filter(e => verbSet.has(e.verb.toLowerCase()))
+        }
+
+        allEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        const limited = allEvents.slice(0, parsed.data.limit)
+
+        const summaryText = limited.length > 0
+          ? limited.map(e => `[${e.at}] ${e.entity_key}: ${e.verb}${e.object ? ` → ${e.object}` : ''}${e.detail ? ` (${e.detail})` : ''}`).join('\n')
+          : 'No events found.'
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { total: allEvents.length, returned: limited.length },
+          events: limited
+        }), 200)
+      }
+
+      // ── recent_changes ────────────────────────────────────────────────────────
+      if (toolName === 'recent_changes') {
+        const schema = z.object({
+          since: z.string().optional(),
+          key_prefix: z.string().optional(),
+          limit: z.number().int().min(1).max(200).default(30),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const kv = getKV(c)
+        let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
+        if (kv) {
+          try { const raw = await kv.get(CHANGELOG_KEY); if (raw) entries = JSON.parse(raw) } catch { }
+        }
+
+        if (parsed.data.since) {
+          const sinceMs = new Date(parsed.data.since).getTime()
+          if (!isNaN(sinceMs)) entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
+        }
+        if (parsed.data.key_prefix) {
+          const prefix = parsed.data.key_prefix.toLowerCase()
+          entries = entries.filter(e => e.key.startsWith(prefix))
+        }
+
+        entries = [...entries].reverse().slice(0, parsed.data.limit)
+
+        const summaryText = entries.length > 0
+          ? entries.map(e => `[${e.updatedAt}] ${e.op} ${e.key} v${e.version}`).join('\n')
+          : 'No changes found.'
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { count: entries.length },
+          changes: entries
+        }), 200)
+      }
+
+      // ── tag_topic ─────────────────────────────────────────────────────────────
+      if (toolName === 'tag_topic') {
+        const schema = z.object({
+          key: z.string().min(1),
+          add: z.array(z.string()).optional(),
+          remove: z.array(z.string()).optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const topicKey = parsed.data.key.trim().toLowerCase()
+        const toAdd = parsed.data.add ?? []
+        const toRemove = parsed.data.remove ?? []
+        if (toAdd.length === 0 && toRemove.length === 0) {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: 'No add or remove tags specified.' }], metadata: { key: topicKey, tags: [] } }), 200)
+        }
+
+        const raw = await kvGet(c, topicKey)
+        if (!raw) return c.json(makeError(id, -32602, `Topic "${topicKey}" not found`, null), 200)
+
+        const { text, meta } = parseKvEntry(raw)
+        const existingTagsRaw = extractRawField(text, 'Tags')
+        const existingTags = new Set<string>(
+          existingTagsRaw ? existingTagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+        )
+
+        for (const tag of toAdd) existingTags.add(tag.trim())
+        for (const tag of toRemove) existingTags.delete(tag.trim())
+        const newTagsStr = [...existingTags].join(', ')
+
+        let updatedText: string
+        if (existingTagsRaw !== null) {
+          updatedText = text.replace(/(\*\*Tags:\*\*\s*)([^\n]+)/i, `$1${newTagsStr}`)
+        } else {
+          updatedText = text + (text.endsWith('\n') ? '' : '\n') + `**Tags:** ${newTagsStr}`
+        }
+
+        await pushHistory(c, topicKey, raw)
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        await kvPut(c, topicKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        await appendChangelog(c, topicKey, version)
+        loreDB[topicKey] = updatedText
+
+        const kv = getKV(c)
+        if (kv) {
+          for (const tag of toAdd) {
+            const tagKey = `_tags:${tag.trim()}`
+            let tagKeys: string[] = []
+            try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch { }
+            if (!tagKeys.includes(topicKey)) { tagKeys.push(topicKey); await kv.put(tagKey, JSON.stringify(tagKeys)) }
+          }
+          for (const tag of toRemove) {
+            const tagKey = `_tags:${tag.trim()}`
+            let tagKeys: string[] = []
+            try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch { }
+            tagKeys = tagKeys.filter((k: string) => k !== topicKey)
+            if (tagKeys.length > 0) await kv.put(tagKey, JSON.stringify(tagKeys))
+            else await kv.delete(tagKey)
+          }
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Tags updated for "${topicKey}": [${newTagsStr}]` }],
+          metadata: { key: topicKey, tags: [...existingTags], version }
+        }), 200)
+      }
+
+      // ── find_by_tag ───────────────────────────────────────────────────────────
+      if (toolName === 'find_by_tag') {
+        const schema = z.object({
+          tags: z.array(z.string().min(1)).min(1),
+          mode: z.enum(['any', 'all']).default('any'),
+          with_excerpt: z.boolean().optional(),
+          limit: z.number().int().min(1).max(100).default(20),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const kv = getKV(c)
+        const tagKeysets: Set<string>[] = []
+        for (const tag of parsed.data.tags) {
+          let keys: string[] = []
+          if (kv) {
+            try { const r = await kv.get(`_tags:${tag.trim()}`); if (r) keys = JSON.parse(r) } catch { }
+          }
+          tagKeysets.push(new Set(keys))
+        }
+
+        let resultKeys: string[]
+        if (parsed.data.mode === 'all') {
+          resultKeys = tagKeysets.length > 0
+            ? [...tagKeysets[0]].filter(k => tagKeysets.every(s => s.has(k)))
+            : []
+        } else {
+          const union = new Set<string>()
+          for (const s of tagKeysets) for (const k of s) union.add(k)
+          resultKeys = [...union]
+        }
+
+        resultKeys = resultKeys.slice(0, parsed.data.limit)
+
+        const results: Array<{ key: string; excerpt?: string }> = []
+        for (const key of resultKeys) {
+          const entry: { key: string; excerpt?: string } = { key }
+          if (parsed.data.with_excerpt) {
+            const r = await kvGet(c, key)
+            if (r) {
+              const { text } = parseKvEntry(r)
+              entry.excerpt = text.slice(0, 120) + (text.length > 120 ? '…' : '')
+            }
+          }
+          results.push(entry)
+        }
+
+        const summaryText = results.length > 0
+          ? results.map(r => r.key + (r.excerpt ? `: "${r.excerpt}"` : '')).join('\n')
+          : `No topics found with tag${parsed.data.tags.length > 1 ? 's' : ''} [${parsed.data.tags.join(', ')}].`
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { tags: parsed.data.tags, mode: parsed.data.mode, count: results.length },
+          results
+        }), 200)
+      }
+
+      // ── bookmark_state ────────────────────────────────────────────────────────
+      if (toolName === 'bookmark_state') {
+        const schema = z.object({
+          name: z.string().min(1),
+          key_prefix: z.string().optional(),
+          note: z.string().optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const snapshotName = parsed.data.name.trim()
+        const allKeys = await kvList(c)
+        const scopedKeys = parsed.data.key_prefix
+          ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!))
+          : allKeys
+
+        const manifest: Record<string, { version: number | null; updatedAt: string | null }> = {}
+        for (const key of scopedKeys) {
+          const r = await kvGet(c, key)
+          if (!r) continue
+          const { meta } = parseKvEntry(r)
+          manifest[key] = {
+            version: typeof meta.version === 'number' ? meta.version : null,
+            updatedAt: typeof meta.updatedAt === 'string' ? meta.updatedAt : null
+          }
+        }
+
+        const snapshot = { name: snapshotName, note: parsed.data.note ?? null, created_at: new Date().toISOString(), key_count: scopedKeys.length, manifest }
+        const kv = getKV(c)
+        if (kv) await kv.put(`_snapshot:${snapshotName}`, JSON.stringify(snapshot))
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Snapshot "${snapshotName}" created with ${scopedKeys.length} key(s).` }],
+          metadata: { name: snapshotName, key_count: scopedKeys.length, created_at: snapshot.created_at }
+        }), 200)
+      }
+
+      // ── world_diff ────────────────────────────────────────────────────────────
+      if (toolName === 'world_diff') {
+        const schema = z.object({
+          from: z.string().min(1),
+          to: z.string().optional(),
+          detail: z.enum(['summary', 'fields', 'text']).default('summary'),
+          key_prefix: z.string().optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        type ManifestEntry = { version: number | null; updatedAt: string | null }
+        const kv = getKV(c)
+        let fromManifest: Record<string, ManifestEntry> = {}
+        let fromLabel = parsed.data.from
+
+        if (kv) {
+          try {
+            const rawSnap = await kv.get(`_snapshot:${parsed.data.from}`)
+            if (rawSnap) { const snap = JSON.parse(rawSnap); fromManifest = snap.manifest ?? {}; fromLabel = `snapshot:${parsed.data.from} (${snap.created_at})` }
+          } catch { }
+        }
+
+        let toManifest: Record<string, ManifestEntry> = {}
+        let toLabel = 'now'
+
+        if (parsed.data.to && kv) {
+          try {
+            const rawSnap = await kv.get(`_snapshot:${parsed.data.to}`)
+            if (rawSnap) { const snap = JSON.parse(rawSnap); toManifest = snap.manifest ?? {}; toLabel = `snapshot:${parsed.data.to} (${snap.created_at})` }
+          } catch { }
+        } else if (!parsed.data.to) {
+          const allKeys = await kvList(c)
+          const scopedKeys = parsed.data.key_prefix ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!)) : allKeys
+          for (const key of scopedKeys) {
+            const r = await kvGet(c, key)
+            if (!r) continue
+            const { meta } = parseKvEntry(r)
+            toManifest[key] = { version: typeof meta.version === 'number' ? meta.version : null, updatedAt: typeof meta.updatedAt === 'string' ? meta.updatedAt : null }
+          }
+        }
+
+        if (parsed.data.key_prefix) {
+          const prefix = parsed.data.key_prefix
+          for (const k of Object.keys(fromManifest)) if (!k.startsWith(prefix)) delete fromManifest[k]
+          for (const k of Object.keys(toManifest)) if (!k.startsWith(prefix)) delete toManifest[k]
+        }
+
+        const fromKeys = new Set(Object.keys(fromManifest))
+        const toKeys = new Set(Object.keys(toManifest))
+        const added = [...toKeys].filter(k => !fromKeys.has(k))
+        const removed = [...fromKeys].filter(k => !toKeys.has(k))
+        const changed: Array<any> = []
+
+        for (const k of [...fromKeys].filter(k => toKeys.has(k))) {
+          const f = fromManifest[k], t = toManifest[k]
+          if (f.version !== t.version || f.updatedAt !== t.updatedAt) {
+            const entry: any = { key: k, from_version: f.version, to_version: t.version, from_at: f.updatedAt, to_at: t.updatedAt }
+            if (parsed.data.detail !== 'summary') {
+              const r = await kvGet(c, k)
+              if (r) entry.current_text = parseKvEntry(r).text.slice(0, 500)
+            }
+            changed.push(entry)
+          }
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Diff "${fromLabel}" → "${toLabel}": ${added.length} added, ${removed.length} removed, ${changed.length} changed.` }],
+          metadata: { from: fromLabel, to: toLabel, added_count: added.length, removed_count: removed.length, changed_count: changed.length },
+          added, removed, changed
+        }), 200)
+      }
+
+      // ── plant_setup ───────────────────────────────────────────────────────────
+      if (toolName === 'plant_setup') {
+        const schema = z.object({
+          id: z.string().min(1),
+          description: z.string().min(1),
+          planted_in: z.string().optional(),
+          tension: z.number().int().min(1).max(5).optional(),
+          expected_in: z.string().optional(),
+          actors: z.array(z.string()).optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const setupKey = `setup:${parsed.data.id.trim()}`
+        const now = new Date().toISOString()
+        const tension = parsed.data.tension ?? 3
+
+        const lines = [
+          `**Description:** ${parsed.data.description}`,
+          `**Status:** open`,
+          `**Tension:** ${tension}`,
+          `**Created-At:** ${now}`,
+        ]
+        if (parsed.data.planted_in) lines.push(`**Planted-In:** ${parsed.data.planted_in}`)
+        if (parsed.data.expected_in) lines.push(`**Expected-In:** ${parsed.data.expected_in}`)
+        if (parsed.data.actors && parsed.data.actors.length > 0) lines.push(`**Actors:** ${parsed.data.actors.join(', ')}`)
+        const text = lines.join('\n')
+
+        const existingRaw = await kvGet(c, setupKey)
+        if (existingRaw) await pushHistory(c, setupKey, existingRaw)
+        const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
+        const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+
+        await kvPut(c, setupKey, JSON.stringify({ text, meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now } }))
+        await appendChangelog(c, setupKey, version)
+        loreDB[setupKey] = text
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Setup "${parsed.data.id}" planted (tension: ${tension}).` }],
+          metadata: { key: setupKey, version, tension }
+        }), 200)
+      }
+
+      // ── pay_off_setup ─────────────────────────────────────────────────────────
+      if (toolName === 'pay_off_setup') {
+        const schema = z.object({
+          id: z.string().min(1),
+          resolution: z.string().min(1),
+          paid_in: z.string().optional(),
+          status: z.enum(['paid', 'abandoned', 'deferred']).default('paid'),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const setupKey = `setup:${parsed.data.id.trim()}`
+        const raw = await kvGet(c, setupKey)
+        if (!raw) return c.json(makeError(id, -32602, `Setup "${parsed.data.id}" not found`, null), 200)
+
+        const { text, meta } = parseKvEntry(raw)
+        let updatedText = text.replace(/(\*\*Status:\*\*\s*)(\w+)/i, `$1${parsed.data.status}`)
+
+        const now = new Date().toISOString()
+        if (!updatedText.includes('**Resolution:**')) {
+          updatedText += `\n**Resolution:** ${parsed.data.resolution}`
+          if (parsed.data.paid_in) updatedText += `\n**Paid-In:** ${parsed.data.paid_in}`
+          updatedText += `\n**Closed-At:** ${now}`
+        } else {
+          updatedText = updatedText.replace(/(\*\*Resolution:\*\*\s*)([^\n]+)/i, `$1${parsed.data.resolution}`)
+        }
+
+        await pushHistory(c, setupKey, raw)
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        await kvPut(c, setupKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        await appendChangelog(c, setupKey, version)
+        loreDB[setupKey] = updatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Setup "${parsed.data.id}" marked as ${parsed.data.status}.` }],
+          metadata: { key: setupKey, status: parsed.data.status, version }
+        }), 200)
+      }
+
+      // ── list_unpaid_setups ────────────────────────────────────────────────────
+      if (toolName === 'list_unpaid_setups') {
+        const schema = z.object({
+          actor: z.string().optional(),
+          scope: z.enum(['scene', 'chapter', 'story']).optional(),
+          min_tension: z.number().int().min(1).max(5).optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const allKeys = await kvList(c)
+        const setupKeys = allKeys.filter(k => k.startsWith('setup:'))
+        type SetupEntry = { id: string; key: string; description: string; tension: number; planted_in: string | null; expected_in: string | null; actors: string[]; created_at: string | null }
+        const openSetups: SetupEntry[] = []
+
+        for (const key of setupKeys) {
+          const r = await kvGet(c, key)
+          if (!r) continue
+          const { text } = parseKvEntry(r)
+
+          const status = extractRawField(text, 'Status')?.toLowerCase()
+          if (status !== 'open') continue
+
+          const tension = (() => { const v = extractFieldFromText(text, 'Tension'); return typeof v === 'number' ? Math.round(v) : 3 })()
+          if (parsed.data.min_tension !== undefined && tension < parsed.data.min_tension) continue
+
+          const actorsRaw = extractRawField(text, 'Actors') ?? ''
+          const actors = actorsRaw ? actorsRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : []
+
+          if (parsed.data.actor) {
+            if (!actors.some((a: string) => a.toLowerCase().includes(parsed.data.actor!.toLowerCase()))) continue
+          }
+
+          const expectedIn = extractRawField(text, 'Expected-In')
+          if (parsed.data.scope && expectedIn) {
+            if (!expectedIn.toLowerCase().includes(parsed.data.scope.toLowerCase())) continue
+          }
+
+          openSetups.push({
+            id: key.replace(/^setup:/, ''),
+            key,
+            description: extractRawField(text, 'Description') ?? text.slice(0, 100),
+            tension,
+            planted_in: extractRawField(text, 'Planted-In'),
+            expected_in: expectedIn,
+            actors,
+            created_at: extractRawField(text, 'Created-At'),
+          })
+        }
+
+        openSetups.sort((a, b) => {
+          if (b.tension !== a.tension) return b.tension - a.tension
+          const aMs = a.created_at ? new Date(a.created_at).getTime() : 0
+          const bMs = b.created_at ? new Date(b.created_at).getTime() : 0
+          return aMs - bMs
+        })
+
+        const summaryText = openSetups.length > 0
+          ? openSetups.map(s => `[T${s.tension}] ${s.id}: ${s.description}`).join('\n')
+          : 'No open setups found.'
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { count: openSetups.length },
+          setups: openSetups
+        }), 200)
+      }
+
+      // ── set_goal ──────────────────────────────────────────────────────────────
+      if (toolName === 'set_goal') {
+        const schema = z.object({
+          entity_key: z.string().min(1),
+          goal_id: z.string().min(1),
+          description: z.string().min(1),
+          parent: z.string().optional(),
+          status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
+          obstacle: z.string().optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const entityKey = parsed.data.entity_key.trim().toLowerCase()
+        const raw = await kvGet(c, entityKey)
+        if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+        const { text, meta } = parseKvEntry(raw)
+        const goalId = parsed.data.goal_id.trim()
+
+        const parts = [parsed.data.status, parsed.data.description]
+        if (parsed.data.obstacle) parts.push(`obstacle: ${parsed.data.obstacle}`)
+        if (parsed.data.parent) parts.push(`parent: ${parsed.data.parent}`)
+        const goalLine = `**Goal:${goalId}:** ${parts.join(' | ')}`
+
+        const escapedField = `Goal:${goalId}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const existingMatch = text.match(new RegExp(`\\*\\*${escapedField}:\\*\\*[^\\n]*`, 'i'))
+
+        const updatedText = existingMatch
+          ? text.replace(existingMatch[0], goalLine)
+          : text + (text.endsWith('\n') ? '' : '\n') + goalLine
+
+        await pushHistory(c, entityKey, raw)
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        await appendChangelog(c, entityKey, version)
+        loreDB[entityKey] = updatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Goal "${goalId}" set on "${entityKey}" (${parsed.data.status}).` }],
+          metadata: { entity_key: entityKey, goal_id: goalId, status: parsed.data.status, version }
+        }), 200)
+      }
+
+      // ── check_continuity ──────────────────────────────────────────────────────
+      if (toolName === 'check_continuity') {
+        const schema = z.object({
+          scope: z.string().optional(),
+          checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
+          severity_floor: z.enum(['info', 'warn', 'error']).default('info'),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const activeChecks = parsed.data.checks ?? ['dangling', 'occupancy', 'knowledge', 'inventory']
+        const allKeys = await kvList(c)
+        const scopedKeys = parsed.data.scope
+          ? allKeys.filter(k => k.startsWith(parsed.data.scope!) || k.includes(parsed.data.scope!))
+          : allKeys
+        const allKeySet = new Set(allKeys)
+
+        type Finding = { key: string; check: string; severity: 'info' | 'warn' | 'error'; message: string }
+        const findings: Finding[] = []
+
+        for (const key of scopedKeys) {
+          const r = await kvGet(c, key)
+          if (!r) continue
+          const { text } = parseKvEntry(r)
+
+          if (activeChecks.includes('dangling')) {
+            const refs = text.match(/\b(character|location|item|faction|scene|archetype):[a-z0-9:_-]+/gi) ?? []
+            for (const ref of refs) {
+              const refKey = ref.toLowerCase()
+              if (refKey !== key && !allKeySet.has(refKey)) {
+                findings.push({ key, check: 'dangling', severity: 'warn', message: `References "${refKey}" which does not exist.` })
+              }
+            }
+          }
+
+          if (activeChecks.includes('occupancy') && key.startsWith('character:')) {
+            const locationField = extractRawField(text, 'Location')
+            if (locationField) {
+              const locationKey = locationField.trim().toLowerCase()
+              const locRaw = await kvGet(c, locationKey)
+              if (!locRaw) {
+                findings.push({ key, check: 'occupancy', severity: 'warn', message: `Location field "${locationKey}" does not exist.` })
+              }
+            }
+          }
+
+          if (activeChecks.includes('inventory') && (key.startsWith('character:') || key.startsWith('entity:'))) {
+            const inventoryField = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items')
+            if (inventoryField) {
+              const itemRefs = inventoryField.match(/\b(item|weapon|armor):[a-z0-9:_-]+/gi) ?? []
+              for (const itemRef of itemRefs) {
+                const itemKey = itemRef.toLowerCase()
+                if (!allKeySet.has(itemKey)) {
+                  findings.push({ key, check: 'inventory', severity: 'info', message: `Inventory references "${itemKey}" which does not exist.` })
+                }
+              }
+            }
+          }
+        }
+
+        const severityOrder: Record<string, number> = { info: 0, warn: 1, error: 2 }
+        const floorLevel = severityOrder[parsed.data.severity_floor]
+        const filtered = findings.filter(f => severityOrder[f.severity] >= floorLevel)
+
+        const summaryText = filtered.length > 0
+          ? `${filtered.length} continuity issue(s) found:\n` + filtered.slice(0, 20).map(f => `[${f.severity.toUpperCase()}] ${f.key}: ${f.message}`).join('\n')
+          : 'No continuity issues found.'
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: summaryText }],
+          metadata: { scanned: scopedKeys.length, issue_count: filtered.length },
+          findings: filtered
+        }), 200)
+      }
+
+      // ── scene_brief ───────────────────────────────────────────────────────────
+      if (toolName === 'scene_brief') {
+        const schema = z.object({
+          location_key: z.string().optional(),
+          scene_key: z.string().optional(),
+          include: z.object({
+            events: z.number().int().min(0).optional(),
+            open_setups: z.boolean().optional(),
+            relationships: z.boolean().optional(),
+            sensory: z.boolean().optional(),
+          }).optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const include = parsed.data.include ?? {}
+        const eventsCount = include.events ?? 5
+        const includeSetups = include.open_setups !== false
+        const includeRelationships = include.relationships !== false
+
+        const baseKey = (parsed.data.location_key ?? parsed.data.scene_key ?? '').trim().toLowerCase()
+        if (!baseKey) return c.json(makeError(id, -32602, 'Either location_key or scene_key is required', null), 200)
+
+        const rawBase = await kvGet(c, baseKey)
+        if (!rawBase) return c.json(makeError(id, -32602, `"${baseKey}" not found`, null), 200)
+
+        const { text: baseText } = parseKvEntry(rawBase)
+
+        const allKeys = await kvList(c)
+        const entityKeys: string[] = []
+        for (const key of allKeys) {
+          if (!key.startsWith('character:') && !key.startsWith('entity:')) continue
+          const r = await kvGet(c, key)
+          if (!r) continue
+          const { text } = parseKvEntry(r)
+          if (extractRawField(text, 'Location')?.trim().toLowerCase() === baseKey) entityKeys.push(key)
+        }
+
+        const kv = getKV(c)
+        const occupants: Array<{ key: string; status: string | null; top_goal: string | null; events: any[] }> = []
+        for (const ek of entityKeys) {
+          const eRaw = await kvGet(c, ek)
+          if (!eRaw) continue
+          const { text: eText } = parseKvEntry(eRaw)
+          const topGoalMatch = eText.match(/\*\*Goal:([^:]+):\*\*\s*([^\n]+)/)
+          let recentEvents: any[] = []
+          if (kv && eventsCount > 0) {
+            try { const evRaw = await kv.get(`events:${ek}`); if (evRaw) recentEvents = (JSON.parse(evRaw) as any[]).slice(0, eventsCount) } catch { }
+          }
+          occupants.push({
+            key: ek,
+            status: extractRawField(eText, 'Status'),
+            top_goal: topGoalMatch ? `${topGoalMatch[1]}: ${topGoalMatch[2]}` : null,
+            events: recentEvents
+          })
+        }
+
+        let openSetups: any[] = []
+        if (includeSetups) {
+          const actorSet = new Set(entityKeys.map(k => k.toLowerCase()))
+          for (const sk of allKeys.filter(k => k.startsWith('setup:'))) {
+            const sRaw = await kvGet(c, sk)
+            if (!sRaw) continue
+            const { text: sText } = parseKvEntry(sRaw)
+            if (extractRawField(sText, 'Status')?.toLowerCase() !== 'open') continue
+            const actors = (extractRawField(sText, 'Actors') ?? '').split(',').map((s: string) => s.trim()).filter(Boolean)
+            if (actors.length === 0 || actors.some((a: string) => actorSet.has(a.toLowerCase()))) {
+              openSetups.push({
+                id: sk.replace(/^setup:/, ''),
+                description: extractRawField(sText, 'Description') ?? '',
+                tension: (() => { const v = extractFieldFromText(sText, 'Tension'); return typeof v === 'number' ? v : 3 })()
+              })
+            }
+          }
+        }
+
+        const relationships: any[] = []
+        if (includeRelationships && entityKeys.length >= 2) {
+          for (let i = 0; i < Math.min(entityKeys.length, 4); i++) {
+            for (let j = i + 1; j < Math.min(entityKeys.length, 4); j++) {
+              const rA = await kvGet(c, entityKeys[i])
+              const rB = await kvGet(c, entityKeys[j])
+              if (!rA || !rB) continue
+              const tA = parseKvEntry(rA).text
+              const affinity = extractRawField(tA, 'Affinity')
+              const debt = extractRawField(tA, 'Debt')
+              const threat = extractRawField(tA, 'Threat-Level')
+              if (affinity || debt || threat) {
+                relationships.push({ entity_a: entityKeys[i], entity_b: entityKeys[j], affinity, debt, threat_level: threat })
+              }
+            }
+          }
+        }
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Scene brief for "${baseKey}": ${occupants.length} entity/entities present. ${openSetups.length} open setup(s). ${relationships.length} relationship(s).` }],
+          metadata: { location: baseKey, entity_count: occupants.length, setup_count: openSetups.length },
+          location: { key: baseKey, text: baseText },
+          entities: occupants,
+          open_setups: openSetups,
+          relationships
+        }), 200)
+      }
+
+      // ── render_pov ────────────────────────────────────────────────────────────
+      if (toolName === 'render_pov') {
+        const schema = z.object({
+          pov_entity_key: z.string().min(1),
+          scene_key: z.string().optional(),
+          location_key: z.string().optional(),
+          include_voice_hints: z.boolean().optional(),
+          reveal_threshold: z.number().min(0).max(1).optional(),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const povKey = parsed.data.pov_entity_key.trim().toLowerCase()
+        const rawPov = await kvGet(c, povKey)
+        if (!rawPov) return c.json(makeError(id, -32602, `POV entity "${povKey}" not found`, null), 200)
+
+        const { text: povText } = parseKvEntry(rawPov)
+        const perception = (() => { const v = extractFieldFromText(povText, 'Perception'); return typeof v === 'number' ? normalizeWeight(v) : 0.5 })()
+        const threshold = parsed.data.reveal_threshold ?? perception
+
+        const knowsRaw = extractRawField(povText, 'Knows') ?? extractRawField(povText, 'Knowledge') ?? ''
+        const knownTopics = new Set(knowsRaw.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean))
+
+        const baseKey = (parsed.data.location_key ?? parsed.data.scene_key ?? extractRawField(povText, 'Location') ?? '').trim().toLowerCase()
+        if (!baseKey) return c.json(makeError(id, -32602, 'scene_key or location_key required, or entity must have a Location field', null), 200)
+
+        const rawBase = await kvGet(c, baseKey)
+        const baseText = rawBase ? parseKvEntry(rawBase).text : ''
+
+        const filteredLines: string[] = []
+        for (const line of baseText.split('\n')) {
+          if (/\[(hidden|concealed)\]/i.test(line) && threshold < 0.7) continue
+          if (/\[(threat|danger)\]/i.test(line) && threshold < 0.4) continue
+          filteredLines.push(line)
+        }
+        const filteredBaseText = filteredLines.join('\n')
+
+        const allKeys = await kvList(c)
+        const visibleEntities: Array<{ key: string; status: string | null; known: boolean }> = []
+        for (const key of allKeys) {
+          if ((!key.startsWith('character:') && !key.startsWith('entity:')) || key === povKey) continue
+          const r = await kvGet(c, key)
+          if (!r) continue
+          const { text } = parseKvEntry(r)
+          if (extractRawField(text, 'Location')?.trim().toLowerCase() !== baseKey) continue
+          if (/\[hidden\]|\[concealed\]|\[invisible\]/i.test(text) && threshold < 0.7) continue
+          const known = knownTopics.has(key) || knownTopics.has(key.split(':').pop()?.toLowerCase() ?? '')
+          visibleEntities.push({ key, status: extractRawField(text, 'Status'), known })
+        }
+
+        const voiceHints = parsed.data.include_voice_hints ? {
+          diction: extractRawField(povText, 'Diction') ?? extractRawField(povText, 'Voice'),
+          register: extractRawField(povText, 'Register') ?? extractRawField(povText, 'Tone'),
+          fixations: extractRawField(povText, 'Fixations') ?? extractRawField(povText, 'Preoccupations'),
+        } : null
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `POV render for "${povKey}" at "${baseKey}": ${visibleEntities.length} visible entity/entities. Perception: ${threshold.toFixed(2)}.` }],
+          metadata: { pov: povKey, location: baseKey, perception: threshold, entity_count: visibleEntities.length },
+          pov_entity: povKey,
+          location: { key: baseKey, filtered_text: filteredBaseText },
+          visible_entities: visibleEntities,
+          ...(voiceHints !== null && { voice_hints: voiceHints }),
+          knowledge_scope: [...knownTopics]
         }), 200)
       }
 
