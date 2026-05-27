@@ -228,6 +228,34 @@ describe('get_lore_batch', () => {
   })
 })
 
+// ── get_lore_batch (legacy bare method) ───────────────────────────────────────
+
+describe('get_lore_batch legacy bare method', () => {
+  it('resolves keys when called as bare method', async () => {
+    await seedKV('batch:x1', 'X1 text')
+    await seedKV('batch:x2', 'X2 text')
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: { keys: ['batch:x1', 'batch:x2', 'batch:missing'] } }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
+    expect(res.result.results['batch:x1']).not.toBeNull()
+    expect(res.result.results['batch:x2']).not.toBeNull()
+    expect(res.result.results['batch:missing']).toBeNull()
+  })
+
+  it('returns error when keys array is missing', async () => {
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: {} }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
 // ── set_lore and delete_lore ──────────────────────────────────────────────────
 
 describe('set_lore', () => {

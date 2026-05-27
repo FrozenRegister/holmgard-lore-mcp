@@ -2974,6 +2974,15 @@ app.post('/mcp', async (c) => {
       return c.json(makeResult(id, { key, text, meta }), 200)
     }
 
+    if (method === 'get_lore_batch') {
+      const keys: string[] = Array.isArray(params?.keys) ? params.keys.map((k: string) => k.trim().toLowerCase()) : []
+      if (!keys.length) return c.json(makeError(id, -32602, 'Invalid params: missing keys array'), 200)
+      const rawValues = await Promise.all(keys.map(k => kvGet(c, k)))
+      const results: Record<string, any> = {}
+      keys.forEach((k, i) => { results[k] = rawValues[i] ? parseKvEntry(rawValues[i]!) : null })
+      return c.json(makeResult(id, { results }), 200)
+    }
+
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
 
   } catch (e) {
