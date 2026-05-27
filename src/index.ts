@@ -1484,9 +1484,6 @@ app.post('/mcp', async (c) => {
             loreDB[key] = updatedText
             mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
 
-            loreDB[key] = updatedText
-            mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
-
           } else { // patch
             if (!mut.operation) {
               mutationResults.push({ key, action: 'patch', ok: false, message: 'operation required for patch.' })

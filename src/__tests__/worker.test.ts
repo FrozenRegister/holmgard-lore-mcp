@@ -682,13 +682,13 @@ describe('restore_lore', () => {
     expect(res.result.metadata.remaining_history).toBe(1)
   })
 
-  it('caps history at 5 — oldest entry is dropped on the 6th write', async () => {
+  it('caps history at 20 — oldest entry is dropped on the 21st write', async () => {
     await seedKV('restore:cap', 'v0')
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 21; i++) {
       await callTool('set_lore', { key: 'restore:cap', text: `v${i}` })
     }
-    // Restore 5 times — should reach v2 (v1 was evicted)
-    for (let i = 0; i < 5; i++) {
+    // Restore 20 times — should reach v1 (v0 was evicted)
+    for (let i = 0; i < 20; i++) {
       await callTool('restore_lore', { key: 'restore:cap' })
     }
     const get = await callTool('get_lore', { query: 'restore:cap' })
