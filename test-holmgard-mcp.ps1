@@ -993,6 +993,40 @@ $maxW1 = [double]$maxResult.result.metadata.weight_1
 Assert-True -TestName "TEST 120a: Weight-1:5 normalizes to ~0.05" -Condition ($minW1 -ge 0.049 -and $minW1 -le 0.051) -Expected "~0.05" -Actual "$minW1" -RequestId 419
 Assert-True -TestName "TEST 120b: Weight-1:95 normalizes to ~0.95" -Condition ($maxW1 -ge 0.949 -and $maxW1 -le 0.951) -Expected "~0.95" -Actual "$maxW1" -RequestId 420
 
+# ── append_to_section ────────────────────────────────────────────────────────
+
+$atsKey = "ats:smoke-test"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $atsKey; text = "## Personality`nBrave and curious.`n## Goals`nFind the truth." } -RequestId 450
+
+Write-Section "TEST 122a: append_to_section — appends to end of section"
+$ats122a = Get-MCPToolResult -ToolName "append_to_section" -Arguments @{ key = $atsKey; section = "Personality"; text = " Loyal to companions." } -RequestId 451
+Assert-True -TestName "TEST 122a: action=appended" -Condition ($ats122a.result.action -eq "appended") -Expected "appended" -Actual "$($ats122a.result.action)" -RequestId 451
+Assert-True -TestName "TEST 122a: new_version=2" -Condition ($ats122a.result.new_version -eq 2) -Expected "2" -Actual "$($ats122a.result.new_version)" -RequestId 451
+$atsGet1 = Get-MCPToolResult -ToolName "get_lore" -Arguments @{ query = $atsKey } -RequestId 452
+$atsText1 = $atsGet1.result.content[0].text
+Assert-True -TestName "TEST 122a: content contains joined text" -Condition ($atsText1 -like "*Brave and curious. Loyal to companions.*") -Expected "joined text" -Actual "$atsText1" -RequestId 452
+
+Write-Section "TEST 122b: append_to_section — section not found, auto_create=false returns error"
+$ats122b = Get-MCPToolResult -ToolName "append_to_section" -Arguments @{ key = $atsKey; section = "NonExistentSection"; text = "Some text."; auto_create = $false } -RequestId 453
+Assert-True -TestName "TEST 122b: error=section_not_found" -Condition ($ats122b.result.error -eq "section_not_found") -Expected "section_not_found" -Actual "$($ats122b.result.error)" -RequestId 453
+
+Write-Section "TEST 122c: append_to_section — auto_create=true creates new section"
+$ats122c = Get-MCPToolResult -ToolName "append_to_section" -Arguments @{ key = $atsKey; section = "Notes"; text = "First note." } -RequestId 454
+Assert-True -TestName "TEST 122c: action=created" -Condition ($ats122c.result.action -eq "created") -Expected "created" -Actual "$($ats122c.result.action)" -RequestId 454
+Assert-True -TestName "TEST 122c: warnings contain section_created" -Condition ($ats122c.result.warnings -contains "section_created") -Expected "section_created in warnings" -Actual "$($ats122c.result.warnings)" -RequestId 454
+$atsGet2 = Get-MCPToolResult -ToolName "get_lore" -Arguments @{ query = $atsKey } -RequestId 455
+Assert-True -TestName "TEST 122c: new section in lore text" -Condition ($atsGet2.result.content[0].text -like "*## Notes*First note.*") -Expected "## Notes...First note." -Actual "$($atsGet2.result.content[0].text)" -RequestId 455
+
+Write-Section "TEST 122d: append_to_section — empty text returns empty_text error"
+$ats122d = Get-MCPToolResult -ToolName "append_to_section" -Arguments @{ key = $atsKey; section = "Personality"; text = "" } -RequestId 456
+Assert-True -TestName "TEST 122d: error=empty_text" -Condition ($ats122d.result.error -eq "empty_text") -Expected "empty_text" -Actual "$($ats122d.result.error)" -RequestId 456
+
+Write-Section "TEST 122e: append_to_section — non-existent key returns key_not_found"
+$ats122e = Get-MCPToolResult -ToolName "append_to_section" -Arguments @{ key = "character:ats-does-not-exist-smoke"; section = "Personality"; text = "Text." } -RequestId 457
+Assert-True -TestName "TEST 122e: error=key_not_found" -Condition ($ats122e.result.error -eq "key_not_found") -Expected "key_not_found" -Actual "$($ats122e.result.error)" -RequestId 457
+
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $atsKey } -RequestId 458
+
 # ── Cleanup all new-tool test keys ────────────────────────────────────────────
 
 Write-Section "TEST 121: new tools — cleanup all test keys"

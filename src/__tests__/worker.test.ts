@@ -56,10 +56,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 55 tools', async () => {
+  it('tools/list returns exactly 56 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(55)
+    expect(tools).toHaveLength(56)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('check_authentication')
@@ -116,6 +116,7 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('check_continuity')
     expect(names).toContain('scene_brief')
     expect(names).toContain('render_pov')
+    expect(names).toContain('append_to_section')
   })
 
   it('rejects requests with wrong jsonrpc version', async () => {
@@ -3676,5 +3677,205 @@ describe('get_lore_section', () => {
     await seedKV('section:key-check', '## Notes\nSome notes.')
     const res = await callTool('get_lore_section', { key: 'section:key-check', sections: ['Notes'] })
     expect(res.result.key).toBe('section:key-check')
+  })
+})
+
+// ── append_to_section ─────────────────────────────────────────────────────────
+
+describe('append_to_section', () => {
+  it('appends to end of populated section (default position)', async () => {
+    await seedKV('ats:populated', '## Personality\nCurious and kind.\n## Goals\nFind truth.')
+    const res = await callTool('append_to_section', { key: 'ats:populated', section: 'Personality', text: 'Loyal to companions.' })
+    expect(res.result.action).toBe('appended')
+    expect(res.result.position).toBe('end')
+    const get = await callTool('get_lore', { query: 'ats:populated' })
+    expect(get.result.text).toContain('Curious and kind. Loyal to companions.')
+    expect(get.result.text).toContain('## Goals\nFind truth.')
+  })
+
+  it('prepends to start of section', async () => {
+    await seedKV('ats:prepend', '## Personality\nCurious and kind.\n## Goals\nFind truth.')
+    const res = await callTool('append_to_section', { key: 'ats:prepend', section: 'Personality', text: 'A former novice. ', position: 'start' })
+    expect(res.result.action).toBe('prepended')
+    const get = await callTool('get_lore', { query: 'ats:prepend' })
+    expect(get.result.text).toContain('A former novice. Curious and kind.')
+  })
+
+  it('replaced_empty action when section has no content', async () => {
+    await seedKV('ats:empty-sec', '## Notes\n\n## Goals\nFind truth.')
+    const res = await callTool('append_to_section', { key: 'ats:empty-sec', section: 'Notes', text: 'First observation.' })
+    expect(res.result.action).toBe('replaced_empty')
+    const get = await callTool('get_lore', { query: 'ats:empty-sec' })
+    expect(get.result.text).toContain('## Notes\nFirst observation.')
+  })
+
+  it('creates section when not found and auto_create is true (default)', async () => {
+    await seedKV('ats:create', '## Personality\nCurious.\n## Goals\nFind truth.')
+    const res = await callTool('append_to_section', { key: 'ats:create', section: 'Inventory', text: 'rations×3' })
+    expect(res.result.action).toBe('created')
+    expect(res.result.warnings).toContain('section_created')
+    const get = await callTool('get_lore', { query: 'ats:create' })
+    expect(get.result.text).toContain('## Inventory\nrations×3')
+  })
+
+  it('returns section_not_found when auto_create is false and section missing', async () => {
+    await seedKV('ats:no-create', '## Personality\nCurious.')
+    const res = await callTool('append_to_section', { key: 'ats:no-create', section: 'Inventory', text: 'rations', auto_create: false })
+    expect(res.result.error).toBe('section_not_found')
+    expect(res.result.hint).toBeDefined()
+  })
+
+  it('targets first occurrence for duplicate section, adds duplicate_section warning', async () => {
+    await seedKV('ats:dup', '## Notes\nFirst note.\n## Personality\nKind.\n## Notes\nSecond note.')
+    const res = await callTool('append_to_section', { key: 'ats:dup', section: 'Notes', text: 'Additional.' })
+    expect(res.result.warnings).toContain('duplicate_section')
+    const text = (await callTool('get_lore', { query: 'ats:dup' })).result.text as string
+    expect(text).toContain('First note.')
+    expect(text).toContain('Additional.')
+    // Second Notes section untouched
+    const secondIdx = text.indexOf('## Notes', text.indexOf('## Notes') + 1)
+    expect(text.slice(secondIdx)).toContain('Second note.')
+    expect(text.slice(secondIdx)).not.toContain('Additional.')
+  })
+
+  it('handles last section running to EOF without trailing heading', async () => {
+    await seedKV('ats:eof', '## Section A\nContent A\n## Section B\nContent B')
+    const res = await callTool('append_to_section', { key: 'ats:eof', section: 'Section B', text: 'More B.' })
+    expect(res.result.action).toBe('appended')
+    const text = (await callTool('get_lore', { query: 'ats:eof' })).result.text as string
+    expect(text).toContain('Content B')
+    expect(text).toContain('More B.')
+    expect(text).toContain('## Section A\nContent A')
+  })
+
+  it('text starting with newline inserts as new paragraph', async () => {
+    await seedKV('ats:newpara', '## Notes\nLine one.\nLine two.')
+    await callTool('append_to_section', { key: 'ats:newpara', section: 'Notes', text: '\n\nLine three.' })
+    const text = (await callTool('get_lore', { query: 'ats:newpara' })).result.text as string
+    expect(text).toContain('Line two.\n\nLine three.')
+  })
+
+  it('appending a single word adds a space between existing text and new text', async () => {
+    await seedKV('ats:word', '## Personality\nBrave.')
+    await callTool('append_to_section', { key: 'ats:word', section: 'Personality', text: 'Loyal.' })
+    const text = (await callTool('get_lore', { query: 'ats:word' })).result.text as string
+    expect(text).toContain('Brave. Loyal.')
+  })
+
+  it('empty text returns empty_text error without mutating entry', async () => {
+    await seedKV('ats:empty-text', '## Personality\nCurious.')
+    const res = await callTool('append_to_section', { key: 'ats:empty-text', section: 'Personality', text: '' })
+    expect(res.result.error).toBe('empty_text')
+    expect((await callTool('get_lore', { query: 'ats:empty-text' })).result.text).toBe('## Personality\nCurious.')
+  })
+
+  it('whitespace-only text returns empty_text error', async () => {
+    await seedKV('ats:ws-text', '## Personality\nCurious.')
+    const res = await callTool('append_to_section', { key: 'ats:ws-text', section: 'Personality', text: '   ' })
+    expect(res.result.error).toBe('empty_text')
+  })
+
+  it('very long append succeeds without truncation', async () => {
+    const longText = 'word '.repeat(2000).trim()
+    await seedKV('ats:long', '## Notes\nFirst.')
+    const res = await callTool('append_to_section', { key: 'ats:long', section: 'Notes', text: '\n' + longText })
+    expect(res.result.action).toBe('appended')
+    const text = (await callTool('get_lore', { query: 'ats:long' })).result.text as string
+    expect(text.length).toBeGreaterThan(longText.length)
+    expect(text).toContain('word word word')
+  })
+
+  it('section name with special characters (parens, hyphens) matches correctly', async () => {
+    await seedKV('ats:special', '## Weight-1 (Predator Drive):\n0.85')
+    const res = await callTool('append_to_section', { key: 'ats:special', section: 'Weight-1 (Predator Drive)', text: ' Updated: 0.90' })
+    expect(res.result.action).toBe('appended')
+    const text = (await callTool('get_lore', { query: 'ats:special' })).result.text as string
+    expect(text).toContain('0.85 Updated: 0.90')
+  })
+
+  it('substring section name does not false-match longer name', async () => {
+    await seedKV('ats:substr', '## Goals\nShort term.\n## Goals (Completed)\nDone.')
+    await callTool('append_to_section', { key: 'ats:substr', section: 'Goals', text: ' New goal.' })
+    const text = (await callTool('get_lore', { query: 'ats:substr' })).result.text as string
+    expect(text).toContain('Short term. New goal.')
+    expect(text).toContain('## Goals (Completed)\nDone.')
+  })
+
+  it('trailing colon on heading is stripped for matching', async () => {
+    await seedKV('ats:colon', '## Personality:\nCurious.')
+    const res = await callTool('append_to_section', { key: 'ats:colon', section: 'Personality', text: ' Loyal.' })
+    expect(res.result.action).toBe('appended')
+    expect((await callTool('get_lore', { query: 'ats:colon' })).result.text).toContain('Curious. Loyal.')
+  })
+
+  it('no ## headings + auto_create true creates section at end', async () => {
+    await seedKV('ats:no-headings', 'Just a flat paragraph with no structure.')
+    const res = await callTool('append_to_section', { key: 'ats:no-headings', section: 'Personality', text: 'Curious.', auto_create: true })
+    expect(res.result.action).toBe('created')
+    expect((await callTool('get_lore', { query: 'ats:no-headings' })).result.text).toContain('## Personality\nCurious.')
+  })
+
+  it('no ## headings + auto_create false returns section_not_found', async () => {
+    await seedKV('ats:no-headings-nc', 'Just flat text.')
+    const res = await callTool('append_to_section', { key: 'ats:no-headings-nc', section: 'Personality', text: 'Curious.', auto_create: false })
+    expect(res.result.error).toBe('section_not_found')
+  })
+
+  it('unicode and emoji in section name match correctly', async () => {
+    await seedKV('ats:unicode', "## État d'Esprit 😤\nFrustrated.")
+    const res = await callTool('append_to_section', { key: 'ats:unicode', section: "État d'Esprit 😤", text: ' And hopeful.' })
+    expect(res.result.action).toBe('appended')
+    expect((await callTool('get_lore', { query: 'ats:unicode' })).result.text).toContain('Frustrated. And hopeful.')
+  })
+
+  it('text containing ## strings is stored as literal content, not parsed as section boundaries', async () => {
+    await seedKV('ats:hash-in-text', '## Notes\nFirst note.')
+    await callTool('append_to_section', { key: 'ats:hash-in-text', section: 'Notes', text: '\n## This is NOT a heading\nJust content.' })
+    const text = (await callTool('get_lore', { query: 'ats:hash-in-text' })).result.text as string
+    expect(text).toContain('## This is NOT a heading')
+    expect(text).toContain('Just content.')
+    expect(text.startsWith('## Notes\n')).toBe(true)
+  })
+
+  it('non-existent key returns key_not_found error', async () => {
+    const res = await callTool('append_to_section', { key: 'character:does-not-exist-ats-99999', section: 'Personality', text: 'Text.' })
+    expect(res.result.error).toBe('key_not_found')
+  })
+
+  it('consecutive appends accumulate correctly (no stale-cache issue)', async () => {
+    await seedKV('ats:consec', '## Notes\nFirst.')
+    await callTool('append_to_section', { key: 'ats:consec', section: 'Notes', text: ' Second.' })
+    await callTool('append_to_section', { key: 'ats:consec', section: 'Notes', text: ' Third.' })
+    expect((await callTool('get_lore', { query: 'ats:consec' })).result.text).toContain('First. Second. Third.')
+  })
+
+  it('auto-created section is placed after all existing content including trailing loose text', async () => {
+    await seedKV('ats:trailing', '## Section A\nContent.\n\nTrailing loose text without a heading.')
+    const res = await callTool('append_to_section', { key: 'ats:trailing', section: 'NewSection', text: 'New content.' })
+    expect(res.result.action).toBe('created')
+    const text = (await callTool('get_lore', { query: 'ats:trailing' })).result.text as string
+    expect(text).toContain('Trailing loose text without a heading.')
+    expect(text).toContain('## NewSection\nNew content.')
+    expect(text.indexOf('## NewSection')).toBeGreaterThan(text.indexOf('Trailing loose text'))
+  })
+
+  it('response shape has key, section, action, position, new_version, bytes_added, warnings', async () => {
+    await seedKV('ats:shape', '## Notes\nExisting.')
+    const res = await callTool('append_to_section', { key: 'ats:shape', section: 'Notes', text: ' More.' })
+    expect(res.result.key).toBe('ats:shape')
+    expect(res.result.section).toBe('Notes')
+    expect(res.result.action).toBe('appended')
+    expect(res.result.position).toBe('end')
+    expect(res.result.new_version).toBe(2)
+    expect(typeof res.result.bytes_added).toBe('number')
+    expect(res.result.bytes_added).toBeGreaterThan(0)
+    expect(Array.isArray(res.result.warnings)).toBe(true)
+  })
+
+  it('mutation is reversible via restore_lore', async () => {
+    await seedKV('ats:restore', '## Notes\nOriginal content.')
+    await callTool('append_to_section', { key: 'ats:restore', section: 'Notes', text: ' Appended.' })
+    await callTool('restore_lore', { key: 'ats:restore' })
+    expect((await callTool('get_lore', { query: 'ats:restore' })).result.text).toBe('## Notes\nOriginal content.')
   })
 })

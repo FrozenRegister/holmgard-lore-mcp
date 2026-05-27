@@ -476,6 +476,98 @@ function parseLoreSections(
   return { sections, not_found, warnings }
 }
 
+// Applies a section-targeted insert to lore text. Returns the mutated text and
+// metadata, or an error object. No KV I/O — pure text transformation.
+function applyAppendToSection(
+  text: string,
+  sectionName: string,
+  insertText: string,
+  position: 'end' | 'start',
+  autoCreate: boolean
+):
+  | { ok: true; mutatedText: string; action: 'appended' | 'prepended' | 'created' | 'replaced_empty'; warnings: string[] }
+  | { ok: false; error: string; section?: string; hint?: string }
+{
+  function normSec(h: string): string {
+    return h.trim().replace(/\s+/g, ' ').toLowerCase().replace(/:$/, '')
+  }
+  // Join two text fragments, inserting a single space only when both boundary
+  // characters are non-whitespace (avoids double-space or merged words).
+  function joinAtBoundary(left: string, right: string): string {
+    if (!left || !right) return left + right
+    const lc = left[left.length - 1]
+    const rc = right[0]
+    if (/\S/.test(lc) && /\S/.test(rc)) return left + ' ' + right
+    return left + right
+  }
+
+  const normalizedTarget = normSec(sectionName)
+
+  // Locate all ## headings. headingEnd is the position of the '\n' that ends the
+  // heading line — we search from m.index so trailing \s in \s*$ can't swallow it.
+  const headingRe = /^##\s+(.+?)\s*$/gm
+  const headings: Array<{ heading: string; start: number; headingEnd: number }> = []
+  let m: RegExpExecArray | null
+  while ((m = headingRe.exec(text)) !== null) {
+    const nlPos = text.indexOf('\n', m.index)
+    headings.push({ heading: m[1].trim(), start: m.index, headingEnd: nlPos === -1 ? text.length : nlPos })
+  }
+
+  // Find first matching heading; count duplicates for the warning.
+  let targetIdx = -1
+  let dupCount = 0
+  for (let i = 0; i < headings.length; i++) {
+    if (normSec(headings[i].heading) === normalizedTarget) {
+      if (targetIdx === -1) targetIdx = i
+      dupCount++
+    }
+  }
+
+  const warnings: string[] = []
+  if (dupCount > 1) warnings.push('duplicate_section')
+
+  if (targetIdx === -1) {
+    if (!autoCreate) {
+      return { ok: false, error: 'section_not_found', section: sectionName, hint: 'Set auto_create: true to create this section automatically.' }
+    }
+    const trimmedEntry = text.trimEnd()
+    const newText = `${trimmedEntry}\n\n## ${sectionName}\n${insertText.trim()}\n`
+    warnings.push('section_created')
+    return { ok: true, mutatedText: newText, action: 'created', warnings }
+  }
+
+  const h = headings[targetIdx]
+  // contentStart is the char after the \n that follows the heading line.
+  const contentStart = Math.min(h.headingEnd + 1, text.length)
+  const contentEnd = targetIdx + 1 < headings.length ? headings[targetIdx + 1].start : text.length
+  const sectionContent = text.slice(contentStart, contentEnd)
+
+  if (sectionContent.trim() === '') {
+    // Empty section: text becomes the sole content.
+    const newText = text.slice(0, contentStart) + insertText.trim() + '\n' + text.slice(contentEnd)
+    return { ok: true, mutatedText: newText, action: 'replaced_empty', warnings }
+  }
+
+  let newSectionContent: string
+  let action: 'appended' | 'prepended'
+
+  if (position === 'end') {
+    const trimmedContent = sectionContent.trimEnd()
+    const trailingWS = sectionContent.slice(trimmedContent.length)
+    newSectionContent = joinAtBoundary(trimmedContent, insertText) + trailingWS
+    action = 'appended'
+  } else {
+    const leadingWSMatch = sectionContent.match(/^\s*/)
+    const leadingWS = leadingWSMatch ? leadingWSMatch[0] : ''
+    const trimmedContent = sectionContent.slice(leadingWS.length)
+    newSectionContent = leadingWS + joinAtBoundary(insertText, trimmedContent)
+    action = 'prepended'
+  }
+
+  const newText = text.slice(0, contentStart) + newSectionContent + text.slice(contentEnd)
+  return { ok: true, mutatedText: newText, action, warnings }
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 const app = new Hono()
@@ -1311,6 +1403,22 @@ app.post('/mcp', async (c) => {
               },
               required: ['pov_entity_key'], additionalProperties: false
             }
+          },
+          {
+            name: 'append_to_section', title: 'Append To Section', version: '0.1.0',
+            description: 'Surgically append or prepend text to a named ## section within a lore entry. Locates the section by heading name (case-insensitive, trailing-colon-stripped) and inserts text at the end or start of the section body. Auto-creates missing sections by default.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Topic key to modify (e.g. "character:kavissa-crowmark")', minLength: 1 },
+                section: { type: 'string', description: 'Section heading to target (case-insensitive, whitespace-normalized, trailing colon stripped)', minLength: 1 },
+                text: { type: 'string', description: 'Content to insert. A leading newline preserves paragraph separation. Leading/trailing whitespace is handled automatically.' },
+                position: { type: 'string', enum: ['end', 'start'], default: 'end', description: '"end" (default): after the last line of the section body. "start": immediately after the ## heading line.' },
+                auto_create: { type: 'boolean', default: true, description: 'When true (default), creates a new ## Section at end of entry if the section does not exist. When false, returns section_not_found.' },
+              },
+              required: ['key', 'section', 'text'], additionalProperties: false
+            },
+            examples: [{ arguments: { key: 'character:example', section: 'Personality', text: 'Deeply loyal to companions.' } }]
           }
         ]
       }), 200)
@@ -4123,6 +4231,79 @@ app.post('/mcp', async (c) => {
           visible_entities: visibleEntities,
           ...(voiceHints !== null && { voice_hints: voiceHints }),
           knowledge_scope: [...knownTopics]
+        }), 200)
+      }
+
+      // ── append_to_section ─────────────────────────────────────────────────────
+      if (toolName === 'append_to_section') {
+        const schema = z.object({
+          key: z.string().min(1),
+          section: z.string().min(1),
+          text: z.string(),
+          position: z.enum(['end', 'start']).default('end'),
+          auto_create: z.boolean().default(true),
+        })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const { section, position, auto_create: autoCreate } = parsed.data
+        const insertText = parsed.data.text
+        const key = parsed.data.key.trim().toLowerCase()
+
+        if (!insertText.trim()) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: 'Cannot append empty text.' }],
+            error: 'empty_text',
+            message: 'Cannot append empty text.'
+          }), 200)
+        }
+
+        const raw = await kvGet(c, key)
+        if (!raw) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Key "${key}" not found.` }],
+            error: 'key_not_found',
+            key
+          }), 200)
+        }
+
+        const { text, meta } = parseKvEntry(raw)
+        const oldLen = text.length
+
+        const mutResult = applyAppendToSection(text, section, insertText, position, autoCreate)
+
+        if (!mutResult.ok) {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Section "${section}" not found in "${key}".` }],
+            ...mutResult
+          }), 200)
+        }
+
+        const { mutatedText, action, warnings } = mutResult
+        const bytesAdded = mutatedText.length - oldLen
+
+        await pushHistory(c, key, raw)
+
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        const payload = JSON.stringify({
+          text: mutatedText,
+          meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now }
+        })
+
+        await kvPut(c, key, payload)
+        await appendChangelog(c, key, version)
+        loreDB[key] = mutatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `${action}: "${section}" in "${key}" (v${version}).` }],
+          key,
+          section,
+          action,
+          position,
+          new_version: version,
+          bytes_added: bytesAdded,
+          warnings
         }), 200)
       }
 
