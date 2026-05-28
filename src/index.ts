@@ -1449,6 +1449,10 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
+      if (!isAuthenticated) {
+        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+      }
+
       if (toolName === 'list_topics') {
         const keys = await kvList(c)
         return c.json(makeResult(id, { content: [{ type: 'text', text: keys.join(', ') }], metadata: { count: keys.length } }), 200)

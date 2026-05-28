@@ -18,7 +18,7 @@ async function rpc(method: string, params?: unknown) {
 }
 
 function callTool(name: string, args: Record<string, unknown> = {}) {
-  return rpc('tools/call', { name, arguments: args })
+  return callToolWithApiKey(name, 'test-api-key-xyz', args)
 }
 
 async function callToolWithApiKey(name: string, apiKey: string, args: Record<string, unknown> = {}) {
