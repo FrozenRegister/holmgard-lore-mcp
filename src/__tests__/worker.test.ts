@@ -59,7 +59,7 @@ describe('JSON-RPC protocol', () => {
   it('tools/list returns exactly 56 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(56)
+    expect(tools).toHaveLength(57)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('check_authentication')
