@@ -399,7 +399,7 @@ function extractConsumptionInfo(characterText: string): any {
   }
 }
 
-// Parses lore text into named sections delimited by ## (or # as fallback).
+// Parses lore text into named sections delimited by #, ##, or ###.
 // Returns sections map, not_found list, and warnings array.
 function parseLoreSections(
   text: string,
@@ -423,19 +423,7 @@ function parseLoreSections(
   }
 
   const lines = text.split('\n')
-  const hasDoubleHash = lines.some(l => /^##\s+\S/.test(l))
-  const hasSingleHash = lines.some(l => /^#\s+\S/.test(l))
-
-  let headingRe: RegExp
-  if (hasDoubleHash) {
-    headingRe = /^##\s+(.+?)[\s]*$/
-  } else if (hasSingleHash) {
-    headingRe = /^#\s+(.+?)[\s]*$/
-  } else {
-    warnings.push('no_sections_found')
-    not_found.push(...requestedSections)
-    return { sections, not_found, warnings }
-  }
+  const headingRe = /^#{1,3}\s+(.+?)\s*$/
 
   const boundaries: Array<{ heading: string; lineIdx: number }> = []
   for (let i = 0; i < lines.length; i++) {
@@ -490,8 +478,7 @@ function applyAppendToSection(
   autoCreate: boolean
 ):
   | { ok: true; mutatedText: string; action: 'appended' | 'prepended' | 'created' | 'replaced_empty'; warnings: string[] }
-  | { ok: false; error: string; section?: string; hint?: string }
-{
+  | { ok: false; error: string; section?: string; hint?: string } {
   function normSec(h: string): string {
     return h.trim().replace(/\s+/g, ' ').toLowerCase().replace(/:$/, '')
   }
@@ -3187,7 +3174,11 @@ app.post('/mcp', async (c) => {
         if (!rawLoc) return c.json(makeError(id, -32602, `Location "${locationKey}" not found`, null), 200)
 
         const { text: locText } = parseKvEntry(rawLoc)
-        const tableRaw = extractRawField(locText, 'Encounter-Table')
+        let tableRaw = extractRawField(locText, 'Encounter-Table')
+        if (tableRaw === null) {
+          const { sections } = parseLoreSections(locText, ['Encounter-Table'])
+          tableRaw = sections['Encounter-Table'] ?? null
+        }
         if (!tableRaw) {
           return c.json(makeResult(id, { content: [{ type: 'text', text: `No Encounter-Table field found on "${locationKey}".` }], metadata: { retrieved: 1, written: 0 }, rolled: false }), 200)
         }

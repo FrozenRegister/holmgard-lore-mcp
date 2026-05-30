@@ -2222,6 +2222,15 @@ describe('roll_encounter', () => {
     expect(res.result.entity_key).toMatch(/^entity:/)
   })
 
+  it('reads encounter table from ### Encounter-Table section', async () => {
+    await seedKV('location:dungeon', '## Overview\nDark and damp.\n### Encounter-Table\narchetype:goblin:80, archetype:spider:20')
+    await seedKV('archetype:goblin', '**Status:** Hostile')
+    await seedKV('archetype:spider', '**Status:** Lurking')
+    const res = await callTool('roll_encounter', { location_key: 'location:dungeon', threat_level: 5 })
+    expect(res.result.rolled).toBe(true)
+    expect(res.result.entity_key).toMatch(/^entity:/)
+  })
+
   it('returns rolled=false when no Encounter-Table', async () => {
     await seedKV('location:empty-field', 'Grass and wind.')
     const res = await callTool('roll_encounter', { location_key: 'location:empty-field' })
@@ -3577,13 +3586,12 @@ describe('get_lore_section', () => {
     expect(res.result.sections['Title']).toBe('Some preamble.')
   })
 
-  it('### subheadings are content, not section boundaries', async () => {
+  it('### headings are section boundaries alongside ## headings', async () => {
     await seedKV('section:sub', '## Personality\n### Strengths\nBrave.\n### Weaknesses\nImpulsive.\n## Goals\nGo home.')
-    const res = await callTool('get_lore_section', { key: 'section:sub', sections: ['Personality'] })
-    const content = res.result.sections['Personality'] as string
-    expect(content).toContain('### Strengths')
-    expect(content).toContain('Impulsive.')
-    expect(content).not.toContain('Go home.')
+    const res = await callTool('get_lore_section', { key: 'section:sub', sections: ['Strengths', 'Weaknesses', 'Goals'] })
+    expect(res.result.sections['Strengths']).toBe('Brave.')
+    expect(res.result.sections['Weaknesses']).toBe('Impulsive.')
+    expect(res.result.sections['Goals']).toBe('Go home.')
   })
 
   it('special characters in section name match exactly', async () => {
@@ -3675,10 +3683,11 @@ describe('get_lore_section', () => {
     expect(res.result.sections['Notes']).not.toContain('Done.')
   })
 
-  it('mixed # and ## headings: # is not a boundary, ## is', async () => {
+  it('mixed # and ## headings: both are boundaries, sections accessible at any level', async () => {
     await seedKV('section:mixed-hash', '# Title Block\nSome preamble text.\n\n## Section A\nContent.')
-    const res = await callTool('get_lore_section', { key: 'section:mixed-hash', sections: ['Section A'] })
+    const res = await callTool('get_lore_section', { key: 'section:mixed-hash', sections: ['Section A', 'Title Block'] })
     expect(res.result.sections['Section A']).toBe('Content.')
+    expect(res.result.sections['Title Block']).toBe('Some preamble text.')
     expect(res.result.not_found).not.toContain('Section A')
   })
 
