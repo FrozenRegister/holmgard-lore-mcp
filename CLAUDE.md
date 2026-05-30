@@ -47,6 +47,58 @@ npm test -- --reporter=verbose src/__tests__/worker.test.ts
 
 **`countOccurrences`** is a module-level helper (extracted from the `patch_lore` handler) used by both `patch_lore` and `batch_mutate` for exact substring counting.
 
+## KV Access Rules (Batch Reads and Index-on-Write)
+
+### Batch Reads — Always Parallelize
+When reading multiple KV keys from a list, **never** perform sequential `await` inside a loop.  
+Always fetch all values in parallel with `Promise.all`, then process the results:
+
+**Forbidden pattern:**
+```typescript
+for (const key of keys) {
+  const raw = await kvGet(c, key)  // N+1 latency
+}
+```
+
+**Required pattern:**
+```typescript
+const raws = await Promise.all(keys.map(k => kvGet(c, k)))
+for (let i = 0; i < keys.length; i++) {
+  const raw = raws[i]
+  if (!raw) continue
+  const key = keys[i]
+  const { text } = parseKvEntry(raw)
+  // ...
+}
+```
+
+### Index-on-Write System
+Indexes are maintained automatically when lore entries are written. Three types of indexes track location, thread membership, and key prefix:
+- `_idx:location:<location-key>` — array of entity keys at this location
+- `_idx:thread:<thread-id>` — array of entity keys in this thread
+- `_idx:prefix:<prefix>` — array of keys starting with this prefix (e.g., `character`, `setup`)
+
+These are built and updated by `updateIndexes(c, key, newText, oldText)` in:
+1. `set_lore` — when a lore entry is created or modified
+2. `batch_set_lore` — for each entry in the batch
+3. `batch_mutate` — after increment or patch mutations
+4. `delete_lore` — when an entry is removed
+
+Indexes are **read-through**, not write-through: `getIndexedKeys(c, indexKey)` returns the index if it exists, or falls back to kvList + filtering (for test compatibility where indexes may not be pre-built). For prefix indexes (`_idx:prefix:`), the fallback is fully functional; for location/thread indexes, tools add their own fallback scans if needed.
+
+### Tools Using Indexes (optimized, not full-scan)
+- `list_consumption_timelines` — reads `_idx:prefix:character`
+- `list_unpaid_setups` — reads `_idx:prefix:setup`
+- `get_location_occupants` — reads `_idx:location:<key>`
+- `process_stage_batch` — reads `_idx:location:<key>`
+- `thread_tick` — reads `_idx:thread:<id>` for the target thread, then kvList for global sync
+- `get_thread_comparison` — reads `_idx:thread:<a>` and `_idx:thread:<b>`
+- `check_convergence` — reads `_idx:thread:<a>` and `_idx:thread:<b>`
+- `scene_brief` — reads `_idx:location:<key>` and `_idx:prefix:setup`
+
+### Exclude Indexes from kvList
+Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along with system keys (`_history:*`, `_changelog`, `events:*`, etc.).
+
 ## Tests
 
 Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers` (vitest 4 plugin API — `cloudflareTest()` in `vitest.config.ts`). KV is in-memory miniflare storage; `ADMIN_SECRET` is `test-secret-123`.

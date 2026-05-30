@@ -74,7 +74,7 @@ async function kvList(c: any): Promise<string[]> {
       do {
         const listed: any = await kv.list(cursor ? { cursor } : undefined)
         for (const k of listed.keys) {
-          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:') && !k.name.startsWith('map:')) keys.push(k.name)
+          if (!k.name.startsWith('_history:') && !k.name.startsWith('_idx:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:') && !k.name.startsWith('map:')) keys.push(k.name)
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
@@ -83,7 +83,7 @@ async function kvList(c: any): Promise<string[]> {
   } catch (e) {
     console.warn('KV list failed', e)
   }
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
 
@@ -101,6 +101,105 @@ async function kvDelete(c: any, key: string): Promise<boolean> {
     if (kv) { await kv.delete(key); return true }
   } catch (e) { console.warn('KV delete failed', e) }
   return false
+}
+
+// ── Index helpers (on-write index maintenance) ────────────────────────────────
+
+// Maintains _idx:location:<loc>, _idx:thread:<thread>, _idx:prefix:<prefix> indexes
+// Call after writing a lore entry to keep indexes in sync. Pass oldText=null on creation.
+async function updateIndexes(c: any, key: string, newText: string, oldText: string | null): Promise<void> {
+  const kv = getKV(c)
+  if (!kv) return
+
+  // Extract field values from both old and new text
+  const oldLocation = oldText ? (extractFieldFromText(oldText, 'Location') as string | null) : null
+  const newLocation = extractFieldFromText(newText, 'Location') as string | null
+  const oldThread = oldText ? (extractFieldFromText(oldText, 'Thread') as string | null) : null
+  const newThread = extractFieldFromText(newText, 'Thread') as string | null
+
+  // Update Location index
+  if (oldLocation !== newLocation) {
+    if (oldLocation) {
+      await removeFromIndex(c, `_idx:location:${oldLocation}`, key)
+    }
+    if (newLocation) {
+      await addToIndex(c, `_idx:location:${newLocation}`, key)
+    }
+  }
+
+  // Update Thread index
+  if (oldThread !== newThread) {
+    if (oldThread) {
+      await removeFromIndex(c, `_idx:thread:${oldThread}`, key)
+    }
+    if (newThread) {
+      await addToIndex(c, `_idx:thread:${newThread}`, key)
+    }
+  }
+
+  // Update Prefix index (character:, setup:, etc.)
+  const oldPrefix = oldText ? key.split(':')[0] : null
+  const newPrefix = key.split(':')[0]
+  if (oldPrefix !== newPrefix && oldPrefix) {
+    await removeFromIndex(c, `_idx:prefix:${oldPrefix}`, key)
+  }
+  if (newPrefix) {
+    await addToIndex(c, `_idx:prefix:${newPrefix}`, key)
+  }
+}
+
+// Adds a key to an index (creates if missing, dedupes)
+async function addToIndex(c: any, indexKey: string, key: string): Promise<void> {
+  try {
+    const kv = getKV(c)
+    if (!kv) return
+    const existing = await kv.get(indexKey)
+    let keys: string[] = existing ? JSON.parse(existing) : []
+    if (!keys.includes(key)) {
+      keys.push(key)
+      await kv.put(indexKey, JSON.stringify(keys))
+    }
+  } catch (e) { console.warn(`Failed to add to index ${indexKey}`, e) }
+}
+
+// Removes a key from an index
+async function removeFromIndex(c: any, indexKey: string, key: string): Promise<void> {
+  try {
+    const kv = getKV(c)
+    if (!kv) return
+    const existing = await kv.get(indexKey)
+    if (existing) {
+      let keys: string[] = JSON.parse(existing)
+      keys = keys.filter(k => k !== key)
+      if (keys.length > 0) {
+        await kv.put(indexKey, JSON.stringify(keys))
+      } else {
+        await kv.delete(indexKey)
+      }
+    }
+  } catch (e) { console.warn(`Failed to remove from index ${indexKey}`, e) }
+}
+
+// Reads keys from an index (or falls back to kvList + filtering if index missing)
+async function getIndexedKeys(c: any, indexKey: string): Promise<string[]> {
+  try {
+    const kv = getKV(c)
+    if (!kv) return []
+    const raw = await kv.get(indexKey)
+    if (raw) {
+      const keys = JSON.parse(raw)
+      return Array.isArray(keys) ? keys : []
+    }
+  } catch (e) { console.warn(`Failed to read index ${indexKey}`, e) }
+
+  // Fallback: build filter based on index type (for test compatibility)
+  if (indexKey.startsWith('_idx:prefix:')) {
+    const prefix = indexKey.slice('_idx:prefix:'.length)
+    const allKeys = await kvList(c)
+    return allKeys.filter(k => k.startsWith(`${prefix}:`))
+  }
+  // Location/Thread indexes fall back to kvList + full scan (slower, but maintains compatibility)
+  return []
 }
 
 // ── History helpers ───────────────────────────────────────────────────────────
@@ -1468,6 +1567,7 @@ app.post('/mcp', async (c) => {
 
         const existingRaw = await kvGet(c, key)
         const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
+        const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
 
         if (existingRaw) await pushHistory(c, key, existingRaw)
 
@@ -1480,6 +1580,7 @@ app.post('/mcp', async (c) => {
         })
 
         await kvPut(c, key, payload)
+        await updateIndexes(c, key, text, existingText)
         await appendChangelog(c, key, version)
         loreDB[key] = text
         return c.json(makeResult(id, {
@@ -1498,8 +1599,13 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const key = parsed.data.key.trim().toLowerCase()
+        const existingRaw = await kvGet(c, key)
+        const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
         const deleted = await kvDelete(c, key)
-        if (deleted) await appendChangelog(c, key, 0, 'delete')
+        if (deleted) {
+          await updateIndexes(c, key, '', existingText)
+          await appendChangelog(c, key, 0, 'delete')
+        }
         delete loreDB[key]
         return c.json(makeResult(id,
           {
@@ -1575,14 +1681,16 @@ app.post('/mcp', async (c) => {
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const allKeys = await kvList(c)
-        // v0.2.0: scan ALL character:* keys, not just livestock/prisoner
-        const characterKeys = allKeys.filter(k => k.startsWith('character:'))
+        // v0.2.0: scan ALL character:* keys via index, not just livestock/prisoner
+        const characterKeys = await getIndexedKeys(c, '_idx:prefix:character')
+
+        const rawValues = await Promise.all(characterKeys.map(k => kvGet(c, k)))
 
         const timelines: Array<any> = []
-        for (const key of characterKeys) {
-          const raw = await kvGet(c, key)
+        for (let i = 0; i < characterKeys.length; i++) {
+          const raw = rawValues[i]
           if (!raw) continue
+          const key = characterKeys[i]
           const { text } = parseKvEntry(raw)
           const info = extractConsumptionInfo(text)
 
@@ -1732,12 +1840,14 @@ app.post('/mcp', async (c) => {
 
         const searchQuery = parsed.data.query.toLowerCase()
         const allKeys = await kvList(c)
+        const rawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
         const results: Array<{ key: string; excerpt: string }> = []
 
-        for (const key of allKeys) {
+        for (let i = 0; i < allKeys.length; i++) {
           if (results.length >= parsed.data.max_results) break
-          const raw = await kvGet(c, key)
+          const raw = rawValues[i]
           if (!raw) continue
+          const key = allKeys[i]
           const { text } = parseKvEntry(raw)
           const lowerText = text.toLowerCase()
           const idx = lowerText.indexOf(searchQuery)
@@ -1880,6 +1990,7 @@ app.post('/mcp', async (c) => {
 
         await Promise.all(cleanedEntries.map(async (e, i) => {
           const existingMeta = rawValues[i] ? parseKvEntry(rawValues[i]!).meta : {}
+          const existingText = rawValues[i] ? parseKvEntry(rawValues[i]!).text : null
           const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
           const payload = JSON.stringify({
             text: e.text,
@@ -1887,6 +1998,7 @@ app.post('/mcp', async (c) => {
           })
           try {
             await kvPut(c, e.key, payload)
+            await updateIndexes(c, e.key, e.text, existingText)
             await appendChangelog(c, e.key, version)
             loreDB[e.key] = e.text
             batchResults[e.key] = { ok: true, version }
@@ -1954,6 +2066,7 @@ app.post('/mcp', async (c) => {
             await pushHistory(c, key, raw)
             const version = typeof meta.version === 'number' ? meta.version + 1 : 1
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta } }))
+            await updateIndexes(c, key, updatedText, text)
             await appendChangelog(c, key, version)
             loreDB[key] = updatedText
             mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
@@ -2010,6 +2123,7 @@ app.post('/mcp', async (c) => {
             await pushHistory(c, key, raw)
             const version = typeof meta.version === 'number' ? meta.version + 1 : 1
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+            await updateIndexes(c, key, updatedText, text)
             await appendChangelog(c, key, version)
             loreDB[key] = updatedText
             mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
@@ -2475,18 +2589,32 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const threadId = parsed.data.thread_id.trim()
+        let threadKeys = await getIndexedKeys(c, `_idx:thread:${threadId}`)
         const allKeys = await kvList(c)
+        const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
+
+        // Fallback: if index is empty, scan for entities in this thread
+        if (threadKeys.length === 0) {
+          for (let i = 0; i < allKeys.length; i++) {
+            const r = allRawValues[i]
+            if (!r) continue
+            const { text } = parseKvEntry(r)
+            if (extractRawField(text, 'Thread')?.toLowerCase() === threadId.toLowerCase()) {
+              threadKeys.push(allKeys[i])
+            }
+          }
+        }
+
+        const threadRawValues = await Promise.all(threadKeys.map(k => kvGet(c, k)))
 
         type ThreadEntity = { key: string; raw: string; text: string; meta: Record<string, unknown> }
         const threadEntities: ThreadEntity[] = []
-        for (const key of allKeys) {
-          const raw = await kvGet(c, key)
+        for (let i = 0; i < threadKeys.length; i++) {
+          const raw = threadRawValues[i]
           if (!raw) continue
+          const key = threadKeys[i]
           const { text, meta } = parseKvEntry(raw)
-          const threadField = extractRawField(text, 'Thread')
-          if (threadField?.toLowerCase() === threadId.toLowerCase()) {
-            threadEntities.push({ key, raw, text, meta })
-          }
+          threadEntities.push({ key, raw, text, meta })
         }
 
         const now = new Date().toISOString()
@@ -2515,9 +2643,10 @@ app.post('/mcp', async (c) => {
         const global_snapshot: Array<{ key: string; thread: string; current_date: string; status: string }> = []
 
         if (affectedDates.size > 0) {
-          for (const key of allKeys) {
+          for (let i = 0; i < allKeys.length; i++) {
+            const key = allKeys[i]
             if (threadEntityKeys.has(key)) continue
-            const raw = await kvGet(c, key)
+            const raw = allRawValues[i]
             if (!raw) continue
             const { text } = parseKvEntry(raw)
             const entityThread = extractRawField(text, 'Thread')
@@ -2665,21 +2794,35 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const locationKey = parsed.data.location_key.trim().toLowerCase()
-        const allKeys = await kvList(c)
-        const occupants: Array<{ key: string; status: string | null }> = []
-        for (const key of allKeys) {
-          const raw = await kvGet(c, key)
-          if (!raw) continue
-          const { text } = parseKvEntry(raw)
-          const locField = extractRawField(text, 'Location')
-          if (locField && locField.trim().toLowerCase() === locationKey) {
-            occupants.push({ key, status: extractRawField(text, 'Status') ?? null })
+        let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
+
+        // Fallback: if index is empty, scan kvList for entities at this location
+        if (entityKeys.length === 0) {
+          const allKeys = await kvList(c)
+          const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          for (let i = 0; i < allKeys.length; i++) {
+            const r = rawVals[i]
+            if (!r) continue
+            const { text } = parseKvEntry(r)
+            if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
+              entityKeys.push(allKeys[i])
+            }
           }
+        }
+
+        const rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
+        const occupants: Array<{ key: string; status: string | null }> = []
+        for (let i = 0; i < entityKeys.length; i++) {
+          const raw = rawValues[i]
+          if (!raw) continue
+          const key = entityKeys[i]
+          const { text } = parseKvEntry(raw)
+          occupants.push({ key, status: extractRawField(text, 'Status') ?? null })
         }
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: occupants.length > 0 ? `${occupants.length} occupant(s) at "${locationKey}": ${occupants.map(o => o.key).join(', ')}.` : `No occupants found at "${locationKey}".` }],
-          metadata: { retrieved: allKeys.length, written: 0 },
+          metadata: { retrieved: entityKeys.length, written: 0 },
           location_key: locationKey, occupants
         }), 200)
       }
@@ -3077,17 +3220,32 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const locationKey = parsed.data.location_key.trim().toLowerCase()
-        const allKeys = await kvList(c)
+        let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
+
+        // Fallback: if index is empty, scan kvList for entities at this location
+        if (entityKeys.length === 0) {
+          const allKeys = await kvList(c)
+          const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          for (let i = 0; i < allKeys.length; i++) {
+            const r = rawVals[i]
+            if (!r) continue
+            const { text } = parseKvEntry(r)
+            if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
+              entityKeys.push(allKeys[i])
+            }
+          }
+        }
+
+        const rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
         const now = new Date().toISOString()
         const outcomes: Array<{ key: string; old_stage: number; new_stage: number; is_terminal: boolean }> = []
         const skipped: Array<{ key: string; reason: string }> = []
 
-        for (const key of allKeys) {
-          const raw = await kvGet(c, key)
+        for (let i = 0; i < entityKeys.length; i++) {
+          const raw = rawValues[i]
           if (!raw) continue
+          const key = entityKeys[i]
           const { text, meta } = parseKvEntry(raw)
-          const locField = extractRawField(text, 'Location')
-          if (!locField || locField.trim().toLowerCase() !== locationKey) continue
 
           const currentStage = extractFieldFromText(text, 'State-Stage')
           if (typeof currentStage !== 'number') { skipped.push({ key, reason: 'no State-Stage field' }); continue }
@@ -3110,7 +3268,7 @@ app.post('/mcp', async (c) => {
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Processed ${outcomes.length} entity/entities at "${locationKey}". ${skipped.length} skipped.` }],
-          metadata: { retrieved: allKeys.length, written: outcomes.length },
+          metadata: { retrieved: entityKeys.length, written: outcomes.length },
           location_key: locationKey, outcomes, skipped
         }), 200)
       }
@@ -3231,24 +3389,66 @@ app.post('/mcp', async (c) => {
 
         const threadA = parsed.data.thread_a.trim()
         const threadB = parsed.data.thread_b.trim()
-        const allKeys = await kvList(c)
+        let keysA = await getIndexedKeys(c, `_idx:thread:${threadA}`)
+        let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
+
+        // Fallback: if indexes are empty, scan kvList
+        if (keysA.length === 0 || keysB.length === 0) {
+          const allKeys = await kvList(c)
+          const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          if (keysA.length === 0) {
+            for (let i = 0; i < allKeys.length; i++) {
+              const r = allRaws[i]
+              if (!r) continue
+              const { text } = parseKvEntry(r)
+              if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
+                keysA.push(allKeys[i])
+              }
+            }
+          }
+          if (keysB.length === 0) {
+            for (let i = 0; i < allKeys.length; i++) {
+              const r = allRaws[i]
+              if (!r) continue
+              const { text } = parseKvEntry(r)
+              if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
+                keysB.push(allKeys[i])
+              }
+            }
+          }
+        }
+
+        const rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
+        const rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         type TInfo = { key: string; timeline_value: number | null; current_date: string | null; location: string | null }
         const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
-        for (const key of allKeys) {
-          const raw = await kvGet(c, key)
+        for (let i = 0; i < keysA.length; i++) {
+          const raw = rawValuesA[i]
           if (!raw) continue
+          const key = keysA[i]
           const { text } = parseKvEntry(raw)
-          const tf = extractRawField(text, 'Thread')
-          if (!tf) continue
           const info: TInfo = {
             key,
             timeline_value: (() => { const v = extractFieldFromText(text, 'Timeline-Value'); return typeof v === 'number' ? v : null })(),
             current_date: extractRawField(text, 'Current-Date'),
             location: extractRawField(text, 'Location'),
           }
-          if (tf.trim().toLowerCase() === threadA.toLowerCase()) entitiesA.push(info)
-          else if (tf.trim().toLowerCase() === threadB.toLowerCase()) entitiesB.push(info)
+          entitiesA.push(info)
+        }
+
+        for (let i = 0; i < keysB.length; i++) {
+          const raw = rawValuesB[i]
+          if (!raw) continue
+          const key = keysB[i]
+          const { text } = parseKvEntry(raw)
+          const info: TInfo = {
+            key,
+            timeline_value: (() => { const v = extractFieldFromText(text, 'Timeline-Value'); return typeof v === 'number' ? v : null })(),
+            current_date: extractRawField(text, 'Current-Date'),
+            location: extractRawField(text, 'Location'),
+          }
+          entitiesB.push(info)
         }
 
         const avg = (arr: TInfo[]) => {
@@ -3265,7 +3465,7 @@ app.post('/mcp', async (c) => {
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Thread comparison "${threadA}" (${entitiesA.length}) vs "${threadB}" (${entitiesB.length}). Offset: ${timelineOffset ?? 'N/A'}. ${[...datesA].filter(d => datesB.has(d)).length} shared date(s), ${[...locsA].filter(l => locsB.has(l)).length} shared location(s).` }],
-          metadata: { retrieved: allKeys.length, written: 0 },
+          metadata: { retrieved: keysA.length + keysB.length, written: 0 },
           thread_a: { id: threadA, entity_count: entitiesA.length, avg_timeline: avgA !== null ? Math.round(avgA * 10) / 10 : null, entities: entitiesA },
           thread_b: { id: threadB, entity_count: entitiesB.length, avg_timeline: avgB !== null ? Math.round(avgB * 10) / 10 : null, entities: entitiesB },
           timeline_offset: timelineOffset,
@@ -3282,19 +3482,56 @@ app.post('/mcp', async (c) => {
 
         const threadA = parsed.data.thread_a.trim()
         const threadB = parsed.data.thread_b.trim()
-        const allKeys = await kvList(c)
+        let keysA = await getIndexedKeys(c, `_idx:thread:${threadA}`)
+        let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
+
+        // Fallback: if indexes are empty, scan kvList
+        if (keysA.length === 0 || keysB.length === 0) {
+          const allKeys = await kvList(c)
+          const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          if (keysA.length === 0) {
+            for (let i = 0; i < allKeys.length; i++) {
+              const r = allRaws[i]
+              if (!r) continue
+              const { text } = parseKvEntry(r)
+              if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
+                keysA.push(allKeys[i])
+              }
+            }
+          }
+          if (keysB.length === 0) {
+            for (let i = 0; i < allKeys.length; i++) {
+              const r = allRaws[i]
+              if (!r) continue
+              const { text } = parseKvEntry(r)
+              if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
+                keysB.push(allKeys[i])
+              }
+            }
+          }
+        }
+
+        const rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
+        const rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         type TInfo = { key: string; current_date: string | null; location: string | null }
         const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
-        for (const key of allKeys) {
-          const raw = await kvGet(c, key)
+        for (let i = 0; i < keysA.length; i++) {
+          const raw = rawValuesA[i]
           if (!raw) continue
+          const key = keysA[i]
           const { text } = parseKvEntry(raw)
-          const tf = extractRawField(text, 'Thread')
-          if (!tf) continue
           const info: TInfo = { key, current_date: extractRawField(text, 'Current-Date'), location: extractRawField(text, 'Location') }
-          if (tf.trim().toLowerCase() === threadA.toLowerCase()) entitiesA.push(info)
-          else if (tf.trim().toLowerCase() === threadB.toLowerCase()) entitiesB.push(info)
+          entitiesA.push(info)
+        }
+
+        for (let i = 0; i < keysB.length; i++) {
+          const raw = rawValuesB[i]
+          if (!raw) continue
+          const key = keysB[i]
+          const { text } = parseKvEntry(raw)
+          const info: TInfo = { key, current_date: extractRawField(text, 'Current-Date'), location: extractRawField(text, 'Location') }
+          entitiesB.push(info)
         }
 
         const datesA = new Set(entitiesA.map(e => e.current_date).filter(Boolean) as string[])
@@ -3311,7 +3548,7 @@ app.post('/mcp', async (c) => {
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: framing }],
-          metadata: { retrieved: allKeys.length, written: 0 },
+          metadata: { retrieved: keysA.length + keysB.length, written: 0 },
           can_converge: canConverge, thread_a: threadA, thread_b: threadB,
           shared_dates: sharedDates, shared_locations: sharedLocations,
           entity_overlap: { a_entities: entitiesA.map(e => e.key), b_entities: entitiesB.map(e => e.key) },
@@ -3698,10 +3935,13 @@ app.post('/mcp', async (c) => {
           ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!))
           : allKeys
 
+        const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
+
         const manifest: Record<string, { version: number | null; updatedAt: string | null }> = {}
-        for (const key of scopedKeys) {
-          const r = await kvGet(c, key)
+        for (let i = 0; i < scopedKeys.length; i++) {
+          const r = scopedRaws[i]
           if (!r) continue
+          const key = scopedKeys[i]
           const { meta } = parseKvEntry(r)
           manifest[key] = {
             version: typeof meta.version === 'number' ? meta.version : null,
@@ -3753,9 +3993,11 @@ app.post('/mcp', async (c) => {
         } else if (!parsed.data.to) {
           const allKeys = await kvList(c)
           const scopedKeys = parsed.data.key_prefix ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!)) : allKeys
-          for (const key of scopedKeys) {
-            const r = await kvGet(c, key)
+          const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
+          for (let i = 0; i < scopedKeys.length; i++) {
+            const r = scopedRaws[i]
             if (!r) continue
+            const key = scopedKeys[i]
             const { meta } = parseKvEntry(r)
             toManifest[key] = { version: typeof meta.version === 'number' ? meta.version : null, updatedAt: typeof meta.updatedAt === 'string' ? meta.updatedAt : null }
           }
@@ -3884,14 +4126,15 @@ app.post('/mcp', async (c) => {
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-        const allKeys = await kvList(c)
-        const setupKeys = allKeys.filter(k => k.startsWith('setup:'))
+        const setupKeys = await getIndexedKeys(c, '_idx:prefix:setup')
+        const setupRaws = await Promise.all(setupKeys.map(k => kvGet(c, k)))
         type SetupEntry = { id: string; key: string; description: string; tension: number; planted_in: string | null; expected_in: string | null; actors: string[]; created_at: string | null }
         const openSetups: SetupEntry[] = []
 
-        for (const key of setupKeys) {
-          const r = await kvGet(c, key)
+        for (let i = 0; i < setupKeys.length; i++) {
+          const r = setupRaws[i]
           if (!r) continue
+          const key = setupKeys[i]
           const { text } = parseKvEntry(r)
 
           const status = extractRawField(text, 'Status')?.toLowerCase()
@@ -4002,14 +4245,16 @@ app.post('/mcp', async (c) => {
         const scopedKeys = parsed.data.scope
           ? allKeys.filter(k => k.startsWith(parsed.data.scope!) || k.includes(parsed.data.scope!))
           : allKeys
+        const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
         const allKeySet = new Set(allKeys)
 
         type Finding = { key: string; check: string; severity: 'info' | 'warn' | 'error'; message: string }
         const findings: Finding[] = []
 
-        for (const key of scopedKeys) {
-          const r = await kvGet(c, key)
+        for (let i = 0; i < scopedKeys.length; i++) {
+          const r = scopedRaws[i]
           if (!r) continue
+          const key = scopedKeys[i]
           const { text } = parseKvEntry(r)
 
           if (activeChecks.includes('dangling')) {
@@ -4090,21 +4335,36 @@ app.post('/mcp', async (c) => {
 
         const { text: baseText } = parseKvEntry(rawBase)
 
-        const allKeys = await kvList(c)
-        const entityKeys: string[] = []
-        for (const key of allKeys) {
-          if (!key.startsWith('character:') && !key.startsWith('entity:')) continue
-          const r = await kvGet(c, key)
-          if (!r) continue
-          const { text } = parseKvEntry(r)
-          if (extractRawField(text, 'Location')?.trim().toLowerCase() === baseKey) entityKeys.push(key)
+        let occupantKeys = await getIndexedKeys(c, `_idx:location:${baseKey}`)
+
+        // Fallback: if index is empty, scan kvList for entities at this location
+        if (occupantKeys.length === 0) {
+          const allKeys = await kvList(c)
+          const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          for (let i = 0; i < allKeys.length; i++) {
+            const r = rawVals[i]
+            if (!r) continue
+            const { text } = parseKvEntry(r)
+            if (extractRawField(text, 'Location')?.trim().toLowerCase() === baseKey) {
+              occupantKeys.push(allKeys[i])
+            }
+          }
         }
+
+        const occupantRaws = await Promise.all(occupantKeys.map(k => kvGet(c, k)))
+        const entityKeysMap: Map<string, string> = new Map()
+        for (let i = 0; i < occupantKeys.length; i++) {
+          const r = occupantRaws[i]
+          if (!r) continue
+          const key = occupantKeys[i]
+          entityKeysMap.set(key, r)
+        }
+        const entityKeys = Array.from(entityKeysMap.keys())
 
         const kv = getKV(c)
         const occupants: Array<{ key: string; status: string | null; top_goal: string | null; events: any[] }> = []
         for (const ek of entityKeys) {
-          const eRaw = await kvGet(c, ek)
-          if (!eRaw) continue
+          const eRaw = entityKeysMap.get(ek)!
           const { text: eText } = parseKvEntry(eRaw)
           const topGoalMatch = eText.match(/\*\*Goal:([^:]+):\*\*\s*([^\n]+)/)
           let recentEvents: any[] = []
@@ -4122,9 +4382,12 @@ app.post('/mcp', async (c) => {
         let openSetups: any[] = []
         if (includeSetups) {
           const actorSet = new Set(entityKeys.map(k => k.toLowerCase()))
-          for (const sk of allKeys.filter(k => k.startsWith('setup:'))) {
-            const sRaw = await kvGet(c, sk)
+          const setupKeys = await getIndexedKeys(c, '_idx:prefix:setup')
+          const setupRaws = await Promise.all(setupKeys.map(k => kvGet(c, k)))
+          for (let i = 0; i < setupKeys.length; i++) {
+            const sRaw = setupRaws[i]
             if (!sRaw) continue
+            const sk = setupKeys[i]
             const { text: sText } = parseKvEntry(sRaw)
             if (extractRawField(sText, 'Status')?.toLowerCase() !== 'open') continue
             const actors = (extractRawField(sText, 'Actors') ?? '').split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -4204,10 +4467,12 @@ app.post('/mcp', async (c) => {
         const filteredBaseText = filteredLines.join('\n')
 
         const allKeys = await kvList(c)
+        const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
         const visibleEntities: Array<{ key: string; status: string | null; known: boolean }> = []
-        for (const key of allKeys) {
+        for (let i = 0; i < allKeys.length; i++) {
+          const key = allKeys[i]
           if ((!key.startsWith('character:') && !key.startsWith('entity:')) || key === povKey) continue
-          const r = await kvGet(c, key)
+          const r = allRawValues[i]
           if (!r) continue
           const { text } = parseKvEntry(r)
           if (extractRawField(text, 'Location')?.trim().toLowerCase() !== baseKey) continue
@@ -4425,29 +4690,6 @@ app.get('/changes', async (c) => {
     if (!isNaN(sinceMs)) {
       entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
     }
-  }
-  c.header('Content-Type', 'application/json')
-  c.header('Cache-Control', 'no-store')
-  return c.json({ changes: entries, count: entries.length, generated_at: new Date().toISOString() }, 200)
-})
-
-
-// ── GET /changes ──────────────────────────────────────────────────────────────────────────────
-// 1 KV read — returns write events since ?since=<ISO>. Editor uses this for
-// delta-only auto-sync instead of re-fetching every topic each interval.
-app.get('/changes', async (c) => {
-  const since = c.req.query('since')
-  const kv = getKV(c)
-  let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
-  if (kv) {
-    try {
-      const raw = await kv.get(CHANGELOG_KEY)
-      if (raw) entries = JSON.parse(raw)
-    } catch (e) { console.warn('changelog read failed', e) }
-  }
-  if (since) {
-    const sinceMs = new Date(since).getTime()
-    if (!isNaN(sinceMs)) entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
   }
   c.header('Content-Type', 'application/json')
   c.header('Cache-Control', 'no-store')
