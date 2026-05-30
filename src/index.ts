@@ -962,7 +962,7 @@ app.post('/mcp', async (c) => {
           },
           {
             name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.1',
-            description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b (field may appear as plain "**Weight-1:** 0.9", bulleted "- **Weight-1 (descriptor):** 0.9", or JSON block format). Computes P(success) = (W1×0.7)−(W2×0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value. If successful and entity_a has a numeric State-Level field, increments it by delta_value.',
+            description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b (field may appear as plain "**Weight-1:** 0.9", bulleted "- **Weight-1 (descriptor):** 0.9", or JSON block format). Computes P(success) = W1 − (W2 × 0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value. If successful and entity_a has a numeric State-Level field, increments it by delta_value.',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
@@ -2170,8 +2170,13 @@ app.post('/mcp', async (c) => {
         }
 
         const previous = history.shift()!
+        const currentBefore = await kv.get(key)
+        const currentText = currentBefore ? parseKvEntry(currentBefore).text : null
         await kv.put(key, previous)
-        loreDB[key] = parseKvEntry(previous).text
+        const restoredText = parseKvEntry(previous).text
+        loreDB[key] = restoredText
+        await updateIndexes(c, key, restoredText, currentText)
+
 
         if (history.length > 0) {
           await kv.put(historyKey, JSON.stringify(history))
@@ -2229,8 +2234,6 @@ app.post('/mcp', async (c) => {
             const version = typeof metaA.version === 'number' ? metaA.version + 1 : 1
             await kvPut(c, keyA, JSON.stringify({ text: updatedTextA, meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType } }))
             await appendChangelog(c, keyA, version)
-            loreDB[keyA] = updatedTextA
-
             loreDB[keyA] = updatedTextA
           }
         }
@@ -2594,18 +2597,25 @@ app.post('/mcp', async (c) => {
         const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
 
         // Fallback: if index is empty, scan for entities in this thread
+        let threadRawValues: (string | null)[]
         if (threadKeys.length === 0) {
+          threadKeys = []
+          threadRawValues = []
           for (let i = 0; i < allKeys.length; i++) {
             const r = allRawValues[i]
             if (!r) continue
             const { text } = parseKvEntry(r)
             if (extractRawField(text, 'Thread')?.toLowerCase() === threadId.toLowerCase()) {
               threadKeys.push(allKeys[i])
+              threadRawValues.push(r)
             }
           }
+        } else {
+          threadRawValues = await Promise.all(threadKeys.map(k => kvGet(c, k)))
         }
 
-        const threadRawValues = await Promise.all(threadKeys.map(k => kvGet(c, k)))
+
+        //const threadRawValues = await Promise.all(threadKeys.map(k => kvGet(c, k)))
 
         type ThreadEntity = { key: string; raw: string; text: string; meta: Record<string, unknown> }
         const threadEntities: ThreadEntity[] = []
@@ -2794,23 +2804,29 @@ app.post('/mcp', async (c) => {
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
         const locationKey = parsed.data.location_key.trim().toLowerCase()
+
         let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
 
         // Fallback: if index is empty, scan kvList for entities at this location
+        let rawValues: (string | null)[]
         if (entityKeys.length === 0) {
           const allKeys = await kvList(c)
           const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          entityKeys = []
+          rawValues = []
           for (let i = 0; i < allKeys.length; i++) {
             const r = rawVals[i]
             if (!r) continue
             const { text } = parseKvEntry(r)
             if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
               entityKeys.push(allKeys[i])
+              rawValues.push(r)
             }
           }
+        } else {
+          rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
         }
 
-        const rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
         const occupants: Array<{ key: string; status: string | null }> = []
         for (let i = 0; i < entityKeys.length; i++) {
           const raw = rawValues[i]
@@ -2957,11 +2973,12 @@ app.post('/mcp', async (c) => {
         const { text: fromText, meta: fromMeta } = parseKvEntry(rawFrom)
         const { text: toText, meta: toMeta } = parseKvEntry(rawTo)
 
-        const parseInvStr = (raw: string): Array<{ item: string; quantity: number }> =>
+        const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
           raw.split(',').map(s => s.trim()).filter(Boolean).map(entry => {
-            const m = entry.match(/^(.+?)\s*[x:×]\s*(\d+)$/)
-            return m ? { item: m[1].trim(), quantity: parseInt(m[2]) } : { item: entry, quantity: 1 }
+            const m = entry.match(/^(.+?)\s*[x:×]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+            return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
           })
+
 
         const fromInvFieldName = extractRawField(fromText, 'Inventory') ? 'Inventory' : extractRawField(fromText, 'Items') ? 'Items' : 'Inventory'
         const toInvFieldName = extractRawField(toText, 'Inventory') ? 'Inventory' : extractRawField(toText, 'Items') ? 'Items' : 'Inventory'
@@ -2978,14 +2995,16 @@ app.post('/mcp', async (c) => {
 
         fromItems[itemIdx].quantity -= qty
         const newFromItems = fromItems.filter(i => i.quantity > 0)
-        const newFromInvStr = newFromItems.map(i => `${i.item}×${i.quantity}`).join(', ')
+        const fmtItem = (i: { item: string; quantity: number; condition: string | null }) =>
+          i.condition ? `${i.item}×${i.quantity}[${i.condition}]` : `${i.item}×${i.quantity}`
+        const newFromInvStr = newFromItems.map(fmtItem).join(', ')
 
         const toInvRaw = extractRawField(toText, toInvFieldName) ?? ''
         const toItems = parseInvStr(toInvRaw)
         const toIdx = toItems.findIndex(i => i.item.toLowerCase() === itemKey.toLowerCase())
         if (toIdx >= 0) toItems[toIdx].quantity += qty
-        else toItems.push({ item: itemKey, quantity: qty })
-        const newToInvStr = toItems.map(i => `${i.item}×${i.quantity}`).join(', ')
+        else toItems.push({ item: itemKey, quantity: qty, condition: null })
+        const newToInvStr = toItems.map(fmtItem).join(', ')
 
         const newFromText = updateFieldInText(fromText, fromInvFieldName, newFromInvStr)
         const newToText = updateFieldInText(toText, toInvFieldName, newToInvStr)
@@ -3002,7 +3021,7 @@ app.post('/mcp', async (c) => {
           appendChangelog(c, fromKey, fromVersion),
           appendChangelog(c, toKey, toVersion),
         ])
-        await Promise.all([appendChangelog(c, fromKey, fromVersion), appendChangelog(c, toKey, toVersion)])
+        //await Promise.all([appendChangelog(c, fromKey, fromVersion), appendChangelog(c, toKey, toVersion)])
         loreDB[fromKey] = newFromText
         loreDB[toKey] = newToText
 
@@ -3223,35 +3242,66 @@ app.post('/mcp', async (c) => {
         let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
 
         // Fallback: if index is empty, scan kvList for entities at this location
+        let rawValues: (string | null)[]
         if (entityKeys.length === 0) {
           const allKeys = await kvList(c)
           const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          entityKeys = []
+          rawValues = []
           for (let i = 0; i < allKeys.length; i++) {
             const r = rawVals[i]
             if (!r) continue
             const { text } = parseKvEntry(r)
             if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
               entityKeys.push(allKeys[i])
+              rawValues.push(r)
             }
           }
+        } else {
+          rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
         }
-
-        const rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
         const now = new Date().toISOString()
-        const outcomes: Array<{ key: string; old_stage: number; new_stage: number; is_terminal: boolean }> = []
-        const skipped: Array<{ key: string; reason: string }> = []
+        // const outcomes: Array<{ key: string; old_stage: number; new_stage: number; is_terminal: boolean }> = []
+        // const skipped: Array<{ key: string; reason: string }> = []
 
-        for (let i = 0; i < entityKeys.length; i++) {
+        // for (let i = 0; i < entityKeys.length; i++) {
+        //   const raw = rawValues[i]
+        //   if (!raw) continue
+        //   const key = entityKeys[i]
+        //   const { text, meta } = parseKvEntry(raw)
+
+        //   const currentStage = extractFieldFromText(text, 'State-Stage')
+        //   if (typeof currentStage !== 'number') { skipped.push({ key, reason: 'no State-Stage field' }); continue }
+        //   const totalStages = extractFieldFromText(text, 'State-Total')
+        //   const total = typeof totalStages === 'number' ? totalStages : null
+        //   if (total !== null && currentStage >= total) { skipped.push({ key, reason: `already at terminal stage ${currentStage}/${total}` }); continue }
+
+        //   const newStage = currentStage + 1
+        //   let updatedText = updateFieldInText(text, 'State-Stage', newStage)
+        //   const stageTimer = extractFieldFromText(text, 'Stage-Timer')
+        //   if (typeof stageTimer === 'number') updatedText = updateFieldInText(updatedText, 'Stage-Timer', Math.max(0, stageTimer - 1))
+
+        //   await pushHistory(c, key, raw)
+        //   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        //   await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        //   await appendChangelog(c, key, version)
+        //   loreDB[key] = updatedText
+        //   outcomes.push({ key, old_stage: currentStage, new_stage: newStage, is_terminal: total !== null && newStage >= total })
+        // }
+        const batchResults = await Promise.all(entityKeys.map(async (key, i) => {
           const raw = rawValues[i]
-          if (!raw) continue
-          const key = entityKeys[i]
+          if (!raw) return null
           const { text, meta } = parseKvEntry(raw)
 
           const currentStage = extractFieldFromText(text, 'State-Stage')
-          if (typeof currentStage !== 'number') { skipped.push({ key, reason: 'no State-Stage field' }); continue }
+          if (typeof currentStage !== 'number') {
+            return { kind: 'skipped' as const, key, reason: 'no State-Stage field' }
+          }
           const totalStages = extractFieldFromText(text, 'State-Total')
           const total = typeof totalStages === 'number' ? totalStages : null
-          if (total !== null && currentStage >= total) { skipped.push({ key, reason: `already at terminal stage ${currentStage}/${total}` }); continue }
+          if (total !== null && currentStage >= total) {
+            return { kind: 'skipped' as const, key, reason: `already at terminal stage ${currentStage}/${total}` }
+          }
 
           const newStage = currentStage + 1
           let updatedText = updateFieldInText(text, 'State-Stage', newStage)
@@ -3263,7 +3313,15 @@ app.post('/mcp', async (c) => {
           await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
           await appendChangelog(c, key, version)
           loreDB[key] = updatedText
-          outcomes.push({ key, old_stage: currentStage, new_stage: newStage, is_terminal: total !== null && newStage >= total })
+          return { kind: 'outcome' as const, key, old_stage: currentStage, new_stage: newStage, is_terminal: total !== null && newStage >= total }
+        }))
+
+        const outcomes: Array<{ key: string; old_stage: number; new_stage: number; is_terminal: boolean }> = []
+        const skipped: Array<{ key: string; reason: string }> = []
+        for (const r of batchResults) {
+          if (!r) continue
+          if (r.kind === 'outcome') outcomes.push(r as any)
+          if (r.kind === 'skipped') skipped.push(r as any)
         }
 
         return c.json(makeResult(id, {
@@ -3393,33 +3451,43 @@ app.post('/mcp', async (c) => {
         let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
 
         // Fallback: if indexes are empty, scan kvList
+        let rawValuesA: (string | null)[]
+        let rawValuesB: (string | null)[]
         if (keysA.length === 0 || keysB.length === 0) {
           const allKeys = await kvList(c)
           const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          const mapA = new Map<string, string>()
+          const mapB = new Map<string, string>()
           if (keysA.length === 0) {
+            keysA = []
             for (let i = 0; i < allKeys.length; i++) {
               const r = allRaws[i]
               if (!r) continue
               const { text } = parseKvEntry(r)
               if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
                 keysA.push(allKeys[i])
+                mapA.set(allKeys[i], r)
               }
             }
           }
           if (keysB.length === 0) {
+            keysB = []
             for (let i = 0; i < allKeys.length; i++) {
               const r = allRaws[i]
               if (!r) continue
               const { text } = parseKvEntry(r)
               if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
                 keysB.push(allKeys[i])
+                mapB.set(allKeys[i], r)
               }
             }
           }
+          rawValuesA = keysA.map(k => mapA.get(k) ?? null)
+          rawValuesB = keysB.map(k => mapB.get(k) ?? null)
+        } else {
+          rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
+          rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         }
-
-        const rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
-        const rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         type TInfo = { key: string; timeline_value: number | null; current_date: string | null; location: string | null }
         const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
@@ -3486,33 +3554,43 @@ app.post('/mcp', async (c) => {
         let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
 
         // Fallback: if indexes are empty, scan kvList
+        let rawValuesA: (string | null)[]
+        let rawValuesB: (string | null)[]
         if (keysA.length === 0 || keysB.length === 0) {
           const allKeys = await kvList(c)
           const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          const mapA = new Map<string, string>()
+          const mapB = new Map<string, string>()
           if (keysA.length === 0) {
+            keysA = []
             for (let i = 0; i < allKeys.length; i++) {
               const r = allRaws[i]
               if (!r) continue
               const { text } = parseKvEntry(r)
               if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
                 keysA.push(allKeys[i])
+                mapA.set(allKeys[i], r)
               }
             }
           }
           if (keysB.length === 0) {
+            keysB = []
             for (let i = 0; i < allKeys.length; i++) {
               const r = allRaws[i]
               if (!r) continue
               const { text } = parseKvEntry(r)
               if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
                 keysB.push(allKeys[i])
+                mapB.set(allKeys[i], r)
               }
             }
           }
+          rawValuesA = keysA.map(k => mapA.get(k) ?? null)
+          rawValuesB = keysB.map(k => mapB.get(k) ?? null)
+        } else {
+          rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
+          rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         }
-
-        const rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
-        const rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
         type TInfo = { key: string; current_date: string | null; location: string | null }
         const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
@@ -3710,19 +3788,20 @@ app.post('/mcp', async (c) => {
 
         const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
         const kv = getKV(c)
-        let allEvents: Array<any> = []
 
-        for (const ek of keys) {
+        const eventArrays = await Promise.all(keys.map(async (ek) => {
           const cleanKey = ek.trim().toLowerCase()
-          if (!kv) continue
+          if (!kv) return []
           try {
             const raw = await kv.get(`events:${cleanKey}`)
             if (raw) {
               const evts = JSON.parse(raw) as Array<any>
-              allEvents.push(...evts.map((e: any) => ({ ...e, entity_key: cleanKey })))
+              return evts.map((e: any) => ({ ...e, entity_key: cleanKey }))
             }
           } catch { }
-        }
+          return []
+        }))
+        let allEvents: Array<any> = eventArrays.flat()
 
         if (parsed.data.since) {
           const sinceMs = new Date(parsed.data.since).getTime()
@@ -3895,8 +3974,7 @@ app.post('/mcp', async (c) => {
 
         resultKeys = resultKeys.slice(0, parsed.data.limit)
 
-        const results: Array<{ key: string; excerpt?: string }> = []
-        for (const key of resultKeys) {
+        const results = await Promise.all(resultKeys.map(async (key) => {
           const entry: { key: string; excerpt?: string } = { key }
           if (parsed.data.with_excerpt) {
             const r = await kvGet(c, key)
@@ -3905,8 +3983,9 @@ app.post('/mcp', async (c) => {
               entry.excerpt = text.slice(0, 120) + (text.length > 120 ? '…' : '')
             }
           }
-          results.push(entry)
-        }
+          return entry
+        }))
+
 
         const summaryText = results.length > 0
           ? results.map(r => r.key + (r.excerpt ? `: "${r.excerpt}"` : '')).join('\n')
@@ -4013,19 +4092,44 @@ app.post('/mcp', async (c) => {
         const toKeys = new Set(Object.keys(toManifest))
         const added = [...toKeys].filter(k => !fromKeys.has(k))
         const removed = [...fromKeys].filter(k => !toKeys.has(k))
-        const changed: Array<any> = []
+        // const changed: Array<any> = []
 
-        for (const k of [...fromKeys].filter(k => toKeys.has(k))) {
+        // for (const k of [...fromKeys].filter(k => toKeys.has(k))) {
+        //   const f = fromManifest[k], t = toManifest[k]
+        //   if (f.version !== t.version || f.updatedAt !== t.updatedAt) {
+        //     const entry: any = { key: k, from_version: f.version, to_version: t.version, from_at: f.updatedAt, to_at: t.updatedAt }
+        //     if (parsed.data.detail !== 'summary') {
+        //       const r = await kvGet(c, k)
+        //       if (r) entry.current_text = parseKvEntry(r).text.slice(0, 500)
+        //     }
+        //     changed.push(entry)
+        //   }
+        // }
+
+        const changed: Array<any> = []
+        const sharedKeys = [...fromKeys].filter(k => toKeys.has(k))
+        const changedKeys = sharedKeys.filter(k => {
           const f = fromManifest[k], t = toManifest[k]
-          if (f.version !== t.version || f.updatedAt !== t.updatedAt) {
+          return f.version !== t.version || f.updatedAt !== t.updatedAt
+        })
+
+        if (parsed.data.detail !== 'summary') {
+          const detailRaws = await Promise.all(changedKeys.map(k => kvGet(c, k)))
+          changedKeys.forEach((k, i) => {
+            const f = fromManifest[k], t = toManifest[k]
             const entry: any = { key: k, from_version: f.version, to_version: t.version, from_at: f.updatedAt, to_at: t.updatedAt }
-            if (parsed.data.detail !== 'summary') {
-              const r = await kvGet(c, k)
-              if (r) entry.current_text = parseKvEntry(r).text.slice(0, 500)
-            }
+            const r = detailRaws[i]
+            if (r) entry.current_text = parseKvEntry(r).text.slice(0, 500)
             changed.push(entry)
+          })
+        } else {
+          for (const k of changedKeys) {
+            const f = fromManifest[k], t = toManifest[k]
+            changed.push({ key: k, from_version: f.version, to_version: t.version, from_at: f.updatedAt, to_at: t.updatedAt })
           }
         }
+
+
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Diff "${fromLabel}" → "${toLabel}": ${added.length} added, ${removed.length} removed, ${changed.length} changed.` }],
@@ -4251,6 +4355,25 @@ app.post('/mcp', async (c) => {
         type Finding = { key: string; check: string; severity: 'info' | 'warn' | 'error'; message: string }
         const findings: Finding[] = []
 
+        // Pre-fetch all unique location keys for the occupancy check
+        const locationKeysToFetch = new Set<string>()
+        if (activeChecks.includes('occupancy')) {
+          for (let i = 0; i < scopedKeys.length; i++) {
+            const r = scopedRaws[i]
+            if (!r || !scopedKeys[i].startsWith('character:')) continue
+            const { text } = parseKvEntry(r)
+            const loc = extractRawField(text, 'Location')
+            if (loc) locationKeysToFetch.add(loc.trim().toLowerCase())
+          }
+        }
+        const locationResults = await Promise.all(
+          Array.from(locationKeysToFetch).map(async locKey => ({
+            key: locKey,
+            exists: !!(await kvGet(c, locKey))
+          }))
+        )
+        const locationExistsMap = new Map(locationResults.map(r => [r.key, r.exists]))
+
         for (let i = 0; i < scopedKeys.length; i++) {
           const r = scopedRaws[i]
           if (!r) continue
@@ -4271,12 +4394,12 @@ app.post('/mcp', async (c) => {
             const locationField = extractRawField(text, 'Location')
             if (locationField) {
               const locationKey = locationField.trim().toLowerCase()
-              const locRaw = await kvGet(c, locationKey)
-              if (!locRaw) {
+              if (!locationExistsMap.get(locationKey)) {
                 findings.push({ key, check: 'occupancy', severity: 'warn', message: `Location field "${locationKey}" does not exist.` })
               }
             }
           }
+
 
           if (activeChecks.includes('inventory') && (key.startsWith('character:') || key.startsWith('entity:'))) {
             const inventoryField = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items')
@@ -4405,8 +4528,8 @@ app.post('/mcp', async (c) => {
         if (includeRelationships && entityKeys.length >= 2) {
           for (let i = 0; i < Math.min(entityKeys.length, 4); i++) {
             for (let j = i + 1; j < Math.min(entityKeys.length, 4); j++) {
-              const rA = await kvGet(c, entityKeys[i])
-              const rB = await kvGet(c, entityKeys[j])
+              const rA = entityKeysMap.get(entityKeys[i])
+              const rB = entityKeysMap.get(entityKeys[j])
               if (!rA || !rB) continue
               const tA = parseKvEntry(rA).text
               const affinity = extractRawField(tA, 'Affinity')
@@ -4418,6 +4541,7 @@ app.post('/mcp', async (c) => {
             }
           }
         }
+
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: `Scene brief for "${baseKey}": ${occupants.length} entity/entities present. ${openSetups.length} open setup(s). ${relationships.length} relationship(s).` }],
@@ -4466,16 +4590,33 @@ app.post('/mcp', async (c) => {
         }
         const filteredBaseText = filteredLines.join('\n')
 
-        const allKeys = await kvList(c)
-        const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
+        let candidateKeys = await getIndexedKeys(c, `_idx:location:${baseKey}`)
+        let candidateRaws: (string | null)[]
+        if (candidateKeys.length === 0) {
+          const allKeys = await kvList(c)
+          const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
+          candidateKeys = []
+          candidateRaws = []
+          for (let i = 0; i < allKeys.length; i++) {
+            const key = allKeys[i]
+            if ((!key.startsWith('character:') && !key.startsWith('entity:')) || key === povKey) continue
+            const r = allRawValues[i]
+            if (!r) continue
+            const { text } = parseKvEntry(r)
+            if (extractRawField(text, 'Location')?.trim().toLowerCase() !== baseKey) continue
+            candidateKeys.push(key)
+            candidateRaws.push(r)
+          }
+        } else {
+          candidateRaws = await Promise.all(candidateKeys.map(k => kvGet(c, k)))
+        }
+
         const visibleEntities: Array<{ key: string; status: string | null; known: boolean }> = []
-        for (let i = 0; i < allKeys.length; i++) {
-          const key = allKeys[i]
-          if ((!key.startsWith('character:') && !key.startsWith('entity:')) || key === povKey) continue
-          const r = allRawValues[i]
+        for (let i = 0; i < candidateKeys.length; i++) {
+          const key = candidateKeys[i]
+          const r = candidateRaws[i]
           if (!r) continue
           const { text } = parseKvEntry(r)
-          if (extractRawField(text, 'Location')?.trim().toLowerCase() !== baseKey) continue
           if (/\[hidden\]|\[concealed\]|\[invisible\]/i.test(text) && threshold < 0.7) continue
           const known = knownTopics.has(key) || knownTopics.has(key.split(':').pop()?.toLowerCase() ?? '')
           visibleEntities.push({ key, status: extractRawField(text, 'Status'), known })
