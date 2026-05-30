@@ -84,11 +84,12 @@ async function kvList(c: { env: AppBindings }): Promise<string[]> {
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
-      if (keys.length) return keys
+              return keys
+      }
+    } catch (e) {
+      console.warn('KV list failed', e)
     }
-  } catch (e) {
-    console.warn('KV list failed', e)
-  }
+
     return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
@@ -254,9 +255,14 @@ async function appendChangelog(c: any, key: string, version: number, op = 'write
 
 // Handles both the legacy plain-string format and the current { text, meta } JSON format.
 function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown> } {
-  const parsed = JSON.parse(raw)
-  if (parsed && typeof parsed.text === 'string') {
-    return { text: parsed.text, meta: parsed.meta ?? {} }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.text === 'string') {
+      return { text: parsed.text, meta: parsed.meta ?? {} }
+    }
+  } catch {
+    // Fallback: treat raw string as plain text (legacy or in-memory format)
+    return { text: raw, meta: {} }
   }
   throw new Error('Invalid KV entry format: expected { text, meta } JSON')
 }
@@ -658,7 +664,10 @@ const RATE_LIMIT_MAX = 120
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 app.use('*', async (c, next) => {
-  const ip = c.req.header('CF-Connecting-IP') ?? 'unknown'
+  const ip = c.req.header('CF-Connecting-IP')
+  // Skip rate limiting in local/test environments where CF-Connecting-IP is absent
+  if (!ip) return await next()
+
   const now = Date.now()
 
   // Prevent unbounded growth on high-traffic workers
@@ -2092,11 +2101,17 @@ app.post('/mcp', async (c) => {
         const muts = parsed.data.mutations
         const mutKeys = muts.map(m => m.key.trim().toLowerCase())
         const mutRaws = await Promise.all(mutKeys.map(k => kvGet(c, k)))
+        // Track live text so multiple mutations to the same key compose sequentially
+        const liveTexts = new Map<string, string>()
 
         for (let i = 0; i < muts.length; i++) {
           const mut = muts[i]
           const key = mutKeys[i]
-          const raw = mutRaws[i]
+          let raw = mutRaws[i]
+
+          if (liveTexts.has(key)) {
+            raw = JSON.stringify({ text: liveTexts.get(key)!, meta: {} })
+          }
 
           if (!raw) {
             mutationResults.push({ key, action: mut.action, ok: false, message: `Key "${key}" not found.` })
@@ -2123,6 +2138,7 @@ app.post('/mcp', async (c) => {
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta } }))
             await updateIndexes(c, key, updatedText, text)
             await appendChangelog(c, key, version)
+            liveTexts.set(key, updatedText)
             loreDB[key] = updatedText
             mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
 
@@ -2180,6 +2196,7 @@ app.post('/mcp', async (c) => {
             await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
             await updateIndexes(c, key, updatedText, text)
             await appendChangelog(c, key, version)
+            liveTexts.set(key, updatedText)
             loreDB[key] = updatedText
             mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
 
