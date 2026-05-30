@@ -3916,3 +3916,79 @@ describe('append_to_section', () => {
     expect((await callTool('get_lore', { query: 'ats:restore' })).result.text).toBe('## Notes\nOriginal content.')
   })
 })
+
+// ── move_entity ───────────────────────────────────────────────────────────────
+
+describe('move_entity', () => {
+  it('updates Location field and returns success', async () => {
+    await seedKV('character:traveler', '**Location:** location:old-town\n**Status:** Active')
+    const res = await callTool('move_entity', { entity_key: 'character:traveler', new_location_key: 'location:new-city' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.new_location).toBe('location:new-city')
+    const lore = await callTool('get_lore', { query: 'character:traveler' })
+    expect(lore.result.text).toContain('location:new-city')
+    expect(lore.result.text).not.toContain('location:old-town')
+  })
+
+  it('updates location indexes so get_location_occupants reflects the move', async () => {
+    await seedKV('character:mover', '**Location:** location:room-a\n**Status:** Active')
+    await callTool('move_entity', { entity_key: 'character:mover', new_location_key: 'location:room-b' })
+    const oldLoc = await callTool('get_location_occupants', { location_key: 'location:room-a' })
+    expect(oldLoc.result.occupants).toHaveLength(0)
+    const newLoc = await callTool('get_location_occupants', { location_key: 'location:room-b' })
+    expect(newLoc.result.occupants.map((o: { key: string }) => o.key)).toContain('character:mover')
+  })
+
+  it('pushes history before writing', async () => {
+    await seedKV('character:hist-mover', '**Location:** location:start\n**Status:** Active')
+    await callTool('move_entity', { entity_key: 'character:hist-mover', new_location_key: 'location:end' })
+    const restore = await callTool('restore_lore', { key: 'character:hist-mover' })
+    expect(restore.result.metadata.restored).toBe(true)
+    const lore = await callTool('get_lore', { query: 'character:hist-mover' })
+    expect(lore.result.text).toContain('location:start')
+  })
+
+  it('returns error for nonexistent entity', async () => {
+    const res = await callTool('move_entity', { entity_key: 'character:ghost-9999', new_location_key: 'location:void' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
+// ── /admin/gc ─────────────────────────────────────────────────────────────────
+
+describe('/admin/gc', () => {
+  async function adminPost(path: string, body: Record<string, unknown>) {
+    return SELF.fetch(`http://example.com${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  it('deletes orphan _history entries whose base key no longer exists', async () => {
+    await env.LORE_DB.put('_history:orphan-key', JSON.stringify(['old']))
+    const res = await adminPost('/admin/gc', { secret: ADMIN_SECRET, max_age_days: 1 })
+    const body = await res.json() as Record<string, any>
+    expect(body.ok).toBe(true)
+    expect(body.deleted_history).toBeGreaterThanOrEqual(1)
+    const check = await env.LORE_DB.get('_history:orphan-key')
+    expect(check).toBeNull()
+  })
+
+  it('deletes old snapshots beyond max_age_days', async () => {
+    const oldSnap = { name: 'old', created_at: '2020-01-01T00:00:00.000Z', manifest: {} }
+    await env.LORE_DB.put('_snapshot:old-test-snap', JSON.stringify(oldSnap))
+    const res = await adminPost('/admin/gc', { secret: ADMIN_SECRET, max_age_days: 30 })
+    const body = await res.json() as Record<string, any>
+    expect(body.ok).toBe(true)
+    expect(body.deleted_snapshots).toBeGreaterThanOrEqual(1)
+    const check = await env.LORE_DB.get('_snapshot:old-test-snap')
+    expect(check).toBeNull()
+  })
+
+  it('returns 401 without correct secret', async () => {
+    const res = await adminPost('/admin/gc', { secret: 'wrong', max_age_days: 30 })
+    expect(res.status).toBe(401)
+  })
+})
