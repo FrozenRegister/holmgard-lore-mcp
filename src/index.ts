@@ -84,13 +84,13 @@ async function kvList(c: { env: AppBindings }): Promise<string[]> {
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
-              return keys
-      }
-    } catch (e) {
-      console.warn('KV list failed', e)
+      return keys
     }
+  } catch (e) {
+    console.warn('KV list failed', e)
+  }
 
-    return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
 
@@ -703,7 +703,7 @@ app.get('/mcp', (c) => {
 })
 
 app.post('/mcp', async (c) => {
-    let body: unknown
+  let body: unknown
   try {
     body = await c.req.json()
   } catch (e) {
@@ -1543,7 +1543,7 @@ app.post('/mcp', async (c) => {
               required: ['key', 'section', 'text'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'character:example', section: 'Personality', text: 'Deeply loyal to companions.' } }]
-                    },
+          },
           {
             name: 'move_entity', title: 'Move Entity', version: '0.1.0',
             description: 'Change an entity\'s Location field and update both the old and new location indexes atomically.',
@@ -3473,7 +3473,7 @@ app.post('/mcp', async (c) => {
 
         const entries: Array<{ key: string; weight: number }> = []
         for (const part of tableRaw.split(',').map(s => s.trim()).filter(Boolean)) {
-          const m = part.match(/^(.+?)\s*:\s*(\d+)$/)
+          const m = part.match(/^(.+?)\s*:\s*([\d.]+)$/)
           if (m) entries.push({ key: m[1].trim(), weight: parseInt(m[2]) })
           else entries.push({ key: part, weight: 1 })
         }
@@ -3488,7 +3488,16 @@ app.post('/mcp', async (c) => {
         const total = adjusted.reduce((s, e) => s + e.w, 0)
         let roll = Math.random() * total, cum = 0, selected = adjusted[0]
         for (const e of adjusted) { cum += e.w; if (roll <= cum) { selected = e; break } }
-
+        
+        // New: nothing sentinel — skip archetype lookup, return clean no-encounter  
+        if (selected.key === 'nothing') {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: `Encounter rolled at "${locationKey}" — nothing stirs.` }],
+            metadata: { retrieved: 1, written: 0 },
+            rolled: true, location_key: locationKey, threat_level: threatLevel,
+            selected_archetype: 'nothing', entity_key: null, nothing: true
+          }), 200);
+        }
         const archetypeKey = selected.key.startsWith('archetype:') ? selected.key : `archetype:${selected.key}`
         const rawArchetype = await kvGet(c, archetypeKey)
         if (!rawArchetype) {
@@ -4784,7 +4793,7 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
-            if (toolName === 'move_entity') {
+      if (toolName === 'move_entity') {
         const schema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
         const parsed = schema.safeParse(args)
         if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
