@@ -74,7 +74,7 @@ async function kvList(c: any): Promise<string[]> {
       do {
         const listed: any = await kv.list(cursor ? { cursor } : undefined)
         for (const k of listed.keys) {
-          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:')) keys.push(k.name)
+          if (!k.name.startsWith('_history:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:') && !k.name.startsWith('map:')) keys.push(k.name)
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
@@ -83,7 +83,7 @@ async function kvList(c: any): Promise<string[]> {
   } catch (e) {
     console.warn('KV list failed', e)
   }
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:'))
+  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
 

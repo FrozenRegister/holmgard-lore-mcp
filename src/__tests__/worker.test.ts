@@ -179,7 +179,7 @@ describe('check_authentication', () => {
   })
 
   it('returns not authenticated when no X-Api-Key header is sent', async () => {
-    const res = await callTool('check_authentication')
+    const res = await rpc('tools/call', { name: 'check_authentication', arguments: {} })
     expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
     expect(res.result.metadata.authenticated).toBe(false)
   })
@@ -202,6 +202,18 @@ describe('list_topics', () => {
     expect(text).toContain('lore:alpha')
     expect(text).toContain('lore:beta')
     expect(res.result.metadata.count).toBe(2)
+  })
+
+  it('excludes map:* keys from list_topics', async () => {
+    await seedKV('lore:visible', 'Visible lore')
+    await seedKV('map:world:continents', '{"type":"FeatureCollection"}')
+    await seedKV('map:region:north', '{"type":"FeatureCollection"}')
+    const res = await callTool('list_topics')
+    const text = res.result.content[0].text as string
+    expect(text).toContain('lore:visible')
+    expect(text).not.toContain('map:world:continents')
+    expect(text).not.toContain('map:region:north')
+    expect(res.result.metadata.count).toBe(1)
   })
 })
 
