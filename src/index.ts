@@ -53,11 +53,17 @@ const loreDB: Record<string, string> = {}
 // ── KV helpers ────────────────────────────────────────────────────────────────
 // Reads fall back to loreDB automatically so callers don't need to handle it.
 
-function getKV(c: any): KVNamespace | null {
-  return (c.env as any)?.LORE_DB ?? null
+type AppBindings = {
+  LORE_DB?: KVNamespace
+  MCP_API_KEY?: string
+  ADMIN_SECRET?: string
 }
 
-async function kvGet(c: any, key: string): Promise<string | null> {
+function getKV(c: { env: AppBindings }): KVNamespace | null {
+  return c.env.LORE_DB ?? null
+}
+
+async function kvGet(c: { env: AppBindings }, key: string): Promise<string | null> {
   try {
     const kv = getKV(c)
     if (kv) return (await kv.get(key)) ?? loreDB[key] ?? null
@@ -65,7 +71,7 @@ async function kvGet(c: any, key: string): Promise<string | null> {
   return loreDB[key] ?? null
 }
 
-async function kvList(c: any): Promise<string[]> {
+async function kvList(c: { env: AppBindings }): Promise<string[]> {
   try {
     const kv = getKV(c)
     if (kv) {
@@ -83,11 +89,11 @@ async function kvList(c: any): Promise<string[]> {
   } catch (e) {
     console.warn('KV list failed', e)
   }
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
+    return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
 
-async function kvPut(c: any, key: string, value: string): Promise<boolean> {
+async function kvPut(c: { env: AppBindings }, key: string, value: string): Promise<boolean> {
   try {
     const kv = getKV(c)
     if (kv) { await kv.put(key, value); return true }
@@ -95,7 +101,7 @@ async function kvPut(c: any, key: string, value: string): Promise<boolean> {
   return false
 }
 
-async function kvDelete(c: any, key: string): Promise<boolean> {
+async function kvDelete(c: { env: AppBindings }, key: string): Promise<boolean> {
   try {
     const kv = getKV(c)
     if (kv) { await kv.delete(key); return true }
@@ -148,6 +154,10 @@ async function updateIndexes(c: any, key: string, newText: string, oldText: stri
   }
 }
 
+// NOTE: Index updates are best-effort under concurrent load.
+// KV does not support atomic array operations. If two requests mutate
+// the same index simultaneously, one update may be lost. For strong
+// consistency, move index writes to a Durable Object.
 // Adds a key to an index (creates if missing, dedupes)
 async function addToIndex(c: any, indexKey: string, key: string): Promise<void> {
   try {
@@ -244,144 +254,131 @@ async function appendChangelog(c: any, key: string, version: number, op = 'write
 
 // Handles both the legacy plain-string format and the current { text, meta } JSON format.
 function parseKvEntry(raw: string): { text: string; meta: Record<string, unknown> } {
-  try {
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed.text === 'string') {
-      return { text: parsed.text, meta: parsed.meta ?? {} }
-    }
-  } catch { }
-  return { text: raw, meta: {} }
+  const parsed = JSON.parse(raw)
+  if (parsed && typeof parsed.text === 'string') {
+    return { text: parsed.text, meta: parsed.meta ?? {} }
+  }
+  throw new Error('Invalid KV entry format: expected { text, meta } JSON')
 }
-
 // Reads a field value from lore text. Handles four formats:
 //   1. Markdown bold: **Field:** val  or  - **Field (desc):** val
 //   2. JSON block:    "Field": 0.9,
 //   3. Loose numeric: Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
 //   4. Returns string value from loose format when no number is found
 function extractFieldFromText(text: string, fieldPath: string): unknown {
-  try {
-    const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-    // Pass 1: markdown bold (optional bullet + optional parenthetical descriptor)
-    const mdRegex = new RegExp(
-      `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
-      'im'
-    )
-    const mdMatch = text.match(mdRegex)
-    if (mdMatch) {
-      const value = mdMatch[1].trim()
-      const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
-      if (numMatch) return parseFloat(numMatch[0])
-      if (value === 'true') return true
-      if (value === 'false') return false
-      if (value === 'null') return null
-      try { return JSON.parse(value) } catch { /* not JSON */ }
-      return value
-    }
-
-    // Pass 2: JSON block  "Field": 0.9
-    const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
-    const jsonMatch = text.match(jsonRegex)
-    if (jsonMatch) return parseFloat(jsonMatch[1])
-
-    // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
-    // Anchored to line start to avoid mid-sentence false matches.
-    const looseRegex = new RegExp(
-      `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
-      'im'
-    )
-    const looseMatch = text.match(looseRegex)
-    if (looseMatch) {
-      const value = looseMatch[1].trim()
-      const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
-      if (numMatch) return parseFloat(numMatch[0])
-      if (value === 'true') return true
-      if (value === 'false') return false
-      if (value === 'null') return null
-      try { return JSON.parse(value) } catch { /* not JSON */ }
-      return value
-    }
-
-    // Pass 4: embedded Stage-N-of-M narrative pattern (e.g. "Status: Active, Stage-2-of-4")
-    // Handles AI-written status strings that encode stage inline rather than as a discrete field.
-    if (fieldPath === 'State-Stage' || fieldPath === 'State-Total') {
-      const stageM = text.match(/\bStage-(\d+)(?:-of-(\d+))?\b/i)
-      if (stageM) {
-        if (fieldPath === 'State-Stage') return parseInt(stageM[1])
-        if (fieldPath === 'State-Total' && stageM[2]) return parseInt(stageM[2])
-      }
-    }
-
-  } catch (e) {
-    console.warn('extractFieldFromText error', e)
+  // Pass 1: markdown bold (optional bullet + optional parenthetical descriptor)
+  const mdRegex = new RegExp(
+    `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
+    'im'
+  )
+  const mdMatch = text.match(mdRegex)
+  if (mdMatch) {
+    const value = mdMatch[1].trim()
+    const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
+    if (numMatch) return parseFloat(numMatch[0])
+    if (value === 'true') return true
+    if (value === 'false') return false
+    if (value === 'null') return null
+    try { return JSON.parse(value) } catch { /* not JSON */ }
+    return value
   }
+
+  // Pass 2: JSON block  "Field": 0.9
+  const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
+  const jsonMatch = text.match(jsonRegex)
+  if (jsonMatch) return parseFloat(jsonMatch[1])
+
+  // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
+  // Anchored to line start to avoid mid-sentence false matches.
+  const looseRegex = new RegExp(
+    `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
+    'im'
+  )
+  const looseMatch = text.match(looseRegex)
+  if (looseMatch) {
+    const value = looseMatch[1].trim()
+    const numMatch = value.match(/^-?\d+(?:\.\d+)?/)
+    if (numMatch) return parseFloat(numMatch[0])
+    if (value === 'true') return true
+    if (value === 'false') return false
+    if (value === 'null') return null
+    try { return JSON.parse(value) } catch { /* not JSON */ }
+    return value
+  }
+
+  // Pass 4: embedded Stage-N-of-M narrative pattern (e.g. "Status: Active, Stage-2-of-4")
+  // Handles AI-written status strings that encode stage inline rather than as a discrete field.
+  if (fieldPath === 'State-Stage' || fieldPath === 'State-Total') {
+    const stageM = text.match(/\bStage-(\d+)(?:-of-(\d+))?\b/i)
+    if (stageM) {
+      if (fieldPath === 'State-Stage') return parseInt(stageM[1])
+      if (fieldPath === 'State-Total' && stageM[2]) return parseInt(stageM[2])
+    }
+  }
+
   return null
 }
 
 // Replaces a field value in place (surgical slice-replace preserving prefix/format), or appends.
 function updateFieldInText(text: string, fieldPath: string, newValue: any): string {
-  try {
-    const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-    // Pass 1: markdown bold (optional bullet + optional descriptor)
-    const mdRegex = new RegExp(
-      `^(\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*)(.+?)(\\s*)$`,
-      'im'
+  // Pass 1: markdown bold (optional bullet + optional descriptor)
+  const mdRegex = new RegExp(
+    `^(\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*)(.+?)(\\s*)$`,
+    'im'
+  )
+  const mdMatch = text.match(mdRegex)
+  if (mdMatch) {
+    return (
+      text.slice(0, mdMatch.index!) +
+      mdMatch[1] +
+      String(newValue) +
+      mdMatch[3] +
+      text.slice(mdMatch.index! + mdMatch[0].length)
     )
-    const mdMatch = text.match(mdRegex)
-    if (mdMatch) {
-      return (
-        text.slice(0, mdMatch.index!) +
-        mdMatch[1] +
-        String(newValue) +
-        mdMatch[3] +
-        text.slice(mdMatch.index! + mdMatch[0].length)
-      )
-    }
-
-    // Pass 2: JSON block  "Field": 0.9
-    const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
-    const jsonMatch = text.match(jsonRegex)
-    if (jsonMatch) {
-      return (
-        text.slice(0, jsonMatch.index!) +
-        jsonMatch[1] +
-        String(newValue) +
-        text.slice(jsonMatch.index! + jsonMatch[0].length)
-      )
-    }
-
-    // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
-    const looseRegex = new RegExp(
-      `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
-      'im'
-    )
-    const looseMatch = text.match(looseRegex)
-    if (looseMatch) {
-      return (
-        text.slice(0, looseMatch.index!) +
-        looseMatch[1] +
-        String(newValue) +
-        text.slice(looseMatch.index! + looseMatch[0].length)
-      )
-    }
-
-    // Pass 4: embedded Stage-N-of-M — update the inline number, preserving the -of-M suffix
-    if (fieldPath === 'State-Stage') {
-      const stageM = text.match(/\bStage-(\d+)(-of-\d+)?\b/i)
-      if (stageM) {
-        return text.replace(/\bStage-(\d+)(-of-\d+)?\b/i, (_, _n, suffix) => `Stage-${newValue}${suffix ?? ''}`)
-      }
-    }
-
-    // Fallback: append
-    const needsSeparator = !text.endsWith('\n')
-    return text + (needsSeparator ? '\n' : '') + `**${fieldPath}:** ${newValue}`
-
-  } catch (e) {
-    console.warn('updateFieldInText error', e)
-    return text
   }
+
+  // Pass 2: JSON block  "Field": 0.9
+  const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
+  const jsonMatch = text.match(jsonRegex)
+  if (jsonMatch) {
+    return (
+      text.slice(0, jsonMatch.index!) +
+      jsonMatch[1] +
+      String(newValue) +
+      text.slice(jsonMatch.index! + jsonMatch[0].length)
+    )
+  }
+
+  // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
+  const looseRegex = new RegExp(
+    `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
+    'im'
+  )
+  const looseMatch = text.match(looseRegex)
+  if (looseMatch) {
+    return (
+      text.slice(0, looseMatch.index!) +
+      looseMatch[1] +
+      String(newValue) +
+      text.slice(looseMatch.index! + looseMatch[0].length)
+    )
+  }
+
+  // Pass 4: embedded Stage-N-of-M — update the inline number, preserving the -of-M suffix
+  if (fieldPath === 'State-Stage') {
+    const stageM = text.match(/\bStage-(\d+)(-of-\d+)?\b/i)
+    if (stageM) {
+      return text.replace(/\bStage-(\d+)(-of-\d+)?\b/i, (_, _n, suffix) => `Stage-${newValue}${suffix ?? ''}`)
+    }
+  }
+
+  // Fallback: append
+  const needsSeparator = !text.endsWith('\n')
+  return text + (needsSeparator ? '\n' : '') + `**${fieldPath}:** ${newValue}`
 }
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -397,24 +394,20 @@ function countOccurrences(haystack: string, needle: string): number {
 // Parses the system:active-narratives entry into structured thread objects.
 function extractActiveThreads(narrativeText: string): Array<any> {
   const threads: Array<any> = []
-  try {
-    const lines = narrativeText.split('\n')
-    let currentCategory = ''
-    for (const line of lines) {
-      if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'
-      if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
-      const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)
-      if (threadMatch) {
-        threads.push({
-          thread_name: threadMatch[1],
-          category: currentCategory,
-          character: threadMatch[2] || 'unknown',
-          status: 'Active'
-        })
-      }
+  const lines = narrativeText.split('\n')
+  let currentCategory = ''
+  for (const line of lines) {
+    if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'
+    if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
+    const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)
+    if (threadMatch) {
+      threads.push({
+        thread_name: threadMatch[1],
+        category: currentCategory,
+        character: threadMatch[2] || 'unknown',
+        status: 'Active'
+      })
     }
-  } catch (e) {
-    console.warn('extractActiveThreads error', e)
   }
   return threads
 }
@@ -474,27 +467,23 @@ function extractRawField(text: string, fieldPath: string): string | null {
 // Extracts timeline/status/processor fields from a character lore entry.
 // v0.2.0 — strengthened to match **Consumption-Timeline:** (new standard) with fallbacks.
 function extractConsumptionInfo(characterText: string): any {
-  try {
-    // Match **Consumption-Timeline:** first (new standard), then legacy formats
-    const timelineMatch =
-      characterText.match(/\*\*Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
-      characterText.match(/\*\*Projected[- ]Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i)
+  // Match **Consumption-Timeline:** first (new standard), then legacy formats
+  const timelineMatch =
+    characterText.match(/\*\*Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i) ||
+    characterText.match(/\*\*Projected[- ]Consumption[- ]Timeline:\*\*\s*(.+?)(?:\n|$)/i)
 
-    const statusMatch =
-      characterText.match(/\*\*Status:\*\*\s*(.+?)(?:\n|$)/i) ||
-      characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
+  const statusMatch =
+    characterText.match(/\*\*Status:\*\*\s*(.+?)(?:\n|$)/i) ||
+    characterText.match(/Status[*-:]*\s*(.+?)(?:\n|$)/i)
 
-    const processorMatch =
-      characterText.match(/\*\*Processor:\*\*\s*(.+?)(?:\n|$)/i) ||
-      characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
+  const processorMatch =
+    characterText.match(/\*\*Processor:\*\*\s*(.+?)(?:\n|$)/i) ||
+    characterText.match(/Processor[*-:]*\s*(.+?)(?:\n|$)/i)
 
-    return {
-      timeline_remaining: timelineMatch ? timelineMatch[1].trim() : null,
-      status: statusMatch ? statusMatch[1].trim() : 'active',
-      processor: processorMatch ? processorMatch[1].trim() : 'unknown'
-    }
-  } catch (e) {
-    return { timeline_remaining: null, status: 'active', processor: 'unknown' }
+  return {
+    timeline_remaining: timelineMatch ? timelineMatch[1].trim() : null,
+    status: statusMatch ? statusMatch[1].trim() : 'active',
+    processor: processorMatch ? processorMatch[1].trim() : 'unknown'
   }
 }
 
@@ -660,7 +649,36 @@ function applyAppendToSection(
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
-const app = new Hono()
+const app = new Hono<{ Bindings: AppBindings }>()
+
+// In-memory rate limiter (per-instance; sufficient for a single-worker
+// deployment. For multi-instance scale, use Cloudflare Rate Limiting rules.)
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 120
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+app.use('*', async (c, next) => {
+  const ip = c.req.header('CF-Connecting-IP') ?? 'unknown'
+  const now = Date.now()
+
+  // Prevent unbounded growth on high-traffic workers
+  if (rateLimitMap.size > 10000) {
+    for (const [key, val] of rateLimitMap) {
+      if (val.resetAt < now) rateLimitMap.delete(key)
+    }
+  }
+
+  let entry = rateLimitMap.get(ip)
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS }
+    rateLimitMap.set(ip, entry)
+  }
+  entry.count++
+  if (entry.count > RATE_LIMIT_MAX) {
+    return c.json({ error: 'Rate limit exceeded' }, 429)
+  }
+  await next()
+})
 
 app.use('*', async (c, next) => {
   await next()
@@ -676,7 +694,7 @@ app.get('/mcp', (c) => {
 })
 
 app.post('/mcp', async (c) => {
-  let body: any
+    let body: unknown
   try {
     body = await c.req.json()
   } catch (e) {
@@ -692,7 +710,7 @@ app.post('/mcp', async (c) => {
     const req = validated.req
     const id = req.id ?? null
     const method = req.method!
-    const params = req.params ?? {}
+    const params = (req.params ?? {}) as Record<string, unknown>
 
     // ── initialize ────────────────────────────────────────────────────────────
     if (method === 'initialize') {
@@ -746,9 +764,16 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { query: 'lamia' } }]
           },
           {
-            name: 'list_topics', title: 'List Topics', version: '0.1.0',
-            description: 'Return all available lore topic keys.',
-            inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {}, additionalProperties: false },
+            name: 'list_topics', title: 'List Topics', version: '0.1.1',
+            description: 'Return available lore topic keys. Supports optional pagination.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                limit: { type: 'integer', minimum: 1, maximum: 1000, default: 1000, description: 'Max keys to return' },
+                offset: { type: 'integer', minimum: 0, default: 0, description: 'Number of keys to skip' }
+              },
+              additionalProperties: false
+            },
             examples: [{ arguments: {} }]
           },
           {
@@ -1509,19 +1534,33 @@ app.post('/mcp', async (c) => {
               required: ['key', 'section', 'text'], additionalProperties: false
             },
             examples: [{ arguments: { key: 'character:example', section: 'Personality', text: 'Deeply loyal to companions.' } }]
+                    },
+          {
+            name: 'move_entity', title: 'Move Entity', version: '0.1.0',
+            description: 'Change an entity\'s Location field and update both the old and new location indexes atomically.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                entity_key: { type: 'string', description: 'Lore key of the entity to move', minLength: 1 },
+                new_location_key: { type: 'string', description: 'Lore key of the destination location', minLength: 1 }
+              },
+              required: ['entity_key', 'new_location_key'], additionalProperties: false
+            },
+            examples: [{ arguments: { entity_key: 'character:scout', new_location_key: 'location:tavern' } }]
           }
         ]
+
       }), 200)
     }
 
     // ── tools/call ────────────────────────────────────────────────────────────
     if (method === 'tools/call') {
       const toolName = params?.name
-      const args = params?.arguments ?? {}
+      const args = (params?.arguments ?? {}) as Record<string, any>
       if (!toolName || typeof toolName !== 'string')
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
-      const MCP_API_KEY = (c.env as any)?.MCP_API_KEY as string | undefined
+      const MCP_API_KEY = c.env.MCP_API_KEY
       const isAuthenticated = !!MCP_API_KEY && c.req.header('X-Api-Key') === MCP_API_KEY
 
       if (toolName === 'ping_tool') {
@@ -1540,8 +1579,14 @@ app.post('/mcp', async (c) => {
       }
 
       if (toolName === 'list_topics') {
-        const keys = await kvList(c)
-        return c.json(makeResult(id, { content: [{ type: 'text', text: keys.join(', ') }], metadata: { count: keys.length } }), 200)
+        const allKeys = await kvList(c)
+        const limit = Math.min(1000, (args?.limit as number) ?? 1000)
+        const offset = Math.max(0, (args?.offset as number) ?? 0)
+        const keys = allKeys.slice(offset, offset + limit)
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: keys.join(', ') }],
+          metadata: { count: keys.length, total: allKeys.length, limit, offset }
+        }), 200)
       }
 
       if (toolName === 'get_lore') {
@@ -1840,27 +1885,32 @@ app.post('/mcp', async (c) => {
 
         const searchQuery = parsed.data.query.toLowerCase()
         const allKeys = await kvList(c)
-        const rawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
         const results: Array<{ key: string; excerpt: string }> = []
+        const CHUNK_SIZE = 50
 
-        for (let i = 0; i < allKeys.length; i++) {
+        for (let chunkStart = 0; chunkStart < allKeys.length; chunkStart += CHUNK_SIZE) {
           if (results.length >= parsed.data.max_results) break
-          const raw = rawValues[i]
-          if (!raw) continue
-          const key = allKeys[i]
-          const { text } = parseKvEntry(raw)
-          const lowerText = text.toLowerCase()
-          const idx = lowerText.indexOf(searchQuery)
-          if (idx === -1) continue
+          const chunkKeys = allKeys.slice(chunkStart, chunkStart + CHUNK_SIZE)
+          const chunkRaws = await Promise.all(chunkKeys.map(k => kvGet(c, k)))
 
-          // Extract ~80 chars around the first match for context
-          const start = Math.max(0, idx - 30)
-          const end = Math.min(text.length, idx + searchQuery.length + 50)
-          let excerpt = text.slice(start, end)
-          if (start > 0) excerpt = '…' + excerpt
-          if (end < text.length) excerpt = excerpt + '…'
+          for (let i = 0; i < chunkKeys.length; i++) {
+            if (results.length >= parsed.data.max_results) break
+            const raw = chunkRaws[i]
+            if (!raw) continue
+            const key = chunkKeys[i]
+            const { text } = parseKvEntry(raw)
+            const lowerText = text.toLowerCase()
+            const idx = lowerText.indexOf(searchQuery)
+            if (idx === -1) continue
 
-          results.push({ key, excerpt })
+            const start = Math.max(0, idx - 30)
+            const end = Math.min(text.length, idx + searchQuery.length + 50)
+            let excerpt = text.slice(start, end)
+            if (start > 0) excerpt = '…' + excerpt
+            if (end < text.length) excerpt = excerpt + '…'
+
+            results.push({ key, excerpt })
+          }
         }
 
         const summaryText = results.length > 0
@@ -2039,9 +2089,14 @@ app.post('/mcp', async (c) => {
         const now = new Date().toISOString()
         const mutationResults: Array<{ key: string; action: string; ok: boolean; message: string; old_value?: any; new_value?: any }> = []
 
-        for (const mut of parsed.data.mutations) {
-          const key = mut.key.trim().toLowerCase()
-          const raw = await kvGet(c, key)
+        const muts = parsed.data.mutations
+        const mutKeys = muts.map(m => m.key.trim().toLowerCase())
+        const mutRaws = await Promise.all(mutKeys.map(k => kvGet(c, k)))
+
+        for (let i = 0; i < muts.length; i++) {
+          const mut = muts[i]
+          const key = mutKeys[i]
+          const raw = mutRaws[i]
 
           if (!raw) {
             mutationResults.push({ key, action: mut.action, ok: false, message: `Key "${key}" not found.` })
@@ -4712,7 +4767,36 @@ app.post('/mcp', async (c) => {
         }), 200)
       }
 
+            if (toolName === 'move_entity') {
+        const schema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const key = parsed.data.entity_key.trim().toLowerCase()
+        const newLoc = parsed.data.new_location_key.trim().toLowerCase()
+        const raw = await kvGet(c, key)
+        if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
+
+        const { text, meta } = parseKvEntry(raw)
+        const oldText = text
+        const updatedText = updateFieldInText(text, 'Location', newLoc)
+
+        await pushHistory(c, key, raw)
+        const now = new Date().toISOString()
+        const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+        await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+        await updateIndexes(c, key, updatedText, oldText)
+        await appendChangelog(c, key, version)
+        loreDB[key] = updatedText
+
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: `Moved "${key}" to "${newLoc}".` }],
+          metadata: { key, new_location: newLoc, version }
+        }), 200)
+      }
+
       return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
+
     }
 
     // ── Legacy bare-method handlers (pre-tools/call clients) ──────────────────
@@ -4777,7 +4861,9 @@ app.post('/admin/set-lore', async (c) => {
       meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
     })
 
+    const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
     await kvPut(c, key, payload)
+    await updateIndexes(c, key, text, existingText)
     await appendChangelog(c, key, version)
     loreDB[key] = text
     return c.json({ ok: true, version }, 200)
@@ -4799,8 +4885,13 @@ app.post('/admin/delete-lore', async (c) => {
     if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
       return c.json({ ok: false, error: 'unauthorized' }, 401)
 
+    const existingRaw = await kvGet(c, key)
+    const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
     const deleted = await kvDelete(c, key)
-    if (deleted) await appendChangelog(c, key, 0, 'delete')
+    if (deleted) {
+      await updateIndexes(c, key, '', existingText)
+      await appendChangelog(c, key, 0, 'delete')
+    }
     delete loreDB[key]
     return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
 
@@ -4808,6 +4899,65 @@ app.post('/admin/delete-lore', async (c) => {
     return c.json({ ok: false, error: String(e) }, 500)
   }
 })
+
+
+app.post('/admin/gc', async (c) => {
+  try {
+    const body = await c.req.json()
+    const secret = (body?.secret ?? '').toString()
+    const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
+
+    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+
+    const kv = getKV(c)
+    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
+
+    const cutoff = new Date(Date.now() - maxAgeDays * 86400000).toISOString()
+    let deletedHistory = 0
+    let deletedSnapshots = 0
+
+    // Clean orphan history entries
+    let cursor: string | undefined
+    do {
+      const list: any = await kv.list({ prefix: '_history:', cursor })
+      for (const k of list.keys) {
+        const baseKey = k.name.slice('_history:'.length)
+        const exists = await kv.get(baseKey)
+        if (!exists) {
+          await kv.delete(k.name)
+          deletedHistory++
+        }
+      }
+      cursor = list.list_complete ? undefined : list.cursor
+    } while (cursor)
+
+    // Clean old snapshots
+    cursor = undefined
+    do {
+      const list: any = await kv.list({ prefix: '_snapshot:', cursor })
+      for (const k of list.keys) {
+        const raw = await kv.get(k.name)
+        if (raw) {
+          try {
+            const snap = JSON.parse(raw)
+            if (snap.created_at && snap.created_at < cutoff) {
+              await kv.delete(k.name)
+              deletedSnapshots++
+            }
+          } catch { }
+        }
+      }
+      cursor = list.list_complete ? undefined : list.cursor
+    } while (cursor)
+
+    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
 // ── GET /changes ──────────────────────────────────────────────────────────────
 // Returns write events since a given ISO timestamp (1 KV read, no per-topic reads).
 // Editor uses this for delta-only auto-sync — only fetches topics that changed.
