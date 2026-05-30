@@ -16,6 +16,7 @@ $HEADERS = @{
     "Content-Type" = "application/json"
 }
 $ADMIN_SECRET = $env:ADMIN_SECRET
+if ($env:MCP_API_KEY) { $HEADERS["X-Api-Key"] = $env:MCP_API_KEY }
 
 $Script:TotalTests = 0
 $Script:PassedTests = 0

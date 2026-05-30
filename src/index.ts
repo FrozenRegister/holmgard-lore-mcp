@@ -3063,7 +3063,7 @@ app.post('/mcp', async (c) => {
         await appendChangelog(c, entityKey, version)
         loreDB[entityKey] = updatedText
         return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Advancing "${entityKey}" to stage ${newStage}${total ? `/${total}` : ''}. ${isTerminal ? '[TERMINAL STAGE]' : ''}` }],
+          content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. ${isTerminal ? '[TERMINAL STAGE]' : ''}` }],
           metadata: { retrieved: 1, written: 1 },
           entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
           is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true
