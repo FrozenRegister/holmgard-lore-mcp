@@ -660,7 +660,7 @@ const app = new Hono<{ Bindings: AppBindings }>()
 // In-memory rate limiter (per-instance; sufficient for a single-worker
 // deployment. For multi-instance scale, use Cloudflare Rate Limiting rules.)
 const RATE_LIMIT_WINDOW_MS = 60_000
-const RATE_LIMIT_MAX = 120
+const RATE_LIMIT_MAX = 12000
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 app.use('*', async (c, next) => {
@@ -3488,7 +3488,7 @@ app.post('/mcp', async (c) => {
         const total = adjusted.reduce((s, e) => s + e.w, 0)
         let roll = Math.random() * total, cum = 0, selected = adjusted[0]
         for (const e of adjusted) { cum += e.w; if (roll <= cum) { selected = e; break } }
-        
+
         // New: nothing sentinel — skip archetype lookup, return clean no-encounter  
         if (selected.key === 'nothing') {
           return c.json(makeResult(id, {
@@ -4866,13 +4866,23 @@ app.post('/admin/set-lore', async (c) => {
     const body = await c.req.json()
     const key = (body?.key ?? '').toString().trim().toLowerCase()
     const text = (body?.text ?? '').toString()
-    const secret = (body?.secret ?? '').toString()
 
     if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
 
     const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
+
+    // Accept secret from header OR body for backward compatibility
+    const headerSecret =
+      c.req.header("X-Api-Key") ??
+      c.req.header("X-Admin-Secret");
+
+    const bodySecret = (body?.secret ?? '').toString();
+
+    const secret = headerSecret ?? bodySecret;
+
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
 
     const existingRaw = await kvGet(c, key)
     const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
@@ -4903,13 +4913,23 @@ app.post('/admin/delete-lore', async (c) => {
   try {
     const body = await c.req.json()
     const key = (body?.key ?? '').toString().trim().toLowerCase()
-    const secret = (body?.secret ?? '').toString()
 
     if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
 
     const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
+
+    // Accept secret from header OR body for backward compatibility
+    const headerSecret =
+      c.req.header("X-Api-Key") ??
+      c.req.header("X-Admin-Secret");
+
+    const bodySecret = (body?.secret ?? '').toString();
+
+    const secret = headerSecret ?? bodySecret;
+
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
 
     const existingRaw = await kvGet(c, key)
     const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
@@ -4930,12 +4950,22 @@ app.post('/admin/delete-lore', async (c) => {
 app.post('/admin/gc', async (c) => {
   try {
     const body = await c.req.json()
-    const secret = (body?.secret ?? '').toString()
     const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
 
     const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET)
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
+
+    // Accept secret from header OR body for backward compatibility
+    const headerSecret =
+      c.req.header("X-Api-Key") ??
+      c.req.header("X-Admin-Secret");
+
+    const bodySecret = (body?.secret ?? '').toString();
+
+    const secret = headerSecret ?? bodySecret;
+
+    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
 
     const kv = getKV(c)
     if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
