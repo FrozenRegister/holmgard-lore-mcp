@@ -5,18 +5,69 @@
 # Holmgard MCP Test Script
 # Tests the MCP JSON-RPC endpoint, all tools, and admin endpoints when configured.
 #
-# Note: admin endpoint tests require ADMIN_SECRET to be configured in the PowerShell environment.
-# Set it with: $env:ADMIN_SECRET = "your-secret-value"
+# Required: MCP_API_KEY and ADMIN_SECRET must be set before running.
+# You can set them with:
+#   $env:MCP_API_KEY = "your-api-key"
+#   $env:ADMIN_SECRET = "your-admin-secret"
 
 $BaseUrl = "https://holmgard-lore-mcp.frozenregister.workers.dev"
 $MCP_URL = "$BaseUrl/mcp"
 $ADMIN_SET_URL = "$BaseUrl/admin/set-lore"
 $ADMIN_DELETE_URL = "$BaseUrl/admin/delete-lore"
+
+# Initialize variables
+$MCP_API_KEY = $env:MCP_API_KEY
+$ADMIN_SECRET = $env:ADMIN_SECRET
+
+# Helper function to prompt for a secret
+function Get-SecretFromUser {
+    param(
+        [string]$SecretName,
+        [string]$Description
+    )
+
+    Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "⚠ Missing: $SecretName" -ForegroundColor Yellow
+    Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "Description: $Description" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "To get your $SecretName from Cloudflare, run:" -ForegroundColor White
+    Write-Host "  wrangler secret get $SecretName" -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "Then paste it below:" -ForegroundColor White
+
+    $secretValue = Read-Host -Prompt "$SecretName"
+
+    if (-not $secretValue) {
+        Write-Host "❌ ERROR: $SecretName cannot be empty." -ForegroundColor Red
+        Write-Host "Tests cannot proceed without $SecretName." -ForegroundColor Red
+        exit 1
+    }
+
+    return $secretValue
+}
+
+# Check for required environment variables and prompt if missing
+if (-not $MCP_API_KEY) {
+    Write-Host ""
+    $MCP_API_KEY = Get-SecretFromUser -SecretName "MCP_API_KEY" -Description "Authentication key for MCP tool endpoints"
+    $env:MCP_API_KEY = $MCP_API_KEY
+}
+
+if (-not $ADMIN_SECRET) {
+    Write-Host ""
+    $ADMIN_SECRET = Get-SecretFromUser -SecretName "ADMIN_SECRET" -Description "Authentication secret for admin endpoints (/admin/set-lore, /admin/delete-lore)"
+    $env:ADMIN_SECRET = $ADMIN_SECRET
+}
+
+Write-Host "✅ Credentials configured" -ForegroundColor Green
+Write-Host ""
+
+# Setup headers with API key
 $HEADERS = @{
     "Content-Type" = "application/json"
+    "X-Api-Key" = $MCP_API_KEY
 }
-$ADMIN_SECRET = $env:ADMIN_SECRET
-if ($env:MCP_API_KEY) { $HEADERS["X-Api-Key"] = $env:MCP_API_KEY }
 
 $Script:TotalTests = 0
 $Script:PassedTests = 0
@@ -971,7 +1022,7 @@ Write-Section "TEST 118: canonical fixture — get_reachable_locations parses YA
 $reachResult118 = Get-MCPToolResult -ToolName "get_reachable_locations" -Arguments @{ origin_key = $canonLocKey } -RequestId 414
 $reachCount118 = $reachResult118.result.locations.Count
 Assert-True -TestName "TEST 118: 3 destinations from YAML exits" -Condition ($reachCount118 -eq 3) -Expected "3" -Actual "$reachCount118" -RequestId 414
-Write-Host "  locations: $($reachResult118.result.locations | ForEach-Object { $_.key } | Join-String -Separator ', ')" -ForegroundColor DarkGray
+Write-Host "  locations: $(($reachResult118.result.locations | ForEach-Object { $_.key }) -join ', ')" -ForegroundColor DarkGray
 
 Write-Section "TEST 119: canonical fixture — activate_scene extracts YAML choice IDs"
 $sceneResult119 = Get-MCPToolResult -ToolName "activate_scene" -Arguments @{ scene_key = $canonSceneKey } -RequestId 415

@@ -2746,7 +2746,7 @@ app.post('/mcp', async (c) => {
 
         const summaryText = local_shifts.length === 0
           ? `No entities with **Timeline-Value:** found for thread "${threadId}".`
-          : `Thread "${threadId}" ticked: ${local_shifts.length} entity/entities decremented. ${global_snapshot.length} global entity/entities on shared dates.`
+          : `Thread "${threadId}" ticked: ${local_shifts.length} entity/entities decremented. entities_ticked: ${local_shifts.length}. ${global_snapshot.length} global entity/entities on shared dates.`
 
         return c.json(makeResult(id, {
           content: [{ type: 'text', text: summaryText }],
@@ -3297,7 +3297,7 @@ app.post('/mcp', async (c) => {
         await appendChangelog(c, entityKey, version)
         loreDB[entityKey] = updatedText
         return c.json(makeResult(id, {
-          content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. ${isTerminal ? '[TERMINAL STAGE]' : ''}` }],
+          content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}` }],
           metadata: { retrieved: 1, written: 1 },
           entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
           is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true
