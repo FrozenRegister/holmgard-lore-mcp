@@ -995,6 +995,23 @@ app.post('/mcp', async (c) => {
             examples: [{ arguments: { key: 'character:sarah-weaver' } }]
           },
           {
+            name: 'get_topic_histories', title: 'Get Topic Histories', version: '0.1.0',
+            description: 'Retrieve snapshot history for multiple topics in one call. Each topic returns an array of snapshots with version and timestamp metadata. Useful for showing restore points or history logs across all instances.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                keys: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1 },
+                  description: 'Array of topic keys to retrieve histories for',
+                  minItems: 1
+                }
+              },
+              required: ['keys'], additionalProperties: false
+            },
+            examples: [{ arguments: { keys: ['character:sarah-weaver', 'location:fernveil'] } }]
+          },
+          {
             name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.1',
             description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b (field may appear as plain "**Weight-1:** 0.9", bulleted "- **Weight-1 (descriptor):** 0.9", or JSON block format). Computes P(success) = W1 − (W2 × 0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value. If successful and entity_a has a numeric State-Level field, increments it by delta_value.',
             inputSchema: {
@@ -2261,6 +2278,39 @@ app.post('/mcp', async (c) => {
           content: [{ type: 'text', text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.` }],
           metadata: { key, restored: true, restored_version: meta.version ?? null, remaining_history: history.length }
         }), 200)
+      }
+
+      if (toolName === 'get_topic_histories') {
+        const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
+        const parsed = schema.safeParse(args)
+        if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+        const keys = parsed.data.keys.map(k => k.toLowerCase())
+        const kv = getKV(c)
+        if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
+
+        const histories: Record<string, Array<{ text: string; meta: Record<string, unknown> }>> = {}
+
+        try {
+          for (const key of keys) {
+            const historyKey = `_history:${key}`
+            const historyRaw = await kv.get(historyKey)
+            const snapshots: Array<{ text: string; meta: Record<string, unknown> }> = []
+
+            if (historyRaw) {
+              const historyList: string[] = JSON.parse(historyRaw)
+              for (const snapshot of historyList) {
+                snapshots.push(parseKvEntry(snapshot))
+              }
+            }
+
+            histories[key] = snapshots
+          }
+        } catch (e) {
+          return c.json(makeError(id, -32603, 'Failed to read histories', null), 200)
+        }
+
+        return c.json(makeResult(id, histories), 200)
       }
 
       if (toolName === 'resolve_interaction') {
@@ -4849,6 +4899,37 @@ app.post('/mcp', async (c) => {
       const results: Record<string, any> = {}
       keys.forEach((k, i) => { results[k] = rawValues[i] ? parseKvEntry(rawValues[i]!) : null })
       return c.json(makeResult(id, { results }), 200)
+    }
+
+    if (method === 'get_topic_histories') {
+      const keys: string[] = Array.isArray(params?.keys) ? params.keys.map((k: string) => k.trim().toLowerCase()) : []
+      if (!keys.length) return c.json(makeError(id, -32602, 'Invalid params: missing keys array'), 200)
+
+      const kv = getKV(c)
+      if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
+
+      const histories: Record<string, Array<{ text: string; meta: Record<string, unknown> }>> = {}
+
+      try {
+        for (const key of keys) {
+          const historyKey = `_history:${key}`
+          const historyRaw = await kv.get(historyKey)
+          const snapshots: Array<{ text: string; meta: Record<string, unknown> }> = []
+
+          if (historyRaw) {
+            const historyList: string[] = JSON.parse(historyRaw)
+            for (const snapshot of historyList) {
+              snapshots.push(parseKvEntry(snapshot))
+            }
+          }
+
+          histories[key] = snapshots
+        }
+      } catch (e) {
+        return c.json(makeError(id, -32603, 'Failed to read histories', null), 200)
+      }
+
+      return c.json(makeResult(id, histories), 200)
     }
 
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
