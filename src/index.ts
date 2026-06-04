@@ -93,6 +93,28 @@ async function kvList(c: { env: AppBindings }): Promise<string[]> {
   return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
 }
 
+async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
+  try {
+    const kv = getKV(c)
+    if (kv) {
+      const keys: string[] = []
+      let cursor: string | undefined
+      do {
+        const listed: any = await kv.list(cursor ? { cursor } : undefined)
+        for (const k of listed.keys) {
+          if (k.name.startsWith('map:')) keys.push(k.name)
+        }
+        cursor = listed.list_complete ? undefined : listed.cursor
+      } while (cursor)
+      return keys
+    }
+  } catch (e) {
+    console.warn('KV list maps failed', e)
+  }
+
+  return Object.keys(loreDB).filter(k => k.startsWith('map:'))
+}
+
 
 async function kvPut(c: { env: AppBindings }, key: string, value: string): Promise<boolean> {
   try {
@@ -775,6 +797,19 @@ app.post('/mcp', async (c) => {
           {
             name: 'list_topics', title: 'List Topics', version: '0.1.1',
             description: 'Return available lore topic keys. Supports optional pagination.',
+            inputSchema: {
+              $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+              properties: {
+                limit: { type: 'integer', minimum: 1, maximum: 1000, default: 1000, description: 'Max keys to return' },
+                offset: { type: 'integer', minimum: 0, default: 0, description: 'Number of keys to skip' }
+              },
+              additionalProperties: false
+            },
+            examples: [{ arguments: {} }]
+          },
+          {
+            name: 'list_maps', title: 'List Maps', version: '0.1.0',
+            description: 'List all available map topics (world-editor map hierarchies). Each key has the format "map:<mapId>".',
             inputSchema: {
               $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
               properties: {
@@ -1606,6 +1641,17 @@ app.post('/mcp', async (c) => {
 
       if (toolName === 'list_topics') {
         const allKeys = await kvList(c)
+        const limit = Math.min(1000, (args?.limit as number) ?? 1000)
+        const offset = Math.max(0, (args?.offset as number) ?? 0)
+        const keys = allKeys.slice(offset, offset + limit)
+        return c.json(makeResult(id, {
+          content: [{ type: 'text', text: keys.join(', ') }],
+          metadata: { count: keys.length, total: allKeys.length, limit, offset }
+        }), 200)
+      }
+
+      if (toolName === 'list_maps') {
+        const allKeys = await kvListMaps(c)
         const limit = Math.min(1000, (args?.limit as number) ?? 1000)
         const offset = Math.max(0, (args?.offset as number) ?? 0)
         const keys = allKeys.slice(offset, offset + limit)
