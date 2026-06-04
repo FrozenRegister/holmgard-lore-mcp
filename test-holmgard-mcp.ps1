@@ -435,6 +435,9 @@ Invoke-MCPTool -ToolName "ping_tool" -Arguments @{} -RequestId 6
 Write-Section "TEST 7: list_topics (tool)"
 Invoke-MCPTool -ToolName "list_topics" -Arguments @{} -RequestId 7
 
+Write-Section "TEST 7B: list_maps (tool)"
+Invoke-MCPTool -ToolName "list_maps" -Arguments @{} -RequestId 7
+
 Write-Section "TEST 8: get_lore (tool)"
 Invoke-MCPTool -ToolName "get_lore" -Arguments @{ query = "character:sarah-weaver" } -RequestId 8
 

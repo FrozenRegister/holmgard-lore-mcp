@@ -56,14 +56,15 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 56 tools', async () => {
+  it('tools/list returns exactly 59 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(57)
+    expect(tools).toHaveLength(59)
     const names = tools.map((t) => t.name)
     expect(names).toContain('ping_tool')
     expect(names).toContain('check_authentication')
     expect(names).toContain('list_topics')
+    expect(names).toContain('list_maps')
     expect(names).toContain('get_lore')
     expect(names).toContain('set_lore')
     expect(names).toContain('delete_lore')
@@ -214,6 +215,50 @@ describe('list_topics', () => {
     expect(text).not.toContain('map:world:continents')
     expect(text).not.toContain('map:region:north')
     expect(res.result.metadata.count).toBe(1)
+  })
+})
+
+// ── list_maps ──────────────────────────────────────────────────────────────────
+
+describe('list_maps', () => {
+  it('lists only map:* keys', async () => {
+    await seedKV('map:world:continents', '{"type":"FeatureCollection"}')
+    await seedKV('map:region:north', '{"type":"FeatureCollection"}')
+    const res = await callTool('list_maps')
+    const text = res.result.content[0].text as string
+    expect(text).toContain('map:world:continents')
+    expect(text).toContain('map:region:north')
+    expect(res.result.metadata.count).toBe(2)
+  })
+
+  it('excludes non-map keys from list_maps', async () => {
+    await seedKV('lore:visible', 'Visible lore')
+    await seedKV('map:world:rivers', '{"type":"FeatureCollection"}')
+    const res = await callTool('list_maps')
+    const text = res.result.content[0].text as string
+    expect(text).toContain('map:world:rivers')
+    expect(text).not.toContain('lore:visible')
+    expect(res.result.metadata.count).toBe(1)
+  })
+
+  it('returns empty list when no maps exist', async () => {
+    await seedKV('lore:alpha', 'Alpha lore')
+    const res = await callTool('list_maps')
+    const text = res.result.content[0].text as string
+    expect(text).toBe('')
+    expect(res.result.metadata.count).toBe(0)
+    expect(res.result.metadata.total).toBe(0)
+  })
+
+  it('supports pagination with limit and offset', async () => {
+    await seedKV('map:a', '{}')
+    await seedKV('map:b', '{}')
+    await seedKV('map:c', '{}')
+    const res = await callTool('list_maps', { limit: 2, offset: 1 })
+    expect(res.result.metadata.count).toBe(2)
+    expect(res.result.metadata.total).toBe(3)
+    expect(res.result.metadata.limit).toBe(2)
+    expect(res.result.metadata.offset).toBe(1)
   })
 })
 
