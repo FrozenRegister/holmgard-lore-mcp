@@ -5,7 +5,8 @@ A Cloudflare Worker implementing a JSON-RPC 2.0 / MCP interface for narrative wo
 ## Overview
 
 This project exposes:
-- `/mcp` — JSON-RPC 2.0 endpoint with **57 MCP tools** for narrative management
+
+- `/mcp` — JSON-RPC 2.0 endpoint with **59 MCP tools** for narrative management
 - `/admin/set-lore` and `/admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET`
 - Cloudflare KV storage with **index-on-write optimization** and fallback in-memory storage
 - Features: versioned entries, event logs, choice tracking, faction standing, state machines, sensory profiles, and multi-thread timeline management
@@ -53,6 +54,7 @@ Binding and secrets are defined in `wrangler.jsonc`:
 ```
 
 Set secrets via:
+
 ```bash
 wrangler secret put ADMIN_SECRET  # local dev: "test-secret-123" (configured in vitest.config.ts)
 ```
@@ -93,20 +95,23 @@ Indexes are rebuilt automatically when entries are created, modified, or deleted
 All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods are supported:
 
 **Standard MCP methods:**
+
 - `initialize` — returns server metadata and tool discovery capability
 - `ping` — returns an empty success response
-- `tools/list` — returns all available tools and their input schemas
+- `tools/list` — returns all 59 available tools and their input schemas
 - `tools/call` — invokes a tool by `params.name` and `params.arguments`
 
 **Legacy methods (also work via `tools/call`):**
+
 - `list_topics` — returns all lore topic keys
 - `get_lore` — retrieves a single lore entry by `key` or `query`
 
-## 57 MCP Tools
+## 59 MCP Tools
 
 ### Core Lore Management
 
 - **`list_topics`** — list all topic keys
+- **`list_maps`** — list all available map topics (world-editor map hierarchies)
 - **`get_lore`** `key` or `query` — retrieve a single entry
 - **`get_lore_batch`** `keys` (array) — retrieve multiple entries in parallel
 - **`get_lore_section`** `key`, `sections` (array) — retrieve specific ## sections from an entry
@@ -127,6 +132,7 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 ### Versioning & History
 
 - **`increment_topic_field`** `key`, `field_path`, `increment`, `reason` — increment numeric fields (e.g., days remaining)
+- **`get_topic_histories`** `keys` (array) — retrieve snapshot history for multiple topics
 - **`append_to_section`** `key`, `section`, `text`, `position` (start|end) — add text to a named ## section
 - **`append_event`** `entity_key`, `verb`, `object`, `location`, `thread`, `detail`, `at` — log an event to an entity's chronicle
 - **`get_event_log`** `entity_key`, `thread`, `since`, `until`, `verbs`, `limit` — retrieve event history
@@ -148,8 +154,6 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 
 - **`get_relationship`** `entity_a`, `entity_b` — scan affinity, debt, threat-level, and cross-references
 - **`get_faction_standing`** `entity_key`, `faction_key` — membership status, rank, reputation, threats
-- **`get_compatibility`** `entity_a`, `entity_b`, `interaction_type` — validate interactions by size ratio and weight thresholds
-- **`get_location_occupants`** `location_key` — scan for all entities at a location
 
 ### Environment & Perception
 
@@ -160,6 +164,7 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 ### State Machines & Timelines
 
 - **`advance_state_stage`** `entity_key` — tick an entity through its state machine stages
+- **`list_active_threads`** — return all active consumption/predation threads
 - **`process_stage_batch`** `location_key` — tick all entities at a location that have stages
 - **`thread_tick`** `thread_id` — advance a timeline thread by one tick, then sync cross-thread convergences
 - **`check_convergence`** `thread_a`, `thread_b` — determine if two threads can intersect
@@ -188,6 +193,7 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 - **`activate_scene`** `scene_key` — set active scene and hydrate entities and location
 - **`scene_brief`** `scene_key` or `location_key`, `include` — assemble location text, entities, setups, relationships, and sensory data
 - **`get_location_occupants`** `location_key` — find all entities at a location
+- **`move_entity`** `entity_key`, `new_location_key` — change an entity's Location field and update indexes
 
 ### Tags & Metadata
 
@@ -331,7 +337,7 @@ curl -X POST http://127.0.0.1:8787/mcp \
           }
         }
       }
-      // ... 56 more tools
+      // ... 58 more tools
     ]
   }
 }
@@ -340,6 +346,7 @@ curl -X POST http://127.0.0.1:8787/mcp \
 ## Environment Variables
 
 ### `ADMIN_SECRET`
+
 Protect admin endpoints (`/admin/set-lore`, `/admin/delete-lore`) with this secret.
 
 **Production:** Set via `wrangler secret put ADMIN_SECRET`  
@@ -360,6 +367,7 @@ npm run clean      # Remove dist/ directory
 Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-pool-workers`. KV storage is in-memory (miniflare).
 
 **Key testing patterns:**
+
 - Use `env.LORE_DB.put()` to seed test data (bypasses `set_lore` to keep tests isolated)
 - `reset()` from `cloudflare:test` wipes all KV between tests
 - Both MCP tool logic and HTTP endpoints are tested
@@ -376,7 +384,7 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 - **CORS enabled:** `/mcp` accepts cross-origin requests
 - **No batch JSON-RPC:** Only single requests per call
 
-## Notes
+## KV Notes
 
 - All KV keys are **lowercase** with `:` namespacing (e.g., `character:zira`, `location:undercity`)
 - Markdown-style fields (`**Field-Name:** value`) are parsed for automation (state machines, consumption timelines, goals, etc.)
@@ -387,23 +395,28 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 ## Quick Start
 
 1. **Clone & install:**
+
    ```bash
    npm install
    npm run build
    ```
 
 2. **Run locally:**
+
    ```bash
    npm run dev
    ```
+
    Access `/mcp` endpoint at `http://127.0.0.1:8787/mcp`
 
 3. **Test it:**
+
    ```bash
    npm test
    ```
 
 4. **Deploy:**
+
    ```bash
    wrangler secret put ADMIN_SECRET  # Set your secret
    npm run deploy

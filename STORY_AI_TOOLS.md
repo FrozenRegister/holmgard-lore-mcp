@@ -82,6 +82,7 @@ Retrieve a single lore entry by exact key.
 ```
 
 **Parameters:**
+
 - `query` — required. Exact topic key.
 
 ---
@@ -114,6 +115,7 @@ Write or overwrite a lore entry. Snapshots the previous version to the history s
 ```
 
 **Parameters:**
+
 - `key` — lowercase, no spaces.
 - `text` — complete lore body. Existing content is fully replaced.
 
@@ -164,6 +166,7 @@ Retrieve one or more named `##` sections from a lore entry without fetching the 
 ```
 
 **Parameters:**
+
 - `sections` — array of section heading names.
 - `mode` — `"loose"` (default): case-insensitive, whitespace-normalized, trailing-colon-stripped. `"strict"`: case-insensitive, exact otherwise.
 
@@ -187,11 +190,13 @@ Surgically modify a lore entry without full overwrite. Supports exact-substring 
 ```
 
 **Parameters:**
+
 - `operation` — `"replace"`, `"append"`, or `"delete_field"`.
 - `target` — exact substring to match. Required for `replace` and `delete_field`. Optional for `append` (omit to append at end of text).
 - `value` — new text. Required for `replace` and `append`.
 
 **Notes:**
+
 - Rejects ambiguous targets (>1 occurrence) with a descriptive message rather than an error.
 - Response is always `result`, never `error`, even for user mistakes — read the message.
 
@@ -213,6 +218,7 @@ Atomically increment a numeric markdown field (`**FieldName:** 10`) without rewr
 ```
 
 **Parameters:**
+
 - `field_path` — field name as it appears in `**FieldName:**` syntax.
 - `increment` — positive or negative integer (default 1).
 - `reason` — logged with the change.
@@ -237,6 +243,7 @@ Surgically append or prepend text to a named `##` section within a lore entry. A
 ```
 
 **Parameters:**
+
 - `section` — heading name, case-insensitive, trailing colon stripped.
 - `text` — content to insert. A leading newline preserves paragraph separation.
 - `position` — `"end"` (default) or `"start"`.
@@ -312,6 +319,7 @@ Full-text search across all lore entry bodies. Returns matching keys with excerp
 ```
 
 **Parameters:**
+
 - `query` — case-insensitive substring match against lore text bodies.
 - `max_results` — 1–50 (default 10).
 
@@ -353,6 +361,7 @@ Record that something happened to an entity — a character act, a location chan
 ```
 
 **Parameters:**
+
 - `verb` — required. Lowercase past-tense verb: `"attacked"`, `"fled"`, `"betrayed"`, `"revealed"`.
 - `object` — what or whom the verb was directed at.
 - `location` — where it happened (use a location key if possible).
@@ -381,6 +390,7 @@ Retrieve the recorded history for one or more entities, with optional filtering.
 ```
 
 **Parameters:**
+
 - `entity_key` — a single key or array of keys.
 - `since` / `until` — ISO timestamps to bound the window.
 - `thread` — filter to one narrative thread.
@@ -388,6 +398,7 @@ Retrieve the recorded history for one or more entities, with optional filtering.
 - `limit` — max events returned (default 50, max 500).
 
 **Response shape:**
+
 ```json
 {
   "events": [
@@ -416,6 +427,7 @@ Read the global changelog — which lore keys were written and when.
 ```
 
 **Parameters:**
+
 - `since` — only show entries newer than this timestamp.
 - `key_prefix` — filter to keys starting with a namespace, e.g. `"setup:"`.
 - `limit` — default 30, max 200.
@@ -441,6 +453,7 @@ Add or remove classification tags on any lore key. Tags are written into the key
 ```
 
 **Notes:**
+
 - Tags are case-sensitive in storage; normalise to lowercase for consistency.
 - Calling `tag_topic` with no `add` or `remove` returns current tags without modifying.
 - The key must already exist.
@@ -463,6 +476,7 @@ Look up all keys that carry one or more tags.
 ```
 
 **Parameters:**
+
 - `tags` — one or more tags to search.
 - `mode` — `"any"` (union) or `"all"` (intersection). Default: `"any"`.
 - `with_excerpt` — if true, return the first 120 characters of each matching key's lore text.
@@ -485,6 +499,7 @@ Snapshot the current version manifest of all keys (or a filtered subset) under a
 ```
 
 **Parameters:**
+
 - `name` — bookmark identifier. Reusing a name overwrites the old bookmark.
 - `key_prefix` — scope the snapshot to keys starting with this string. Omit to snapshot everything.
 - `note` — optional human-readable annotation stored with the snapshot.
@@ -505,6 +520,7 @@ Compare two bookmarks, or a bookmark against the current state, to see what chan
 ```
 
 To compare two bookmarks:
+
 ```json
 {
   "from": "chapter_3_start",
@@ -514,12 +530,14 @@ To compare two bookmarks:
 ```
 
 **Parameters:**
+
 - `from` — required. Bookmark name.
 - `to` — optional bookmark name. Omit to compare against current live state.
 - `detail` — `"summary"` (counts only), `"fields"` (versions + timestamps), `"text"` (includes first 500 chars of current text for changed keys).
 - `key_prefix` — narrow the diff to a namespace.
 
 **Response:**
+
 ```json
 {
   "added": ["character:new_npc"],
@@ -552,6 +570,7 @@ Register a narrative setup — a promise to the reader that this element will ma
 ```
 
 **Parameters:**
+
 - `id` — short slug, becomes `setup:crown_prophecy`.
 - `description` — what was planted and what the implicit promise is.
 - `planted_in` — scene or chapter key where it appeared.
@@ -577,6 +596,7 @@ Mark a setup as resolved, abandoned, or deferred, and record how it was paid off
 ```
 
 **Parameters:**
+
 - `id` — the setup id (without the `setup:` prefix).
 - `resolution` — one sentence describing what happened.
 - `paid_in` — scene or chapter key where the payoff occurred.
@@ -599,6 +619,7 @@ Retrieve all open setups, sorted by tension descending and age ascending (oldest
 ```
 
 **Parameters (all optional):**
+
 - `min_tension` — only return setups at this tension level or higher.
 - `scope` — filter to setups with `expected_in` matching `"scene"`, `"chapter"`, or `"story"`.
 - `actor` — only return setups involving this key (substring match on actors list).
@@ -627,6 +648,7 @@ Write or update a named goal on any entity's lore entry. Goals are stored as `**
 ```
 
 **Parameters:**
+
 - `goal_id` — short slug. Multiple goals can coexist on one entity.
 - `status` — `"active"`, `"blocked"`, `"achieved"`, or `"abandoned"`.
 - `obstacle` — what's currently in the way (optional).
@@ -651,6 +673,7 @@ Scan lore keys for broken references, occupancy mismatches, and inventory ghosts
 ```
 
 **Parameters:**
+
 - `scope` — narrow to keys starting with or containing this string.
 - `checks` — subset of `["dangling", "occupancy", "knowledge", "inventory"]`. Default: all four.
   - `dangling` — finds `type:key` references in text that point to nonexistent keys.
@@ -683,12 +706,14 @@ Pull a composite scene brief for a location: the location's lore text, occupants
 ```
 
 **Parameters:**
+
 - `location_key` or `scene_key` — one is required.
 - `include.events` — how many recent events to fetch per occupant (default 5). Set to 0 to skip.
 - `include.open_setups` — include open setups involving scene occupants (default true).
 - `include.relationships` — include pairwise `Affinity`, `Debt`, `Threat-Level` fields for up to 4 occupant pairs (default true).
 
 **Response structure:**
+
 ```json
 {
   "location": { "key": "...", "text": "..." },
@@ -723,12 +748,14 @@ Render a scene filtered through one character's perceptual access. Lines tagged 
 ```
 
 **Parameters:**
+
 - `pov_entity_key` — the character whose senses and knowledge apply.
 - `location_key` or `scene_key` — override location. If omitted, uses the entity's `**Location:**` field.
 - `reveal_threshold` — 0–1 float. Overrides the entity's `**Perception:**` field. Higher = more is visible.
 - `include_voice_hints` — if true, returns the entity's `**Diction:**`, `**Register:**`, and `**Fixations:**` fields as writing style hints.
 
 **Response structure:**
+
 ```json
 {
   "location": { "key": "...", "filtered_text": "..." },
@@ -936,6 +963,7 @@ Move one or more units of an item between two entity inventories. Validates avai
 ```
 
 **Parameters:**
+
 - `from_entity` — lore key of the giving entity.
 - `to_entity` — lore key of the receiving entity.
 - `item_key` — identifier of the item.
@@ -968,6 +996,7 @@ Return all prey-characters with current consumption status and timeline remainin
 ```
 
 **Parameters:**
+
 - `status_filter` — `"all"` / `"imminent"` / `"days-to-weeks"` / `"weeks-to-months"` / `"consumed"`. Default: `"all"`.
 
 ---
@@ -1079,6 +1108,7 @@ Read a location's `**Encounter-Table:**` field (`archetype:weight, archetype:wei
 ```
 
 **Parameters:**
+
 - `threat_level` — 1 (trivial) to 10 (extreme). Biases rolls toward higher-weight entries.
 
 **Response:** The generated entity key, archetype used, and lore text of the new instance.
@@ -1150,6 +1180,7 @@ Quantify an entity's suitability for a specific narrative pathway. Scans all num
 ```
 
 **Parameters:**
+
 - `utility_vector` — `GASTRIC`, `BUTCHERY`, `INCUBATION`, `SCULPTURE`, `PARASITISM`, `THRALL`, or `DISTRIBUTED`.
 - `entity_role` — `"subject"` (prey-oriented fields) or `"actor"` (predator-drive fields: `Weight-1`, `Aggression`, `Hunger`).
 
@@ -1172,6 +1203,7 @@ Permanently transfer `[Transferable]`-tagged traits from a source entity to a ta
 ```
 
 **Parameters:**
+
 - `source_id` — lore key of the source entity (traits are read from here).
 - `target_id` — lore key of the target entity (traits are written here).
 - `integration_depth` — 0.0 (none) to 1.0 (all available `[Transferable]` traits).
@@ -1183,51 +1215,61 @@ Permanently transfer `[Transferable]`-tagged traits from a source entity to a ta
 ## Recommended Workflow Patterns
 
 ### Opening a scene
+
 1. `scene_brief` — get location + occupants + open setups + relationships
 2. `render_pov` (if writing close-third or first person) — filter for POV character
 3. `list_unpaid_setups` with relevant actor — confirm what tension is due
 
 ### After a significant action
+
 1. `append_event` on the acting character (and target if applicable)
 2. `set_goal` if the action changes intent or status
 3. `pay_off_setup` if a setup was resolved
 
 ### Chapter boundary
+
 1. `bookmark_state` with `name: "chapter_N_end"`
 2. `list_unpaid_setups` to triage what must be paid off next chapter
 3. `check_continuity` to catch any broken references from the session's edits
 
 ### Finding characters for a scene
+
 1. `find_by_tag` with relevant arc or faction tags
 2. Cross-reference with `get_event_log` on candidates to see where they were last
 
 ### Time-skip recap
+
 1. `world_diff` from last bookmark to now, `detail: "fields"`
 2. `recent_changes` with `since` set to the skip-start timestamp
 3. Update affected characters' goals and locations as needed
 
 ### Contested action
+
 1. `get_compatibility` — confirm the interaction is physically/mechanically valid
 2. `resolve_interaction` — roll the outcome
 3. `append_event` on both entities with the result verb
 4. `batch_mutate` — apply stat/status changes from the outcome
 
 ### Spawning an encounter
+
 1. `roll_encounter` at the location — generates a random entity from the encounter table
 2. `get_compatibility` with the player entity if relevant
 3. `present_choices` — show what the player can do
 4. `commit_choice` — apply the chosen consequence
 
 ### Parallel storyline management
+
 1. `get_thread_comparison` — check timeline offset between threads
 2. `check_convergence` — see if they can cross over yet
 3. `thread_tick` on whichever thread needs to advance
 4. `list_active_threads` to review overall thread status
 
 ### Updating a character's section without full rewrite
+
 1. `get_lore_section` — read just the section you need to verify current content
 2. `append_to_section` — add new material to the section
 3. Or `patch_lore` with `replace` — swap a specific line
 
 ### Undoing a bad write
+
 1. `restore_lore` — pops the history stack (up to 5 levels deep)

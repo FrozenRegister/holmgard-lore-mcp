@@ -120,6 +120,8 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('scene_brief')
     expect(names).toContain('render_pov')
     expect(names).toContain('append_to_section')
+    expect(names).toContain('get_topic_histories')
+    expect(names).toContain('move_entity')
   })
 
   it('rejects requests with wrong jsonrpc version', async () => {
@@ -4205,4 +4207,3 @@ describe('roll_encounter parseEncounterTable', () => {
 
 
 });
-
