@@ -1,6 +1,11 @@
 // eslint-disable-next-line deprecation/deprecation
 import { env, SELF, reset } from 'cloudflare:test'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe as vitestDescribe, expect, it } from 'vitest'
+
+// vitest-pool-workers does not isolate miniflare KV between tests — module-level
+// beforeEach() is called before the runner initialises and throws. Wrapping here
+// means every describe block gets a beforeEach(reset) inside the runner context.
+const describe = (name: string, fn: () => void) => vitestDescribe(name, () => { beforeEach(() => reset()); fn() })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
