@@ -8,8 +8,8 @@ export default defineConfig({
       miniflare: {
         // ADMIN_SECRET injected here so it never needs to live in wrangler.toml
         bindings: {
-          ADMIN_SECRET: 'test-secret-123',
-          MCP_API_KEY: 'test-api-key-xyz',
+          ADMIN_SECRET: process.env.ADMIN_SECRET || 'test-secret-123',
+          MCP_API_KEY: process.env.MCP_API_KEY || 'test-api-key-xyz',
         },
       },
     }),

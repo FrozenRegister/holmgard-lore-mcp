@@ -1,5 +1,6 @@
 // src/index.ts
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { z } from 'zod'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -711,12 +712,11 @@ app.use('*', async (c, next) => {
   await next()
 })
 
-app.use('*', async (c, next) => {
-  await next()
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => c.header(k, v))
-})
-
-app.options('*', (_c) => new Response(null, { status: 204, headers: CORS_HEADERS }))
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret', 'X-Api-Key'],
+}) as any)
 
 app.get('/mcp', (c) => {
   c.header('Content-Type', 'application/json')
@@ -4996,7 +4996,7 @@ app.post('/admin/set-lore', async (c) => {
 
     if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
 
-    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    const ADMIN_SECRET = c.env.ADMIN_SECRET
 
     // Accept secret from header OR body for backward compatibility
     const headerSecret =
@@ -5043,7 +5043,7 @@ app.post('/admin/delete-lore', async (c) => {
 
     if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
 
-    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    const ADMIN_SECRET = c.env.ADMIN_SECRET
 
     // Accept secret from header OR body for backward compatibility
     const headerSecret =
@@ -5079,7 +5079,7 @@ app.post('/admin/gc', async (c) => {
     const body = await c.req.json()
     const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
 
-    const ADMIN_SECRET = (c.env as any)?.ADMIN_SECRET
+    const ADMIN_SECRET = c.env.ADMIN_SECRET
 
     // Accept secret from header OR body for backward compatibility
     const headerSecret =
