@@ -1,9 +1,6 @@
 // eslint-disable-next-line deprecation/deprecation
 import { env, SELF, reset } from 'cloudflare:test'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-
-// Clean all KV storage after every test to prevent state leakage.
-afterEach(() => reset())
+import { beforeEach, describe, expect, it } from 'vitest'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
