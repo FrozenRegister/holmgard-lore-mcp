@@ -1,4 +1,4 @@
-﻿param(
+﻿﻿param(
     [switch]$FailedOnly
 )
 
@@ -763,6 +763,32 @@ Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletIncrKey     } 
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletAttackerKey } -RequestId 241
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletDefenderKey } -RequestId 242
 
+# ── get_topic_histories ───────────────────────────────────────────────────────
+
+Write-Section "TEST 69B: get_topic_histories - setup history"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = "test:hist-target"; text = "v1" } -RequestId 250
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = "test:hist-target"; text = "v2" } -RequestId 251
+
+Write-Section "TEST 69C: get_topic_histories - retrieve history snapshots"
+Invoke-MCPTool -ToolName "get_topic_histories" -Arguments @{ keys = @("test:hist-target") } -RequestId 252
+
+Write-Section "TEST 69D: get_topic_histories - cleanup"
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = "test:hist-target" } -RequestId 253
+
+# ── GET /changes ──────────────────────────────────────────────────────────────
+
+Write-Section "TEST 69E: GET /changes - verify delta-sync endpoint"
+try {
+    $changesUrl = "$BaseUrl/changes"
+    $changesResp = Invoke-WebRequest -Uri $changesUrl -Method GET -UseBasicParsing
+    $changesResult = $changesResp.Content | ConvertFrom-Json
+    Write-Host "✅ SUCCESS: Found $($changesResult.count) recent changes" -ForegroundColor Green
+    Update-TestResult -Success:$true
+} catch {
+    Write-Host "❌ EXCEPTION: $_" -ForegroundColor Red
+    Update-TestResult -Success:$false
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # NEW TOOLS — Tests 70–109
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -899,6 +925,12 @@ Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = 
 
 Write-Section "TEST 94: advance_state_stage — verify stage written back"
 Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $stageEntity } -ExpectContains "State-Stage:** 3" -RequestId 353
+
+Write-Section "TEST 94B: move_entity — updates Location field"
+Invoke-MCPToolAssert -ToolName "move_entity" -Arguments @{ entity_key = $relA; new_location_key = "location:citadel" } -ExpectContains "Moved" -RequestId 3531
+
+Write-Section "TEST 94C: move_entity — verify location update via get_lore"
+Invoke-MCPToolAssert -ToolName "get_lore" -Arguments @{ query = $relA } -ExpectContains "location:citadel" -RequestId 3532
 
 Write-Section "TEST 95: get_sensory_profile — returns all five sensory fields"
 Invoke-MCPToolAssert -ToolName "get_sensory_profile" -Arguments @{ entity_key = $sensoryKey } -ExpectContains "warm" -RequestId 354
