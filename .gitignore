@@ -17,6 +17,7 @@ node_modules/
 
 # env
 .env
+.env.ps1
 .env.production
 .dev.vars
 
@@ -36,3 +37,5 @@ patch-mcp.py
 get_lore_section_spec.md
 append_to_section_spec.md
 HANDOVER-TEST-IMPROVEMENTS.md
+test-holmgard-mcp.Tests.ps1
+.clinerules
