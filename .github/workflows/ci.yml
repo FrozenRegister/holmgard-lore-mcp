@@ -26,14 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run tests with coverage
-        # Generate lcov report for Codecov
-        run: npm test -- --coverage --coverage.reporter=lcov
+      - name: Run tests
+        run: npm test
         env:
           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
           MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
