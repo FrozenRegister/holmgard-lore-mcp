@@ -28,6 +28,3 @@ jobs:
 
       - name: Run tests
         run: npm test
-        env:
-          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
