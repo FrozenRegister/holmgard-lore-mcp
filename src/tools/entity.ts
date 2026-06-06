@@ -471,7 +471,7 @@ export async function handle_roll_encounter({ c, id, args }: ToolContext): Promi
   const entries: Array<{ key: string; weight: number }> = []
   for (const part of tableRaw.split(',').map(s => s.trim()).filter(Boolean)) {
     const m = part.match(/^(.+?)\s*:\s*([\d.]+)$/)
-    if (m) entries.push({ key: m[1].trim(), weight: parseInt(m[2]) })
+    if (m) entries.push({ key: m[1].trim(), weight: parseFloat(m[2]) })
     else entries.push({ key: part, weight: 1 })
   }
   if (entries.length === 0) {
