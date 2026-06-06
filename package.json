@@ -16,13 +16,13 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.9",
+    "@cloudflare/vitest-pool-workers": "^0.16.13",
     "@cloudflare/workers-types": "^4.20260521.1",
-    "@vitest/coverage-v8": "^4.1.8",
     "@types/node": "^20.12.12",
+    "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "^0.18.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.2.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }
