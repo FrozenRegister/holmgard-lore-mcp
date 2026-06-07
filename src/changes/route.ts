@@ -12,6 +12,14 @@ import { CHANGELOG_KEY } from '../constants'
 const changesRouter = new Hono<{ Bindings: AppBindings }>()
 
 changesRouter.get('/', async (c) => {
+  // Auth guard — if MCP_API_KEY is set, require it (same policy as tools/call)
+  const MCP_API_KEY = c.env.MCP_API_KEY
+  if (MCP_API_KEY && c.req.header('X-Api-Key') !== MCP_API_KEY) {
+    c.header('Content-Type', 'application/json')
+    c.status(401)
+    return c.body(JSON.stringify({ error: 'Unauthorized: valid X-Api-Key header required' }))
+  }
+
   const since = c.req.query('since')
   const kv = getKV(c)
   let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
