@@ -18,5 +18,5 @@
       "cloudflare:test": ["./node_modules/@cloudflare/vitest-pool-workers/types/cloudflare-test.d.ts"]
     }
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "test", "vitest.config.ts"]
 }

@@ -1,0 +1,203 @@
+// eslint-disable-next-line deprecation/deprecation
+import { SELF } from 'cloudflare:test'
+import { expect, it } from 'vitest'
+import { describe, rpc, callTool, callToolWithApiKey, seedKV } from './utils'
+
+// ── JSON-RPC protocol ─────────────────────────────────────────────────────────
+
+describe('JSON-RPC protocol', () => {
+  it('initialize returns server info and capabilities', async () => {
+    const res = await rpc('initialize')
+    expect(res.jsonrpc).toBe('2.0')
+    expect(res.result.protocolVersion).toBe('2024-11-05')
+    expect(res.result.serverInfo.name).toBe('holmgard-lore-mcp')
+    expect(res.result.capabilities.tools.list).toBe(true)
+    expect(res.result.capabilities.tools.call).toBe(true)
+  })
+
+  it('ping returns empty result', async () => {
+    const res = await rpc('ping')
+    expect(res.result).toEqual({})
+  })
+
+  it('tools/list returns exactly 59 tools', async () => {
+    const res = await rpc('tools/list')
+    const tools = res.result.tools as Array<{ name: string }>
+    expect(tools).toHaveLength(59)
+    const names = tools.map((t) => t.name)
+    expect(names).toContain('ping_tool')
+    expect(names).toContain('check_authentication')
+    expect(names).toContain('list_topics')
+    expect(names).toContain('list_maps')
+    expect(names).toContain('get_lore')
+    expect(names).toContain('set_lore')
+    expect(names).toContain('delete_lore')
+    expect(names).toContain('get_lore_batch')
+    expect(names).toContain('get_lore_section')
+    expect(names).toContain('list_consumption_timelines')
+    expect(names).toContain('list_active_threads')
+    expect(names).toContain('increment_topic_field')
+    expect(names).toContain('validate_topic_exists')
+    expect(names).toContain('search_lore')
+    expect(names).toContain('patch_lore')
+    expect(names).toContain('restore_lore')
+    expect(names).toContain('resolve_interaction')
+    expect(names).toContain('analyze_utility')
+    expect(names).toContain('map_integration')
+    expect(names).toContain('thread_tick')
+    expect(names).toContain('batch_set_lore')
+    expect(names).toContain('batch_mutate')
+    expect(names).toContain('get_relationship')
+    expect(names).toContain('get_faction_standing')
+    expect(names).toContain('get_entity_knowledge')
+    expect(names).toContain('get_location_occupants')
+    expect(names).toContain('get_reachable_locations')
+    expect(names).toContain('sense_environment')
+    expect(names).toContain('get_inventory')
+    expect(names).toContain('transfer_item')
+    expect(names).toContain('activate_scene')
+    expect(names).toContain('present_choices')
+    expect(names).toContain('commit_choice')
+    expect(names).toContain('get_choice_history')
+    expect(names).toContain('advance_state_stage')
+    expect(names).toContain('process_stage_batch')
+    expect(names).toContain('generate_entity')
+    expect(names).toContain('roll_encounter')
+    expect(names).toContain('get_thread_comparison')
+    expect(names).toContain('check_convergence')
+    expect(names).toContain('get_sensory_profile')
+    expect(names).toContain('get_compatibility')
+    expect(names).toContain('append_event')
+    expect(names).toContain('get_event_log')
+    expect(names).toContain('recent_changes')
+    expect(names).toContain('tag_topic')
+    expect(names).toContain('find_by_tag')
+    expect(names).toContain('bookmark_state')
+    expect(names).toContain('world_diff')
+    expect(names).toContain('plant_setup')
+    expect(names).toContain('pay_off_setup')
+    expect(names).toContain('list_unpaid_setups')
+    expect(names).toContain('set_goal')
+    expect(names).toContain('check_continuity')
+    expect(names).toContain('scene_brief')
+    expect(names).toContain('render_pov')
+    expect(names).toContain('append_to_section')
+    expect(names).toContain('get_topic_histories')
+    expect(names).toContain('move_entity')
+  })
+
+  it('rejects requests with wrong jsonrpc version', async () => {
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }),
+    }).then((r) => r.json() as Promise<Record<string, any>>)
+    expect(res.error.code).toBe(-32600)
+  })
+
+  it('rejects batch requests', async () => {
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }]),
+    }).then((r) => r.json() as Promise<Record<string, any>>)
+    expect(res.error.code).toBe(-32600)
+    expect(res.error.message).toContain('Batch requests are not supported')
+  })
+
+  it('returns parse error on invalid JSON', async () => {
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not valid json {{',
+    }).then((r) => r.json() as Promise<Record<string, any>>)
+    expect(res.error.code).toBe(-32700)
+  })
+
+  it('returns method-not-found for unknown method', async () => {
+    const res = await rpc('unknown_method_xyz')
+    expect(res.error.code).toBe(-32601)
+  })
+
+  it('GET /mcp returns error directing caller to POST', async () => {
+    const res = await SELF.fetch('http://example.com/mcp', { method: 'GET' })
+    const body = await res.json() as Record<string, any>
+    expect(body.error).toBeDefined()
+  })
+})
+
+// ── ping_tool ─────────────────────────────────────────────────────────────────
+
+describe('ping_tool', () => {
+  it('returns pong', async () => {
+    const res = await callTool('ping_tool')
+    expect(res.result.content[0].text).toBe('pong')
+    expect(res.result.metadata.source).toBe('internal')
+  })
+})
+
+// ── check_authentication ──────────────────────────────────────────────────────
+
+describe('check_authentication', () => {
+  it('returns authenticated when correct X-Api-Key header is sent', async () => {
+    const res = await callToolWithApiKey('check_authentication', 'test-api-key-xyz')
+    expect(res.result.content[0].text).toBe('Authenticated.')
+    expect(res.result.metadata.authenticated).toBe(true)
+  })
+
+  it('returns not authenticated when no X-Api-Key header is sent', async () => {
+    const res = await rpc('tools/call', { name: 'check_authentication', arguments: {} })
+    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    expect(res.result.metadata.authenticated).toBe(false)
+  })
+
+  it('returns not authenticated when wrong X-Api-Key header is sent', async () => {
+    const res = await callToolWithApiKey('check_authentication', 'wrong-key')
+    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    expect(res.result.metadata.authenticated).toBe(false)
+  })
+})
+
+// ── Legacy bare-method handlers ───────────────────────────────────────────────
+
+describe('legacy bare methods (pre-tools/call)', () => {
+  it('list_topics direct method returns keys array', async () => {
+    await seedKV('legacy:item1', 'text1')
+    const res = await rpc('list_topics')
+    expect(res.result.keys).toContain('legacy:item1')
+  })
+
+  it('get_lore direct method retrieves by key param', async () => {
+    await seedKV('legacy:thing', 'Legacy content')
+    const res = await rpc('get_lore', { key: 'legacy:thing' })
+    expect(res.result.text).toBe('Legacy content')
+  })
+})
+
+// ── get_lore_batch (legacy bare method) ───────────────────────────────────────
+
+describe('get_lore_batch legacy bare method', () => {
+  it('resolves keys when called as bare method', async () => {
+    await seedKV('batch:x1', 'X1 text')
+    await seedKV('batch:x2', 'X2 text')
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: { keys: ['batch:x1', 'batch:x2', 'batch:missing'] } }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
+    expect(res.result.results['batch:x1']).not.toBeNull()
+    expect(res.result.results['batch:x2']).not.toBeNull()
+    expect(res.result.results['batch:missing']).toBeNull()
+  })
+
+  it('returns error when keys array is missing', async () => {
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: {} }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
+    expect(res.error.code).toBe(-32602)
+  })
+})
