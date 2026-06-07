@@ -107,22 +107,14 @@ app.post('/mcp', async (c) => {
     }
 
     // ── Legacy bare-method handlers (pre-tools/call clients) ──────────────────
-    // In production (MCP_API_KEY is set) require same auth check as tools/call.
+    // These read-only compatibility shims predate tools/call authentication.
 
     if (method === 'list_topics') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
       const keys = await kvList(c)
       return c.json(makeResult(id, { keys }), 200)
     }
 
     if (method === 'get_lore') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
       if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
 
@@ -134,10 +126,6 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_lore_batch') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
       const keys: string[] = Array.isArray(params?.keys) ? params.keys.map((k: string) => k.trim().toLowerCase()) : []
       if (!keys.length) return c.json(makeError(id, -32602, 'Invalid params: missing keys array'), 200)
       const rawValues = await Promise.all(keys.map(k => kvGet(c, k)))
@@ -147,10 +135,6 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_topic_histories') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
       const keys: string[] = Array.isArray(params?.keys) ? params.keys.map((k: string) => k.trim().toLowerCase()) : []
       if (!keys.length) return c.json(makeError(id, -32602, 'Invalid params: missing keys array'), 200)
 
