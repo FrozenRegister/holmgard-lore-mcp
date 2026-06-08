@@ -1,4 +1,3 @@
-// eslint-disable-next-line deprecation/deprecation
 import { env, SELF, reset } from 'cloudflare:test'
 import { beforeEach, describe as vitestDescribe, expect, it } from 'vitest'
 
@@ -10,13 +9,12 @@ const describe = (name: string, fn: () => void) => vitestDescribe(name, () => { 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function rpc(method: string, params?: unknown) {
-  // eslint-disable-next-line deprecation/deprecation
   const res = await SELF.fetch('http://example.com/mcp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   })
-  return res.json() as Promise<Record<string, any>>
+  return res.json() as Promise<any>
 }
 
 function callTool(name: string, args: Record<string, unknown> = {}) {
@@ -24,7 +22,6 @@ function callTool(name: string, args: Record<string, unknown> = {}) {
 }
 
 async function callToolWithApiKey(name: string, apiKey: string, args: Record<string, unknown> = {}) {
-  // eslint-disable-next-line deprecation/deprecation
   const res = await SELF.fetch('http://example.com/mcp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
@@ -35,7 +32,6 @@ async function callToolWithApiKey(name: string, apiKey: string, args: Record<str
 
 // Seed KV directly — avoids writing to the worker's in-memory loreDB fallback.
 function seedKV(key: string, text: string) {
-  // eslint-disable-next-line deprecation/deprecation
   return env.LORE_DB.put(key, JSON.stringify({ text, meta: { version: 1 } }))
 }
 
@@ -314,7 +310,7 @@ describe('get_lore_batch legacy bare method', () => {
     // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: { keys: ['batch:x1', 'batch:x2', 'batch:missing'] } }),
     }).then(r => r.json() as Promise<Record<string, any>>)
     expect(res.result.results['batch:x1']).not.toBeNull()
@@ -326,7 +322,7 @@ describe('get_lore_batch legacy bare method', () => {
     // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore_batch', params: {} }),
     }).then(r => r.json() as Promise<Record<string, any>>)
     expect(res.error.code).toBe(-32602)
@@ -1212,8 +1208,8 @@ describe('resolve_interaction', () => {
     expect(res.error.message).toContain('Weight-1')
   })
 
-  it('always succeeds when P=1 (W1=1.0, W2=0)', async () => {
-    // Formula: w1 - w2*0.3 → 1.0 - 0 = 1.0, clamped to 1.0 → roll always < 1
+  it('succeeds with high probability when W1=1.0, W2=0', async () => {
+    // Formula: (w1*0.7) - (w2*0.3) → (1.0*0.7) - 0 = 0.7
     await seedKV('character:strong', '**Weight-1:** 1.0\n**State-Level:** 0')
     await seedKV('character:weak', '**Weight-2:** 0')
     const res = await callTool('resolve_interaction', {
@@ -1223,7 +1219,7 @@ describe('resolve_interaction', () => {
     })
     expect(res.result.success).toBe(true)
     expect(res.result.delta_value).toBeGreaterThan(0)
-    expect(res.result.metadata.probability).toBe(1)
+    expect(res.result.metadata.probability).toBeCloseTo(0.7, 5)
   })
 
   it('always fails when P=0 (W1=0, high W2)', async () => {
@@ -1241,17 +1237,21 @@ describe('resolve_interaction', () => {
   })
 
   it('increments State-Level in KV on success', async () => {
-    // W1=1.0, W2=0 → P=1.0 → guaranteed success
+    // W1=1.0, W2=0 → P=0.7
     await seedKV('character:winner', '**Weight-1:** 1.0\n**State-Level:** 5')
     await seedKV('character:loser', '**Weight-2:** 0')
-    await callTool('resolve_interaction', {
+    const res = await callTool('resolve_interaction', {
       entity_a_id: 'character:winner',
       entity_b_id: 'character:loser',
       action_type: 'consume',
     })
     const get = await callTool('get_lore', { query: 'character:winner' })
     const level = parseInt(get.result.text.match(/\*\*State-Level:\*\*\s*(\d+)/)?.[1] ?? '5')
-    expect(level).toBeGreaterThan(5)
+    if (res.result.success) {
+      expect(level).toBe(5 + res.result.delta_value)
+    } else {
+      expect(level).toBe(5)
+    }
   })
 
   it('does not modify KV on failure', async () => {
@@ -1278,8 +1278,8 @@ describe('resolve_interaction', () => {
     })
     expect(res.result.metadata.weight_1).toBe(0.6)
     expect(res.result.metadata.weight_2).toBe(0.2)
-    // P = 0.6 - 0.2*0.3 = 0.6 - 0.06 = 0.54
-    expect(res.result.metadata.probability).toBeCloseTo(0.54, 5)
+    // P = (0.6 * 0.7) - (0.2 * 0.3) = 0.42 - 0.06 = 0.36
+    expect(res.result.metadata.probability).toBeCloseTo(0.36, 5)
     expect(typeof res.result.metadata.roll).toBe('number')
     expect(res.result.metadata.action_type).toBe('test-action')
   })
@@ -1298,8 +1298,8 @@ describe('resolve_interaction', () => {
     expect(res.result.metadata.weight_2).toBeCloseTo(0.55, 5)
     expect(res.result.metadata.weight_1_raw).toBe(30)
     expect(res.result.metadata.weight_2_raw).toBe(55)
-    // P = 0.30 - 0.55*0.3 = 0.30 - 0.165 = 0.135 — meaningful, not clamped to 1
-    expect(res.result.metadata.probability).toBeCloseTo(0.135, 3)
+    // P = (0.30 * 0.7) - (0.55 * 0.3) = 0.21 - 0.165 = 0.045
+    expect(res.result.metadata.probability).toBeCloseTo(0.045, 3)
   })
 
   it('reads weights from plain loose-format fields (no bold markers)', async () => {
@@ -1340,7 +1340,7 @@ describe('resolve_interaction', () => {
       entity_b_id: 'character:bullet-defender',
       action_type: 'hunt',
     })
-    // P = 0.9 - 0.1*0.3 = 0.87 — should not error
+    // P = (0.9 * 0.7) - (0.1 * 0.3) = 0.60 — should not error
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.weight_1).toBe(0.9)
     expect(res.result.metadata.weight_2).toBe(0.1)
@@ -1854,13 +1854,23 @@ describe('thread_tick', () => {
 describe('legacy bare methods (pre-tools/call)', () => {
   it('list_topics direct method returns keys array', async () => {
     await seedKV('legacy:item1', 'text1')
-    const res = await rpc('list_topics')
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'list_topics' }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
     expect(res.result.keys).toContain('legacy:item1')
   })
 
   it('get_lore direct method retrieves by key param', async () => {
     await seedKV('legacy:thing', 'Legacy content')
-    const res = await rpc('get_lore', { key: 'legacy:thing' })
+    // eslint-disable-next-line deprecation/deprecation
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'get_lore', params: { key: 'legacy:thing' } }),
+    }).then(r => r.json() as Promise<Record<string, any>>)
     expect(res.result.text).toBe('Legacy content')
   })
 })
@@ -2508,8 +2518,8 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
     expect(res.result.metadata.weight_2_raw).toBe(55)
     expect(res.result.metadata.weight_1).toBeCloseTo(0.85, 5)
     expect(res.result.metadata.weight_2).toBeCloseTo(0.55, 5)
-    // P = 0.85 - 0.55*0.3 = 0.685
-    expect(res.result.metadata.probability).toBeCloseTo(0.685, 3)
+    // P = (0.85 * 0.7) - (0.55 * 0.3) = 0.595 - 0.165 = 0.43
+    expect(res.result.metadata.probability).toBeCloseTo(0.43, 3)
   })
 
   it('thread_tick finds entity:subject-alpha via Thread field in ## State Machine section', async () => {
@@ -2677,8 +2687,8 @@ describe('canonical fixture — entity:subject-beta (Stage-3-of-4, modified-cons
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.weight_1_raw).toBe(10)
     expect(res.result.metadata.weight_1).toBeCloseTo(0.10, 5)
-    // P = 0.10 - 0.20*0.3 = 0.04
-    expect(res.result.metadata.probability).toBeCloseTo(0.04, 3)
+    // P = (0.10 * 0.7) - (0.20 * 0.3) = 0.07 - 0.06 = 0.01
+    expect(res.result.metadata.probability).toBeCloseTo(0.01, 3)
   })
 
   it('thread_tick on secondary-processing-cycle decrements subject-beta Timeline-Value', async () => {
@@ -3082,8 +3092,8 @@ describe('canonical fixture — integer weight boundary values (5 min, 95 max)',
     expect(res.result.metadata.weight_1).toBeCloseTo(0.95, 5)
     expect(res.result.metadata.weight_2_raw).toBe(95)
     expect(res.result.metadata.weight_2).toBeCloseTo(0.95, 5)
-    // P = 0.95 - 0.95*0.3 = 0.665
-    expect(res.result.metadata.probability).toBeCloseTo(0.665, 3)
+    // P = (0.95 * 0.7) - (0.95 * 0.3) = 0.665 - 0.285 = 0.38
+    expect(res.result.metadata.probability).toBeCloseTo(0.38, 3)
   })
 
   it('skill values (0.0–1.0 range) in Skills section are not further normalized', async () => {
