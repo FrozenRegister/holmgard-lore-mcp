@@ -285,7 +285,7 @@ export const toolDefinitions: any[] = [
   },
   {
     name: 'resolve_interaction', title: 'Resolve Interaction', version: '0.1.1',
-    description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b (field may appear as plain "**Weight-1:** 0.9", bulleted "- **Weight-1 (descriptor):** 0.9", or JSON block format). Computes P(success) = W1 − (W2 × 0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value. If successful and entity_a has a numeric State-Level field, increments it by delta_value.',
+    description: 'Determine the outcome of an entity interaction via weighted probability. Reads a numeric Weight-1 field from entity_a and a numeric Weight-2 field from entity_b. Computes P(success) = (W1 × 0.7) − (W2 × 0.3), clamps to [0,1], rolls against it, and returns a boolean outcome with delta_value.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
       properties: {

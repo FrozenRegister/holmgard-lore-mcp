@@ -4,10 +4,8 @@ import { cors } from 'hono/cors'
 
 import type { AppBindings } from './types'
 import { makeResult, makeError, validateRequest } from './lib/rpc'
-import { kvGet, kvList, kvPut, kvDelete, getKV, loreDB } from './lib/kv'
+import { kvGet, kvList, getKV, loreDB } from './lib/kv'
 import { parseKvEntry } from './lib/lore'
-import { pushHistory, appendChangelog } from './lib/history'
-import { updateIndexes } from './lib/indexes'
 import rateLimitMiddleware from './middleware/rate-limit'
 import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
@@ -15,6 +13,11 @@ import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 
 // ── App ───────────────────────────────────────────────────────────────────────
+
+const getIsAuthenticated = (c: any): boolean => {
+  const key = c.env.MCP_API_KEY
+  return !key || c.req.header('X-Api-Key') === key
+}
 
 const app = new Hono<{ Bindings: AppBindings }>()
 
@@ -36,12 +39,12 @@ app.post('/mcp', async (c) => {
   let body: unknown
   try {
     body = await c.req.json()
-  } catch (e) {
+  } catch {
     return c.json(makeError(null, -32700, 'Parse error: invalid JSON'), 200)
   }
 
   try {
-    try { console.log('MCP incoming:', JSON.stringify(body)) } catch (e) { }
+    try { console.log('MCP incoming:', JSON.stringify(body)) } catch { /* ignore log error */ }
 
     const validated = validateRequest(body)
     if (!validated.ok) return c.json(validated.error, 200)
@@ -80,8 +83,7 @@ app.post('/mcp', async (c) => {
       if (!toolName || typeof toolName !== 'string')
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
-      const MCP_API_KEY = c.env.MCP_API_KEY
-      const isAuthenticated = !!MCP_API_KEY && c.req.header('X-Api-Key') === MCP_API_KEY
+      const isAuthenticated = getIsAuthenticated(c)
 
       if (toolName === 'ping_tool') {
         return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
@@ -110,8 +112,7 @@ app.post('/mcp', async (c) => {
     // In production (MCP_API_KEY is set) require same auth check as tools/call.
 
     if (method === 'list_topics') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
+      if (!getIsAuthenticated(c)) {
         return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
       }
       const keys = await kvList(c)
@@ -119,8 +120,7 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_lore') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
+      if (!getIsAuthenticated(c)) {
         return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
       }
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
@@ -183,7 +183,7 @@ app.post('/mcp', async (c) => {
 
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
 
-  } catch (e) {
+  } catch (e: unknown) {
     console.error('Unhandled exception in MCP handler', e)
     return c.json(makeError(null, -32603, 'Internal error', { message: String(e) }), 200)
   }
