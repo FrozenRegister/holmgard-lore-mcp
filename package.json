@@ -8,21 +8,26 @@
     "dev": "wrangler dev dist/index.js --local",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "clean": "rimraf dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.12.22",
-    "wrangler": "^4.94.0",
-    "zod": "^3.23.8"
+    "hono": "^4.12.23",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "^9.21.0",
     "@cloudflare/vitest-pool-workers": "^0.16.13",
     "@cloudflare/workers-types": "^4.20260521.1",
-    "@types/node": "^20.12.12",
+    "@types/node": "^20.19.42",
+    "typescript-eslint": "^8.25.0",
     "@vitest/coverage-v8": "^4.1.8",
-    "esbuild": "^0.18.0",
-    "rimraf": "^5.0.0",
-    "typescript": "^5.2.0",
-    "vitest": "^4.1.8"
+    "esbuild": "^0.18.20",
+    "eslint": "^9.21.0",
+    "rimraf": "^5.0.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8",
+    "wrangler": "^4.98.0"
   }
 }
