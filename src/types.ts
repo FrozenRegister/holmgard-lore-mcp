@@ -14,6 +14,11 @@ export type JsonRpcResponse = {
   error?: { code: number; message: string; data?: any }
 }
 
+export interface LoreEntry {
+  text: string;
+  meta?: unknown;
+}
+
 export type AppBindings = {
   LORE_DB?: KVNamespace
   MCP_API_KEY?: string
