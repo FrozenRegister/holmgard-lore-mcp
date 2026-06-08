@@ -40,6 +40,7 @@ describe('resolve_interaction', () => {
 
   it('succeeds with high probability when W1=1.0, W2=0', async () => {
     // Formula: (w1*0.7) - (w2*0.3) → (1.0*0.7) - 0 = 0.7
+    // This test verifies probability is computed correctly; outcome is probabilistic
     await seedKV('character:strong', '**Weight-1:** 1.0\n**State-Level:** 0')
     await seedKV('character:weak', '**Weight-2:** 0')
     const res = await callTool('resolve_interaction', {
@@ -47,9 +48,33 @@ describe('resolve_interaction', () => {
       entity_b_id: 'character:weak',
       action_type: 'consume',
     })
-    expect(res.result.success).toBe(true)
-    expect(res.result.delta_value).toBeGreaterThan(0)
     expect(res.result.metadata.probability).toBeCloseTo(0.7, 5)
+    // Outcome is random with P=0.7, so we only verify structure
+    expect(typeof res.result.success).toBe('boolean')
+    if (res.result.success) {
+      expect(res.result.delta_value).toBeGreaterThan(0)
+    } else {
+      expect(res.result.delta_value).toBe(0)
+    }
+  })
+
+  it('ensures weights are normalized correctly before formula', async () => {
+    // Weight-1: 100 (integer > 1) → normalized to 100/100 = 1.0
+    // Weight-2: 0 → normalized to 0
+    // Formula: (1.0*0.7) - (0*0.3) = 0.7
+    await seedKV('character:normalized-attacker', '**Weight-1:** 100\n**State-Level:** 0')
+    await seedKV('character:normalized-target', '**Weight-2:** 0')
+    const res = await callTool('resolve_interaction', {
+      entity_a_id: 'character:normalized-attacker',
+      entity_b_id: 'character:normalized-target',
+      action_type: 'hunt',
+    })
+    expect(res.result.metadata.weight_1).toBe(1.0)
+    expect(res.result.metadata.weight_2).toBe(0)
+    expect(res.result.metadata.probability).toBeCloseTo(0.7, 5)
+    // Outcome is probabilistic (70% success), so check structure only
+    expect(typeof res.result.success).toBe('boolean')
+    expect(typeof res.result.delta_value).toBe('number')
   })
 
   it('always fails when P=0 (W1=0, high W2)', async () => {
