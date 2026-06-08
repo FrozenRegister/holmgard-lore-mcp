@@ -1,10 +1,10 @@
 // src/tools/entity.ts
 import { z } from 'zod'
-import { kvGet, kvPut, getKV, loreDB } from '../lib/kv'
+import { kvGet, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys, updateIndexes } from '../lib/indexes'
+import { getIndexedKeys } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_resolve_interaction({ c, id, args }: ToolContext): Promise<Response> {
@@ -35,8 +35,8 @@ export async function handle_resolve_interaction({ c, id, args }: ToolContext): 
 
   const w1 = normalizeWeight(w1Raw)
   const w2 = normalizeWeight(w2Raw)
-  // Formula: actor drive minus scaled resistance. w1=1.0 with w2=0 yields P=1 (guaranteed success).
-  const probability = Math.max(0, Math.min(1, w1 - (w2 * 0.3)))
+  // Formula: (W1 * 0.7) - (W2 * 0.3)
+  const probability = Math.max(0, Math.min(1, (w1 * 0.7) - (w2 * 0.3)))
   const roll = Math.random()
   const success = roll < probability
   const delta_value = success ? Math.max(1, Math.round(probability * 10)) : 0
@@ -483,7 +483,8 @@ export async function handle_roll_encounter({ c, id, args }: ToolContext): Promi
   const bias = (threatLevel - 5) * 0.1
   const adjusted = sorted.map((e, i) => ({ ...e, w: Math.max(0.1, e.weight * (1 + bias * (sorted.length - i) / sorted.length)) }))
   const total = adjusted.reduce((s, e) => s + e.w, 0)
-  let roll = Math.random() * total, cum = 0, selected = adjusted[0]
+  const roll = Math.random() * total
+  let cum = 0, selected = adjusted[0]
   for (const e of adjusted) { cum += e.w; if (roll <= cum) { selected = e; break } }
 
   // New: nothing sentinel — skip archetype lookup, return clean no-encounter
@@ -879,7 +880,7 @@ export async function handle_list_consumption_timelines({ c, id, args }: ToolCon
   }), 200)
 }
 
-export async function handle_list_active_threads({ c, id, args }: ToolContext): Promise<Response> {
+export async function handle_list_active_threads({ c, id }: ToolContext): Promise<Response> {
   const raw = await kvGet(c, 'system:active-narratives')
 
   if (!raw) {
