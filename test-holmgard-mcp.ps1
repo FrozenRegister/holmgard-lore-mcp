@@ -1,4 +1,4 @@
-﻿﻿param(
+﻿﻿﻿﻿param(
     [switch]$FailedOnly
 )
 
@@ -36,11 +36,15 @@ function Get-SecretFromUser {
     Write-Host ""
     Write-Host "Then paste it below:" -ForegroundColor White
 
-    $secretValue = Read-Host -Prompt "$SecretName"
-
-    if (-not $secretValue) {
-        Write-Host "❌ ERROR: $SecretName cannot be empty." -ForegroundColor Red
-        Write-Host "Tests cannot proceed without $SecretName." -ForegroundColor Red
+    if ([Environment]::UserInteractive) {
+        $secretValue = Read-Host -Prompt "$SecretName"
+        if (-not $secretValue) {
+            Write-Host "❌ ERROR: $SecretName cannot be empty." -ForegroundColor Red
+            Write-Host "Tests cannot proceed without $SecretName." -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "❌ ERROR: $SecretName is missing and script is running in non-interactive mode. Please set the environment variable `$env:$SecretName`." -ForegroundColor Red
         exit 1
     }
 
@@ -155,6 +159,23 @@ function Invoke-JsonRpc {
 
     Update-TestResult -Success:$success
     Write-Host ""
+}
+
+function Wait-ForKeyVisibility {
+    param([string]$Key, [int]$MaxWaitSeconds = 30)
+    Write-Host "Waiting for KV list consistency (polling list_topics for $Key)..." -ForegroundColor DarkGray
+    $pollInterval = 2
+    $elapsed = 0
+    $visible = $false
+    do {
+        Start-Sleep -Seconds $pollInterval
+        $elapsed += $pollInterval
+        $listBody = @{ jsonrpc = "2.0"; id = 9999; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
+        $listResp = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $listBody -UseBasicParsing).Content | ConvertFrom-Json
+        $visible = $listResp.result.content[0].text -like "*$Key*"
+        if (-not $visible) { Write-Host "  Key not visible yet after ${elapsed}s, retrying..." -ForegroundColor DarkGray }
+    } while (-not $visible -and $elapsed -lt $MaxWaitSeconds)
+    return $visible
 }
 
 function Invoke-MCPTool {
@@ -436,7 +457,7 @@ Write-Section "TEST 7: list_topics (tool)"
 Invoke-MCPTool -ToolName "list_topics" -Arguments @{} -RequestId 7
 
 Write-Section "TEST 7B: list_maps (tool)"
-Invoke-MCPTool -ToolName "list_maps" -Arguments @{} -RequestId 7
+Invoke-MCPTool -ToolName "list_maps" -Arguments @{} -RequestId 71
 
 Write-Section "TEST 8: get_lore (tool)"
 Invoke-MCPTool -ToolName "get_lore" -Arguments @{ query = "character:sarah-weaver" } -RequestId 8
@@ -482,20 +503,20 @@ Invoke-MCPTool -ToolName "list_consumption_timelines" -Arguments @{ status_filte
 Write-Section "TEST 16E: list_consumption_timelines cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $timelineTestKey } -RequestId 106
 
-Write-Section "TEST 19: set_lore (tool)"
-Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $testKey; text = $testContent } -RequestId 16
+Write-Section "TEST 16F: set_lore (tool)"
+Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $testKey; text = $testContent } -RequestId 107
 
 Write-Section "TEST 17: increment_topic_field"
-Invoke-MCPTool -ToolName "increment_topic_field" -Arguments @{ key = $testKey; field_path = "days_remaining"; increment = -1; reason = "daily-decrement" } -RequestId 17
+Invoke-MCPTool -ToolName "increment_topic_field" -Arguments @{ key = $testKey; field_path = "days_remaining"; increment = -1; reason = "daily-decrement" } -RequestId 170
 
 Write-Section "TEST 18: verify set_lore via get_lore"
-Invoke-MCPTool -ToolName "get_lore" -Arguments @{ query = $testKey } -RequestId 18
+Invoke-MCPTool -ToolName "get_lore" -Arguments @{ query = $testKey } -RequestId 180
 
 Write-Section "TEST 19: increment_topic_field - negative increment"
-Invoke-MCPTool -ToolName "increment_topic_field" -Arguments @{ key = $testKey; field_path = "days_remaining"; increment = -2; reason = "accelerated-decay" } -RequestId 19
+Invoke-MCPTool -ToolName "increment_topic_field" -Arguments @{ key = $testKey; field_path = "days_remaining"; increment = -2; reason = "accelerated-decay" } -RequestId 190
 
 Write-Section "TEST 20: delete_lore (tool)"
-Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $testKey } -RequestId 20
+Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $testKey } -RequestId 200
 
 Write-Section "TEST 21: admin/set-lore endpoint"
 Invoke-AdminEndpoint -Url $ADMIN_SET_URL -Body @{ key = $testKey; text = $testContent } -TestName "admin/set-lore"
@@ -595,10 +616,13 @@ Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $resolverKeyHighB; text 
 
 Write-Section "TEST 43: resolve_interaction - guaranteed success (P=1)"
 # W1=1.0, W2=0 → P = 1.0 - 0*0.3 = 1.0 → always success
+Write-Section "TEST 43: resolve_interaction - high probability success (P=0.7)"
+# W1=1.0, W2=0 → P = (1.0 * 0.7) - 0 = 0.7
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyA; entity_b_id = $resolverKeyB; action_type = "consume" } -ExpectContains "SUCCESS" -RequestId 204
 
 Write-Section "TEST 44: resolve_interaction - guaranteed failure (P=0)"
 # W1=0, W2=1.0 → P = 0 - 1.0*0.3 = -0.3 → clamped to 0 → always failure
+# W1=0, W2=1.0 → P = (0 * 0.7) - (1.0 * 0.3) = -0.3 → clamped to 0 → always failure
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $resolverKeyZeroA; entity_b_id = $resolverKeyHighB; action_type = "consume" } -ExpectContains "FAILURE" -RequestId 205
 
 Write-Section "TEST 45: resolve_interaction - missing entity returns error"
@@ -699,23 +723,7 @@ Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadEntityKey; text =
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $threadOtherKey;  text = $threadOtherText  } -RequestId 227
 
 # KV list() is eventually consistent — poll list_topics until the freshly-written key appears.
-Write-Host "Waiting for KV list consistency (polling list_topics)..." -ForegroundColor DarkGray
-$maxWaitSeconds = 30
-$pollInterval   = 2
-$elapsed        = 0
-$keyVisible     = $false
-do {
-    Start-Sleep -Seconds $pollInterval
-    $elapsed += $pollInterval
-    $listBody = @{ jsonrpc = "2.0"; id = 9000; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
-    $listResp = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $listBody -UseBasicParsing).Content | ConvertFrom-Json
-    $keyVisible = $listResp.result.content[0].text -like "*$threadEntityKey*"
-    if (-not $keyVisible) { Write-Host "  Key not visible yet after ${elapsed}s, retrying..." -ForegroundColor DarkGray }
-} while (-not $keyVisible -and $elapsed -lt $maxWaitSeconds)
-
-if (-not $keyVisible) {
-    Write-Host "⚠ Key never appeared in list_topics after ${maxWaitSeconds}s — thread_tick tests may fail." -ForegroundColor Yellow
-}
+$keyVisible = Wait-ForKeyVisibility -Key $threadEntityKey
 
 Write-Section "TEST 59: thread_tick - tick the thread"
 Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "test-thread-alpha" } -ExpectContains "ticked" -RequestId 228
@@ -757,6 +765,9 @@ Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $bulletDefenderKey; text
 Write-Section "TEST 68: resolve_interaction - succeeds with bullet+descriptor float weights (P≈0.87)"
 # P = 0.9 - 0.1*0.3 = 0.87 → should not return Weight-1 field error; content contains "P=0.870"
 Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $bulletAttackerKey; entity_b_id = $bulletDefenderKey; action_type = "hunt" } -ExpectContains "P=0.870" -RequestId 239
+Write-Section "TEST 68: resolve_interaction - succeeds with bullet+descriptor float weights (P≈0.6)"
+# P = (0.9 * 0.7) - (0.1 * 0.3) = 0.63 - 0.03 = 0.60
+Invoke-MCPToolAssert -ToolName "resolve_interaction" -Arguments @{ entity_a_id = $bulletAttackerKey; entity_b_id = $bulletDefenderKey; action_type = "hunt" } -ExpectContains "P=0.600" -RequestId 239
 
 Write-Section "TEST 69: field extraction tests - cleanup"
 Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $bulletIncrKey     } -RequestId 240
@@ -961,16 +972,7 @@ Write-Section "TEST 101: scan-based tools setup — write test data"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $scanEntityA;     text = "**Location:** $scanLocKey`n**State-Stage:** 1`n**State-Total:** 4`n**Thread:** scan-thread-ta`n**Current-Date:** scan-day-42" } -RequestId 360
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $scanEntityB;     text = "**Location:** $scanLocKey`n**State-Stage:** 2`n**State-Total:** 4`n**Thread:** scan-thread-tb`n**Current-Date:** scan-day-42" } -RequestId 361
 
-Write-Host "Polling for KV list consistency (scan-based tools)..." -ForegroundColor DarkGray
-$maxWait2 = 30; $poll2 = 2; $elapsed2 = 0; $visible2 = $false
-do {
-    Start-Sleep -Seconds $poll2; $elapsed2 += $poll2
-    $lb = @{ jsonrpc = "2.0"; id = 9001; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
-    $lr = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $lb -UseBasicParsing).Content | ConvertFrom-Json
-    $visible2 = $lr.result.content[0].text -like "*$scanEntityA*"
-    if (-not $visible2) { Write-Host "  Not visible yet after ${elapsed2}s, retrying..." -ForegroundColor DarkGray }
-} while (-not $visible2 -and $elapsed2 -lt $maxWait2)
-if (-not $visible2) { Write-Host "⚠ Key never appeared — scan tests may not detect test data." -ForegroundColor Yellow }
+$visible2 = Wait-ForKeyVisibility -Key $scanEntityA
 
 Write-Section "TEST 102: get_location_occupants — finds entities with matching Location field"
 Invoke-MCPToolAssert -ToolName "get_location_occupants" -Arguments @{ location_key = $scanLocKey } -ExpectContains "occupant" -RequestId 362
@@ -1020,16 +1022,7 @@ $canonSceneKey = "scene:canonical-threshold"
 $canonSceneLore = "# Scene: Canonical Threshold`nThread: canonical-primary-cycle`nLocation: location:canonical-chamber-primary`nStatus: active`n`n## Choices`nChoices:`n- id: investigate`n  label: `"Investigate the sound`"`n  requirements: perception: 0.3`n`n- id: search`n  label: `"Search the perimeter`"`n  requirements: tracking: 0.2`n`n- id: retreat`n  label: `"Withdraw`"`n  requirements: none"
 Invoke-MCPTool -ToolName "set_lore" -Arguments @{ key = $canonSceneKey; text = $canonSceneLore } -RequestId 404
 
-Write-Host "Polling for KV list consistency (canonical fixtures)..." -ForegroundColor DarkGray
-$maxWaitC = 30; $pollC = 2; $elapsedC = 0; $visibleC = $false
-do {
-    Start-Sleep -Seconds $pollC; $elapsedC += $pollC
-    $lb = @{ jsonrpc = "2.0"; id = 9002; method = "tools/call"; params = @{ name = "list_topics"; arguments = @{} } } | ConvertTo-Json -Depth 10
-    $lr = (Invoke-WebRequest -Uri $MCP_URL -Method POST -Headers $HEADERS -Body $lb -UseBasicParsing).Content | ConvertFrom-Json
-    $visibleC = $lr.result.content[0].text -like "*$canonAlphaKey*"
-    if (-not $visibleC) { Write-Host "  Not visible yet after ${elapsedC}s, retrying..." -ForegroundColor DarkGray }
-} while (-not $visibleC -and $elapsedC -lt $maxWaitC)
-if (-not $visibleC) { Write-Host "⚠ Canonical keys never appeared — canonical tests may fail." -ForegroundColor Yellow }
+$visibleC = Wait-ForKeyVisibility -Key $canonAlphaKey
 
 Write-Section "TEST 114: canonical fixture — advance_state_stage reads Stage-2-of-4 from Status"
 Invoke-MCPToolAssert -ToolName "advance_state_stage" -Arguments @{ entity_key = $canonAlphaKey } -ExpectContains "Stage-3-of-4" -RequestId 410
@@ -1048,7 +1041,7 @@ Assert-True -TestName "TEST 116a: weight_1_raw=85" -Condition ($w1Raw116 -eq 85)
 Assert-True -TestName "TEST 116b: weight_1 ~0.85" -Condition ($w1Norm116 -ge 0.849 -and $w1Norm116 -le 0.851) -Expected "~0.85" -Actual "$w1Norm116" -RequestId 412
 Assert-True -TestName "TEST 116c: weight_2_raw=55" -Condition ($w2Raw116 -eq 55) -Expected "55" -Actual "$w2Raw116" -RequestId 412
 Assert-True -TestName "TEST 116d: weight_2 ~0.55" -Condition ($w2Norm116 -ge 0.549 -and $w2Norm116 -le 0.551) -Expected "~0.55" -Actual "$w2Norm116" -RequestId 412
-Assert-True -TestName "TEST 116e: probability ~0.685" -Condition ([math]::Abs($prob116 - 0.685) -lt 0.01) -Expected "~0.685" -Actual "$prob116" -RequestId 412
+Assert-True -TestName "TEST 116e: probability ~0.43" -Condition ([math]::Abs($prob116 - 0.43) -lt 0.01) -Expected "~0.43" -Actual "$prob116" -RequestId 412
 
 Write-Section "TEST 117: canonical fixture — thread_tick finds entity via plain Thread field"
 Invoke-MCPToolAssert -ToolName "thread_tick" -Arguments @{ thread_id = "canonical-primary-cycle" } -ExpectContains "entities_ticked" -RequestId 413
