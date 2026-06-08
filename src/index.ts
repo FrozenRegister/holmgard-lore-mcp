@@ -4,7 +4,7 @@ import { cors } from 'hono/cors'
 
 import type { AppBindings } from './types'
 import { makeResult, makeError, validateRequest } from './lib/rpc'
-import { kvGet, kvList, getKV, loreDB } from './lib/kv'
+import { kvGet, kvList, getKV } from './lib/kv'
 import { parseKvEntry } from './lib/lore'
 import rateLimitMiddleware from './middleware/rate-limit'
 import { toolDefinitions } from './tools/definitions'
@@ -174,7 +174,7 @@ app.post('/mcp', async (c) => {
 
           histories[key] = snapshots
         }
-      } catch (e) {
+      } catch {
         return c.json(makeError(id, -32603, 'Failed to read histories', null), 200)
       }
 
@@ -185,7 +185,7 @@ app.post('/mcp', async (c) => {
 
   } catch (e: unknown) {
     console.error('Unhandled exception in MCP handler', e)
-    return c.json(makeError(null, -32603, 'Internal error', { message: String(e) }), 200)
+    return c.json(makeError(null, -32603, 'Internal error', { message: e instanceof Error ? e.message : String(e) }), 200)
   }
 })
 
