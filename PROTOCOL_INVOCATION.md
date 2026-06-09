@@ -9,11 +9,13 @@ To resolve a GitHub Issue, use the helper script:
 ```
 
 This will:
+
 1. Fetch Issue #42 from GitHub
 2. Display the Issue details
 3. Generate a copy-paste prompt for Claude Code
 
 Then:
+
 1. **Copy** the section marked "COPY BELOW & PASTE INTO CLAUDE CODE"
 2. **Paste** it into Claude Code
 3. **Claude** will follow the [Issue Resolution Protocol](./ISSUE_RESOLUTION_PROTOCOL.md) automatically
@@ -62,16 +64,19 @@ Start by summarizing your understanding now.
 ## Script Usage
 
 ### Basic
+
 ```powershell
 .\resolve-issue.ps1 -IssueNumber 42
 ```
 
 ### Specify a different repo (if needed)
+
 ```powershell
 .\resolve-issue.ps1 -IssueNumber 42 -Repo "OtherUser/other-repo"
 ```
 
 ### Requirements
+
 - PowerShell 7+ (or 5.1+)
 - GitHub CLI installed (`gh`)
 - Authenticated: `gh auth status`
@@ -80,12 +85,14 @@ Start by summarizing your understanding now.
 
 ## Troubleshooting
 
-**"Could not fetch Issue #42"**
+### Could not fetch Issue
+
 - Run `gh auth status` to confirm you're logged in
 - Run `gh auth login` if needed
 - Check the Issue number is correct
 
-**"Permission denied"**
+### Permission denied
+
 - Run as admin: right-click PowerShell → "Run as administrator"
 - Or add execute permissions: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 

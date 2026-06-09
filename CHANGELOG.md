@@ -17,6 +17,10 @@
 
 ### Fixed
 
+- **wrangler.jsonc & CLAUDE.md** — Documented KV namespace isolation to prevent production data corruption. Production (`id`: `67b47914eb094043ab777f4f34da8bfc`) and preview (`preview_id`: `d99c543e9ccf46dca6900cc28d93362a`) namespaces are intentionally separate so `wrangler dev` uses isolated preview storage while `wrangler deploy` uses production. Added deployment notes warning against allowing these IDs to be identical, which would cause local development to corrupt production data. (Issue #6)
+
+- **PROTOCOL_INVOCATION.md** — Fixed markdown linting errors where emphasis was incorrectly used instead of headings (MD036/no-emphasis-as-heading). Changed bold text error descriptions to proper heading levels.
+
 - **CI workflow (`.github/workflows/ci.yml`)** — Fixed `actions/setup-node` cache setup failures by installing pnpm *before* calling `setup-node` (moved `pnpm/action-setup@v2` before `actions/setup-node@v4` in all three jobs). Also downgraded pnpm from 11.5.1 to 10.15.0 to support Node 20 testing; pnpm 11.5.1 requires Node 22.13+. (Issue #37)
 
 - **admin/routes.ts** — `POST /set-lore` now properly rejects empty, null, whitespace-only, and non-string keys (e.g. numbers, arrays) with a 400 response. Previously, non-string values slipped through to KV, potentially creating garbage entries with empty keys. The validation now uses `typeof` checks and a shared `extractKey()` helper used by all admin routes. (Issues #1, #7)
