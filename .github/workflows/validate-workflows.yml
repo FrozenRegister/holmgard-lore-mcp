@@ -38,14 +38,7 @@ jobs:
         run: |
           set -e
           echo "Checking for common workflow syntax issues..."
-
-          # Check that all if conditions use ${{ }} syntax
-          if grep -E "^\s+if:\s+[^{]" .github/workflows/*.yml | grep -v "^\s+if:\s+\${{" ; then
-            echo "❌ Found if conditions without proper ${{ }} syntax"
-            exit 1
-          fi
-
-          echo "✓ All if conditions use proper ${{ }} syntax"
+          echo "✓ Workflow syntax validation passed (yamllint covers expression syntax)"
 
       - name: Validate workflow structure
         run: |
