@@ -24,11 +24,11 @@ jobs:
               { name: 'surface:tests',  color: 'c5def5', description: 'Test coverage, vitest, pester' },
               { name: 'surface:admin',  color: 'd73a4a', description: 'Admin routes, auth, secrets' },
               // Depth labels
-              { name: 'depth:0', color: 'eaecef', description: 'Trivial – typo, config, doc-only' },
-              { name: 'depth:1', color: 'd3d3d3', description: 'Small – single-file bug fix' },
-              { name: 'depth:2', color: 'b0b0b0', description: 'Moderate – 2-3 files' },
-              { name: 'depth:3', color: '888888', description: 'Complex – cross-cutting change' },
-              { name: 'depth:4', color: '555555', description: 'Major – new subsystem or refactor' },
+              { name: 'depth:0', color: 'eaecef', description: 'Trivial -typo, config, doc-only' },
+              { name: 'depth:1', color: 'd3d3d3', description: 'Small -single-file bug fix' },
+              { name: 'depth:2', color: 'b0b0b0', description: 'Moderate -2-3 files' },
+              { name: 'depth:3', color: '888888', description: 'Complex -cross-cutting change' },
+              { name: 'depth:4', color: '555555', description: 'Major -new subsystem or refactor' },
               // Batch labels
               { name: 'batch:1', color: '00aabb', description: 'Parallel work batch 1' },
               { name: 'batch:2', color: '00bbaa', description: 'Parallel work batch 2' },
