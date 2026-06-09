@@ -24,6 +24,8 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 
 ## Pre-Commit Validation
 
+**REQUIRED**: Before creating any commit, run the pre-commit validation script. Claude Code must validate locally before committing, just like a team member would.
+
 Before pushing code, run local validation to catch common issues **without waiting for GitHub Actions**:
 
 **On Windows (PowerShell):**
