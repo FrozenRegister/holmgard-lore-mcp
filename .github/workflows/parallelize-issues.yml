@@ -1,0 +1,118 @@
+name: Parallelize Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_count:
+        description: 'Number of parallel batches to create (1–5)'
+        required: false
+        default: '3'
+        type: string
+
+permissions:
+  issues: write
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const batchCount = Math.min(5, Math.max(1, parseInt('${{ inputs.batch_count }}', 10) || 3))
+
+            // Fetch all open issues (not PRs)
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            })
+            const realIssues = issues.filter(i => !i.pull_request)
+
+            if (realIssues.length === 0) {
+              console.log('No open issues to batch.')
+              return
+            }
+
+            // Group by surface area — issues that share a surface can't safely run in parallel
+            const surfacePrefixes = ['surface:API', 'surface:state', 'surface:utils', 'surface:build', 'surface:docs', 'surface:tests', 'surface:admin']
+
+            // Build a conflict map: two issues conflict if they share a surface label
+            // Greedy graph-coloring: assign each issue to the lowest-numbered batch
+            // whose existing members share no surface with this issue.
+            function getSurfaces(issue) {
+              return new Set(issue.labels.map(l => l.name).filter(n => surfacePrefixes.includes(n)))
+            }
+
+            const batches = Array.from({ length: batchCount }, () => [])
+
+            for (const issue of realIssues) {
+              const surfaces = getSurfaces(issue)
+              let assigned = false
+
+              for (let b = 0; b < batchCount; b++) {
+                const conflict = batches[b].some(existing => {
+                  const es = getSurfaces(existing)
+                  return [...surfaces].some(s => es.has(s))
+                })
+                if (!conflict) {
+                  batches[b].push(issue)
+                  assigned = true
+                  break
+                }
+              }
+
+              // If all batches conflict, put in the smallest batch (round-robin fallback)
+              if (!assigned) {
+                const smallest = batches.reduce((min, b, i) => b.length < batches[min].length ? i : min, 0)
+                batches[smallest].push(issue)
+              }
+            }
+
+            // Apply batch labels and post comments
+            for (let b = 0; b < batchCount; b++) {
+              const batchLabel = `batch:${b + 1}`
+              for (const issue of batches[b]) {
+                const existingLabels = new Set(issue.labels.map(l => l.name))
+
+                // Remove any existing batch label before applying new one
+                for (const el of existingLabels) {
+                  if (el.startsWith('batch:') && el !== batchLabel) {
+                    try {
+                      await github.rest.issues.removeLabel({
+                        owner: context.repo.owner,
+                        repo:  context.repo.repo,
+                        issue_number: issue.number,
+                        name: el,
+                      })
+                    } catch (_) {}
+                  }
+                }
+
+                if (!existingLabels.has(batchLabel)) {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo:  context.repo.repo,
+                    issue_number: issue.number,
+                    labels: [batchLabel],
+                  })
+                }
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  issue_number: issue.number,
+                  body: `🔄 **Batch Assignment:** This issue has been grouped into **${batchLabel}** for parallel execution.\n\nIssues in the same batch share surface areas and should be worked sequentially. Issues in different batches can be worked in parallel.`,
+                })
+
+                console.log(`Issue #${issue.number} → ${batchLabel}`)
+              }
+            }
+
+            // Summary
+            for (let b = 0; b < batchCount; b++) {
+              const nums = batches[b].map(i => `#${i.number}`).join(', ')
+              console.log(`batch:${b + 1}: ${nums || '(empty)'}`)
+            }

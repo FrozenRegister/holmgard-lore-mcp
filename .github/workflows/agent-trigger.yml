@@ -1,0 +1,141 @@
+name: Agent Trigger
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    # Only run when an agent:* label is applied (and not in response to a comment we just posted)
+    if: startsWith(github.event.label.name, 'agent:')
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue
+            const agent = context.payload.label.name  // e.g. "agent:claude"
+
+            // Check if we've already posted a work-order comment (to avoid duplicate comments)
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: issue.number,
+            })
+
+            const alreadyPosted = comments.some(c =>
+              c.user.login === 'github-actions[bot]' && c.body.includes('## Work Order')
+            )
+
+            if (alreadyPosted) {
+              console.log(`Issue #${issue.number}: work-order already posted, skipping`)
+              return
+            }
+
+            // Extract issue number and create kebab-case slug from title
+            const issueNum = issue.number
+            const slug = issue.title
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+              .slice(0, 50)
+
+            const branchName = `issue/${issueNum}-${slug}`
+
+            // Post work-order comment
+            const workOrder = `## Work Order ⚙️
+
+**Issue:** #${issueNum}
+**Assigned to:** ${agent}
+**Branch:** \`${branchName}\`
+
+---
+
+### Implementation Workflow
+
+This automation workflow applies to **all** GitHub issues and pull requests. Follow these steps:
+
+#### Phase 1: Understand the Issue
+1. Read the full issue, including all comments.
+2. Summarize the problem in 3–5 bullet points.
+3. Create a feature branch: \`${branchName}\`
+
+#### Phase 2: Analyze & Plan
+4. Locate all relevant files in the codebase.
+5. Outline a step-by-step implementation plan.
+6. Consider architectural consistency and existing patterns.
+
+#### Phase 3: Implement
+7. Modify existing code or create new files as needed.
+8. Maintain architectural consistency with the project.
+9. Remove obsolete code; avoid over-engineering.
+
+#### Phase 4: Test
+10. Add or update tests to cover the fix (unit + integration).
+11. Run the full test suite: \`npm test\`
+12. Fix any failures — do not move forward with broken tests.
+
+#### Phase 5: Quality
+13. Review code for clarity and consistency.
+14. Ensure no dead code or poor naming.
+15. Format consistently with the project.
+
+#### Phase 6: Documentation & Changelog
+16. Update all relevant documentation:
+    - README sections if applicable
+    - API/interface documentation
+    - Architecture notes
+    - Any diagrams affected
+
+17. Update \`CHANGELOG.md\`:
+    - Add entry under \`[Unreleased]\`
+    - Include the issue number
+    - Provide a clear human-readable summary
+
+18. Update the GitHub Issue:
+    - Post a detailed comment with what was changed
+    - Include links to relevant commits
+    - Note tests added/updated
+    - Document architectural considerations
+
+#### Phase 7: Pull Request
+19. Create a clean commit history:
+    - Logical commits
+    - Clear messages
+    - No noise commits
+
+20. Open a Pull Request:
+    - Clear title
+    - Summary of the issue
+    - Explanation of the fix
+    - Notes on tests added/updated
+    - Documentation updates performed
+    - Marked as "Ready for Review"
+
+---
+
+### Key Requirements
+
+**Testing:** Write tests alongside any new tools or changes. Both vitest and Pester test suites must be updated.
+
+**Documentation:** Every PR must update CHANGELOG.md and relevant docs. These are enforced by PR quality checks.
+
+**CI Checks:** TypeScript, linting, and tests must pass. CI failures block merges.
+
+**Architectural:** Follow existing patterns in \`src/\`. Reuse utilities and helpers. Avoid premature abstraction.
+
+Good luck! 🚀`
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: issueNum,
+              body: workOrder,
+            })
+
+            console.log(`Issue #${issueNum}: work-order posted (${agent})`)

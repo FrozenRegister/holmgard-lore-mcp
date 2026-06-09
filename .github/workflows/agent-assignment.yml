@@ -1,0 +1,53 @@
+name: Agent Assignment
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    # Only run when a batch:* label is applied
+    if: startsWith(github.event.label.name, 'batch:')
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue     = context.payload.issue
+            const batchName = context.payload.label.name  // e.g. "batch:2"
+            const batchNum  = parseInt(batchName.split(':')[1], 10)
+
+            // Even batches → agent:claude, odd batches → agent:cline
+            const agentLabel = batchNum % 2 === 0 ? 'agent:claude' : 'agent:cline'
+
+            const existingLabels = new Set(issue.labels.map(l => l.name))
+
+            // Remove any stale agent label first
+            for (const el of existingLabels) {
+              if (el.startsWith('agent:') && el !== agentLabel) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo:  context.repo.repo,
+                    issue_number: issue.number,
+                    name: el,
+                  })
+                } catch (_) {}
+              }
+            }
+
+            if (!existingLabels.has(agentLabel)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issue.number,
+                labels: [agentLabel],
+              })
+              console.log(`Issue #${issue.number}: assigned ${agentLabel} (${batchName})`)
+            } else {
+              console.log(`Issue #${issue.number}: already has ${agentLabel}, skipping`)
+            }
