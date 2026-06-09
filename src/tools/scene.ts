@@ -183,7 +183,7 @@ export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<
 
   const { text: baseText } = parseKvEntry(rawBase)
 
-  let occupantKeys = await getIndexedKeys(c, `_idx:location:${baseKey}`)
+  const occupantKeys = await getIndexedKeys(c, `_idx:location:${baseKey}`)
 
   // Fallback: if index is empty, scan kvList for entities at this location
   if (occupantKeys.length === 0) {
@@ -227,7 +227,7 @@ export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<
     })
   }
 
-  let openSetups: any[] = []
+  const openSetups: any[] = []
   if (includeSetups) {
     const actorSet = new Set(entityKeys.map(k => k.toLowerCase()))
     const setupKeys = await getIndexedKeys(c, '_idx:prefix:setup')

@@ -55,7 +55,7 @@ export async function addToIndex(c: any, indexKey: string, key: string): Promise
     const kv = getKV(c)
     if (!kv) return
     const existing = await kv.get(indexKey)
-    let keys: string[] = existing ? JSON.parse(existing) : []
+    const keys: string[] = existing ? JSON.parse(existing) : []
     if (!keys.includes(key)) {
       keys.push(key)
       await kv.put(indexKey, JSON.stringify(keys))
