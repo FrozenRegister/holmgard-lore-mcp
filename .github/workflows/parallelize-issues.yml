@@ -104,7 +104,7 @@ jobs:
                   owner: context.repo.owner,
                   repo:  context.repo.repo,
                   issue_number: issue.number,
-                  body: `🔄 **Batch Assignment:** This issue has been grouped into **${batchLabel}** for parallel execution.\n\nIssues in the same batch share surface areas and should be worked sequentially. Issues in different batches can be worked in parallel.`,
+                  body: `[BATCH] **Batch Assignment:** This issue has been grouped into **${batchLabel}** for parallel execution.\n\nIssues in the same batch share surface areas and should be worked sequentially. Issues in different batches can be worked in parallel.`,
                 })
 
                 console.log(`Issue #${issue.number} → ${batchLabel}`)

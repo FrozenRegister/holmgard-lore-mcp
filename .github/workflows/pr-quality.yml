@@ -26,12 +26,12 @@ jobs:
 
             if (!hasChangelog) {
               core.setFailed(
-                '❌ **CHANGELOG.md required**\n\n' +
+                'ERROR **CHANGELOG.md required**\n\n' +
                 'Every PR must include a CHANGELOG entry under `[Unreleased]`.\n\n' +
                 'If you are skipping this check for an emergency hotfix, apply the `skip-quality-checks` label.'
               )
             } else {
-              console.log('✓ CHANGELOG.md found in PR')
+              console.log('OK CHANGELOG.md found in PR')
             }
 
   check-docs:
@@ -54,12 +54,12 @@ jobs:
 
             if (!hasDocs && !hasDocsSection) {
               core.setFailed(
-                '❌ **Documentation required**\n\n' +
+                'ERROR **Documentation required**\n\n' +
                 'Every PR must either:\n' +
                 '  1. Modify files under `docs/`, OR\n' +
                 '  2. Include a `## Documentation` section in the PR body describing changes\n\n' +
                 'If you are skipping this check for an emergency hotfix, apply the `skip-quality-checks` label.'
               )
             } else {
-              console.log('✓ Documentation found in PR')
+              console.log('OK Documentation found in PR')
             }

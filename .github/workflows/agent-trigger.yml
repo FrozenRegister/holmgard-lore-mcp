@@ -47,7 +47,7 @@ jobs:
             const branchName = 'issue/' + issueNum + '-' + slug
 
             // Build work-order comment using string concatenation (to avoid YAML parsing issues)
-            const workOrder = '## Work Order ⚙️\n\n' +
+            const workOrder = '## Work Order [WORKORDER]\n\n' +
               'Issue: #' + issueNum + '\n' +
               'Assigned to: ' + agent + '\n' +
               'Branch: `' + branchName + '`\n\n' +
