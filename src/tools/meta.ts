@@ -244,7 +244,9 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
   for (const tag of parsed.data.tags) {
     let keys: string[] = []
     if (kv) {
-      try { const r = await kv.get(`_tags:${tag.trim()}`); if (r) keys = JSON.parse(r) } catch { }
+      try { const r = await kv.get(`_tags:${tag.trim()}`); if (r) keys = JSON.parse(r) } catch {
+        // silently ignore
+      }
     }
     tagKeysets.push(new Set(keys))
   }
@@ -355,7 +357,9 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
     try {
       const rawSnap = await kv.get(`_snapshot:${parsed.data.to}`)
       if (rawSnap) { const snap = JSON.parse(rawSnap); toManifest = snap.manifest ?? {}; toLabel = `snapshot:${parsed.data.to} (${snap.created_at})` }
-    } catch { }
+    } catch {
+      // silently ignore if snapshot doesn't exist
+    }
   } else if (!parsed.data.to) {
     const allKeys = await kvList(c)
     const scopedKeys = parsed.data.key_prefix ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!)) : allKeys
