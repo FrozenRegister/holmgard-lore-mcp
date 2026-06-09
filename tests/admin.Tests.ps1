@@ -1,7 +1,12 @@
 . $PSScriptRoot\common.ps1
 
 Describe "Admin Endpoints" {
-    It "admin/set-lore endpoint (skipped if ADMIN_SECRET not set)" -Skip:(-not $env:ADMIN_SECRET) {
+    It "admin/set-lore endpoint" {
+        if (-not $ADMIN_SECRET) {
+            Set-ItResult -Skipped -Because "ADMIN_SECRET is not configured"
+            return
+        }
+
         $testKey = "test:admin-set-$(Get-Random)"
         $testContent = "Admin test content."
         $result = Invoke-AdminEndpoint -Url $ADMIN_SET_URL -Body @{ key = $testKey; text = $testContent }
@@ -10,7 +15,12 @@ Describe "Admin Endpoints" {
         Invoke-MCPTool -ToolName "delete_lore" -Arguments @{ key = $testKey } | Out-Null
     }
 
-    It "admin/delete-lore endpoint (skipped if ADMIN_SECRET not set)" -Skip:(-not $env:ADMIN_SECRET) {
+    It "admin/delete-lore endpoint" {
+        if (-not $ADMIN_SECRET) {
+            Set-ItResult -Skipped -Because "ADMIN_SECRET is not configured"
+            return
+        }
+
         $testKey = "test:admin-delete-$(Get-Random)"
         $testContent = "Admin test content."
 
