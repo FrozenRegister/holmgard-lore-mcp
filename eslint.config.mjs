@@ -15,6 +15,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/__tests__/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', 'test-run-output.txt'],
   }
 );

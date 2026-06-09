@@ -1,6 +1,6 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
+import { describe, ADMIN_SECRET } from './helpers'
 import { SELF, env } from 'cloudflare:test'
-import { expect, it, beforeEach } from 'vitest'
+import { expect, it } from 'vitest'
 
 describe('admin endpoints', () => {
   async function adminPost(path: string, body: Record<string, unknown>) {

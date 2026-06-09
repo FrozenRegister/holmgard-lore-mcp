@@ -12,7 +12,9 @@ export async function pushHistory(c: any, key: string, currentRaw: string): Prom
   try {
     const existing = await kv.get(historyKey)
     if (existing) history = JSON.parse(existing)
-  } catch { }
+  } catch {
+    // silently ignore if history doesn't exist
+  }
   history.unshift(currentRaw)
   history = history.slice(0, HISTORY_DEPTH)
   await kv.put(historyKey, JSON.stringify(history))
@@ -27,7 +29,9 @@ export async function appendChangelog(c: any, key: string, version: number, op =
   try {
     const existing = await kv.get(CHANGELOG_KEY)
     if (existing) entries = JSON.parse(existing)
-  } catch { }
+  } catch {
+    // silently ignore if changelog doesn't exist
+  }
   entries.push({ key, version, updatedAt: new Date().toISOString(), op })
   if (entries.length > CHANGELOG_MAX) entries = entries.slice(-CHANGELOG_MAX)
   await kv.put(CHANGELOG_KEY, JSON.stringify(entries))

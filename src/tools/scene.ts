@@ -217,7 +217,9 @@ export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<
     const topGoalMatch = eText.match(/\*\*Goal:([^:]+):\*\*\s*([^\n]+)/)
     let recentEvents: any[] = []
     if (kv && eventsCount > 0) {
-      try { const evRaw = await kv.get(`events:${ek}`); if (evRaw) recentEvents = (JSON.parse(evRaw) as any[]).slice(0, eventsCount) } catch { }
+      try { const evRaw = await kv.get(`events:${ek}`); if (evRaw) recentEvents = (JSON.parse(evRaw) as any[]).slice(0, eventsCount) } catch {
+        // silently ignore if events don't exist
+      }
     }
     occupants.push({
       key: ek,

@@ -5,7 +5,6 @@ import { expect, it, beforeEach } from 'vitest'
 describe('legacy bare methods (pre-tools/call)', () => {
   it('list_topics direct method returns keys array', async () => {
     await seedKV('legacy:item1', 'text1')
-    // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
@@ -16,7 +15,6 @@ describe('legacy bare methods (pre-tools/call)', () => {
 
   it('get_lore direct method retrieves by key param', async () => {
     await seedKV('legacy:thing', 'Legacy content')
-    // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },

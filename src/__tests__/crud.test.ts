@@ -107,7 +107,6 @@ describe('get_lore_batch legacy bare method', () => {
   it('resolves keys when called as bare method', async () => {
     await seedKV('batch:x1', 'X1 text')
     await seedKV('batch:x2', 'X2 text')
-    // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
@@ -119,7 +118,6 @@ describe('get_lore_batch legacy bare method', () => {
   })
 
   it('returns error when keys array is missing', async () => {
-    // eslint-disable-next-line deprecation/deprecation
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
