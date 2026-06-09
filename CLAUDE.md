@@ -22,6 +22,31 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 
 **See [Testing and Linting Guide](./docs/testing-and-linting-guide.md) for details on test status, known linting issues, and how to fix them.**
 
+## Pre-Commit Validation
+
+Before pushing code, run local validation to catch common issues **without waiting for GitHub Actions**:
+
+**On Windows (PowerShell):**
+
+```powershell
+.\scripts\pre-commit-validate.ps1          # Run full validation (includes tests)
+.\scripts\pre-commit-validate.ps1 -SkipTests  # Skip tests (faster iteration)
+```
+
+**What gets checked:**
+
+1. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
+2. **CHANGELOG.md** — Requires entry if modifying `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`
+3. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
+
+**Why run locally?** These checks run on GitHub Actions but fail *after* pushing. Running them locally saves CI time and prevents PR quality check failures.
+
+**Setup (optional):** Git can auto-run validation on commit:
+
+```powershell
+git config core.hooksPath scripts
+```
+
 ## Workflows & Protocols
 
 **To resolve a GitHub Issue autonomously:**
