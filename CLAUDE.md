@@ -22,6 +22,31 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 
 **See [Testing and Linting Guide](./docs/testing-and-linting-guide.md) for details on test status, known linting issues, and how to fix them.**
 
+## Pre-Commit Validation
+
+Before pushing code, run local validation to catch common issues **without waiting for GitHub Actions**:
+
+**On Windows (PowerShell):**
+
+```powershell
+.\scripts\pre-commit-validate.ps1          # Run full validation (includes tests)
+.\scripts\pre-commit-validate.ps1 -SkipTests  # Skip tests (faster iteration)
+```
+
+**What gets checked:**
+
+1. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
+2. **CHANGELOG.md** — Requires entry if modifying `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`
+3. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
+
+**Why run locally?** These checks run on GitHub Actions but fail *after* pushing. Running them locally saves CI time and prevents PR quality check failures.
+
+**Setup (optional):** Git can auto-run validation on commit:
+
+```powershell
+git config core.hooksPath scripts
+```
+
 ## Workflows & Protocols
 
 **To resolve a GitHub Issue autonomously:**
@@ -147,4 +172,11 @@ Do not wait to be asked. Both suites must be updated whenever a tool is added, r
 
 ## Deployment notes
 
-`wrangler.toml` has the real KV namespace ID (`67b47914eb094043ab777f4f34da8bfc`). `ADMIN_SECRET` must be set as a Cloudflare secret — it is intentionally absent from `wrangler.toml`.
+**KV Namespace Isolation (Critical)**: `wrangler.jsonc` has separate production and preview KV namespaces:
+
+- Production `id`: `67b47914eb094043ab777f4f34da8bfc` (LORE_DB) — used by `wrangler deploy`
+- Preview `preview_id`: `d99c543e9ccf46dca6900cc28d93362a` (LORE_DB_PREVIEW) — used by `wrangler dev`
+
+This separation is critical: **never allow these IDs to be identical**, or `wrangler dev` will read from and write to production data, corrupting production lore. See [Issue #6](https://github.com/your-repo/issues/6) for details.
+
+`ADMIN_SECRET` must be set as a Cloudflare secret — it is intentionally absent from `wrangler.jsonc`.
