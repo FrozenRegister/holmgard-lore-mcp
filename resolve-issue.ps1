@@ -58,7 +58,7 @@ Follow the Issue Resolution Protocol: see \`ISSUE_RESOLUTION_PROTOCOL.md\` in th
 
 --- ISSUE TO RESOLVE ---
 
-**#$IssueNumber: $title**
+**#${IssueNumber}: $title**
 
 $body
 
