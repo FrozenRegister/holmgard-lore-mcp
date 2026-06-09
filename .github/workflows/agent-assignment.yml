@@ -10,8 +10,7 @@ permissions:
 jobs:
   assign:
     runs-on: ubuntu-latest
-    # Only run when a batch:* label is applied
-    if: startsWith(github.event.label.name, 'batch:')
+    if: ${{ startsWith(github.event.label.name, 'batch:') }}
 
     steps:
       - uses: actions/github-script@v7
