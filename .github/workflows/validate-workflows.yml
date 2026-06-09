@@ -32,13 +32,13 @@ jobs:
           # Validate all workflow YAML files
           yamllint -d "{extends: default, rules: {line-length: disable}}" .github/workflows/*.yml
 
-          echo "✓ All workflow files are valid YAML"
+          echo "OK All workflow files are valid YAML"
 
       - name: Check for common workflow issues
         run: |
           set -e
           echo "Checking for common workflow syntax issues..."
-          echo "✓ Workflow syntax validation passed (yamllint covers expression syntax)"
+          echo "OK Workflow syntax validation passed (yamllint covers expression syntax)"
 
       - name: Validate workflow structure
         run: |
@@ -65,4 +65,4 @@ jobs:
             fi
           done
 
-          echo "✓ All workflows have required fields"
+          echo "OK All workflows have required fields"
