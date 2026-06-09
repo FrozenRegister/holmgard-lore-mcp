@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm test                        # run all tests (vitest, Workers runtime)
 pnpm test -- --reporter=verbose  # test output with per-test names
+pnpm run type-check              # TypeScript type checking
+pnpm run lint                    # ESLint validation
 pnpm run build                   # esbuild bundle → dist/index.js
 pnpm run deploy                  # wrangler deploy to Cloudflare
 wrangler dev                     # local dev server (uses wrangler.toml main)
@@ -16,6 +18,8 @@ To run a single test file or describe block:
 ```bash
 pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 ```
+
+**See [Testing and Linting Guide](./docs/testing-and-linting-guide.md) for details on test status, known linting issues, and how to fix them.**
 
 ## Architecture
 
