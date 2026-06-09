@@ -8,6 +8,10 @@
 
 - **Pre-Commit Validation Scripts** — Added local validation to catch common issues without waiting for GitHub Actions. Includes PowerShell script for Windows developers (`scripts/pre-commit-validate.ps1`) and Bash hook for Unix users (`.git/hooks/pre-commit`). Validates markdown linting, CHANGELOG.md requirements, and test suite. Documented in CLAUDE.md with usage examples. (Issue #6)
 
+- **Testing & Linting Documentation** — Created comprehensive `docs/testing-and-linting-guide.md` documenting test suite status (384 passing tests), type-check status, known linting issues (284 pre-existing problems), and step-by-step process for fixing lint errors. Referenced from CLAUDE.md for easy access during development.
+
+- **Handoff Packet for Editor Automation Setup** — Created `docs/HANDOFF-editor-automation-setup.md` providing complete instructions for replicating the AI automation pipeline in holmgard-lore-editor repository. Includes phase-by-phase implementation plan, files to copy/adapt, architecture differences, key configuration notes, and success criteria.
+
 - **GitHub Actions Automation Pipeline** — Implemented 8 new workflows for AI-driven issue triage, agent assignment, and PR quality enforcement. (Issue #33)
   - **Issue Tagger** (`issue-tagger.yml`) — Automatically labels issues by surface area (API, state, utils, build, docs, tests, admin) and complexity depth (0–4) using keyword heuristics.
   - **Parallelization** (`parallelize-issues.yml`) — Groups open issues into parallelizable batches on manual dispatch; issues in the same batch share surface areas and must run sequentially.
