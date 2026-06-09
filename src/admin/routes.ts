@@ -8,27 +8,58 @@ import { updateIndexes } from '../lib/indexes'
 
 const admin = new Hono<{ Bindings: AppBindings }>()
 
+// ── Shared helpers ──────────────────────────────────────────────────────────
+
+/** Extract and validate a non-empty key from a JSON body. Returns null on failure. */
+function extractKey(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null
+  const k = (body as Record<string, unknown>).key
+  if (typeof k !== 'string' || !k.trim()) return null
+  return k.trim().toLowerCase()
+}
+
+/** Extract optional text from body. Returns empty string if missing or whitespace-only. */
+function extractText(body: unknown): string {
+  if (!body || typeof body !== 'object') return ''
+  const t = (body as Record<string, unknown>).text
+  return typeof t === 'string' ? t.trim() : ''
+}
+
+/** Resolve admin secret from header or body. Returns the secret string or null. */
+function extractSecret(body: unknown, headerSecret: string | null): string | null {
+  const bodySecret =
+    body && typeof body === 'object'
+      ? ((body as Record<string, unknown>).secret ?? '').toString()
+      : ''
+  return headerSecret ?? bodySecret ?? null
+}
+
+/** Verify the admin secret from request context. Returns true if authorized. */
+async function checkSecret(c: any, body: unknown): Promise<boolean> {
+  const ADMIN_SECRET: string | undefined = c.env?.ADMIN_SECRET
+  if (!ADMIN_SECRET) return false
+
+  const headerSecret: string | null =
+    c.req.header('X-Api-Key') ?? c.req.header('X-Admin-Secret') ?? null
+  const secret = extractSecret(body, headerSecret)
+
+  return secret === ADMIN_SECRET
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
 admin.post('/set-lore', async (c) => {
   try {
     const body = await c.req.json()
-    const key = (body?.key ?? '').toString().trim().toLowerCase()
-    const text = (body?.text ?? '').toString()
+    const key = extractKey(body)
+    const text = extractText(body)
 
-    if (!key || !text) return c.json({ ok: false, error: 'missing key or text' }, 400)
+    if (!key || !text) {
+      return c.json({ ok: false, error: 'missing key or text' }, 400)
+    }
 
-    const ADMIN_SECRET = c.env.ADMIN_SECRET
-
-    // Accept secret from header OR body for backward compatibility
-    const headerSecret =
-      c.req.header("X-Api-Key") ??
-      c.req.header("X-Admin-Secret");
-
-    const bodySecret = (body?.secret ?? '').toString();
-
-    const secret = headerSecret ?? bodySecret;
-
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
     }
 
     const existingRaw = await kvGet(c, key)
@@ -59,23 +90,12 @@ admin.post('/set-lore', async (c) => {
 admin.post('/delete-lore', async (c) => {
   try {
     const body = await c.req.json()
-    const key = (body?.key ?? '').toString().trim().toLowerCase()
+    const key = extractKey(body)
 
     if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
 
-    const ADMIN_SECRET = c.env.ADMIN_SECRET
-
-    // Accept secret from header OR body for backward compatibility
-    const headerSecret =
-      c.req.header("X-Api-Key") ??
-      c.req.header("X-Admin-Secret");
-
-    const bodySecret = (body?.secret ?? '').toString();
-
-    const secret = headerSecret ?? bodySecret;
-
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
     }
 
     const existingRaw = await kvGet(c, key)
@@ -96,21 +116,11 @@ admin.post('/delete-lore', async (c) => {
 admin.post('/gc', async (c) => {
   try {
     const body = await c.req.json()
+
     const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
 
-    const ADMIN_SECRET = c.env.ADMIN_SECRET
-
-    // Accept secret from header OR body for backward compatibility
-    const headerSecret =
-      c.req.header("X-Api-Key") ??
-      c.req.header("X-Admin-Secret");
-
-    const bodySecret = (body?.secret ?? '').toString();
-
-    const secret = headerSecret ?? bodySecret;
-
-    if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
     }
 
     const kv = getKV(c)
@@ -148,7 +158,7 @@ admin.post('/gc', async (c) => {
               await kv.delete(k.name)
               deletedSnapshots++
             }
-          } catch { }
+          } catch { /* skip malformed snapshots */ }
         }
       }
       cursor = list.list_complete ? undefined : list.cursor

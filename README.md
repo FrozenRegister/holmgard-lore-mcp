@@ -372,7 +372,7 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 - `reset()` from `cloudflare:test` wipes all KV between tests
 - Both MCP tool logic and HTTP endpoints are tested
 
-**Smoke tests:** Run `test-holmgard-mcp.ps1` (PowerShell) for end-to-end tests against a deployed worker.
+**Integration tests:** Run `tests/run-all.ps1` (PowerShell Pester) for end-to-end tests against a deployed worker.
 
 ## Architecture Notes
 

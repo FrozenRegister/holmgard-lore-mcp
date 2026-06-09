@@ -39,6 +39,46 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/set-lore', { text: 'Admin content', secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
     })
+
+    it('returns 400 when key is null', async () => {
+      const res = await adminPost('/admin/set-lore', { key: null, text: 'content', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is empty string', async () => {
+      const res = await adminPost('/admin/set-lore', { key: '', text: 'content', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is whitespace only', async () => {
+      const res = await adminPost('/admin/set-lore', { key: '   ', text: 'content', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is a number', async () => {
+      const res = await adminPost('/admin/set-lore', { key: 42, text: 'content', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is an array', async () => {
+      const res = await adminPost('/admin/set-lore', { key: ['foo', 'bar'], text: 'content', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when text is empty string', async () => {
+      const res = await adminPost('/admin/set-lore', { key: 'admin:test-empty-text', text: '', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when text is whitespace only', async () => {
+      const res = await adminPost('/admin/set-lore', { key: 'admin:test-ws-text', text: '   ', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when text is missing', async () => {
+      const res = await adminPost('/admin/set-lore', { key: 'admin:test-missing-text', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
   })
 
   describe('/admin/delete-lore', () => {
@@ -56,6 +96,31 @@ describe('admin endpoints', () => {
 
     it('returns 400 when key is missing', async () => {
       const res = await adminPost('/admin/delete-lore', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is null', async () => {
+      const res = await adminPost('/admin/delete-lore', { key: null, secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is empty string', async () => {
+      const res = await adminPost('/admin/delete-lore', { key: '', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is whitespace only', async () => {
+      const res = await adminPost('/admin/delete-lore', { key: '   ', secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is a number', async () => {
+      const res = await adminPost('/admin/delete-lore', { key: 42, secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when key is an array', async () => {
+      const res = await adminPost('/admin/delete-lore', { key: ['k', 'v'], secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
     })
   })

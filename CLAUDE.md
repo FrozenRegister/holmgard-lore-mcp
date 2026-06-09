@@ -107,7 +107,7 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
 1. **Vitest** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime
-2. **PowerShell smoke tests** (`test-holmgard-mcp.ps1`) — end-to-end remote tests against the deployed worker
+2. **Pester integration tests** (`tests/run-all.ps1`) — end-to-end remote tests against the deployed worker
 
 Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.
 
