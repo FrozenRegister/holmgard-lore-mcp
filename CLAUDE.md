@@ -15,6 +15,7 @@ wrangler dev                     # local dev server (uses wrangler.toml main)
 ```
 
 To run a single test file or describe block:
+
 ```bash
 pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 ```
@@ -26,12 +27,14 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 **Single file worker**: all logic lives in `src/index.ts` — a [Hono](https://hono.dev/) app exported as the Workers default export.
 
 **Two storage layers** (in priority order):
+
 1. `LORE_DB` — Cloudflare KV binding, source of truth in production
 2. `loreDB` — module-level `Record<string, string>` fallback used only when KV is unavailable (local dev without bindings). Persists across requests within a worker instance.
 
 **KV value format**: entries are stored as `JSON.stringify({ text: string, meta: { version, updatedAt, createdAt } })`. The `parseKvEntry()` helper handles both this format and legacy plain-string values.
 
 **Routes**:
+
 - `POST /mcp` — JSON-RPC 2.0 endpoint. Handles MCP protocol methods (`initialize`, `ping`, `tools/list`, `tools/call`) plus legacy bare methods (`list_topics`, `get_lore`).
 - `POST /admin/set-lore` / `POST /admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET` env var (set via `wrangler secret put ADMIN_SECRET` in production; injected via `vitest.config.ts` miniflare bindings in tests).
 
@@ -54,10 +57,12 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 ## KV Access Rules (Batch Reads and Index-on-Write)
 
 ### Batch Reads — Always Parallelize
+
 When reading multiple KV keys from a list, **never** perform sequential `await` inside a loop.  
 Always fetch all values in parallel with `Promise.all`, then process the results:
 
 **Forbidden pattern:**
+
 ```typescript
 for (const key of keys) {
   const raw = await kvGet(c, key)  // N+1 latency
@@ -65,6 +70,7 @@ for (const key of keys) {
 ```
 
 **Required pattern:**
+
 ```typescript
 const raws = await Promise.all(keys.map(k => kvGet(c, k)))
 for (let i = 0; i < keys.length; i++) {
@@ -77,12 +83,15 @@ for (let i = 0; i < keys.length; i++) {
 ```
 
 ### Index-on-Write System
+
 Indexes are maintained automatically when lore entries are written. Three types of indexes track location, thread membership, and key prefix:
+
 - `_idx:location:<location-key>` — array of entity keys at this location
 - `_idx:thread:<thread-id>` — array of entity keys in this thread
 - `_idx:prefix:<prefix>` — array of keys starting with this prefix (e.g., `character`, `setup`)
 
 These are built and updated by `updateIndexes(c, key, newText, oldText)` in:
+
 1. `set_lore` — when a lore entry is created or modified
 2. `batch_set_lore` — for each entry in the batch
 3. `batch_mutate` — after increment or patch mutations
@@ -91,6 +100,7 @@ These are built and updated by `updateIndexes(c, key, newText, oldText)` in:
 Indexes are **read-through**, not write-through: `getIndexedKeys(c, indexKey)` returns the index if it exists, or falls back to kvList + filtering (for test compatibility where indexes may not be pre-built). For prefix indexes (`_idx:prefix:`), the fallback is fully functional; for location/thread indexes, tools add their own fallback scans if needed.
 
 ### Tools Using Indexes (optimized, not full-scan)
+
 - `list_consumption_timelines` — reads `_idx:prefix:character`
 - `list_unpaid_setups` — reads `_idx:prefix:setup`
 - `get_location_occupants` — reads `_idx:location:<key>`
@@ -101,6 +111,7 @@ Indexes are **read-through**, not write-through: `getIndexedKeys(c, indexKey)` r
 - `scene_brief` — reads `_idx:location:<key>` and `_idx:prefix:setup`
 
 ### Exclude Indexes from kvList
+
 Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along with system keys (`_history:*`, `_changelog`, `events:*`, etc.).
 
 ## Tests
@@ -110,6 +121,7 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 `reset()` from `cloudflare:test` is called `afterEach` to wipe all KV between tests. Seed KV directly with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` rather than going through `set_lore` — this avoids writing to the module-level `loreDB` fallback and keeps test isolation clean.
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
+
 1. **Vitest** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime
 2. **Pester integration tests** (`tests/run-all.ps1`) — end-to-end remote tests against the deployed worker
 
