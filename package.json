@@ -15,7 +15,8 @@
     "clean": "rimraf dist",
     "test": "vitest run",
     "lint": "eslint src",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "fix:md": "markdownlint-cli2 --fix ."
   },
   "dependencies": {
     "hono": "^4.12.23",
@@ -29,6 +30,7 @@
     "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "^0.18.20",
     "eslint": "^9.21.0",
+    "markdownlint-cli2": "^0.15.0",
     "rimraf": "^5.0.10",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.25.0",
