@@ -50,17 +50,17 @@ jobs:
 
             # Check for required fields
             if ! grep -q "^name:" "$file"; then
-              echo "❌ $file missing 'name:' field"
+              echo "ERROR $file missing 'name:' field"
               exit 1
             fi
 
             if ! grep -q "^on:" "$file"; then
-              echo "❌ $file missing 'on:' field"
+              echo "ERROR $file missing 'on:' field"
               exit 1
             fi
 
             if ! grep -q "^jobs:" "$file"; then
-              echo "❌ $file missing 'jobs:' field"
+              echo "ERROR $file missing 'jobs:' field"
               exit 1
             fi
           done
