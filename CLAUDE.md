@@ -22,6 +22,18 @@ pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 
 **See [Testing and Linting Guide](./docs/testing-and-linting-guide.md) for details on test status, known linting issues, and how to fix them.**
 
+## Workflows & Protocols
+
+**To resolve a GitHub Issue autonomously:**
+
+```powershell
+.\resolve-issue.ps1 -IssueNumber 42
+```
+
+This fetches the Issue and generates a copy-paste prompt for Claude Code. See [PROTOCOL_INVOCATION.md](./PROTOCOL_INVOCATION.md) for details.
+
+**Full Issue Resolution Protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) for the complete workflow (branching, testing, documentation, PR creation).
+
 ## Architecture
 
 **Single file worker**: all logic lives in `src/index.ts` — a [Hono](https://hono.dev/) app exported as the Workers default export.
