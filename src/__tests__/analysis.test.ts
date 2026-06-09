@@ -1,6 +1,5 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
-import { SELF, env } from 'cloudflare:test'
-import { expect, it, beforeEach } from 'vitest'
+import { describe, callTool, seedKV } from './helpers'
+import { expect, it } from 'vitest'
 
 describe('analyze_utility', () => {
   it('returns error when entity not found', async () => {

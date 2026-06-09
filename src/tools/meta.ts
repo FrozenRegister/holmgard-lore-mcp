@@ -34,7 +34,9 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
   const kv = getKV(c)
   let events: typeof newEvent[] = []
   if (kv) {
-    try { const r = await kv.get(eventsKey); if (r) events = JSON.parse(r) } catch { }
+    try { const r = await kv.get(eventsKey); if (r) events = JSON.parse(r) } catch {
+      // silently ignore if events don't exist
+    }
   }
 
   const nowMs = new Date(now).getTime()
@@ -79,7 +81,9 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
         const evts = JSON.parse(raw) as Array<any>
         return evts.map((e: any) => ({ ...e, entity_key: cleanKey }))
       }
-    } catch { }
+    } catch {
+      // silently ignore if events don't exist
+    }
     return []
   }))
   let allEvents: Array<any> = eventArrays.flat()
@@ -127,7 +131,9 @@ export async function handle_recent_changes({ c, id, args }: ToolContext): Promi
   const kv = getKV(c)
   let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
   if (kv) {
-    try { const raw = await kv.get(CHANGELOG_KEY); if (raw) entries = JSON.parse(raw) } catch { }
+    try { const raw = await kv.get(CHANGELOG_KEY); if (raw) entries = JSON.parse(raw) } catch {
+      // silently ignore if changelog doesn't exist
+    }
   }
 
   if (parsed.data.since) {
@@ -200,13 +206,17 @@ export async function handle_tag_topic({ c, id, args }: ToolContext): Promise<Re
     for (const tag of toAdd) {
       const tagKey = `_tags:${tag.trim()}`
       let tagKeys: string[] = []
-      try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch { }
+      try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch {
+        // silently ignore if tags don't exist
+      }
       if (!tagKeys.includes(topicKey)) { tagKeys.push(topicKey); await kv.put(tagKey, JSON.stringify(tagKeys)) }
     }
     for (const tag of toRemove) {
       const tagKey = `_tags:${tag.trim()}`
       let tagKeys: string[] = []
-      try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch { }
+      try { const r = await kv.get(tagKey); if (r) tagKeys = JSON.parse(r) } catch {
+        // silently ignore if tags don't exist
+      }
       tagKeys = tagKeys.filter((k: string) => k !== topicKey)
       if (tagKeys.length > 0) await kv.put(tagKey, JSON.stringify(tagKeys))
       else await kv.delete(tagKey)
@@ -333,7 +343,9 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
     try {
       const rawSnap = await kv.get(`_snapshot:${parsed.data.from}`)
       if (rawSnap) { const snap = JSON.parse(rawSnap); fromManifest = snap.manifest ?? {}; fromLabel = `snapshot:${parsed.data.from} (${snap.created_at})` }
-    } catch { }
+    } catch {
+      // silently ignore if snapshot doesn't exist
+    }
   }
 
   let toManifest: Record<string, ManifestEntry> = {}

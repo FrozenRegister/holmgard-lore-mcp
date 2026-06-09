@@ -422,7 +422,7 @@ export async function handle_get_topic_histories({ c, id, args }: ToolContext): 
 
       histories[key] = snapshots
     }
-  } catch (e) {
+  } catch (_) {
     return c.json(makeError(id, -32603, 'Failed to read histories', null), 200)
   }
 

@@ -1,6 +1,6 @@
 // src/tools/world.ts
 import { z } from 'zod'
-import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
+import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
