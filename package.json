@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
