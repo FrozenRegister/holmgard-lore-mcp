@@ -5,16 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                        # run all tests (vitest, Workers runtime)
-npm test -- --reporter=verbose  # test output with per-test names
-npm run build                   # esbuild bundle → dist/index.js
-npm run deploy                  # wrangler deploy to Cloudflare
-wrangler dev                    # local dev server (uses wrangler.toml main)
+pnpm test                        # run all tests (vitest, Workers runtime)
+pnpm test -- --reporter=verbose  # test output with per-test names
+pnpm run build                   # esbuild bundle → dist/index.js
+pnpm run deploy                  # wrangler deploy to Cloudflare
+wrangler dev                     # local dev server (uses wrangler.toml main)
 ```
 
 To run a single test file or describe block:
 ```bash
-npm test -- --reporter=verbose src/__tests__/worker.test.ts
+pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
 ```
 
 ## Architecture

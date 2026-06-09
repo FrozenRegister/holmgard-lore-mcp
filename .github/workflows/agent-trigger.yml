@@ -1,0 +1,114 @@
+name: Agent Trigger
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.event.label.name, 'agent:') }}
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue
+            const agent = context.payload.label.name
+            const issueNum = issue.number
+
+            // Check if we've already posted a work-order comment
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: issueNum,
+            })
+
+            const alreadyPosted = comments.some(c =>
+              c.user.login === 'github-actions[bot]' && c.body.includes('## Work Order')
+            )
+
+            if (alreadyPosted) {
+              console.log('Issue ' + issueNum + ': work-order already posted, skipping')
+              return
+            }
+
+            // Extract issue number and create kebab-case slug from title
+            const slug = issue.title
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+              .slice(0, 50)
+
+            const branchName = 'issue/' + issueNum + '-' + slug
+
+            // Build work-order comment using string concatenation (to avoid YAML parsing issues)
+            const workOrder = '## Work Order [WORKORDER]\n\n' +
+              'Issue: #' + issueNum + '\n' +
+              'Assigned to: ' + agent + '\n' +
+              'Branch: `' + branchName + '`\n\n' +
+              '---\n\n' +
+              '### Implementation Workflow\n\n' +
+              'Follow these 20 steps to complete this issue:\n\n' +
+              '#### Phase 1: Understand\n' +
+              '1. Read the issue, including all comments\n' +
+              '2. Summarize in 3–5 bullet points\n' +
+              '3. Create branch: `' + branchName + '`\n\n' +
+              '#### Phase 2: Analyze & Plan\n' +
+              '4. Locate relevant files in the codebase\n' +
+              '5. Outline step-by-step implementation plan\n' +
+              '6. Consider architectural consistency\n\n' +
+              '#### Phase 3: Implement\n' +
+              '7. Modify existing code or create new files\n' +
+              '8. Maintain architectural consistency\n' +
+              '9. Remove obsolete code; avoid over-engineering\n\n' +
+              '#### Phase 4: Test\n' +
+              '10. Add or update tests (unit + integration)\n' +
+              '11. Run full test suite: `npm test`\n' +
+              '12. Fix failures; don\'t proceed with broken tests\n\n' +
+              '#### Phase 5: Quality\n' +
+              '13. Review code for clarity and consistency\n' +
+              '14. Ensure no dead code or poor naming\n' +
+              '15. Format consistently with project\n\n' +
+              '#### Phase 6: Documentation & Changelog\n' +
+              '16. Update relevant documentation:\n' +
+              '    - README sections if applicable\n' +
+              '    - API/interface docs\n' +
+              '    - Architecture notes\n' +
+              '    - Diagrams if affected\n\n' +
+              '17. Update `CHANGELOG.md`:\n' +
+              '    - Add entry under `[Unreleased]`\n' +
+              '    - Include issue number\n' +
+              '    - Provide clear summary\n\n' +
+              '18. Update GitHub Issue:\n' +
+              '    - Post detailed comment with changes\n' +
+              '    - Include links to relevant commits\n' +
+              '    - Note tests added/updated\n' +
+              '    - Document architectural considerations\n\n' +
+              '#### Phase 7: Pull Request\n' +
+              '19. Create clean commit history:\n' +
+              '    - Logical commits\n' +
+              '    - Clear messages\n' +
+              '    - No noise commits\n\n' +
+              '20. Open Pull Request:\n' +
+              '    - Clear title\n' +
+              '    - Summary of issue\n' +
+              '    - Explanation of fix\n' +
+              '    - Notes on tests added/updated\n' +
+              '    - Documentation updates performed\n' +
+              '    - Marked Ready for Review\n\n' +
+              '---\n\n' +
+              '**Key Requirements:** Write tests with any tool changes (vitest + Pester). Update CHANGELOG.md and docs (enforced by PR quality checks). All CI checks must pass. Follow existing patterns in src/.'
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: issueNum,
+              body: workOrder,
+            })
+
+            console.log('Issue ' + issueNum + ': work-order posted (' + agent + ')')

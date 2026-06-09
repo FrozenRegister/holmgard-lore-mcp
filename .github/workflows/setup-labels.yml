@@ -1,0 +1,72 @@
+name: Setup Labels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              // Surface area labels
+              { name: 'surface:API',    color: '0075ca', description: 'MCP tools, routes, JSON-RPC, HTTP handlers' },
+              { name: 'surface:state',  color: '7057ff', description: 'KV storage, indexes, persistence' },
+              { name: 'surface:utils',  color: '0e8a16', description: 'Helpers, lib utilities, shared code' },
+              { name: 'surface:build',  color: 'e4e669', description: 'CI, deploy, wrangler, bundling' },
+              { name: 'surface:docs',   color: 'fef2c0', description: 'Documentation, CHANGELOG, README' },
+              { name: 'surface:tests',  color: 'c5def5', description: 'Test coverage, vitest, pester' },
+              { name: 'surface:admin',  color: 'd73a4a', description: 'Admin routes, auth, secrets' },
+              // Depth labels
+              { name: 'depth:0', color: 'eaecef', description: 'Trivial -typo, config, doc-only' },
+              { name: 'depth:1', color: 'd3d3d3', description: 'Small -single-file bug fix' },
+              { name: 'depth:2', color: 'b0b0b0', description: 'Moderate -2-3 files' },
+              { name: 'depth:3', color: '888888', description: 'Complex -cross-cutting change' },
+              { name: 'depth:4', color: '555555', description: 'Major -new subsystem or refactor' },
+              // Batch labels
+              { name: 'batch:1', color: '00aabb', description: 'Parallel work batch 1' },
+              { name: 'batch:2', color: '00bbaa', description: 'Parallel work batch 2' },
+              { name: 'batch:3', color: '00ccbb', description: 'Parallel work batch 3' },
+              // Agent labels
+              { name: 'agent:claude', color: '003d82', description: 'Assigned to Claude agent' },
+              { name: 'agent:cline',  color: '1a5c1a', description: 'Assigned to Cline agent' },
+              // Quality / process labels
+              { name: 'auto-merge',        color: '8bc34a', description: 'Auto-merge after all CI checks pass' },
+              { name: 'needs-docs',        color: 'e6ac00', description: 'PR requires documentation update' },
+              { name: 'needs-changelog',   color: 'e6ac00', description: 'PR requires CHANGELOG entry' },
+              { name: 'skip-quality-checks', color: 'cccccc', description: 'Bypass PR quality checks (emergency hotfix)' },
+            ]
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description,
+                })
+                console.log(`Created label: ${label.name}`)
+              } catch (err) {
+                if (err.status === 422) {
+                  // Label already exists — update it to keep description/color current
+                  await github.rest.issues.updateLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description,
+                  })
+                  console.log(`Updated existing label: ${label.name}`)
+                } else {
+                  throw err
+                }
+              }
+            }
+            console.log('Label setup complete.')

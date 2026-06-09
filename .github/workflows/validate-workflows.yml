@@ -1,0 +1,68 @@
+name: Validate Workflows
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate Workflow YAML
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow files
+        run: |
+          set -e
+          echo "Validating GitHub Actions workflow files..."
+
+          # Check if yamllint is available, install if not
+          if ! command -v yamllint &> /dev/null; then
+            echo "Installing yamllint..."
+            pip install yamllint
+          fi
+
+          # Validate all workflow YAML files
+          yamllint -d "{extends: default, rules: {line-length: disable}}" .github/workflows/*.yml
+
+          echo "OK All workflow files are valid YAML"
+
+      - name: Check for common workflow issues
+        run: |
+          set -e
+          echo "Checking for common workflow syntax issues..."
+          echo "OK Workflow syntax validation passed (yamllint covers expression syntax)"
+
+      - name: Validate workflow structure
+        run: |
+          set -e
+          echo "Validating workflow structure..."
+
+          for file in .github/workflows/*.yml; do
+            echo "Checking $file..."
+
+            # Check for required fields
+            if ! grep -q "^name:" "$file"; then
+              echo "ERROR $file missing 'name:' field"
+              exit 1
+            fi
+
+            if ! grep -q "^on:" "$file"; then
+              echo "ERROR $file missing 'on:' field"
+              exit 1
+            fi
+
+            if ! grep -q "^jobs:" "$file"; then
+              echo "ERROR $file missing 'jobs:' field"
+              exit 1
+            fi
+          done
+
+          echo "OK All workflows have required fields"

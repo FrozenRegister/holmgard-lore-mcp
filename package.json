@@ -2,6 +2,7 @@
   "name": "holmgard-lore-mcp",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@9",
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
