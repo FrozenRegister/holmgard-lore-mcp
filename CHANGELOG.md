@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Phase 1: D1 database schema** — Created `schema/rpg-schema.sql`, a consolidated D1-compatible schema ported from the Mnehmos RPG engine (`migrations.ts`). All incremental `ALTER TABLE` migrations are collapsed into clean `CREATE TABLE` definitions ordered by FK dependency. Adds 49 tables covering worlds, regions, characters, encounters, combat, items, inventory, quests, parties, nations, secrets, agents, narrative notes, scenes, and spatial/perception systems. Adds two new tables not in Mnehmos (`hexes` and `landmarks`) for the hex map editor backed by `/admin/map/*` routes. Added `RPG_DB: D1Database` binding to `wrangler.jsonc` (production ID `17fa8cb0`, preview ID `a4e1cfb9`), `AppBindings`, and `DOEnv`. Added `src/__tests__/setup-d1.ts` helper (`setupRpgDb`) for seeding D1 in Workers runtime tests via a `?raw` SQL import. Schema applied to both production and preview databases; verified via `sqlite_master` (50 tables including `hexes` and `landmarks`).
+
 - **Live production smoke tests (Vitest)** — Replaced Pester PowerShell integration tests with TypeScript Vitest tests in `tests/live/`. 88 tests across 15 files cover all existing tool behaviours; tests run in the VS Code test explorer alongside the Workers runtime suite. `vitest.workspace.ts` defines two projects: `workers` (miniflare, existing) and `live` (node, production HTTP). `pnpm test` still runs only the Workers suite; `pnpm test:live` runs smoke tests against the deployed worker. Requires `MCP_API_KEY` env var; admin tests skip if `ADMIN_SECRET` is unset.
 
 - **Phase 0: McpAgent Durable Object transport (Streamable HTTP)** — Wired `HolmgardMCP extends McpAgent` alongside the existing hand-rolled JSON-RPC handler with zero behavior changes for legacy clients. Requests carrying `Accept: application/json, text/event-stream` or `Mcp-Session-Id` are routed to the DO via `HolmgardMCP.serve()` middleware; all other `/mcp` traffic (legacy JSON-RPC POSTs, bare methods, GET probes) falls through to the existing Hono handler verbatim. The DO exposes all 59 tools using the SDK's low-level `Server` class with `toolDefinitions` returned byte-identical from `ListToolsRequestSchema`, dispatching into the existing `toolRegistry` via a synthetic Hono context adapter. Adds `nodejs_compat` flag, `MCP_OBJECT` DO binding + `new_sqlite_classes` migration to `wrangler.jsonc`, and 13 new vitest tests covering routing, auth, initialize, tools/list, and tools/call on the DO path.
@@ -30,6 +32,8 @@
   - **Pipeline Documentation** (`docs/ai-automation-pipeline.md`) — Complete guide to the automation system, label meanings, workflow triggers, and troubleshooting.
 
 ### Fixed
+
+- **Lint error in context-adapter.ts** — Removed unused `_status` parameter from the `json` stub in `makeSyntheticContext`. The declared return type (`status?: number`) still accepts the argument; the implementation simply ignores it. Clears the `@typescript-eslint/no-unused-vars` error that blocked CI on Phase 1 PR.
 
 - **TypeScript constraint error in HolmgardMCP** — `McpAgent<Env extends Cloudflare.Env>` requires non-optional bindings. Added `DOEnv` type with required bindings (`LORE_DB`, `ADMIN_SECRET`, `MCP_API_KEY`, `MCP_OBJECT`) for what the DO receives at runtime; switched `HolmgardMCP` to `McpAgent<DOEnv>`. Expanded `src/__tests__/env.d.ts` to declare `MCP_API_KEY` and `MCP_OBJECT` bindings now present in `wrangler.jsonc`. Fixes VS Code test explorer showing all 32 test files as failed.
 
