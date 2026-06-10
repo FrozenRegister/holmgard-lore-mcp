@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
-    "dev": "wrangler dev dist/index.js --local",
+    "dev": "wrangler dev",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "clean": "rimraf dist",
     "test": "vitest run",
@@ -19,6 +19,8 @@
     "fix:md": "markdownlint-cli2 --fix ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "agents": "^0.15.0",
     "hono": "^4.12.23",
     "zod": "^3.25.76"
   },

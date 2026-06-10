@@ -23,4 +23,5 @@ export type AppBindings = {
   LORE_DB?: KVNamespace
   MCP_API_KEY?: string
   ADMIN_SECRET?: string
+  MCP_OBJECT?: DurableObjectNamespace
 }

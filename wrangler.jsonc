@@ -3,11 +3,26 @@
 	"name": "holmgard-lore-mcp",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-20",
+	"compatibility_flags": ["nodejs_compat"],
 	"kv_namespaces": [
 		{
 			"binding": "LORE_DB",
 			"id": "67b47914eb094043ab777f4f34da8bfc",
 			"preview_id": "d99c543e9ccf46dca6900cc28d93362a"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MCP_OBJECT",
+				"class_name": "HolmgardMCP"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["HolmgardMCP"]
 		}
 	],
 	"observability": {
