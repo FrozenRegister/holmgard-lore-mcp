@@ -3,65 +3,93 @@ name: Auto-Merge
 on:
   pull_request:
     types: [labeled]
+  workflow_run:
+    workflows: ["CI", "PR Quality Checks", "Auto-fix Markdown"]
+    types: [completed]
 
 permissions:
   pull-requests: write
   contents: write
+  checks: read
 
 jobs:
   merge:
     runs-on: ubuntu-latest
-    if: ${{ github.event.label.name == 'auto-merge' && !github.event.pull_request.draft }}
-
     steps:
       - uses: actions/github-script@v7
         with:
           script: |
-            const pr = context.payload.pull_request
+            let prNumber, headSha
 
-            // Wait a moment for CI checks to update
-            await new Promise(r => setTimeout(r, 2000))
+            if (context.eventName === 'pull_request') {
+              // Triggered by label being applied to PR
+              if (context.payload.label.name !== 'auto-merge') return
+              if (context.payload.pull_request.draft) return
+              prNumber = context.payload.pull_request.number
+              headSha = context.payload.pull_request.head.sha
+            } else {
+              // Triggered by CI completing — find an open non-draft PR at this SHA with auto-merge label
+              const sha = context.payload.workflow_run.head_sha
+              const branch = context.payload.workflow_run.head_branch
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${context.repo.owner}:${branch}`,
+              })
+              const pr = prs.find(p =>
+                p.head.sha === sha &&
+                !p.draft &&
+                p.labels.some(l => l.name === 'auto-merge')
+              )
+              if (!pr) return
+              prNumber = pr.number
+              headSha = sha
+            }
 
-            // Check if all required checks are passing
-            const statuses = await github.rest.repos.getCombinedStatusForRef({
+            // Fetch all check runs for this commit (excludes this job itself by name)
+            const { data } = await github.rest.checks.listForRef({
               owner: context.repo.owner,
-              repo:  context.repo.repo,
-              ref: pr.head.sha,
+              repo: context.repo.repo,
+              ref: headSha,
+              per_page: 100,
             })
+            const checks = data.check_runs.filter(r => r.name !== 'merge')
 
-            // Also check PR review status
+            const pending = checks.filter(r => r.status !== 'completed')
+            if (pending.length > 0) {
+              console.log(`Still pending: ${pending.map(r => r.name).join(', ')}`)
+              return
+            }
+
+            const failed = checks.filter(r =>
+              !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '')
+            )
+            if (failed.length > 0) {
+              console.log(`Failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
+              return
+            }
+
+            // No blocking reviews
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: context.repo.owner,
-              repo:  context.repo.repo,
-              pull_number: pr.number,
+              repo: context.repo.repo,
+              pull_number: prNumber,
             })
-
-            const approvalCount = reviews.filter(r => r.state === 'APPROVED').length
-            const requestChanges = reviews.some(r => r.state === 'CHANGES_REQUESTED')
-
-            // Conditions for auto-merge:
-            // 1. All CI checks must be passing (status === 'success')
-            // 2. No code review requesting changes
-            // 3. At least one approval (if required by branch protection)
-
-            if (statuses.state !== 'success') {
-              console.log(`CI checks not passing yet (${statuses.state}). Will retry...`)
-              // Note: GitHub's auto-merge feature is limited, so this is informational only.
-              // In practice, PR auto-merge is best handled via a status check webhook.
+            if (reviews.some(r => r.state === 'CHANGES_REQUESTED')) {
+              console.log('Changes requested — skipping auto-merge')
               return
             }
 
-            if (requestChanges) {
-              console.log('Code review requested changes — skipping auto-merge')
-              return
+            console.log(`All checks pass — squash-merging PR #${prNumber}`)
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                merge_method: 'squash',
+              })
+              console.log(`PR #${prNumber} merged successfully`)
+            } catch (e) {
+              console.log(`Merge failed (PR may already be merged): ${e.message}`)
             }
-
-            console.log(`PR #${pr.number} is ready for auto-merge`)
-            console.log(`- CI status: ${statuses.state}`)
-            console.log(`- Approvals: ${approvalCount}`)
-            console.log(`- Changes requested: ${requestChanges}`)
-
-            // Note: Actual auto-merge via gh CLI requires the merge to succeed.
-            // For now, we just log the status. A real implementation would call:
-            // exec('gh pr merge --auto --squash ${pr.number}')
-            // but requires gh CLI availability.
