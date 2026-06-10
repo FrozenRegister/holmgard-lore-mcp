@@ -21,6 +21,7 @@ export interface LoreEntry {
 
 export type AppBindings = {
   LORE_DB?: KVNamespace
+  RPG_DB?: D1Database
   MCP_API_KEY?: string
   ADMIN_SECRET?: string
   MCP_OBJECT?: DurableObjectNamespace
@@ -30,6 +31,7 @@ export type AppBindings = {
 // only, matching what the DO actually receives at runtime (all bindings are present).
 export type DOEnv = {
   LORE_DB: KVNamespace
+  RPG_DB: D1Database
   ADMIN_SECRET: string
   MCP_API_KEY: string
   MCP_OBJECT: DurableObjectNamespace
