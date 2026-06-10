@@ -189,6 +189,43 @@ app.post('/mcp', async (c) => {
   }
 })
 
+// ── CSP violation reporting ──────────────────────────────────────────────────────
+app.post('/csp-report', async (c) => {
+  try {
+    const report = await c.req.json() as Record<string, unknown>
+    const timestamp = new Date().toISOString()
+
+    const violation = {
+      timestamp,
+      blockedUri: report['blocked-uri'] || 'unknown',
+      violatedDirective: report['violated-directive'] || 'unknown',
+      sourceFile: report['source-file'] || 'unknown',
+      lineNumber: report['line-number'],
+      columnNumber: report['column-number'],
+      originalPolicy: report['original-policy'] || 'unknown',
+      disposition: report['disposition'] || 'enforce'
+    }
+
+    console.log('[CSP Violation]', JSON.stringify(violation))
+
+    // Optionally store in KV for later review (TODO: implement dashboard)
+    const kv = getKV(c)
+    if (kv) {
+      try {
+        const key = `_csp_report:${timestamp}:${Math.random().toString(36).slice(2, 9)}`
+        await kv.put(key, JSON.stringify(violation))
+      } catch (e) {
+        console.error('[CSP Report] Failed to store in KV:', e)
+      }
+    }
+
+    return c.json({ status: 'reported' }, 200)
+  } catch (e) {
+    console.error('[CSP Report] Error processing report:', e)
+    return c.json({ error: 'Failed to process CSP report' }, 400)
+  }
+})
+
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.route('/admin', adminRoutes)
 

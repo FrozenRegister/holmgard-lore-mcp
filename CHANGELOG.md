@@ -4,6 +4,8 @@
 
 ### Added
 
+- **CSP violation reporting endpoint** — Implemented `POST /csp-report` Worker endpoint to collect Content-Security-Policy violations from browsers and Tauri apps. Violations are logged to console and stored in KV with timestamp, blocked-uri, violated-directive, and source-file information. Lays foundation for future CSP admin dashboard. (Issue #71)
+
 - **Claude Code Protocol: Pre-Commit Validation Required** — Updated CLAUDE.md to explicitly state that pre-commit validation via `./scripts/pre-commit-validate.ps1` is REQUIRED before creating any commit. Formalizes that Claude Code acts as a team member and validates locally before committing, not waiting for GitHub Actions. Protocol documented in project memory system for consistency across sessions.
 
 - **Pre-Commit Validation Scripts** — Added local validation to catch common issues without waiting for GitHub Actions. Includes PowerShell script for Windows developers (`scripts/pre-commit-validate.ps1`) and Bash hook for Unix users (`.git/hooks/pre-commit`). Validates markdown linting, CHANGELOG.md requirements, and test suite. Documented in CLAUDE.md with usage examples. (Issue #6)
