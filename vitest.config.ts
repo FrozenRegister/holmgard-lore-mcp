@@ -6,6 +6,7 @@ export default defineConfig({
     name: 'workers',
     testTimeout: 30000, // 30s global timeout for slow miniflare tests
     exclude: ['tests/live/**', '**/node_modules/**'],
+    globalSetup: ['./vitest.global-setup.ts'],
   },
   plugins: [
     cloudflareTest({
