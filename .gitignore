@@ -19,6 +19,7 @@ package-lock.json
 
 # env
 .env
+.env.live
 .env.ps1
 .env.production
 .dev.vars
