@@ -33,6 +33,8 @@
 
 ### Fixed
 
+- **Lint error in context-adapter.ts** — Removed unused `_status` parameter from the `json` stub in `makeSyntheticContext`. The declared return type (`status?: number`) still accepts the argument; the implementation simply ignores it. Clears the `@typescript-eslint/no-unused-vars` error that blocked CI on Phase 1 PR.
+
 - **TypeScript constraint error in HolmgardMCP** — `McpAgent<Env extends Cloudflare.Env>` requires non-optional bindings. Added `DOEnv` type with required bindings (`LORE_DB`, `ADMIN_SECRET`, `MCP_API_KEY`, `MCP_OBJECT`) for what the DO receives at runtime; switched `HolmgardMCP` to `McpAgent<DOEnv>`. Expanded `src/__tests__/env.d.ts` to declare `MCP_API_KEY` and `MCP_OBJECT` bindings now present in `wrangler.jsonc`. Fixes VS Code test explorer showing all 32 test files as failed.
 
 - **wrangler.jsonc & CLAUDE.md** — Documented KV namespace isolation to prevent production data corruption. Production (`id`: `67b47914eb094043ab777f4f34da8bfc`) and preview (`preview_id`: `d99c543e9ccf46dca6900cc28d93362a`) namespaces are intentionally separate so `wrangler dev` uses isolated preview storage while `wrangler deploy` uses production. Added deployment notes warning against allowing these IDs to be identical, which would cause local development to corrupt production data. (Issue #6)

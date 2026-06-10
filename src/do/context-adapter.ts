@@ -12,7 +12,7 @@ export function makeSyntheticContext(env: DOEnv | AppBindings): {
   return {
     env,
     req: { header: () => null },
-    json: (data: unknown, _status?: number) =>
+    json: (data: unknown) =>
       new Response(JSON.stringify(data), {
         headers: { 'Content-Type': 'application/json' },
       }),
