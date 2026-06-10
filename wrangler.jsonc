@@ -25,6 +25,14 @@
 			"new_sqlite_classes": ["HolmgardMCP"]
 		}
 	],
+	"d1_databases": [
+		{
+			"binding": "RPG_DB",
+			"database_name": "holmgard-rpg",
+			"database_id": "17fa8cb0-ddb3-480f-96dd-1acbea6330cd",
+			"preview_database_id": "a4e1cfb9-c279-440d-9079-376ca215d76a"
+		}
+	],
 	"observability": {
 		"logs": {
 			"enabled": true,
