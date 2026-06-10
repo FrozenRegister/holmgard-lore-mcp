@@ -12,7 +12,7 @@ pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
 pnpm run build                   # esbuild bundle → dist/index.js
 pnpm run deploy                  # wrangler deploy to Cloudflare
-wrangler dev                     # local dev server (uses wrangler.toml main)
+wrangler dev                     # local dev server (uses wrangler.jsonc main)
 ```
 
 To run a single test file or describe block:

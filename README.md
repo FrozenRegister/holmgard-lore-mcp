@@ -6,7 +6,7 @@ A Cloudflare Worker implementing a JSON-RPC 2.0 / MCP interface for narrative wo
 
 This project exposes:
 
-- `/mcp` — JSON-RPC 2.0 endpoint with **59 MCP tools** for narrative management
+- `/mcp` — JSON-RPC 2.0 endpoint with **89 MCP tools** for narrative management
 - `/admin/set-lore` and `/admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET`
 - Cloudflare KV storage with **index-on-write optimization** and fallback in-memory storage
 - Features: versioned entries, event logs, choice tracking, faction standing, state machines, sensory profiles, and multi-thread timeline management
@@ -106,7 +106,7 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 - `list_topics` — returns all lore topic keys
 - `get_lore` — retrieves a single lore entry by `key` or `query`
 
-## 59 MCP Tools
+## 89 MCP Tools
 
 ### Core Lore Management
 
@@ -337,7 +337,7 @@ curl -X POST http://127.0.0.1:8787/mcp \
           }
         }
       }
-      // ... 58 more tools
+      // ... 88 more tools
     ]
   }
 }

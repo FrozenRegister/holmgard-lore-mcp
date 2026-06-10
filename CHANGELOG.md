@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs
+
+- **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
+
 ### Added
 
 - **Phase 4: `agent_manage` tool (22 actions, Cloudflare Workers AI)** — Adds NPC AI agent management backed by `env.AI` (Cloudflare Workers AI). Each agent is bound 1:1 to a character and emits plain-text intent when invoked — the game master reads the response and decides what to do. Actions: lifecycle (`create`, `get`, `list`, `update`, `delete`, `resume`), agent state (`health`, `budget`), prompt slices (`set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `broadcast`, `preview_prompt`), mind state (`add_secret`, `list_secrets`, `remove_secret`, `add_journal`, `get_journal`), and invocation (`invoke`, `replay`). Storage: 5 D1 tables (`agents`, `agent_prompt_slices`, `agent_secrets`, `agent_journal`, `agent_calls`). Circuit breaker opens after 3 consecutive failures; reset with `resume`. Token budget cap enforced per-agent. AI binding wired in `wrangler.jsonc`, `src/types.ts`, and `src/__tests__/env.d.ts`. D1 migration `schema/migrations/0002_agent_cloudflare_provider.sql` updates the provider constraint from openai/openrouter-only to accept any string (default `'cloudflare'`). Tool count: 88 → 89. 27 new vitest tests in `src/__tests__/agent-manage.test.ts` cover full lifecycle, prompt-slice CRUD, journal, secrets, invoke with miniflare AI mock, circuit breaker open/close, budget exhaustion, and replay.
