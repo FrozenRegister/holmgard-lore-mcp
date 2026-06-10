@@ -35,6 +35,8 @@
 
 ### Fixed
 
+- **TypeScript: `inject('d1Migrations')` type error** — Added `src/__tests__/vitest.d.ts` augmenting vitest's `ProvidedContext` interface with `d1Migrations: D1Migration[]`, resolving `TS2345: Argument of type '"d1Migrations"' is not assignable to parameter of type 'never'` in the CI type-check job.
+
 - **Lint error in context-adapter.ts** — Removed unused `_status` parameter from the `json` stub in `makeSyntheticContext`. The declared return type (`status?: number`) still accepts the argument; the implementation simply ignores it. Clears the `@typescript-eslint/no-unused-vars` error that blocked CI on Phase 1 PR.
 
 - **TypeScript constraint error in HolmgardMCP** — `McpAgent<Env extends Cloudflare.Env>` requires non-optional bindings. Added `DOEnv` type with required bindings (`LORE_DB`, `ADMIN_SECRET`, `MCP_API_KEY`, `MCP_OBJECT`) for what the DO receives at runtime; switched `HolmgardMCP` to `McpAgent<DOEnv>`. Expanded `src/__tests__/env.d.ts` to declare `MCP_API_KEY` and `MCP_OBJECT` bindings now present in `wrangler.jsonc`. Fixes VS Code test explorer showing all 32 test files as failed.
