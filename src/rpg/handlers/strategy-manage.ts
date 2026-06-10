@@ -64,7 +64,7 @@ export async function handleStrategyManage(env: AppBindings, args: Record<string
       if (!nation) return err(`Nation not found: ${a.nationId}`)
       const base = { ...(nation as Record<string, unknown>), resources: JSON.parse((nation as any).resources ?? '{}'), relations: JSON.parse((nation as any).relations ?? '{}') }
       if (a.viewType === 'public') {
-        const { private_memory: _, ...publicView } = base as Record<string, unknown>
+        const publicView = Object.fromEntries(Object.entries(base as Record<string, unknown>).filter(([k]) => k !== 'private_memory'))
         return ok({ success: true, actionType: 'get_state', viewType: 'public', nation: publicView })
       }
       const { results: claims } = await db.prepare('SELECT * FROM territorial_claims WHERE nation_id = ?').bind(a.nationId).all()

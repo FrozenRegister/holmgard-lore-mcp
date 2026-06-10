@@ -47,7 +47,6 @@ export async function handleAuraManage(env: AppBindings, args: Record<string, un
   if (isGuidingError(match)) return formatGuidingError(match)
   const db = env.RPG_DB!
   const now = Date.now()
-  const nowIso = new Date().toISOString()
 
   switch (match.matched) {
     case 'create': {

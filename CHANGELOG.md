@@ -37,6 +37,9 @@
 
 ### Fixed
 
+- **Lint: unused variable in aura-manage.ts** — Removed unused `nowIso` variable (only the numeric `now` from `Date.now()` is used in D1 timestamp bindings).
+- **Lint: destructure-discard in strategy-manage.ts** — Replaced `const { private_memory: _, ...rest }` pattern with `Object.fromEntries` filter to omit `private_memory` from the public view without creating an unused binding.
+
 - **TypeScript: `inject('d1Migrations')` type error** — Added `src/__tests__/vitest.d.ts` augmenting vitest's `ProvidedContext` interface with `d1Migrations: D1Migration[]`, resolving `TS2345: Argument of type '"d1Migrations"' is not assignable to parameter of type 'never'` in the CI type-check job.
 
 - **Lint error in context-adapter.ts** — Removed unused `_status` parameter from the `json` stub in `makeSyntheticContext`. The declared return type (`status?: number`) still accepts the argument; the implementation simply ignores it. Clears the `@typescript-eslint/no-unused-vars` error that blocked CI on Phase 1 PR.
