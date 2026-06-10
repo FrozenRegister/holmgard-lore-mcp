@@ -14,6 +14,7 @@
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "clean": "rimraf dist",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
     "fix:md": "markdownlint-cli2 --fix ."

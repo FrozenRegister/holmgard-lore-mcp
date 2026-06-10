@@ -1,0 +1,6 @@
+{
+  "vitest.projects": [
+    "vitest.config.ts",
+    "vitest.live.config.ts"
+  ]
+}
