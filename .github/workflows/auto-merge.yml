@@ -19,49 +19,30 @@ jobs:
           script: |
             const pr = context.payload.pull_request
 
-            // Wait a moment for CI checks to update
-            await new Promise(r => setTimeout(r, 2000))
-
-            // Check if all required checks are passing
-            const statuses = await github.rest.repos.getCombinedStatusForRef({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              ref: pr.head.sha,
-            })
-
-            // Also check PR review status
+            // Check for CHANGES_REQUESTED reviews before enabling auto-merge
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: context.repo.owner,
               repo:  context.repo.repo,
               pull_number: pr.number,
             })
 
-            const approvalCount = reviews.filter(r => r.state === 'APPROVED').length
             const requestChanges = reviews.some(r => r.state === 'CHANGES_REQUESTED')
-
-            // Conditions for auto-merge:
-            // 1. All CI checks must be passing (status === 'success')
-            // 2. No code review requesting changes
-            // 3. At least one approval (if required by branch protection)
-
-            if (statuses.state !== 'success') {
-              console.log(`CI checks not passing yet (${statuses.state}). Will retry...`)
-              // Note: GitHub's auto-merge feature is limited, so this is informational only.
-              // In practice, PR auto-merge is best handled via a status check webhook.
-              return
-            }
-
             if (requestChanges) {
-              console.log('Code review requested changes — skipping auto-merge')
+              core.setFailed('Code review requested changes — cannot auto-merge')
               return
             }
 
-            console.log(`PR #${pr.number} is ready for auto-merge`)
-            console.log(`- CI status: ${statuses.state}`)
-            console.log(`- Approvals: ${approvalCount}`)
-            console.log(`- Changes requested: ${requestChanges}`)
+            // Enable GitHub native auto-merge (squash). GitHub will wait for all
+            // required status checks to pass before merging automatically.
+            await github.graphql(`
+              mutation EnableAutoMerge($pullRequestId: ID!) {
+                enablePullRequestAutoMerge(input: {
+                  pullRequestId: $pullRequestId,
+                  mergeMethod: SQUASH
+                }) {
+                  pullRequest { number autoMergeRequest { mergeMethod } }
+                }
+              }
+            `, { pullRequestId: pr.node_id })
 
-            // Note: Actual auto-merge via gh CLI requires the merge to succeed.
-            // For now, we just log the status. A real implementation would call:
-            // exec('gh pr merge --auto --squash ${pr.number}')
-            // but requires gh CLI availability.
+            console.log(`Auto-merge enabled on PR #${pr.number} (squash) — will merge once all checks pass`)
