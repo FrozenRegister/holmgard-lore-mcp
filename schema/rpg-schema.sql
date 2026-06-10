@@ -727,17 +727,14 @@ CREATE INDEX IF NOT EXISTS idx_scenes_world_time ON scenes(world_id, created_at 
 CREATE TABLE IF NOT EXISTS agents (
   id                   TEXT PRIMARY KEY,
   character_id         TEXT NOT NULL UNIQUE REFERENCES characters(id) ON DELETE CASCADE,
-  provider             TEXT NOT NULL CHECK (provider IN ('openai', 'openrouter')),
-  model                TEXT NOT NULL,
+  provider             TEXT NOT NULL DEFAULT 'cloudflare',
+  model                TEXT NOT NULL DEFAULT '@cf/meta/llama-3.1-8b-instruct',
   status               TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'retired')),
   auto_on_turn         INTEGER NOT NULL DEFAULT 0,
-  auto_on_legendary    INTEGER NOT NULL DEFAULT 0,
-  temperature          REAL DEFAULT 0.7,
-  max_tokens           INTEGER DEFAULT 800,
+  temperature          REAL NOT NULL DEFAULT 0.7,
+  max_tokens           INTEGER NOT NULL DEFAULT 512,
   budget_tokens        INTEGER,
-  competency_override  TEXT,
   tokens_used          INTEGER NOT NULL DEFAULT 0,
-  timeout_ms           INTEGER NOT NULL DEFAULT 25000,
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
   circuit_state        TEXT NOT NULL DEFAULT 'closed' CHECK (circuit_state IN ('closed', 'open', 'half_open')),
   created_at           TEXT NOT NULL,
@@ -764,7 +761,7 @@ CREATE TABLE IF NOT EXISTS agent_secrets (
   id         TEXT PRIMARY KEY,
   agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   content    TEXT NOT NULL,
-  importance TEXT CHECK (importance IN ('low', 'medium', 'high', 'critical')),
+  importance TEXT NOT NULL DEFAULT 'medium' CHECK (importance IN ('low', 'medium', 'high', 'critical')),
   created_at TEXT NOT NULL
 );
 
@@ -793,9 +790,7 @@ CREATE TABLE IF NOT EXISTS agent_calls (
   prompt_tokens     INTEGER,
   completion_tokens INTEGER,
   duration_ms       INTEGER,
-  status            TEXT NOT NULL CHECK (status IN ('ok', 'timeout', 'rate_limited', 'error', 'circuit_open', 'budget_exhausted', 'incapable', 'paused', 'skipped')),
-  reasoning_effort  TEXT,
-  competency_source TEXT,
+  status            TEXT NOT NULL,
   error_message     TEXT,
   created_at        TEXT NOT NULL
 );

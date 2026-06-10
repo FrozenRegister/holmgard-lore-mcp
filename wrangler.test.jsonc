@@ -42,10 +42,8 @@
 		"traces": {
 			"enabled": true
 		}
-	},
-	// Workers AI binding — used by agent_manage invoke/replay/preview_prompt actions.
-	// Inference is billed at $0.011 per 1,000 Neurons on pay-as-you-go.
-	"ai": {
-		"binding": "AI"
 	}
+	// AI binding is configured in vitest.config.ts miniflare options instead,
+	// which uses miniflare's local mock and avoids the remote proxy session
+	// that wrangler would attempt when reading the "ai" block here.
 }
