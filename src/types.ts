@@ -25,3 +25,12 @@ export type AppBindings = {
   ADMIN_SECRET?: string
   MCP_OBJECT?: DurableObjectNamespace
 }
+
+// Satisfies the McpAgent<Env extends Cloudflare.Env> constraint — required bindings
+// only, matching what the DO actually receives at runtime (all bindings are present).
+export type DOEnv = {
+  LORE_DB: KVNamespace
+  ADMIN_SECRET: string
+  MCP_API_KEY: string
+  MCP_OBJECT: DurableObjectNamespace
+}

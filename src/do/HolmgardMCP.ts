@@ -5,12 +5,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import type { AppBindings } from '../types'
+import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
 import { toolRegistry } from '../tools/registry'
 import { makeSyntheticContext } from './context-adapter'
 
-export class HolmgardMCP extends McpAgent<AppBindings> {
+export class HolmgardMCP extends McpAgent<DOEnv> {
   server = new Server(
     { name: 'holmgard-lore-mcp', version: '0.3.0' },
     { capabilities: { tools: {} } }
