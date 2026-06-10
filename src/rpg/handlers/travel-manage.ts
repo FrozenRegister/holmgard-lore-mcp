@@ -1,0 +1,115 @@
+// Ported from Mnehmos v1.0.3 (2feba24bcd45b4f7024caa5621f3476151a6bc3b)
+// Source: src/server/consolidated/travel-manage.ts
+// room_searches table does not exist; loot results logged to event_logs.
+
+import { z } from 'zod'
+import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+import { ok, err, type McpResponse } from '../utils/response'
+import type { AppBindings } from '../../types'
+
+const ACTIONS = ['travel', 'loot', 'rest'] as const
+type TravelAction = typeof ACTIONS[number]
+const ALIASES: Record<string, TravelAction> = {
+  move: 'travel', go: 'travel', journey: 'travel', traverse: 'travel',
+  search: 'loot', forage: 'loot', find: 'loot', gather: 'loot',
+  camp: 'rest', sleep: 'rest', recover: 'rest', short_rest: 'rest', long_rest: 'rest',
+}
+
+const InputSchema = z.object({
+  action: z.string(),
+  partyId: z.string().optional(),
+  fromRoomId: z.string().optional(),
+  toRoomId: z.string().optional(),
+  direction: z.string().optional(),
+  restType: z.enum(['short', 'long']).optional().default('short'),
+  roomId: z.string().optional(),
+  characterIds: z.array(z.string()).optional().default([]),
+})
+
+const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
+  { name: 'Gold Coins', rarity: 'common', weight: 40 },
+  { name: 'Health Potion', rarity: 'common', weight: 25 },
+  { name: 'Rope', rarity: 'common', weight: 15 },
+  { name: 'Torch', rarity: 'common', weight: 15 },
+  { name: 'Dagger', rarity: 'uncommon', weight: 10 },
+  { name: 'Magic Dust', rarity: 'rare', weight: 4 },
+  { name: 'Gemstone', rarity: 'rare', weight: 3 },
+  { name: 'Artifact Shard', rarity: 'epic', weight: 1 },
+]
+
+function rollLoot(count: number): string[] {
+  const totalWeight = LOOT_POOL.reduce((s, t) => s + t.weight, 0)
+  const found: string[] = []
+  for (let i = 0; i < count; i++) {
+    let roll = Math.random() * totalWeight
+    for (const entry of LOOT_POOL) {
+      roll -= entry.weight
+      if (roll <= 0) { found.push(entry.name); break }
+    }
+  }
+  return found
+}
+
+export async function handleTravelManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+  const parsed = InputSchema.safeParse(args)
+  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  const a = parsed.data
+  const match = matchAction(a.action, ACTIONS, ALIASES)
+  if (isGuidingError(match)) return formatGuidingError(match)
+  const db = env.RPG_DB!
+  const now = new Date().toISOString()
+
+  switch (match.matched) {
+    case 'travel': {
+      let targetRoom: Record<string, unknown> | null = null
+      if (a.toRoomId) {
+        targetRoom = await db.prepare('SELECT id, name, base_description, biome_context FROM room_nodes WHERE id = ?').bind(a.toRoomId).first() as Record<string, unknown> | null
+        if (!targetRoom) return err(`Destination room not found: ${a.toRoomId}`)
+      } else if (a.fromRoomId && a.direction) {
+        const fromRoom = await db.prepare('SELECT exits FROM room_nodes WHERE id = ?').bind(a.fromRoomId).first() as { exits: string } | null
+        if (!fromRoom) return err(`Origin room not found: ${a.fromRoomId}`)
+        const exits = JSON.parse(fromRoom.exits ?? '[]') as Array<{ direction: string; targetRoomId: string }>
+        const exit = exits.find(e => e.direction.toLowerCase() === a.direction!.toLowerCase())
+        if (!exit) return err(`No exit in direction "${a.direction}" from room ${a.fromRoomId}`)
+        targetRoom = await db.prepare('SELECT id, name, base_description, biome_context FROM room_nodes WHERE id = ?').bind(exit.targetRoomId).first() as Record<string, unknown> | null
+        if (!targetRoom) return err('Target room not found')
+      } else {
+        return err('"toRoomId" or ("fromRoomId" + "direction") is required')
+      }
+      await db.prepare('UPDATE room_nodes SET visited_count = visited_count + 1, last_visited_at = ?, updated_at = ? WHERE id = ?').bind(now, now, targetRoom.id).run()
+      const hasEncounter = Math.random() < 0.15
+      return ok({
+        success: true, actionType: 'travel',
+        arrived: true, roomId: targetRoom.id, roomName: targetRoom.name,
+        description: targetRoom.base_description, biome: targetRoom.biome_context,
+        randomEncounter: hasEncounter,
+        encounterHint: hasEncounter ? 'Something stirs in the shadows...' : null,
+      })
+    }
+    case 'loot': {
+      if (!a.roomId) return err('"roomId" is required')
+      const room = await db.prepare('SELECT id, name FROM room_nodes WHERE id = ?').bind(a.roomId).first()
+      if (!room) return err(`Room not found: ${a.roomId}`)
+      const count = Math.floor(Math.random() * 3) + 1
+      const found = rollLoot(count)
+      await db.prepare('INSERT INTO event_logs (type, payload, timestamp) VALUES (?, ?, ?)').bind('room_search', JSON.stringify({ roomId: a.roomId, partyId: a.partyId, itemsFound: found }), now).run()
+      return ok({ success: true, actionType: 'loot', roomId: a.roomId, itemsFound: found, count: found.length })
+    }
+    case 'rest': {
+      if (a.characterIds.length === 0) return err('"characterIds" is required and must not be empty')
+      const isLong = a.restType === 'long'
+      const chars = await Promise.all(a.characterIds.map(id =>
+        db.prepare('SELECT id, hp, max_hp, level FROM characters WHERE id = ?').bind(id).first() as Promise<{ id: string; hp: number; max_hp: number; level: number } | null>
+      ))
+      const results: Array<{ id: string; hpRestored: number; newHp: number }> = []
+      for (const char of chars) {
+        if (!char) continue
+        const restore = isLong ? char.max_hp - char.hp : Math.min(Math.floor(char.level / 2 + 1) * 4, char.max_hp - char.hp)
+        const newHp = char.hp + restore
+        await db.prepare('UPDATE characters SET hp = ?, updated_at = ? WHERE id = ?').bind(newHp, now, char.id).run()
+        results.push({ id: char.id, hpRestored: restore, newHp })
+      }
+      return ok({ success: true, actionType: 'rest', restType: a.restType, characters: results, hoursElapsed: isLong ? 8 : 1 })
+    }
+  }
+}
