@@ -1,4 +1,6 @@
 // src/tools/definitions.ts
+import { rpgToolDefinitions } from '../rpg/definitions'
+import { rpgMetaToolDefinitions } from '../rpg/meta-definitions'
 
 export const toolDefinitions: any[] = [
   {
@@ -845,5 +847,8 @@ export const toolDefinitions: any[] = [
       required: ['entity_key', 'new_location_key'], additionalProperties: false
     },
     examples: [{ arguments: { entity_key: 'character:scout', new_location_key: 'location:tavern' } }]
-  }
+  },
+  // RPG engine tools (Mnehmos port + meta)
+  ...rpgToolDefinitions,
+  ...rpgMetaToolDefinitions,
 ]

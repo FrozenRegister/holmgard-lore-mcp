@@ -12,9 +12,14 @@ import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
+import { setToolIndex, setSchemaIndex } from './rpg/registry'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
+
+// Initialize meta-tool indexes once at module load time
+setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
+setSchemaIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })))
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
