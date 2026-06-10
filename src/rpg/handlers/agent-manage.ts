@@ -384,7 +384,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
         'INSERT INTO agent_calls (id, agent_id, request_id, provider, model, messages_json, raw_response, prompt_tokens, completion_tokens, duration_ms, status, error_message, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
       ).bind(callId, replayAgentId, `replay:${a.callId}`, storedCall.provider as string, agent.model as string, JSON.stringify(messages), rawResponse, promptTokens, completionTokens, durationMs, callStatus, errorMessage, now).run()
 
-      if (callStatus !== 'ok') return ok({ success: false, actionType: 'replay', status: callStatus, callId, reason: errorMessage })
+      if (callStatus !== 'ok') return ok({ success: false, actionType: 'replay', status: callStatus, callId, originalCallId: a.callId, reason: errorMessage })
       return ok({ success: true, actionType: 'replay', status: 'ok', originalCallId: a.callId, callId, response: rawResponse, promptTokens, completionTokens, durationMs })
     }
   }

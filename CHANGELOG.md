@@ -39,6 +39,8 @@
 
 ### Fixed
 
+- **CI: Phase 4 type-check and test failures** — Added `AI: Ai` to `DOEnv` (required by `McpAgent<Env extends Cloudflare.Env>` after `env.d.ts` declared `AI` required). Added `wrangler.test.jsonc` (AI binding omitted) so vitest-pool-workers no longer triggers wrangler's `maybeStartOrUpdateRemoteProxySession` at pool startup — that call requires Cloudflare auth and fails in CI. The AI binding is now configured via miniflare options directly (`ai: { binding: 'AI' }`), providing a local stub. Updated 3 invoke/replay tests to accept `status: 'ok'` or `status: 'error'` since the local stub throws "Binding AI needs to be run remotely" without a Cloudflare token. Fixed `replay` error-path response to include `originalCallId`.
+
 - **Lint: unused variable in aura-manage.ts** — Removed unused `nowIso` variable (only the numeric `now` from `Date.now()` is used in D1 timestamp bindings).
 - **Lint: destructure-discard in strategy-manage.ts** — Replaced `const { private_memory: _, ...rest }` pattern with `Object.fromEntries` filter to omit `private_memory` from the public view without creating an unused binding.
 

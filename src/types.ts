@@ -36,4 +36,5 @@ export type DOEnv = {
   ADMIN_SECRET: string
   MCP_API_KEY: string
   MCP_OBJECT: DurableObjectNamespace
+  AI: Ai
 }
