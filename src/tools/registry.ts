@@ -6,6 +6,7 @@ import { handle_resolve_interaction, handle_analyze_utility, handle_map_integrat
 import { handle_thread_tick, handle_get_relationship, handle_get_faction_standing, handle_get_entity_knowledge, handle_get_location_occupants, handle_get_reachable_locations, handle_sense_environment, handle_get_thread_comparison, handle_check_convergence } from './world'
 import { handle_activate_scene, handle_present_choices, handle_commit_choice, handle_get_choice_history, handle_scene_brief, handle_render_pov } from './scene'
 import { handle_append_event, handle_get_event_log, handle_recent_changes, handle_tag_topic, handle_find_by_tag, handle_bookmark_state, handle_world_diff, handle_plant_setup, handle_pay_off_setup, handle_list_unpaid_setups, handle_set_goal, handle_check_continuity } from './meta'
+import { rpgToolRegistry } from '../rpg/registry'
 
 export const toolRegistry: Record<string, ToolHandler> = {
   // system
@@ -71,4 +72,6 @@ export const toolRegistry: Record<string, ToolHandler> = {
   list_unpaid_setups: handle_list_unpaid_setups,
   set_goal: handle_set_goal,
   check_continuity: handle_check_continuity,
+  // RPG engine tools (Mnehmos port)
+  ...rpgToolRegistry,
 }

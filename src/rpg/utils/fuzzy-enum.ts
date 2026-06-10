@@ -1,0 +1,121 @@
+// Ported from Mnehmos v1.0.3 (2feba24bcd45b4f7024caa5621f3476151a6bc3b)
+// Source: src/utils/fuzzy-enum.ts — verbatim, JS import extensions removed
+
+import { z } from 'zod'
+
+export interface MatchResult<T extends string> {
+  matched: T
+  exact: boolean
+  similarity: number
+}
+
+export interface GuidingError {
+  error: 'invalid_action' | 'invalid_identifier' | 'validation_error'
+  input: string
+  suggestions: Array<{ value: string; similarity: number }>
+  message: string
+}
+
+export type MatchOutcome<T extends string> = MatchResult<T> | GuidingError
+
+export function isGuidingError(result: unknown): result is GuidingError {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'error' in result &&
+    typeof (result as GuidingError).error === 'string' &&
+    'suggestions' in result &&
+    Array.isArray((result as GuidingError).suggestions)
+  )
+}
+
+export function levenshtein(a: string, b: string): number {
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+  const matrix: number[][] = []
+  for (let i = 0; i <= a.length; i++) matrix[i] = [i]
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      )
+    }
+  }
+  return matrix[a.length][b.length]
+}
+
+export function similarity(a: string, b: string): number {
+  const distance = levenshtein(a.toLowerCase(), b.toLowerCase())
+  const maxLength = Math.max(a.length, b.length)
+  if (maxLength === 0) return 1
+  return 1 - distance / maxLength
+}
+
+export function normalizeInput(input: string): string {
+  return input.toLowerCase().trim().replace(/[-\s]+/g, '_')
+}
+
+export function matchAction<T extends string>(
+  input: string,
+  validActions: readonly T[],
+  aliases?: Record<string, T>,
+  threshold = 0.6
+): MatchOutcome<T> {
+  const normalized = normalizeInput(input)
+  const exactMatch = validActions.find(a => a.toLowerCase() === normalized)
+  if (exactMatch) return { matched: exactMatch, exact: true, similarity: 1.0 }
+  if (aliases) {
+    const aliasMatch = aliases[normalized]
+    if (aliasMatch && validActions.includes(aliasMatch)) return { matched: aliasMatch, exact: false, similarity: 0.95 }
+  }
+  const scored = validActions.map(action => ({ action, similarity: similarity(normalized, action) }))
+  scored.sort((a, b) => b.similarity - a.similarity)
+  const best = scored[0]
+  if (best.similarity >= threshold) return { matched: best.action, exact: false, similarity: best.similarity }
+  const topSuggestions = scored.slice(0, 3).map(s => ({ value: s.action, similarity: Math.round(s.similarity * 100) }))
+  return {
+    error: 'invalid_action',
+    input,
+    suggestions: topSuggestions,
+    message: `Unknown action "${input}". Did you mean: ${topSuggestions.map(s => `"${s.value}" (${s.similarity}%)`).join(', ')}?`
+  }
+}
+
+export function formatGuidingError(error: GuidingError): { content: Array<{ type: 'text'; text: string }> } {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify({ error: error.error, message: error.message, input: error.input, suggestions: error.suggestions, hint: 'Try one of the suggested values above' }, null, 2) }]
+  }
+}
+
+export const CRUD_ALIASES: Record<string, 'create' | 'get' | 'list' | 'update' | 'delete'> = {
+  new: 'create', add: 'create', make: 'create', insert: 'create',
+  fetch: 'get', read: 'get', find: 'get', show: 'get', retrieve: 'get', load: 'get',
+  all: 'list', query: 'list', browse: 'list',
+  modify: 'update', edit: 'update', patch: 'update', change: 'update', set: 'update',
+  remove: 'delete', destroy: 'delete', erase: 'delete', drop: 'delete',
+}
+
+export function extendAliases<T extends string>(base: Record<string, T>, extensions: Record<string, T>): Record<string, T> {
+  return { ...base, ...extensions }
+}
+
+export function createFuzzyActionSchema<T extends string>(
+  validActions: readonly T[],
+  aliases?: Record<string, T>,
+  threshold = 0.6
+): z.ZodEffects<z.ZodString, T, string> {
+  return z.string().transform((input, ctx) => {
+    const result = matchAction(input, validActions, aliases, threshold)
+    if (isGuidingError(result)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message })
+      return z.NEVER
+    }
+    return result.matched
+  })
+}
+
+export const FlexibleIdentifierSchema = z.string().min(1, 'Identifier cannot be empty').describe('UUID or entity name')
