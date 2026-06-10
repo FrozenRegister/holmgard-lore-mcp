@@ -35,6 +35,7 @@ import { handlePerceptionManage } from './handlers/perception-manage'
 import { handleSceneManage } from './handlers/scene-manage'
 import { handleSearchTools, setToolIndex } from './handlers/search-tools'
 import { handleLoadToolSchema, setSchemaIndex } from './handlers/load-tool-schema'
+import { handleAgentManage } from './handlers/agent-manage'
 
 export { setToolIndex, setSchemaIndex }
 
@@ -77,4 +78,5 @@ export const rpgToolRegistry: Record<string, ToolHandler> = {
   scene_manage:         wrap(handleSceneManage),
   search_tools:         wrap(handleSearchTools),
   load_tool_schema:     wrap(handleLoadToolSchema),
+  agent_manage:         wrap(handleAgentManage),
 }

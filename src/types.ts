@@ -25,6 +25,7 @@ export type AppBindings = {
   MCP_API_KEY?: string
   ADMIN_SECRET?: string
   MCP_OBJECT?: DurableObjectNamespace
+  AI?: Ai
 }
 
 // Satisfies the McpAgent<Env extends Cloudflare.Env> constraint — required bindings

@@ -42,10 +42,10 @@
 		"traces": {
 			"enabled": true
 		}
+	},
+	// Workers AI binding — used by agent_manage invoke/replay/preview_prompt actions.
+	// Inference is billed at $0.011 per 1,000 Neurons on pay-as-you-go.
+	"ai": {
+		"binding": "AI"
 	}
-	// Uncomment below only if your Worker code calls env.AI.run()
-	// Note: Workers AI inference calls are billable ($0.011 per 1,000 Neurons)
-	// "ai": {
-	//   "binding": "AI"
-	// }
 }
