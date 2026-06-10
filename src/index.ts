@@ -11,6 +11,10 @@ import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
+import { HolmgardMCP } from './do/HolmgardMCP'
+
+// Export the DO class so wrangler can bind it
+export { HolmgardMCP }
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -18,6 +22,10 @@ const getIsAuthenticated = (c: any): boolean => {
   const key = c.env.MCP_API_KEY
   return !key || c.req.header('X-Api-Key') === key
 }
+
+// Pre-built Streamable HTTP handler — routes spec-compliant MCP SDK clients to
+// the HolmgardMCP DO via the agents SDK session management.
+const mcpServeHandler = HolmgardMCP.serve('/mcp', { binding: 'MCP_OBJECT', transport: 'streamable-http' })
 
 const app = new Hono<{ Bindings: AppBindings }>()
 
@@ -29,6 +37,26 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret', 'X-Api-Key'],
 }) as any)
 
+// ── Streamable HTTP middleware (spec 2025-03-26) ──────────────────────────────
+// Intercepts requests with Streamable HTTP transport markers before route
+// handlers run. Legacy raw JSON-RPC requests fall through via next().
+app.use('/mcp', async (c, next) => {
+  const sessionId = c.req.header('Mcp-Session-Id')
+  const acceptHeader = c.req.header('Accept') ?? ''
+  const isStreamableHttp =
+    !!sessionId ||
+    (acceptHeader.includes('application/json') && acceptHeader.includes('text/event-stream'))
+
+  if (!isStreamableHttp || !c.env.MCP_OBJECT) return next()
+
+  const apiKey = c.env.MCP_API_KEY
+  if (apiKey && c.req.header('X-Api-Key') !== apiKey) {
+    return c.json({ error: 'Unauthorized: valid X-Api-Key header required' }, 401)
+  }
+
+  return mcpServeHandler.fetch(c.req.raw, c.env as any, c.executionCtx as any)
+})
+
 app.get('/mcp', (c) => {
   c.header('Content-Type', 'application/json')
   c.header('Cache-Control', 'no-store')
@@ -36,6 +64,9 @@ app.get('/mcp', (c) => {
 })
 
 app.post('/mcp', async (c) => {
+  // ── Legacy hand-rolled JSON-RPC handler ───────────────────────────────────
+  // Streamable HTTP requests are handled by the app.use('/mcp', ...) middleware
+  // above and never reach this handler.
   let body: unknown
   try {
     body = await c.req.json()

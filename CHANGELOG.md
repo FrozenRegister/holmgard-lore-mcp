@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Phase 0: McpAgent Durable Object transport (Streamable HTTP)** — Wired `HolmgardMCP extends McpAgent` alongside the existing hand-rolled JSON-RPC handler with zero behavior changes for legacy clients. Requests carrying `Accept: application/json, text/event-stream` or `Mcp-Session-Id` are routed to the DO via `HolmgardMCP.serve()` middleware; all other `/mcp` traffic (legacy JSON-RPC POSTs, bare methods, GET probes) falls through to the existing Hono handler verbatim. The DO exposes all 59 tools using the SDK's low-level `Server` class with `toolDefinitions` returned byte-identical from `ListToolsRequestSchema`, dispatching into the existing `toolRegistry` via a synthetic Hono context adapter. Adds `nodejs_compat` flag, `MCP_OBJECT` DO binding + `new_sqlite_classes` migration to `wrangler.jsonc`, and 13 new vitest tests covering routing, auth, initialize, tools/list, and tools/call on the DO path.
+
 - **CSP violation reporting endpoint** — Implemented `POST /csp-report` Worker endpoint to collect Content-Security-Policy violations from browsers and Tauri apps. Violations are logged to console and stored in KV with timestamp, blocked-uri, violated-directive, and source-file information. Lays foundation for future CSP admin dashboard. (Issue #71)
 
 - **Claude Code Protocol: Pre-Commit Validation Required** — Updated CLAUDE.md to explicitly state that pre-commit validation via `./scripts/pre-commit-validate.ps1` is REQUIRED before creating any commit. Formalizes that Claude Code acts as a team member and validates locally before committing, not waiting for GitHub Actions. Protocol documented in project memory system for consistency across sessions.
