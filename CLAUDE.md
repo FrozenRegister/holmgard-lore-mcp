@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-pnpm test                        # run all tests (vitest, Workers runtime)
-pnpm test -- --reporter=verbose  # test output with per-test names
+pnpm test                        # run Workers runtime tests (vitest --project workers)
+pnpm test:live                   # run live production smoke tests (vitest --project live)
+pnpm test -- --reporter=verbose  # Workers test output with per-test names
 pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
 pnpm run build                   # esbuild bundle → dist/index.js
@@ -18,6 +19,12 @@ To run a single test file or describe block:
 
 ```bash
 pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
+```
+
+Live smoke tests require `MCP_API_KEY` set in the environment. `ADMIN_SECRET` is optional (admin tests skip if unset).
+
+```powershell
+$env:MCP_API_KEY = "your-key"; pnpm test:live
 ```
 
 **See [Testing and Linting Guide](./docs/testing-and-linting-guide.md) for details on test status, known linting issues, and how to fix them.**
@@ -161,8 +168,8 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
 
-1. **Vitest** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime
-2. **Pester integration tests** (`tests/run-all.ps1`) — end-to-end remote tests against the deployed worker
+1. **Vitest workers** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime via miniflare
+2. **Vitest live** (`tests/live/*.test.ts`) — end-to-end smoke tests against the deployed production worker
 
 Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.
 

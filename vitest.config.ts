@@ -3,7 +3,9 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    name: 'workers',
     testTimeout: 30000, // 30s global timeout for slow miniflare tests
+    exclude: ['tests/live/**', '**/node_modules/**'],
   },
   plugins: [
     cloudflareTest({
