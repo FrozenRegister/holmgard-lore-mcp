@@ -49,7 +49,20 @@ try {
   }
   Write-Success "CHANGELOG.md check passed"
 
-  # 3. Run tests (optional with -SkipTests flag)
+  # 3. Check docs requirement (mirrors check-docs CI gate)
+  Write-CheckHeader "Checking docs requirement"
+  $stagedFiles = & git diff --cached --name-only
+  $hasSrcChanges = $stagedFiles | Where-Object { $_ -match '^src/' }
+  $hasDocsFile   = $stagedFiles | Where-Object { $_ -match '^docs/' }
+
+  if ($hasSrcChanges -and -not $hasDocsFile) {
+    Write-Host "  ⚠  No docs/ file staged." -ForegroundColor Yellow
+    Write-Host "     Your PR body must include a '## Documentation' section, or" -ForegroundColor Yellow
+    Write-Host "     add/update a file under docs/ — otherwise check-docs CI will fail." -ForegroundColor Yellow
+  }
+  Write-Success "Docs check passed"
+
+  # 4. Run tests (optional with -SkipTests flag)
   if (-not $SkipTests) {
     Write-CheckHeader "Running test suite"
     $testResult = & pnpm test 2>&1

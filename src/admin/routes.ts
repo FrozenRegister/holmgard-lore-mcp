@@ -170,4 +170,126 @@ admin.post('/gc', async (c) => {
   }
 })
 
+// ── Map routes ──────────────────────────────────────────────────────────────
+
+// Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
+const MAP_SCHEMA_DDL = [
+  "CREATE TABLE IF NOT EXISTS hexes (q INTEGER NOT NULL, r INTEGER NOT NULL, map_id TEXT NOT NULL DEFAULT 'main', terrain TEXT, label TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')), PRIMARY KEY (q, r, map_id))",
+  "CREATE TABLE IF NOT EXISTS landmarks (id TEXT PRIMARY KEY, map_id TEXT NOT NULL DEFAULT 'main', q INTEGER NOT NULL, r INTEGER NOT NULL, name TEXT NOT NULL, category TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')))",
+  "CREATE INDEX IF NOT EXISTS idx_landmarks_map ON landmarks(map_id)",
+  "CREATE INDEX IF NOT EXISTS idx_landmarks_coords ON landmarks(q, r)",
+]
+
+admin.post('/map/setup-db', async (c) => {
+  try {
+    const body = await c.req.json()
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+    for (const ddl of MAP_SCHEMA_DDL) {
+      await db.exec(ddl)
+    }
+    return c.json({ ok: true }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
+const D1_CHUNK = 100
+
+admin.post('/map/push-hexes', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const mapId: string = typeof body?.mapId === 'string' && body.mapId ? body.mapId : 'main'
+    const hexes: unknown[] = Array.isArray(body?.hexes) ? body.hexes : []
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    let count = 0
+    for (let i = 0; i < hexes.length; i += D1_CHUNK) {
+      const chunk = hexes.slice(i, i + D1_CHUNK)
+      const stmts = chunk
+        .filter((h): h is Record<string, unknown> => !!h && typeof h === 'object')
+        .map((h) =>
+          db.prepare(
+            'INSERT OR REPLACE INTO hexes (q, r, map_id, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+          ).bind(
+            h.q ?? 0,
+            h.r ?? 0,
+            mapId,
+            h.terrain ?? null,
+            h.name ?? null,
+            JSON.stringify({ description: h.description ?? '' })
+          )
+        )
+      if (stmts.length > 0) {
+        await db.batch(stmts)
+        count += stmts.length
+      }
+    }
+
+    return c.json({ ok: true, count }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
+admin.post('/map/push-landmarks', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const mapId: string = typeof body?.mapId === 'string' && body.mapId ? body.mapId : 'main'
+    const landmarks: unknown[] = Array.isArray(body?.landmarks) ? body.landmarks : []
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    let count = 0
+    for (let i = 0; i < landmarks.length; i += D1_CHUNK) {
+      const chunk = landmarks.slice(i, i + D1_CHUNK)
+      const stmts = chunk
+        .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object')
+        .map((l) =>
+          db.prepare(
+            'INSERT OR REPLACE INTO landmarks (id, map_id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).bind(
+            l.id ?? '',
+            mapId,
+            l.q ?? 0,
+            l.r ?? 0,
+            l.name ?? '',
+            l.type ?? null,
+            JSON.stringify({
+              notes: l.notes ?? '',
+              attributes: l.attributes ?? '{}',
+              linkedMapId: l.linkedMapId ?? null,
+              visible: l.visible ?? true,
+              linkedLoreKey: l.linkedLoreKey ?? null,
+            })
+          )
+        )
+      if (stmts.length > 0) {
+        await db.batch(stmts)
+        count += stmts.length
+      }
+    }
+
+    return c.json({ ok: true, count }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
 export default admin
