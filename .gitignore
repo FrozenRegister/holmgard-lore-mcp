@@ -16,6 +16,8 @@ dist/
 node_modules/
 .wrangler
 package-lock.json
+npm-shrinkwrap.json
+yarn.lock
 
 # env
 .env
