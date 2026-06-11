@@ -33,4 +33,3 @@ jobs:
             } else {
               console.log('OK CHANGELOG.md found in PR')
             }
-
