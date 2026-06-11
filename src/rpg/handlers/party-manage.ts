@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/party-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -40,7 +40,7 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'create': {
       if (!a.name) return err('"name" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO parties (id, name, description, world_id, status, formation, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.name, a.description ?? null, a.worldId ?? null, a.status ?? 'active', 'standard', now, now).run()
       return ok({ success: true, actionType: 'create', partyId: id, name: a.name })
@@ -80,7 +80,7 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
     case 'add_member': {
       const partyId = a.partyId ?? a.id
       if (!partyId || !a.characterId) return err('"partyId" and "characterId" are required')
-      const memberId = randomUUID()
+      const memberId = crypto.randomUUID()
       await db.prepare('INSERT OR REPLACE INTO party_members (id, party_id, character_id, role, is_active, joined_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(memberId, partyId, a.characterId, a.role, 1, now).run()
       await db.prepare('UPDATE parties SET updated_at = ? WHERE id = ?').bind(now, partyId).run()

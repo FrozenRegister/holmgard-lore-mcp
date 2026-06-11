@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/item-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -37,7 +37,7 @@ export async function handleItemManage(env: AppBindings, args: Record<string, un
   switch (match.matched) {
     case 'create': {
       if (!a.name || !a.type) return err('"name" and "type" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO items (id, name, description, type, weight, value, properties, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.name, a.description ?? null, a.type, a.weight, a.value, a.properties ? JSON.stringify(a.properties) : null, now, now).run()
       return ok({ success: true, actionType: 'create', itemId: id, name: a.name, type: a.type })

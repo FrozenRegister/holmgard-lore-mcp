@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/world-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -36,8 +36,8 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'create': {
       if (!a.name) return err('"name" is required')
-      const id = randomUUID()
-      const seed = a.seed ?? randomUUID().slice(0, 8)
+      const id = crypto.randomUUID()
+      const seed = a.seed ?? crypto.randomUUID().slice(0, 8)
       const width = a.width ?? 100
       const height = a.height ?? 100
       await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -74,8 +74,8 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
     }
     case 'generate': {
       if (!a.name) return err('"name" is required for generate')
-      const id = randomUUID()
-      const seed = a.seed ?? randomUUID().slice(0, 8)
+      const id = crypto.randomUUID()
+      const seed = a.seed ?? crypto.randomUUID().slice(0, 8)
       const width = a.width ?? 100
       const height = a.height ?? 100
       await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')

@@ -4,8 +4,8 @@
 // room_networks renamed to node_networks in schema.
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -72,7 +72,7 @@ export async function handleSpatialManage(env: AppBindings, args: Record<string,
     }
     case 'generate': {
       if (!a.name) return err('"name" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const desc = a.description && a.description.trim().length >= 10 ? a.description : `${a.name}: a location waiting to be explored.`
       await db.prepare('INSERT INTO room_nodes (id, name, base_description, biome_context, atmospherics, exits, entity_ids, created_at, updated_at, visited_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.name, desc, a.biome, JSON.stringify(a.atmosphere), JSON.stringify(a.exits), JSON.stringify(a.entityIds), now, now, 0).run()
@@ -117,7 +117,7 @@ export async function handleSpatialManage(env: AppBindings, args: Record<string,
     }
     case 'network_create': {
       if (!a.name || !a.worldId) return err('"name" and "worldId" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO node_networks (id, name, type, world_id, center_x, center_y, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, a.name, a.networkType, a.worldId, 0, 0, now, now).run()
       return ok({ success: true, actionType: 'network_create', networkId: id, name: a.name, worldId: a.worldId, type: a.networkType })
     }

@@ -4,8 +4,8 @@
 // world_pois → structures (world_id, region_id, name, type, x, y, population, metadata)
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -79,7 +79,7 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
       if (!a.worldId || a.tiles.length === 0) return err('"worldId" and "tiles" are required')
       let updated = 0
       for (const tile of a.tiles) {
-        const id = randomUUID()
+        const id = crypto.randomUUID()
         await db.prepare('INSERT INTO tiles (id, world_id, x, y, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(world_id, x, y) DO UPDATE SET biome = excluded.biome, elevation = excluded.elevation, moisture = excluded.moisture, temperature = excluded.temperature')
           .bind(id, a.worldId, tile.x, tile.y, tile.biome, tile.elevation, tile.moisture, tile.temperature).run()
         updated++
@@ -110,7 +110,7 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
     }
     case 'suggest_poi': {
       if (!a.worldId || !a.query || a.x === undefined || a.y === undefined) return err('"worldId", "query" (name), "x", and "y" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const structType = a.structureType ?? 'landmark'
       await db.prepare('INSERT INTO structures (id, world_id, region_id, name, type, x, y, population, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.regionId ?? null, a.query, structType, a.x, a.y, 0, now, now).run()

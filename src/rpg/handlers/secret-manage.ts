@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/secret-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -46,7 +46,7 @@ export async function handleSecretManage(env: AppBindings, args: Record<string, 
   switch (match.matched) {
     case 'create': {
       if (!a.worldId || !a.name || !a.publicDescription || !a.secretDescription) return err('"worldId", "name", "publicDescription", and "secretDescription" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO secrets (id, world_id, type, category, name, public_description, secret_description, linked_entity_id, linked_entity_type, reveal_conditions, sensitivity, leak_patterns, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.type, a.category, a.name, a.publicDescription, a.secretDescription, a.linkedEntityId ?? null, a.linkedEntityType ?? null, JSON.stringify(a.revealConditions ?? []), a.sensitivity, '[]', now, now).run()
       return ok({ success: true, actionType: 'create', secretId: id, name: a.name, sensitivity: a.sensitivity })

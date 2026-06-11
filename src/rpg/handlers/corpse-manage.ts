@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/corpse-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -47,7 +47,7 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
   switch (match.matched) {
     case 'create': {
       if (!a.characterId || !a.characterName) return err('"characterId" and "characterName" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, encounter_id, position_x, position_y, state, state_updated_at, harvestable_resources, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, '[]', ?, ?)`)
         .bind(id, a.characterId, a.characterName, a.characterType, a.worldId ?? null, a.encounterId ?? null, a.positionX ?? null, a.positionY ?? null, now, now, now).run()
       return ok({ success: true, actionType: 'create', corpseId: id, characterName: a.characterName, state: 'fresh' })

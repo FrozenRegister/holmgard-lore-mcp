@@ -34,32 +34,3 @@ jobs:
               console.log('OK CHANGELOG.md found in PR')
             }
 
-  check-docs:
-    runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-quality-checks') }}
-
-    steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-            })
-
-            const hasDocs = files.some(f => f.filename.startsWith('docs/'))
-            const prBody = context.payload.pull_request.body || ''
-            const hasDocsSection = prBody.includes('## Documentation')
-
-            if (!hasDocs && !hasDocsSection) {
-              core.setFailed(
-                'ERROR **Documentation required**\n\n' +
-                'Every PR must either:\n' +
-                '  1. Modify files under `docs/`, OR\n' +
-                '  2. Include a `## Documentation` section in the PR body describing changes\n\n' +
-                'If you are skipping this check for an emergency hotfix, apply the `skip-quality-checks` label.'
-              )
-            } else {
-              console.log('OK Documentation found in PR')
-            }

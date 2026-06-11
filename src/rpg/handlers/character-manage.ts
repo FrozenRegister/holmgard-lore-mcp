@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/character-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -75,7 +75,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
   switch (match.matched) {
     case 'create': {
       if (!a.name) return err('"name" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const stats = a.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
       const maxHp = a.maxHp ?? Math.max(1, (a.level ?? 1) * 8)
       const hp = a.hp ?? maxHp

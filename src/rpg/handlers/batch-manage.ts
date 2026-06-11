@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/batch-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -71,7 +71,7 @@ export async function handleBatchManage(env: AppBindings, args: Record<string, u
       const errors: string[] = []
       for (const spec of a.characters) {
         try {
-          const id = randomUUID()
+          const id = crypto.randomUUID()
           const maxHp = spec.level * 8
           await db.prepare('INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             .bind(id, spec.name, '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}', maxHp, maxHp, 10, spec.level, spec.characterType, spec.characterClass, spec.race, '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":0,"silver":0,"copper":0}', '{}', 0, now, now).run()

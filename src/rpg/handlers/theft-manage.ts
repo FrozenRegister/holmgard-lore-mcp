@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/theft-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -47,7 +47,7 @@ export async function handleTheftManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'steal': {
       if (!a.itemId || !a.stolenFrom || !a.stolenBy) return err('"itemId", "stolenFrom", and "stolenBy" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO stolen_items (id, item_id, stolen_from, stolen_by, stolen_at, stolen_location, heat_level, heat_updated_at, witnesses, bounty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.itemId, a.stolenFrom, a.stolenBy, now, a.stolenLocation ?? null, 'burning', now, JSON.stringify(a.witnesses ?? []), a.bounty, now, now).run()
       return ok({ success: true, actionType: 'steal', stolenItemId: id, itemId: a.itemId, heatLevel: 'burning' })

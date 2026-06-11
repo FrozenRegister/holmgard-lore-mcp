@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/aura-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -51,7 +51,7 @@ export async function handleAuraManage(env: AppBindings, args: Record<string, un
   switch (match.matched) {
     case 'create': {
       if (!a.ownerId || !a.spellName) return err('"ownerId" and "spellName" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO auras (id, owner_id, spell_name, spell_level, radius, affects_allies, affects_enemies, affects_self, effects, started_at, max_duration, requires_concentration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.ownerId, a.spellName, a.spellLevel, a.radius, a.affectsAllies ? 1 : 0, a.affectsEnemies ? 1 : 0, a.affectsSelf ? 1 : 0, JSON.stringify(a.effects ?? {}), now, a.maxDuration ?? null, a.requiresConcentration ? 1 : 0).run()
       return ok({ success: true, actionType: 'create', auraId: id, spellName: a.spellName, ownerId: a.ownerId })

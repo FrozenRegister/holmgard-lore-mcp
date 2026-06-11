@@ -3,8 +3,8 @@
 // Storage: D1 (agents, agent_prompt_slices, agent_secrets, agent_journal, agent_calls).
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -89,7 +89,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'create': {
       if (!a.characterId) return err('"characterId" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agents (id, character_id, model, status, auto_on_turn, temperature, max_tokens, budget_tokens, tokens_used, consecutive_failures, circuit_state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,0,0,\'closed\',?,?)'
       ).bind(
@@ -179,7 +179,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'set_slice': {
       if (!agentId || !a.kind || !a.content) return err('"agentId"/"id", "kind", and "content" are required')
-      const sliceId = a.sliceId ?? randomUUID()
+      const sliceId = a.sliceId ?? crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, label=excluded.label, content=excluded.content, order_index=excluded.order_index, updated_at=excluded.updated_at'
       ).bind(sliceId, agentId, a.kind, a.label ?? null, a.content, a.orderIndex ?? 0, now).run()
@@ -211,7 +211,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'narrate': {
       if (!agentId || !a.observation) return err('"agentId"/"id" and "observation" are required')
-      const sliceId = randomUUID()
+      const sliceId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,\'narrative_feed\',?,?,999,1,?)'
       ).bind(sliceId, agentId, a.label ?? null, a.observation, now).run()
@@ -221,7 +221,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     case 'broadcast': {
       if (!a.agentIds || a.agentIds.length === 0 || !a.observation) return err('"agentIds" (array) and "observation" are required')
       const rows = await Promise.all(a.agentIds.map(async (aid) => {
-        const sliceId = randomUUID()
+        const sliceId = crypto.randomUUID()
         await db.prepare(
           'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,\'narrative_feed\',?,?,999,1,?)'
         ).bind(sliceId, aid, a.label ?? null, a.observation, now).run()
@@ -247,7 +247,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'add_secret': {
       if (!agentId || !a.content) return err('"agentId"/"id" and "content" are required')
-      const secretId = randomUUID()
+      const secretId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_secrets (id, agent_id, content, importance, created_at) VALUES (?,?,?,?,?)'
       ).bind(secretId, agentId, a.content, a.importance ?? 'medium', now).run()
@@ -274,7 +274,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'add_journal': {
       if (!agentId || !a.content) return err('"agentId"/"id" and "content" are required')
-      const entryId = randomUUID()
+      const entryId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_journal (id, agent_id, kind, encounter_id, round, content, created_at) VALUES (?,?,?,?,?,?,?)'
       ).bind(entryId, agentId, a.journalKind ?? 'observation', a.encounterId ?? null, a.round ?? null, a.content, now).run()
@@ -313,7 +313,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
         { role: 'user' as const, content: a.situation ?? 'What do you do?' },
       ]
 
-      const callId = randomUUID()
+      const callId = crypto.randomUUID()
       const started = Date.now()
       let callStatus = 'ok'
       let rawResponse = ''
@@ -362,7 +362,7 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
       const agent = await db.prepare('SELECT model, temperature, max_tokens FROM agents WHERE id = ?').bind(replayAgentId).first() as Record<string, unknown> | null
       if (!agent) return err(`Agent not found for stored call`)
 
-      const callId = randomUUID()
+      const callId = crypto.randomUUID()
       const started = Date.now()
       let callStatus = 'ok', rawResponse = '', errorMessage: string | null = null
       let promptTokens = 0, completionTokens = 0

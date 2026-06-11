@@ -3,8 +3,8 @@
 // CombatEngine / preset expansion simplified to direct D1 writes.
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -53,7 +53,7 @@ export async function handleSpawnManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'spawn_character': {
       if (!a.name) return err('"name" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const stats = a.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
       const maxHp = a.maxHp ?? Math.max(1, a.level * 8)
       const hp = a.hp ?? maxHp
@@ -62,14 +62,14 @@ export async function handleSpawnManage(env: AppBindings, args: Record<string, u
       return ok({ success: true, actionType: 'spawn_character', characterId: id, name: a.name, characterType: a.characterType, level: a.level, hp, maxHp, ac: a.ac })
     }
     case 'spawn_encounter': {
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO encounters (id, region_id, tokens, round, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.regionId ?? null, '[]', 1, 'setup', now, now).run()
       return ok({ success: true, actionType: 'spawn_encounter', encounterId: id, regionId: a.regionId, status: 'setup' })
     }
     case 'spawn_location': {
       if (!a.name) return err('"name" is required for location spawn')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare("INSERT INTO room_nodes (id, name, base_description, biome_context, atmospherics, exits, entity_ids, created_at, updated_at, visited_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(id, a.name, a.name, 'dungeon', '[]', '[]', '[]', now, now, 0).run()
       return ok({ success: true, actionType: 'spawn_location', roomId: id, name: a.name })

@@ -5,8 +5,8 @@
 // disposition, reject_reason, cost_paid, capacity_remaining_after, created_at).
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -59,10 +59,10 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       const disposition = succeeded ? 'commit' : 'reject_inert'
       const seqRow = await db.prepare('SELECT MAX(seq) as max_seq FROM perception_assessments WHERE observer_id = ?').bind(a.observerId).first() as { max_seq: number | null }
       const seq = (seqRow?.max_seq ?? 0) + 1
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const hazards = succeeded ? [] : [{ type: 'perception_failure', description: `DC ${a.dc} not met (rolled ${roll})` }]
       await db.prepare('INSERT INTO perception_assessments (id, seq, prev_seq, event_hash, intent_id, observer_id, target_ref_kind, target_ref_id, hazards, applicable_controls, blind_spots, disposition, reject_reason, cost_paid, capacity_remaining_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, seq, seq - 1 || null, randomUUID(), a.perceptionType, a.observerId, a.targetKind, a.targetId, JSON.stringify(hazards), JSON.stringify([a.perceptionType]), '[]', disposition, succeeded ? null : description, 1, 99, now).run()
+        .bind(id, seq, seq - 1 || null, crypto.randomUUID(), a.perceptionType, a.observerId, a.targetKind, a.targetId, JSON.stringify(hazards), JSON.stringify([a.perceptionType]), '[]', disposition, succeeded ? null : description, 1, 99, now).run()
       return ok({ success: true, actionType: 'assess', assessmentId: id, observerId: a.observerId, targetId: a.targetId, targetKind: a.targetKind, perceptionType: a.perceptionType, roll, dc: a.dc, succeeded, isCrit, description, disposition })
     }
     case 'get_history': {

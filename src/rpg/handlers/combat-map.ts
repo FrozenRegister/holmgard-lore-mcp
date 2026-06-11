@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/combat-map.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -53,7 +53,7 @@ export async function handleCombatMap(env: AppBindings, args: Record<string, unk
   switch (match.matched) {
     case 'create': {
       if (!a.encounterId) return err('"encounterId" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const gridData = { width: a.width, height: a.height, terrain: a.terrain ?? [], tokens: [] }
       await db.prepare('INSERT INTO battlefield (id, encounter_id, grid_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').bind(id, a.encounterId, JSON.stringify(gridData), now, now).run()
       return ok({ success: true, actionType: 'create', mapId: id, encounterId: a.encounterId, width: a.width, height: a.height })
