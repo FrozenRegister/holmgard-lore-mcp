@@ -4,6 +4,8 @@
 
 ### Refactored
 
+- **RPG definitions consolidation** — Replaced 27 individual RPG tool definitions in `src/rpg/definitions.ts` with a single `rpg` tool (routes via `sub` param) plus verbatim `agent_manage`. (#81)
+
 - **Tool definitions consolidation** — Replaced 59 individual tool definitions with 5 consolidated definitions (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) using an open schema (`OPEN_SCHEMA`). (#80)
 
 ### Docs

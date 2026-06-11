@@ -34,10 +34,10 @@ describe('RPG engine tools', () => {
     expect(r.matches.some((m: any) => m.name === 'world_manage')).toBe(true)
   })
 
-  it('load_tool_schema returns inputSchema for character_manage', async () => {
-    const r = await callTool('load_tool_schema', { toolName: 'character_manage' })
+  it('load_tool_schema returns inputSchema for rpg', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg' })
     expect(r.success).toBe(true)
-    expect(r.schema.inputSchema.properties.action).toBeDefined()
+    expect(r.schema.inputSchema.properties.sub).toBeDefined()
   })
 
   // ── world_manage ──────────────────────────────────────────────────────────

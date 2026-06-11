@@ -119,14 +119,14 @@ describe('DO transport — initialize', () => {
 })
 
 describe('DO transport — tools/list', () => {
-  it('returns exactly 35 tools (same as legacy path)', async () => {
+  it('returns exactly 9 tools (same as legacy path)', async () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       { jsonrpc: '2.0', id: 2, method: 'tools/list' },
       { 'Mcp-Session-Id': sessionId }
     )
     const tools: Array<{ name: string }> = data.result?.tools ?? []
-    expect(tools).toHaveLength(35)
+    expect(tools).toHaveLength(9)
   })
 
   it('includes all expected tool names', async () => {
