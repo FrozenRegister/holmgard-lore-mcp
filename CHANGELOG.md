@@ -4,11 +4,17 @@
 
 ### Docs
 
+- **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (3 remaining agents — #78 complete): create `rpg-handler.ts` and replace tool/RPG definitions. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites. Prompts updated to reflect #78 completion and to add explicit RPG collision-rename rows to the Wave 3 mapping table.
+
 - **Institutional knowledge capture** — Added `docs/holmgard-user-guide.md` (full tool reference with Known Behavior notes), four `docs/issues/` files (`HIGH-combat-manage-create-encounter-FK-constraint.md`, `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`, `HIGH-migrate-KV-to-D1-auto-redirect.md`, `performance-optimizations-for-slow-AI.md`), and a "Documenting Discoveries" section in `CLAUDE.md` codifying where and when to file these docs.
 
 - **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
 
 ### Added
+
+- **`src/rpg/rpg-handler.ts`** — Single action-router dispatcher for the consolidated `rpg` tool. Accepts `{ sub, action, ...rest }`, routes to one of 27 RPG handler functions via `SUB_MAP`, and bridges the `(env, args) => McpResponse` RPG handler signature into the `ToolHandler` format. Part of 89→9 MCP tool consolidation (Issue #79).
+
+- **`scripts/pre-commit-validate.sh`** — Bash equivalent of the Windows-only `pre-commit-validate.ps1`. Supports `--skip-tests` flag. Mirrors all four checks: markdown linting, CHANGELOG.md requirement, docs warning, and test suite.
 
 - **Tool consolidation: 5 action-router wrappers** — Wave 1 of Issue #78 consolidation creates `lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, and `continuity_manage` action-router wrappers in `src/tools/`. Each accepts an `action` parameter, strips it from args, and delegates to existing handlers. 89 tools remain stable; consolidation is transport-layer only. No changes to existing handlers or tool behavior. (Issue #78)
 
