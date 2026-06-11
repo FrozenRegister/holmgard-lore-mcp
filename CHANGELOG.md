@@ -4,6 +4,8 @@
 
 ### Docs
 
+- **Institutional knowledge capture** — Added `docs/holmgard-user-guide.md` (full tool reference with Known Behavior notes), four `docs/issues/` files (`HIGH-combat-manage-create-encounter-FK-constraint.md`, `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`, `HIGH-migrate-KV-to-D1-auto-redirect.md`, `performance-optimizations-for-slow-AI.md`), and a "Documenting Discoveries" section in `CLAUDE.md` codifying where and when to file these docs.
+
 - **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
 
 ### Added

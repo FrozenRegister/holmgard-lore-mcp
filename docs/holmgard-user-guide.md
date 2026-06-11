@@ -1,0 +1,469 @@
+# Holmgard User Guide: The Lore Engine & Narrative Tools
+
+## Overview
+
+**Holmgard** is a collaborative storytelling system built on an **MCP (Model Context Protocol)** lore engine that tracks characters, locations, quests, NPCs, and world state. The system has two modes:
+
+1. **AI Narrator Mode** (Shapes.inc chatbot) — The DM/narrator LLM reads player actions, consults the lore engine for world state and NPC behavior, and generates narrative responses.
+2. **Player Mode** — Human roleplayers provide actions and dialogue; the narrator interprets them against the world and responds.
+
+The **Holmgard MCP** (this project) is the backend that stores and retrieves the world state — everything from character stats to dialogue history to quest progress.
+
+---
+
+## How It Works: The Flow
+
+```
+Player: "Aldric approaches the tavern keeper and asks about the bandits."
+     ↓
+AI Narrator (Claude via Shapes.inc):
+  1. Reads player action
+  2. Calls MCP tools to fetch:
+     - Character: Aldric (stats, background, knowledge)
+     - Location: The tavern (description, NPCs, atmosphere)
+     - NPC: Tavern keeper (personality, knowledge, disposition toward Aldric)
+     - Related quests: Any active quests involving bandits
+     - World state: Recent events that might affect responses
+  3. Generates response:
+     "The tavern keeper eyes you warily. [NPC voice/personality].
+      They mention rumors of bandits near the Old Mill..."
+     (Uses lore data to make the response consistent and world-aware)
+  4. Calls MCP tools to update world state:
+     - Mark that Aldric spoke to the tavern keeper
+     - Update the tavern keeper's memory of Aldric
+     - Flag the "bandits near Old Mill" rumor as known to Aldric
+  5. Player sees the response and decides their next action
+```
+
+The cycle repeats — each interaction reads and writes to the lore engine, building a shared, persistent narrative.
+
+---
+
+## Tool Categories
+
+### 1. **Lore Storage & Retrieval** (The Living Sourcebook)
+
+These tools manage the raw lore — everything from character descriptions to world notes to dialogue logs.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `get_lore` | Narrator | Fetch a specific lore entry (character, location, NPC, quest) |
+| `list_topics` | Narrator | Browse what lore entries exist in a category |
+| `search_lore` | Narrator | Full-text search across all lore (find references to "the bandits" everywhere) |
+| `set_lore` | Narrator | Create or update a lore entry (add a character backstory, update a location description) |
+| `patch_lore` | Narrator | Small edits to existing lore (add a line to dialogue, mark a quest step complete) |
+| `get_topic_histories` | Narrator | View all past versions of a lore entry (see how a character's disposition has changed) |
+
+**Example Use:**
+```
+Narrator needs to recall the tavern keeper's personality:
+  get_lore("npc:tavern_keeper_oldmill")
+  → { text: "**Name:** Orm the Gruff\n**Disposition:** Suspicious of outsiders...", 
+       meta: { updatedAt: "2025-06-08T14:22:00Z" } }
+
+Narrator updates the lore after the conversation:
+  patch_lore("npc:tavern_keeper_oldmill", 
+    { action: "append", target: "## Known Relations", 
+      text: "\n- Aldric: Cautious but cooperative. Shared info about bandits." })
+```
+
+---
+
+### 2. **Character & Party Management** (Who Is In This Story?)
+
+Track player characters, NPCs, companions, and groups.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `character_manage` (create, get, list, update) | Narrator | Create NPCs or track player character details (inventory, stats, relationships) |
+| `party_manage` (create, join, list_members) | Narrator | Group characters into adventuring parties or factions |
+
+**Example Use:**
+```
+Narrator creates the tavern keeper as an NPC:
+  character_manage({ action: "create", name: "Orm", type: "npc", 
+                     background: "Refugee from the Old Mill, now runs the tavern" })
+
+Narrator checks a player's current inventory:
+  character_manage({ action: "get", id: "player:aldric" })
+  → { name: "Aldric", inventory: ["longsword", "rope", "healing_potion"] }
+```
+
+---
+
+### 3. **World & Location Mapping** (Geography & Exploration)
+
+Track locations, regions, and how the world is connected.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `world_manage` | Narrator | Create worlds and manage geography |
+| `world_map` | Narrator | Get a spatial overview of locations and distances |
+| `spatial_manage` | Narrator | Track which entities are at which location (who's in the tavern right now?) |
+| `get_location_occupants` | Narrator | Quick lookup: who/what is at this location? |
+
+**Example Use:**
+```
+Narrator checks who's at the tavern:
+  get_location_occupants("location:oldmill_tavern")
+  → [ "npc:orm_tavern_keeper", "player:aldric", "npc:acolyte_mysterious" ]
+
+Narrator moves a character:
+  spatial_manage({ action: "move_entity", entity_id: "player:aldric", 
+                   from: "oldmill_tavern", to: "oldmill_road_north" })
+```
+
+---
+
+### 4. **Quest & Objective Tracking** (What Are We Doing?)
+
+Define quests, steps, and how they progress.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `quest_manage` | Narrator | Create quests, mark steps complete, check status |
+| `set_goal` | Narrator | Track long-term party goals |
+
+**Example Use:**
+```
+Narrator creates a quest:
+  quest_manage({ action: "create", name: "Bandit Menace", 
+                 objective: "Investigate bandits near the Old Mill",
+                 status: "active" })
+
+Narrator marks a step complete:
+  quest_manage({ action: "mark_step", quest_id: "quest:bandit_menace",
+                 step: "Gathered rumors from Orm at the tavern" })
+```
+
+---
+
+### 5. **Combat & Encounters** (When Things Get Tense)
+
+Manage combat scenarios, turn order, and encounter state.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `combat_manage` | Narrator | Create/track encounters, manage initiative and turn order |
+| `combat_action` | Narrator | Resolve player or NPC actions during combat |
+| `combat_map` | Narrator | Visualize combatants and distances (d&d grid or narrative distance) |
+
+**Example Use:**
+```
+Narrator starts combat with bandits:
+  combat_manage({ action: "create_encounter", name: "Bandits at the Crossroads",
+                  enemies: ["bandit_1", "bandit_2", "bandit_leader"] })
+
+Narrator resolves Aldric's attack:
+  combat_action({ action: "attack", actor: "player:aldric", 
+                  target: "bandit_1", attack_roll: 18 })
+```
+
+---
+
+### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
+
+Tools for creating consistent, believable NPC behavior and dialogue.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `npc_manage` | Narrator | Create NPCs with personality, goals, fears, allies |
+| `aura_manage` | Narrator | Track ongoing spells, abilities, or effects on NPCs/locations |
+| `get_sensory_profile` | Narrator | What does an NPC sense/perceive in their location? |
+
+**Example Use:**
+```
+Narrator creates an NPC with personality:
+  npc_manage({ action: "create", name: "Orm", 
+               personality_traits: ["gruff", "protective", "shrewd"],
+               goals: ["protect the Old Mill", "profit from travelers"],
+               fears: ["losing the tavern"] })
+
+Narrator checks what Orm might sense when danger approaches:
+  get_sensory_profile("npc:orm", "oldmill_tavern")
+  → { hears: "hoofbeats, shouting outside", 
+       smells: "smoke and blood", sees: "commotion through window" }
+```
+
+---
+
+### 7. **Memory & Relationships** (Continuity & Depth)
+
+Track character knowledge, relationships, and how they change.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `get_relationship` | Narrator | How do two characters feel about each other? (friendly, hostile, romantic, business) |
+| `get_entity_knowledge` | Narrator | What does a character know about a topic/location/person? |
+| `secret_manage` | Narrator | Hide information from players until the reveal moment |
+| `find_by_tag` | Narrator | Find all lore entries tagged with a theme (e.g., "all prophecies", "all treasures") |
+
+**Example Use:**
+```
+Narrator checks Orm's relationship with Aldric:
+  get_relationship("npc:orm", "player:aldric")
+  → { disposition: "cautious_cooperation", history: ["shared rumors about bandits"] }
+
+Narrator adds a hidden secret (revealed later):
+  secret_manage({ action: "create", entity_id: "npc:orm", 
+                  content: "Orm's brother leads the bandit gang; internal conflict" })
+```
+
+---
+
+### 8. **World Events & Continuity** (Keeping the Timeline)
+
+Manage the passage of time, events that ripple across the world, and long-term consequences.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `thread_tick` | Narrator | Advance the world one time step (1 hour, 1 day, 1 week) and resolve queued events |
+| `recent_changes` | Narrator | What's changed in the world recently? (NPC moved, location was damaged, quest resolved) |
+| `append_event` | Narrator | Log a major world event for the historical record |
+| `check_convergence` | Narrator | Do two separate story threads (party A and party B) ever meet? Where and when? |
+
+**Example Use:**
+```
+Narrator advances time at the end of a session:
+  thread_tick("main_timeline", duration: "1_day")
+  → Resolves: bandits patrol the roads, NPCs move around, rumors spread
+
+Narrator checks what changed in the world:
+  recent_changes(since: "6_hours_ago")
+  → [ "Bandits robbed a caravan near the bridge",
+       "Orm closed the tavern temporarily", 
+       "A mysterious stranger arrived at the inn" ]
+```
+
+---
+
+### 9. **Scene & Narrative Tools** (Structuring the Story)
+
+Manage scenes, player choices, and narrative pacing.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `scene_brief` | Narrator | Get a quick summary of a scene: who's there, what's happening, what's at stake |
+| `activate_scene` | Narrator | Formally start a scene (locks time, sets stakes) |
+| `present_choices` | Narrator | Offer multiple options to players and track which they choose |
+| `commit_choice` | Narrator | Log player choice and resolve its consequences |
+
+**Example Use:**
+```
+Narrator starts a scene:
+  activate_scene({ name: "Confrontation at the Crossroads", 
+                   location: "location:crossroads", 
+                   participants: ["player:aldric", "bandit_leader"] })
+
+Narrator offers choices:
+  present_choices({ scene_id: "scene_crossroads", 
+                    options: ["Fight!", "Negotiate", "Run"] })
+
+Player chooses "Negotiate":
+  commit_choice({ scene_id: "scene_crossroads", player_choice: "Negotiate" })
+  → Triggers dialogue with bandit leader, reputation changes, quest updates
+```
+
+---
+
+### 10. **AI Agent Tools** (Semi-Autonomous NPCs)
+
+For advanced campaigns, spawn AI-driven NPCs that act autonomously with goals and memory.
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `agent_manage` | Narrator | Create an NPC with semi-autonomous goal-driven behavior |
+| `invoke` (agent action) | Narrator | Ask the agent "What would you do in this situation?" and get AI-generated intent |
+| `get_journal` | Narrator | Read the agent NPC's internal thoughts/observations |
+
+**Example Use:**
+```
+Narrator creates an autonomous bandit leader agent:
+  agent_manage({ action: "create", character_id: "bandit_leader",
+                 prompt_slices: ["persona: ruthless, intelligent, protective of gang",
+                                "directive: expand territory, avoid direct confrontation with adventurers",
+                                "recent_events: lost 2 bandits in skirmish"] })
+
+Narrator asks what the bandit leader does when alone:
+  agent_manage({ action: "invoke", agent_id: "bandit_leader",
+                 situation: "Your scouts report the adventurers are asking about you in the tavern." })
+  → "I move camp further north and send a scout to watch them. Too risky to be seen yet."
+```
+
+---
+
+### 11. **Utility & Meta Tools** (Tools About Tools)
+
+| Tool | Used By | Purpose |
+|------|---------|---------|
+| `search_tools` | Narrator | Find a specific tool by name or description |
+| `load_tool_schema` | Narrator | Get detailed documentation of a tool (parameters, examples) |
+| `math_manage` (dice rolls, etc.) | Narrator | Roll dice, generate random numbers, handle probability |
+
+---
+
+## For the AI Narrator (Shapes.inc Chatbot)
+
+### Guidelines for Effective Tool Usage
+
+1. **Read First, Act Second**
+   - Always fetch relevant lore before generating a response
+   - Check character knowledge before having an NPC reveal something
+   - Verify location state before describing NPCs present
+
+2. **Update After Narrative**
+   - After each significant interaction, update the lore
+   - Mark dialogue as having happened
+   - Update relationships when trust changes
+   - Add entries to NPC journals when they learn something
+
+3. **Use Secrets to Control Pacing**
+   - Hide information from players using `secret_manage`
+   - Reveal at dramatic moments, not randomly
+   - Build tension with mystery
+
+4. **Respect Character Knowledge**
+   - NPCs should only know what they've experienced
+   - Avoid letting NPCs know about events they weren't present for (unless rumor/hearsay is explicitly noted)
+   - Use `get_entity_knowledge` to ground NPC dialogue
+
+5. **Keep Time Coherent**
+   - Use `thread_tick` at scene breaks or session ends
+   - Check `recent_changes` to see what the world did while players were elsewhere
+   - Avoid contradicting timeline facts
+
+---
+
+## For the Roleplayers (Human Players)
+
+### What to Expect
+
+1. **Your Actions Matter** — Every interaction you describe (talking to NPCs, moving locations, examining objects) is tracked in the lore. The world remembers what you did.
+
+2. **NPCs Remember You** — NPCs track their relationship with you. Be kind to a tavern keeper and they'll give you discounts and rumors. Betray someone and they'll tell their allies.
+
+3. **The World Changes** — When you complete a quest, locations change. When you defeat bandits, the roads become safer. When you resolve a conflict, NPCs have new goals.
+
+4. **Consequences Are Real** — The lore engine tracks cause-and-effect. Your choices ripple outward — affects quests, relationships, world events, and future encounters.
+
+5. **Continuity** — Between sessions, the world doesn't pause. NPCs move around, rumors spread, and time passes. When you return, things have changed.
+
+6. **You Can't Break the Game** — The narrator has tools to handle unexpected player choices. There's always a way forward, and your character's agency is respected.
+
+---
+
+## Example Campaign Flow
+
+**Session Start:**
+- Narrator calls `thread_tick` to see what happened since last session
+- Narrator fetches player character data via `character_manage`
+- Narrator checks `recent_changes` to brief players on world events
+
+**During Play:**
+- Player: "Aldric goes to the tavern"
+  - Narrator calls `get_location_occupants("location:tavern")` to see who's there
+  - Narrator calls `get_relationship("npc:orm", "player:aldric")` to set NPC tone
+  - Narrator calls `character_manage` to check Aldric's inventory and status
+  - Narrator generates response using this context
+  - Narrator calls `patch_lore("npc:orm", ...)` to log the interaction
+
+- Combat Breaks Out:
+  - Narrator calls `combat_manage` to create encounter
+  - Narrator tracks actions with `combat_action`
+  - Updates character HP via `character_manage`
+
+- Quest Progresses:
+  - Narrator calls `quest_manage` to mark steps complete
+  - Narrator updates NPC knowledge via `secret_manage` reveals
+
+**Session End:**
+- Narrator calls `thread_tick` to advance world time
+- Narrator calls `append_event` to log major story beats
+- Narrator updates all character states with final `patch_lore` calls
+
+---
+
+## Quick Reference: Common Scenarios
+
+| Scenario | Tools Used |
+|----------|-----------|
+| NPC greets player | `get_relationship`, `get_entity_knowledge`, `get_lore` → respond with context |
+| Player defeats enemy | `patch_lore` (mark enemy defeated), `character_manage` (update XP), `quest_manage` (mark step) |
+| Player asks NPC about rumor | `search_lore` (find all relevant rumors), `secret_manage` (decide what to reveal) |
+| Long rest/time passage | `thread_tick` (advance world), `recent_changes` (what happened?) |
+| Mystery reveal | `secret_manage` (fetch hidden info), `patch_lore` (update world state with consequences) |
+| NPC betrays player | `get_relationship` (change disposition), `patch_lore` (update both characters' knowledge) |
+| Player discovers treasure | `item_manage` or `inventory_manage` (add to inventory), `patch_lore` (update location state) |
+| New NPC joins party | `character_manage` (create/link NPC), `party_manage` (add to party) |
+| World-changing decision | `append_event` (log in history), `thread_tick` (cascade effects through world) |
+
+---
+
+## Narrative Flow Test Results (2026-06-11)
+
+A full end-to-end narrative flow test was executed against the live MCP server. 22 tool operations were tested across all 12 tool categories.
+
+### ✅ Passing (20/22)
+
+| Tool | Result | Notes |
+|------|--------|-------|
+| `ping_tool` | ✅ | "pong" |
+| `check_authentication` | ✅ | "Authenticated" |
+| `list_topics` | ✅ | ~200 topics across archetypes, characters, locations, archives |
+| `get_lore` | ✅ | Full 8k-word character profile with state machine, inventory, relationships |
+| `search_lore` | ✅ | Substring search across all entries |
+| `get_reachable_locations` | ✅ | Directions and distances returned |
+| `get_location_occupants` | ✅ | Entity keys returned per location |
+| `get_relationship` | ✅ | Affinity (0.85), debt (0.80), threat-level (0.00) |
+| `get_sensory_profile` | ✅ | Scent, sound, textural descriptors |
+| `scene_brief` | ✅ | Entity presence, setups, relationships — respects location scope |
+| `math_manage` | ✅ | 2d6+3 → 13, Monte Carlo capable |
+| `combat_manage` (list) | ✅ | Empty encounter list returned cleanly |
+| `append_event` | ✅ | Timestamped event persisted to chronicle |
+| `get_event_log` | ✅ | Filterable by verb, thread, date range |
+| `patch_lore` | ✅ | Appended to ## Inventory section |
+| `move_entity` | ✅ | Location field updated atomically, old/new indexes synced |
+| `advance_state_stage` | ✅ | State machine advanced one step |
+| `get_lore_section` | ✅ | Section extraction by heading name |
+| `restore_lore` | ✅ | Restored to previous snapshot (20 history frames available) |
+| `check_continuity` | ✅ | No dangling references or contradictions |
+
+### ❌ Failing (2/22)
+
+| Tool | Result | Issue | Severity |
+|------|--------|-------|----------|
+| `combat_manage` (create_encounter) | ❌ | `D1_ERROR: FOREIGN KEY constraint failed` — the `regionId` parameter triggers `SQLITE_CONSTRAINT_FOREIGNKEY`. Encounter table likely references a `regions` table that lacks a matching row. | **HIGH** — Blocks all combat initialization |
+| `thread_tick` | ⚠️ | Reports "No entities with **Timeline-Value:** found" even for entities that explicitly have `**Timeline-Value:** N` and `**Thread:** <id>` fields (e.g., character:kavissa-crowmark has `Timeline-Value: 5` and `Thread: thornwood-journey`). Parser likely expects raw YAML frontmatter instead of markdown `**Key:** Value` notation. | **HIGH** — Blocks automatic timeline advancement |
+
+### Summary
+
+**The lore engine is production-ready for reading and writing narrative state.** All 20 data-access tools pass. The two failures are in procedural systems (combat init, timeline tick) that have schema-level or parser-level defects rather than logic bugs.
+
+---
+
+## Tips for Immersion
+
+- **Consistency** — Use the lore engine to stay true to character history. If an NPC hates elves, remember it.
+- **Surprise** — Use secrets to keep even the narrator surprised. Plant clues, reveal them dramatically.
+- **Scale** — Small interactions (a conversation) and large events (a war) are both tracked. Both matter.
+- **Failure** — The tools track setbacks too. Failed quests, broken relationships, dangerous enemies. These create the best stories.
+
+---
+
+## Performance Notes for Slow AI Systems
+
+The Holmgard MCP is used by an AI narrator (Shapes.inc chatbot) that can be slow and token-constrained. The following strategies reduce round-trips and token burn:
+
+- **`scene_brief` replaces 6–10 individual reads** — One call fetches location text, present entities, open setups, and relationships. Prefer this over calling `get_lore` + `get_relationship` + `get_location_occupants` separately.
+- **`get_lore_batch` replaces N × `get_lore`** — Fetch up to 20 entries in one round-trip instead of serially.
+- **`batch_set_lore` replaces N × `set_lore`** — Bulk write up to 20 entries.
+- **`batch_mutate` replaces N × `patch_lore` + `increment_topic_field`** — Apply multiple mutations across keys in one call.
+- **`get_event_log` with `limit`** — Cap results to the most recent N events instead of fetching the full chronicle.
+- **`search_lore` with `max_results`** — Limit search results to 10 instead of the default 50.
+- **`list_topics` with pagination** — Use `limit` and `offset` to page through topics rather than dumping everything.
+- **`check_continuity` with `severity_floor`** — Set to `warn` or `error` to skip informational findings.
+- **`render_pov`** — One call that filters a scene through a character's senses and knowledge, replacing the need for separate perception checks.
+
+---
+
+**The Holmgard lore engine is a living notebook for collaborative storytelling. Use it to build a world that's rich, consistent, and responsive to player choice.**

@@ -86,6 +86,33 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **15 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`, `restore_lore`, `batch_set_lore`, `batch_mutate`.
 
+## Documenting Discoveries (Capture Institutional Knowledge)
+
+**Whenever you uncover something about how this system works that isn't obvious from a quick read of the code, write it down.** Don't let it get lost in the chat context.
+
+### What to document
+
+- **Non-obvious behavior** — How a tool actually works vs. how its name suggests it works. (e.g., `patch_lore` uses exact substring matching and rejects ambiguous targets; `list_consumption_timelines` scans **only** `character:*` keys.)
+- **Hidden constraints** — Schema quirks, foreign key relationships, field format expectations (e.g., thread_tick can't find `**Timeline-Value:**` because it expects YAML frontmatter, not markdown bold).
+- **Workflow gotchas** — Steps the system assumes but doesn't state (e.g., you must seed a regions table before creating encounters; you must use YAML frontmatter for timeline fields if you want thread_tick to find them).
+- **Failure modes** — Things that look like they should work but don't, and why (e.g., `create_encounter` fails with FK constraint; `thread_tick` returns zero entities).
+- **Performance characteristics** — Which tools are expensive, which formats cause token blowup, which batch operations exist but aren't obvious from the tool names.
+- **Edge cases found in testing** — Things that only break under specific conditions (e.g., `scene_brief` returns empty when entities are on a parent location but not the exact sub-location key).
+
+### Where to put it
+
+| What | Where |
+|------|-------|
+| Tool behavior / quirks | `docs/holmgard-user-guide.md` — add a "Known Behavior" note under the relevant tool section |
+| Broken things | `docs/issues/HIGH-*.md` — one file per issue with symptom, impact, reproduction, suggested fix |
+| Performance notes | `docs/issues/performance-optimizations-for-slow-AI.md` — or inline in the user guide under a "Performance" section |
+| Architecture gotchas | Inline code comments OR in `CLAUDE.md` under the relevant architecture section |
+| Workflow protocols | `CLAUDE.md` (this file) OR `docs/*.md` if it's complex enough for its own doc |
+
+### The rule
+
+**If you had to read the source code to understand how something works, or if you discovered something by experiment that wasn't documented, file it in docs/ within the same session.** Don't defer it — context windows expire.
+
 ## Key logic worth knowing
 
 **`patch_lore`** (`replace`/`append`/`delete_field`) uses exact substring matching. It rejects ambiguous targets (>1 occurrence) and missing targets with descriptive messages rather than JSON-RPC errors — the response is always `result`, never `error`, even for user mistakes.
