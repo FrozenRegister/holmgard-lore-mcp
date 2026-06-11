@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refactored
+
+- **Tool definitions consolidation** — Replaced 59 individual tool definitions with 5 consolidated definitions (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) using an open schema (`OPEN_SCHEMA`). (#80)
+
 ### Docs
 
 - **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (3 remaining agents — #78 complete): create `rpg-handler.ts` and replace tool/RPG definitions. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites. Prompts updated to reflect #78 completion and to add explicit RPG collision-rename rows to the Wave 3 mapping table.

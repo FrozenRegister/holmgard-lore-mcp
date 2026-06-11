@@ -80,8 +80,7 @@ try {
   Write-Host ""
   Write-Host "All pre-commit checks passed!" -ForegroundColor Green
   exit 0
-}
-catch {
+} catch {
   Write-Error "Pre-commit validation failed: $_"
   exit 1
 }
