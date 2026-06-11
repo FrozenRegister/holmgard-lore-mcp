@@ -3,8 +3,8 @@
 // Dice/probability implemented inline (no seedrandom/nerdamer deps in Workers).
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -119,7 +119,7 @@ export async function handleMathManage(env: AppBindings, args: Record<string, un
     case 'roll': {
       if (!a.expression) return err('"expression" is required for roll')
       const { total, rolls, steps } = executeRoll(a.expression)
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       if (db) await db.prepare('INSERT INTO calculations (id, input, result, steps, seed, timestamp) VALUES (?, ?, ?, ?, ?, ?)').bind(id, a.expression, String(total), JSON.stringify(steps), a.seed ?? null, now).run()
       return ok({ success: true, actionType: 'roll', expression: a.expression, total, rolls, steps, calculationId: id })
     }
@@ -128,7 +128,7 @@ export async function handleMathManage(env: AppBindings, args: Record<string, un
       if (!expr || a.target === undefined) return err('"expression" (or "sides") and "target" are required')
       const comp = a.comparison ?? 'gte'
       const prob = calcProbability(expr, a.target, comp)
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       if (db) await db.prepare('INSERT INTO calculations (id, input, result, timestamp) VALUES (?, ?, ?, ?)').bind(id, JSON.stringify({ expression: expr, target: a.target, comparison: comp }), String(prob), now).run()
       return ok({ success: true, actionType: 'probability', expression: expr, target: a.target, comparison: comp, probability: prob, probabilityPercent: `${(prob * 100).toFixed(1)}%`, calculationId: id })
     }

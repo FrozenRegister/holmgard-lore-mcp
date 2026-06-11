@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/quest-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -48,7 +48,7 @@ export async function handleQuestManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'create': {
       if (!a.name || !a.worldId) return err('"name" and "worldId" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO quests (id, world_id, name, description, status, objectives, rewards, prerequisites, giver, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.name, a.description ?? '', 'active', JSON.stringify(a.objectives ?? []), JSON.stringify(a.rewards ?? {}), JSON.stringify(a.prerequisites ?? []), a.giver ?? null, now, now).run()
       return ok({ success: true, actionType: 'create', questId: id, name: a.name })

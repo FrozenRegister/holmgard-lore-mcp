@@ -4,15 +4,13 @@
   "private": true,
   "packageManager": "pnpm@10.15.0",
   "engines": {
-    "node": ">=20",
+    "node": ">=22",
     "pnpm": ">=10"
   },
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --outfile=dist/index.js --sourcemap",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
-    "clean": "rimraf dist",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
     "lint": "eslint src",

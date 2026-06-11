@@ -3,8 +3,8 @@
 // Complex engine (DiplomacyEngine, TurnProcessor, FogOfWar) replaced with direct D1 ops.
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -52,7 +52,7 @@ export async function handleStrategyManage(env: AppBindings, args: Record<string
       if (!a.worldId || !a.name || !a.leader || !a.ideology) return err('"worldId", "name", "leader", and "ideology" are required')
       const world = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(a.worldId).first()
       if (!world) return err(`World not found: ${a.worldId}. Create the world first with world_manage {action:"create"}.`)
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const resources = a.startingResources ?? { food: 100, metal: 50, oil: 10 }
       await db.prepare('INSERT INTO nations (id, world_id, name, leader, ideology, aggression, trust, paranoia, gdp, resources, relations, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.name, a.leader, a.ideology, a.aggression, a.trust, a.paranoia, 1000, JSON.stringify(resources), '{}', now, now).run()
@@ -79,7 +79,7 @@ export async function handleStrategyManage(env: AppBindings, args: Record<string
     }
     case 'claim_region': {
       if (!a.nationId || !a.regionId) return err('"nationId" and "regionId" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO territorial_claims (id, nation_id, region_id, claim_strength, justification, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(id, a.nationId, a.regionId, 50, a.justification ?? null, now).run()
       await db.prepare('UPDATE regions SET owner_nation_id = ?, updated_at = ? WHERE id = ?').bind(a.nationId, now, a.regionId).run()

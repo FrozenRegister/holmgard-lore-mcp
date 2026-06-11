@@ -5,8 +5,8 @@
 // (no status, mood, tags, updated_at, or room_id columns)
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -48,7 +48,7 @@ export async function handleSceneManage(env: AppBindings, args: Record<string, u
     case 'create': {
       if (!a.worldId) return err('"worldId" is required')
       if (!a.narration) return err('"narration" is required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO scenes (id, world_id, title, when_label, place_label, narration, engine_state, participants, previous_scene_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.title ?? null, a.whenLabel ?? null, a.placeLabel ?? null, a.narration, '{}', JSON.stringify(a.participants), a.previousSceneId ?? null, now).run()
       return ok({ success: true, actionType: 'create', sceneId: id, worldId: a.worldId, title: a.title })

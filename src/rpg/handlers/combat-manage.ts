@@ -3,8 +3,8 @@
 // Complex AI/combat-engine calls simplified to D1 CRUD.
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -60,7 +60,7 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
 
   switch (match.matched) {
     case 'create_encounter': {
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       const tokens = a.tokens ?? []
       await db.prepare('INSERT INTO encounters (id, region_id, tokens, round, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.regionId ?? null, JSON.stringify(tokens), 1, 'setup', now, now).run()
@@ -86,7 +86,7 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
       const row = await db.prepare('SELECT tokens FROM encounters WHERE id = ?').bind(a.id).first() as { tokens: string } | null
       if (!row) return err(`Encounter not found: ${a.id}`)
       const tokens = parseTokens(row.tokens) as object[]
-      const newToken = { ...a.token, id: a.token.id ?? randomUUID() }
+      const newToken = { ...a.token, id: a.token.id ?? crypto.randomUUID() }
       tokens.push(newToken)
       await db.prepare('UPDATE encounters SET tokens = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(tokens), now, a.id).run()
       return ok({ success: true, actionType: 'add_combatant', encounterId: a.id, token: newToken, totalCombatants: tokens.length })

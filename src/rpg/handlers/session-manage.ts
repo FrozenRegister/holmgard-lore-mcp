@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/session-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -45,8 +45,8 @@ export async function handleSessionManage(env: AppBindings, args: Record<string,
       const created: { world?: boolean; party?: boolean } = {}
 
       if (!worldId && a.createNew) {
-        worldId = randomUUID()
-        await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(worldId, a.worldName ?? 'New World', randomUUID().slice(0, 8), 100, 100, now, now).run()
+        worldId = crypto.randomUUID()
+        await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(worldId, a.worldName ?? 'New World', crypto.randomUUID().slice(0, 8), 100, 100, now, now).run()
         created.world = true
       } else if (!worldId) {
         const w = await db.prepare('SELECT id FROM worlds ORDER BY created_at DESC LIMIT 1').first() as { id: string } | null
@@ -54,7 +54,7 @@ export async function handleSessionManage(env: AppBindings, args: Record<string,
       }
 
       if (!partyId && a.createNew) {
-        partyId = randomUUID()
+        partyId = crypto.randomUUID()
         await db.prepare('INSERT INTO parties (id, name, status, formation, world_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(partyId, a.partyName ?? 'Adventuring Party', 'active', 'standard', worldId ?? null, now, now).run()
         created.party = true
       } else if (!partyId) {

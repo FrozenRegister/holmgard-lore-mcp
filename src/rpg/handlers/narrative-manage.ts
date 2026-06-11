@@ -2,8 +2,8 @@
 // Source: src/server/consolidated/narrative-manage.ts
 
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
+
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
@@ -47,7 +47,7 @@ export async function handleNarrativeManage(env: AppBindings, args: Record<strin
   switch (match.matched) {
     case 'create': {
       if (!a.worldId || !a.content) return err('"worldId" and "content" are required')
-      const id = randomUUID()
+      const id = crypto.randomUUID()
       await db.prepare('INSERT INTO narrative_notes (id, world_id, type, content, metadata, visibility, tags, entity_id, entity_type, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.type, a.content, JSON.stringify(a.metadata ?? {}), a.visibility, JSON.stringify(a.tags ?? []), a.entityId ?? null, a.entityType ?? null, 'active', now, now).run()
       return ok({ success: true, actionType: 'create', noteId: id, type: a.type })

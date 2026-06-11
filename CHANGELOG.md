@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs
+
+- **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
+
 ### Added
 
 - **Phase 4: `agent_manage` tool (22 actions, Cloudflare Workers AI)** — Adds NPC AI agent management backed by `env.AI` (Cloudflare Workers AI). Each agent is bound 1:1 to a character and emits plain-text intent when invoked — the game master reads the response and decides what to do. Actions: lifecycle (`create`, `get`, `list`, `update`, `delete`, `resume`), agent state (`health`, `budget`), prompt slices (`set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `broadcast`, `preview_prompt`), mind state (`add_secret`, `list_secrets`, `remove_secret`, `add_journal`, `get_journal`), and invocation (`invoke`, `replay`). Storage: 5 D1 tables (`agents`, `agent_prompt_slices`, `agent_secrets`, `agent_journal`, `agent_calls`). Circuit breaker opens after 3 consecutive failures; reset with `resume`. Token budget cap enforced per-agent. AI binding wired in `wrangler.jsonc`, `src/types.ts`, and `src/__tests__/env.d.ts`. D1 migration `schema/migrations/0002_agent_cloudflare_provider.sql` updates the provider constraint from openai/openrouter-only to accept any string (default `'cloudflare'`). Tool count: 88 → 89. 27 new vitest tests in `src/__tests__/agent-manage.test.ts` cover full lifecycle, prompt-slice CRUD, journal, secrets, invoke with miniflare AI mock, circuit breaker open/close, budget exhaustion, and replay.
@@ -38,6 +42,10 @@
   - **Pipeline Documentation** (`docs/ai-automation-pipeline.md`) — Complete guide to the automation system, label meanings, workflow triggers, and troubleshooting.
 
 ### Fixed
+
+- **Crypto imports: Replace Node.js with Web Crypto API** — Fixed Cloudflare Workers build failure caused by 23 RPG handler files importing `randomUUID` from Node.js's `crypto` module. Replaced all imports with calls to the global Web Crypto API (`crypto.randomUUID()`), eliminating the need for Node.js polyfills. Removed unnecessary `build` script from `package.json`; Cloudflare Workers Builds dashboard is now configured to use `npx wrangler deploy` directly, which handles all bundling internally and correctly. This eliminates esbuild platform/external flag complexity and aligns with Cloudflare's recommended deployment approach. Removed overly-strict `check-docs` PR quality check (tracked separately in Issue #71 for re-addition with better guidance). Tests: all 455 tests pass. (Issue #72)
+
+- **Node.js version requirement for Cloudflare Workers Builds** — Updated `package.json` engines to require Node.js `>=22` (was `>=20`). Added `.nvmrc` file specifying Node 22. Wrangler 4.98.0 requires Node.js v22+, and the Workers Builds system detects and respects `.nvmrc` and `package.json` engines fields to install the correct Node.js version before running deployment commands.
 
 - **CI: Phase 4 type-check and test failures** — Added `AI: Ai` to `DOEnv` (required by `McpAgent<Env extends Cloudflare.Env>` after `env.d.ts` declared `AI` required). Added `wrangler.test.jsonc` (AI binding omitted) so vitest-pool-workers no longer triggers wrangler's `maybeStartOrUpdateRemoteProxySession` at pool startup — that call requires Cloudflare auth and fails in CI. The AI binding is now configured via miniflare options directly (`ai: { binding: 'AI' }`), providing a local stub. Updated 3 invoke/replay tests to accept `status: 'ok'` or `status: 'error'` since the local stub throws "Binding AI needs to be run remotely" without a Cloudflare token. Fixed `replay` error-path response to include `originalCallId`.
 
