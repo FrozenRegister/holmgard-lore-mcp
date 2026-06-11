@@ -4,7 +4,7 @@
 
 ### Docs
 
-- **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (4 parallel agents): create action-router wrappers and definition replacements. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites.
+- **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (3 remaining agents — #78 complete): create `rpg-handler.ts` and replace tool/RPG definitions. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites. Prompts updated to reflect #78 completion and to add explicit RPG collision-rename rows to the Wave 3 mapping table.
 
 - **Institutional knowledge capture** — Added `docs/holmgard-user-guide.md` (full tool reference with Known Behavior notes), four `docs/issues/` files (`HIGH-combat-manage-create-encounter-FK-constraint.md`, `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`, `HIGH-migrate-KV-to-D1-auto-redirect.md`, `performance-optimizations-for-slow-AI.md`), and a "Documenting Discoveries" section in `CLAUDE.md` codifying where and when to file these docs.
 

@@ -132,6 +132,13 @@ All `callTool('old_name', args)` → `callTool('new_name', { action/sub: '...', 
 | `travel_manage` | `rpg, { sub: 'travel', ...args }` |
 | `perception_manage` | `rpg, { sub: 'perception', ...args }` |
 
+The two entries below share names with core tools — they require a manual audit (see collision section):
+
+| Old tool (RPG context only) | New call |
+| --- | --- |
+| `world_manage` (RPG world domain) | `rpg, { sub: 'world', ...args }` |
+| `scene_manage` (RPG scene domain) | `rpg, { sub: 'scene', ...args }` |
+
 #### Unchanged (no rename needed)
 
 - `agent_manage` — keep as-is

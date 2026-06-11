@@ -1,6 +1,7 @@
 # Wave 2 Agent Prompt — Issue #82
 
-Run this agent ONLY after all 4 Wave 1 agents (#78, #79, #80, #81) have completed and pushed.
+Run this agent ONLY after all Wave 1 agents (#79, #80, #81) have completed and pushed.
+Agent #78 is already complete — its 5 wrapper files are on the branch.
 This is a single sequential agent — do not parallelize.
 
 ---
@@ -17,16 +18,21 @@ Check out `feat/consolidate-tool-surface` before starting.
 
 ### Prerequisite check
 
-Before touching any file, verify these files exist (Wave 1 output):
+Before touching any file, confirm all Wave 1 output exists:
+
+The following 5 files were created by Agent #78 and are already on the branch:
 
 - `src/tools/lore-manage.ts`
 - `src/tools/entity-manage.ts`
 - `src/tools/world-manage.ts`
 - `src/tools/scene-manage.ts`
 - `src/tools/continuity-manage.ts`
+
+The following file must have been created by Agent #79 before you proceed:
+
 - `src/rpg/rpg-handler.ts`
 
-If any are missing, stop and report which ones are absent.
+If `src/rpg/rpg-handler.ts` is missing, stop and report it absent.
 
 ### CHANGE 1: Replace src/tools/registry.ts
 
