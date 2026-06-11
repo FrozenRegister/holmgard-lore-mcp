@@ -9,6 +9,7 @@
   },
   "type": "module",
   "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=es2020 --outfile=dist/index.js --sourcemap --external:cloudflare --external:cloudflare:email --external:cloudflare:workers",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "test": "vitest run",
