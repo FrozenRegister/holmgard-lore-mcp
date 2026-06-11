@@ -25,19 +25,20 @@ describe.skipIf(!MCP_API_KEY)('Canonical Fixture Tests', () => {
   })
 
   it('advance_state_stage reads Stage-2-of-4 from Status field', async () => {
-    const res = await tool('advance_state_stage', { entity_key: alphaKey })
+    const res = await tool('entity_manage', { action: 'advance_stage', entity_key: alphaKey })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Stage-3-of-4/)
   })
 
   it('advance_state_stage handles Stage-3-of-4 terminal state', async () => {
-    const res = await tool('advance_state_stage', { entity_key: betaKey })
+    const res = await tool('entity_manage', { action: 'advance_stage', entity_key: betaKey })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Stage-4-of-4/)
   })
 
   it('resolve_interaction normalizes integer weights', async () => {
-    const res = await tool('resolve_interaction', {
+    const res = await tool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: actorKey, entity_b_id: alphaKey, action_type: 'process',
     })
     expect(res.error).toBeUndefined()
@@ -50,12 +51,12 @@ describe.skipIf(!MCP_API_KEY)('Canonical Fixture Tests', () => {
   })
 
   it('get_reachable_locations parses YAML-style Exits', async () => {
-    const res = await tool('get_reachable_locations', { origin_key: locKey })
+    const res = await tool('world_manage', { action: 'get_reachable_locations', origin_key: locKey })
     expect(res.result.locations).toHaveLength(2)
   })
 
   it('activate_scene extracts YAML choice IDs', async () => {
-    const res = await tool('activate_scene', { scene_key: sceneKey })
+    const res = await tool('scene_manage', { action: 'activate', scene_key: sceneKey })
     const choices: string[] = res.result.available_choices
     expect(choices).toContain('investigate')
     expect(choices).toContain('retreat')
@@ -79,7 +80,8 @@ describe.skipIf(!MCP_API_KEY)('Weight Integer Boundaries', () => {
   afterAll(async () => { await deleteLore(minKey, maxKey, targetKey) })
 
   it('Weight-1:5 normalizes to ~0.05', async () => {
-    const res = await tool('resolve_interaction', {
+    const res = await tool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: minKey, entity_b_id: targetKey, action_type: 'test',
     })
     const w1: number = res.result.metadata.weight_1
@@ -88,7 +90,8 @@ describe.skipIf(!MCP_API_KEY)('Weight Integer Boundaries', () => {
   })
 
   it('Weight-1:95 normalizes to ~0.95', async () => {
-    const res = await tool('resolve_interaction', {
+    const res = await tool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: maxKey, entity_b_id: targetKey, action_type: 'test',
     })
     const w1: number = res.result.metadata.weight_1

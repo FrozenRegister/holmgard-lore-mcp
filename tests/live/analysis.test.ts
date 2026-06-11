@@ -20,31 +20,32 @@ describe.skipIf(!MCP_API_KEY)('Analyze Utility', () => {
   afterEach(async () => { await deleteLore(key) })
 
   it('analyze_utility GASTRIC vector', async () => {
-    const res = await tool('analyze_utility', { entity_id: key, utility_vector: 'GASTRIC' })
+    const res = await tool('entity_manage', { action: 'analyze_utility', entity_id: key, utility_vector: 'GASTRIC' })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Grade/)
   })
 
   it('analyze_utility THRALL vector', async () => {
-    const res = await tool('analyze_utility', { entity_id: key, utility_vector: 'THRALL' })
+    const res = await tool('entity_manage', { action: 'analyze_utility', entity_id: key, utility_vector: 'THRALL' })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Grade/)
   })
 
   it('analyze_utility DISTRIBUTED vector', async () => {
-    const res = await tool('analyze_utility', { entity_id: key, utility_vector: 'DISTRIBUTED' })
+    const res = await tool('entity_manage', { action: 'analyze_utility', entity_id: key, utility_vector: 'DISTRIBUTED' })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/\/100/)
   })
 
   it('analyze_utility returns error for missing entity', async () => {
-    const res = await tool('analyze_utility', { entity_id: 'nonexistent:entity-xyz', utility_vector: 'GASTRIC' })
+    const res = await tool('entity_manage', { action: 'analyze_utility', entity_id: 'nonexistent:entity-xyz', utility_vector: 'GASTRIC' })
     expect(res.error).toBeTruthy()
     expect(res.error.message).toMatch(/not found/)
   })
 
   it('analyze_utility live character returns Grade A', async () => {
-    const res = await tool('analyze_utility', {
+    const res = await tool('entity_manage', {
+      action: 'analyze_utility',
       entity_id: 'character:seraphine-herbalist',
       utility_vector: 'GASTRIC',
       entity_role: 'subject',
@@ -75,7 +76,8 @@ describe.skipIf(!MCP_API_KEY)('Map Integration', () => {
   afterEach(async () => { await deleteLore(sourceKey, targetKey) })
 
   it('map_integration transfers traits at full depth', async () => {
-    const res = await tool('map_integration', {
+    const res = await tool('entity_manage', {
+      action: 'map_integration',
       source_id: sourceKey, target_id: targetKey, integration_depth: 1.0,
     })
     expect(res.error).toBeUndefined()
@@ -83,10 +85,11 @@ describe.skipIf(!MCP_API_KEY)('Map Integration', () => {
   })
 
   it('map_integration written traits are retrievable', async () => {
-    await tool('map_integration', {
+    await tool('entity_manage', {
+      action: 'map_integration',
       source_id: sourceKey, target_id: targetKey, integration_depth: 1.0,
     })
-    const res = await tool('get_lore', { query: targetKey })
+    const res = await tool('lore_manage', { action: 'get', query: targetKey })
     expect(res.result.content[0].text).toMatch(/Integrated-From/)
   })
 
@@ -94,7 +97,8 @@ describe.skipIf(!MCP_API_KEY)('Map Integration', () => {
     const plain = `test:integration-plain-${uid()}`
     await setLore(plain, 'No transferable traits here.')
     try {
-      const res = await tool('map_integration', {
+      const res = await tool('entity_manage', {
+        action: 'map_integration',
         source_id: plain, target_id: targetKey, integration_depth: 1.0,
       })
       expect(res.result.content[0].text).toMatch(/traits found in/)

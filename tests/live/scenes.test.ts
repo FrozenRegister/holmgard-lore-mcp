@@ -26,30 +26,30 @@ describe.skipIf(!MCP_API_KEY)('Scene Operations', () => {
   })
 
   it('activate_scene activates and hydrates entities', async () => {
-    const res = await tool('activate_scene', { scene_key: sceneKey })
+    const res = await tool('scene_manage', { action: 'activate', scene_key: sceneKey })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/activated/)
   })
 
   it('activate_scene returns error for missing scene', async () => {
-    const res = await tool('activate_scene', { scene_key: 'scene:ghost' })
+    const res = await tool('scene_manage', { action: 'activate', scene_key: 'scene:ghost' })
     expect(res.error).toBeTruthy()
   })
 
   it('commit_choice applies state change and records history', async () => {
-    const res = await tool('commit_choice', { choice_id: choiceKey, entity_key: historyEntity })
+    const res = await tool('scene_manage', { action: 'commit_choice', choice_id: choiceKey, entity_key: historyEntity })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/committed/)
   })
 
   it('commit_choice state change persists', async () => {
-    await tool('commit_choice', { choice_id: choiceKey, entity_key: historyEntity })
-    const res = await tool('get_lore', { query: historyEntity })
+    await tool('scene_manage', { action: 'commit_choice', choice_id: choiceKey, entity_key: historyEntity })
+    const res = await tool('lore_manage', { action: 'get', query: historyEntity })
     expect(res.result.content[0].text).toMatch(/Questing/)
   })
 
   it('get_choice_history parses committed entries', async () => {
-    const res = await tool('get_choice_history', { entity_key: historyEntity })
+    const res = await tool('scene_manage', { action: 'get_history', entity_key: historyEntity })
     expect(res.error).toBeUndefined()
   })
 })
@@ -65,14 +65,14 @@ describe.skipIf(!MCP_API_KEY)('State Stage Operations', () => {
   afterEach(async () => { await deleteLore(stageEntity) })
 
   it('advance_state_stage increments stage and decrements timer', async () => {
-    const res = await tool('advance_state_stage', { entity_key: stageEntity })
+    const res = await tool('entity_manage', { action: 'advance_stage', entity_key: stageEntity })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/stage 3/)
   })
 
   it('advance_state_stage writes back to entity', async () => {
-    await tool('advance_state_stage', { entity_key: stageEntity })
-    const res = await tool('get_lore', { query: stageEntity })
+    await tool('entity_manage', { action: 'advance_stage', entity_key: stageEntity })
+    const res = await tool('lore_manage', { action: 'get', query: stageEntity })
     expect(res.result.content[0].text).toMatch(/State-Stage.*3/)
   })
 })

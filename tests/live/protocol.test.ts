@@ -32,27 +32,28 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
 
 describe.skipIf(!MCP_API_KEY)('Basic Tools', () => {
   it('ping_tool', async () => {
-    const res = await tool('ping_tool')
+    const res = await tool('lore_manage', { action: 'ping' })
     expect(res.error).toBeUndefined()
   })
 
   it('list_topics', async () => {
-    const res = await tool('list_topics')
+    const res = await tool('lore_manage', { action: 'list' })
     expect(res.error).toBeUndefined()
   })
 
   it('list_maps', async () => {
-    const res = await tool('list_maps')
+    const res = await tool('lore_manage', { action: 'list_maps' })
     expect(res.error).toBeUndefined()
   })
 
   it('get_lore', async () => {
-    const res = await tool('get_lore', { query: 'character:sarah-weaver' })
+    const res = await tool('lore_manage', { action: 'get', query: 'character:sarah-weaver' })
     expect(res.error).toBeUndefined()
   })
 
   it('get_lore_batch', async () => {
-    const res = await tool('get_lore_batch', {
+    const res = await tool('lore_manage', {
+      action: 'get_batch',
       keys: [
         'character:sarah-weaver',
         'location:fernveil:outpost:deep-forest-cafe',

@@ -41,7 +41,7 @@ export async function adminPost(endpoint: string, body: Record<string, unknown>)
 
 export const uid = () => Math.random().toString(36).slice(2, 8)
 
-export const setLore = (key: string, text: string) => tool('set_lore', { key, text })
+export const setLore = (key: string, text: string) => tool('lore_manage', { action: 'set', key, text })
 
 export const deleteLore = (...keys: string[]) =>
-  Promise.all(keys.filter(Boolean).map(k => tool('delete_lore', { key: k })))
+  Promise.all(keys.filter(Boolean).map(k => tool('lore_manage', { action: 'delete', key: k })))

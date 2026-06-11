@@ -18,13 +18,13 @@ describe.skipIf(!MCP_API_KEY)('Sensory Profile', () => {
   afterEach(async () => { await deleteLore(key) })
 
   it('get_sensory_profile returns all five sensory fields', async () => {
-    const res = await tool('get_sensory_profile', { entity_key: key })
+    const res = await tool('entity_manage', { action: 'get_sensory_profile', entity_key: key })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/warm/)
   })
 
   it('get_sensory_profile returns error for missing entity', async () => {
-    const res = await tool('get_sensory_profile', { entity_key: 'character:no-body' })
+    const res = await tool('entity_manage', { action: 'get_sensory_profile', entity_key: 'character:no-body' })
     expect(res.error).toBeTruthy()
   })
 })

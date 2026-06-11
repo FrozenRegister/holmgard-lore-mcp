@@ -6,12 +6,12 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints', () => {
     const key = `test:admin-set-${uid()}`
     const res = await adminPost('/admin/set-lore', { key, text: 'Admin test content.' })
     expect(res.ok).toBe(true)
-    await tool('delete_lore', { key })
+    await tool('lore_manage', { action: 'delete', key })
   })
 
   it('admin/delete-lore endpoint', async () => {
     const key = `test:admin-delete-${uid()}`
-    await tool('set_lore', { key, text: 'Admin test content.' })
+    await tool('lore_manage', { action: 'set', key, text: 'Admin test content.' })
     const res = await adminPost('/admin/delete-lore', { key })
     expect(res.ok).toBe(true)
   })

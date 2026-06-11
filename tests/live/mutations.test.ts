@@ -12,15 +12,15 @@ describe.skipIf(!MCP_API_KEY)('Field Increment', () => {
   afterEach(async () => { await deleteLore(key) })
 
   it('increment_topic_field decrements numeric fields', async () => {
-    const res = await tool('increment_topic_field', {
-      key, field_path: 'days_remaining', increment: -1, reason: 'daily-decrement',
+    const res = await tool('lore_manage', {
+      action: 'increment', key, field_path: 'days_remaining', increment: -1, reason: 'daily-decrement',
     })
     expect(res.error).toBeUndefined()
   })
 
   it('increment_topic_field handles negative increments', async () => {
-    const res = await tool('increment_topic_field', {
-      key, field_path: 'days_remaining', increment: -2, reason: 'accelerated-decay',
+    const res = await tool('lore_manage', {
+      action: 'increment', key, field_path: 'days_remaining', increment: -2, reason: 'accelerated-decay',
     })
     expect(res.error).toBeUndefined()
   })
@@ -37,23 +37,23 @@ describe.skipIf(!MCP_API_KEY)('Patch Operations', () => {
   afterEach(async () => { await deleteLore(key) })
 
   it('patch_lore replace operation', async () => {
-    const res = await tool('patch_lore', {
-      key, operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated',
+    const res = await tool('lore_manage', {
+      action: 'patch', key, operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Replaced 1 occurrence/)
   })
 
   it('patch_lore replace detects missing target', async () => {
-    const res = await tool('patch_lore', {
-      key, operation: 'replace', target: 'Nonexistent', value: 'X',
+    const res = await tool('lore_manage', {
+      action: 'patch', key, operation: 'replace', target: 'Nonexistent', value: 'X',
     })
     expect(res.result.content[0].text).toMatch(/not found/)
   })
 
   it('patch_lore append operation', async () => {
-    const res = await tool('patch_lore', {
-      key, operation: 'append', value: '\nAppended line',
+    const res = await tool('lore_manage', {
+      action: 'patch', key, operation: 'append', value: '\nAppended line',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Appended to end/)
@@ -63,8 +63,8 @@ describe.skipIf(!MCP_API_KEY)('Patch Operations', () => {
     const ambig = `test:patch-ambig-${uid()}`
     await setLore(ambig, 'the cat chased the cat')
     try {
-      const res = await tool('patch_lore', {
-        key: ambig, operation: 'replace', target: 'the cat', value: 'a dog',
+      const res = await tool('lore_manage', {
+        action: 'patch', key: ambig, operation: 'replace', target: 'the cat', value: 'a dog',
       })
       expect(res.result.content[0].text).toMatch(/Ambiguous/)
     } finally {
@@ -73,8 +73,8 @@ describe.skipIf(!MCP_API_KEY)('Patch Operations', () => {
   })
 
   it('patch_lore returns error for missing key', async () => {
-    const res = await tool('patch_lore', {
-      key: 'nonexistent:key-99999', operation: 'replace', target: 'X', value: 'Y',
+    const res = await tool('lore_manage', {
+      action: 'patch', key: 'nonexistent:key-99999', operation: 'replace', target: 'X', value: 'Y',
     })
     expect(res.result.content[0].text).toMatch(/not found/)
   })
@@ -92,7 +92,8 @@ describe.skipIf(!MCP_API_KEY)('Batch Operations', () => {
   afterEach(async () => { await deleteLore(alpha, beta) })
 
   it('batch_set_lore writes multiple entries', async () => {
-    const res = await tool('batch_set_lore', {
+    const res = await tool('lore_manage', {
+      action: 'batch_set',
       entries: [
         { key: alpha, text: 'Alpha batch content.' },
         { key: beta, text: 'Beta batch content.' },
@@ -103,24 +104,27 @@ describe.skipIf(!MCP_API_KEY)('Batch Operations', () => {
   })
 
   it('batch_set_lore written entries are retrievable', async () => {
-    await tool('batch_set_lore', {
+    await tool('lore_manage', {
+      action: 'batch_set',
       entries: [
         { key: alpha, text: 'Alpha batch content.' },
         { key: beta, text: 'Beta batch content.' },
       ],
     })
-    const res = await tool('get_lore', { query: alpha })
+    const res = await tool('lore_manage', { action: 'get', query: alpha })
     expect(res.result.content[0].text).toMatch(/Alpha batch content/)
   })
 
   it('batch_mutate applies mutations sequentially', async () => {
-    await tool('batch_set_lore', {
+    await tool('lore_manage', {
+      action: 'batch_set',
       entries: [
         { key: alpha, text: 'Alpha batch content.' },
         { key: beta, text: 'Beta batch content.' },
       ],
     })
-    const res = await tool('batch_mutate', {
+    const res = await tool('lore_manage', {
+      action: 'batch_mutate',
       mutations: [
         { key: alpha, action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
         { key: beta, action: 'patch', operation: 'append', value: '\nAppended line.' },
@@ -131,19 +135,21 @@ describe.skipIf(!MCP_API_KEY)('Batch Operations', () => {
   })
 
   it('batch_mutate mutations persist', async () => {
-    await tool('batch_set_lore', {
+    await tool('lore_manage', {
+      action: 'batch_set',
       entries: [
         { key: alpha, text: 'Alpha batch content.' },
         { key: beta, text: 'Beta batch content.' },
       ],
     })
-    await tool('batch_mutate', {
+    await tool('lore_manage', {
+      action: 'batch_mutate',
       mutations: [
         { key: alpha, action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
         { key: beta, action: 'patch', operation: 'append', value: '\nAppended line.' },
       ],
     })
-    const res = await tool('get_lore', { query: alpha })
+    const res = await tool('lore_manage', { action: 'get', query: alpha })
     expect(res.result.content[0].text).toMatch(/Alpha mutated/)
   })
 })
