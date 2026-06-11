@@ -4,6 +4,8 @@
 
 ### Docs
 
+- **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (4 parallel agents): create action-router wrappers and definition replacements. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites.
+
 - **Institutional knowledge capture** — Added `docs/holmgard-user-guide.md` (full tool reference with Known Behavior notes), four `docs/issues/` files (`HIGH-combat-manage-create-encounter-FK-constraint.md`, `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`, `HIGH-migrate-KV-to-D1-auto-redirect.md`, `performance-optimizations-for-slow-AI.md`), and a "Documenting Discoveries" section in `CLAUDE.md` codifying where and when to file these docs.
 
 - **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
