@@ -26,16 +26,19 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
       const toolName = request.params.name
       const args = (request.params.arguments ?? {}) as Record<string, unknown>
 
-      if (toolName === 'ping_tool') {
-        return { content: [{ type: 'text' as const, text: 'pong' }], metadata: { source: 'internal' } }
-      }
-
-      if (toolName === 'check_authentication') {
-        // Auth is validated at the Worker level before routing here
-        return {
-          content: [{ type: 'text' as const, text: 'Authenticated.' }],
-          metadata: { authenticated: true },
+      if (toolName === 'lore_manage') {
+        const action = typeof args?.action === 'string' ? args.action : null
+        if (action === 'ping') {
+          return { content: [{ type: 'text' as const, text: 'pong' }], metadata: { source: 'internal' } }
         }
+        if (action === 'auth_check') {
+          // Auth is validated at the Worker level before routing here
+          return {
+            content: [{ type: 'text' as const, text: 'Authenticated.' }],
+            metadata: { authenticated: true },
+          }
+        }
+        // fall through to registry for all other lore_manage actions
       }
 
       const handler = toolRegistry[toolName]

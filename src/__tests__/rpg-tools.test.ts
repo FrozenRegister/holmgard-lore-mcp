@@ -40,31 +40,32 @@ describe('RPG engine tools', () => {
     expect(r.schema.inputSchema.properties.sub).toBeDefined()
   })
 
-  // ── world_manage ──────────────────────────────────────────────────────────
+  // ── rpg world ──────────────────────────────────────────────────────────────
 
-  it('world_manage create+get round-trip', async () => {
-    const created = await callTool('world_manage', { action: 'create', name: 'Holmgard', theme: 'fantasy' })
+  it('rpg world create+get round-trip', async () => {
+    const created = await callTool('rpg', { sub: 'world', action: 'create', name: 'Holmgard', theme: 'fantasy' })
     expect(created.success).toBe(true)
     expect(created.worldId).toBeTruthy()
 
-    const got = await callTool('world_manage', { action: 'get', worldId: created.worldId })
+    const got = await callTool('rpg', { sub: 'world', action: 'get', worldId: created.worldId })
     expect(got.success).toBe(true)
     expect(got.world.name).toBe('Holmgard')
   })
 
-  it('world_manage list returns created world', async () => {
-    await callTool('world_manage', { action: 'create', name: 'Holmgard', theme: 'fantasy' })
-    const listed = await callTool('world_manage', { action: 'list' })
+  it('rpg world list returns created world', async () => {
+    await callTool('rpg', { sub: 'world', action: 'create', name: 'Holmgard', theme: 'fantasy' })
+    const listed = await callTool('rpg', { sub: 'world', action: 'list' })
     expect(listed.worlds.some((w: any) => w.name === 'Holmgard')).toBe(true)
   })
 
-  // ── strategy_manage gate test (plan requirement) ─────────────────────────
+  // ── rpg strategy gate test (plan requirement) ─────────────────────────────
 
-  it('strategy_manage create_nation after holmgard-main world seed', async () => {
-    const world = await callTool('world_manage', { action: 'create', name: 'holmgard-main', theme: 'fantasy' })
+  it('rpg strategy create_nation after holmgard-main world seed', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'holmgard-main', theme: 'fantasy' })
     expect(world.success).toBe(true)
 
-    const nation = await callTool('strategy_manage', {
+    const nation = await callTool('rpg', {
+      sub: 'strategy',
       action: 'create_nation',
       worldId: world.worldId,
       name: 'The Iron Compact',
@@ -74,106 +75,108 @@ describe('RPG engine tools', () => {
     expect(nation.success).toBe(true)
     expect(nation.nationId).toBeTruthy()
 
-    const listed = await callTool('strategy_manage', { action: 'list_nations', worldId: world.worldId })
+    const listed = await callTool('rpg', { sub: 'strategy', action: 'list_nations', worldId: world.worldId })
     expect(listed.nations.some((n: any) => n.name === 'The Iron Compact')).toBe(true)
   })
 
-  // ── character_manage ──────────────────────────────────────────────────────
+  // ── rpg character ─────────────────────────────────────────────────────────
 
-  it('character_manage create+get+add_xp round-trip', async () => {
-    const created = await callTool('character_manage', {
-      action: 'create', name: 'Thorin', characterClass: 'Fighter', race: 'Dwarf', level: 1,
+  it('rpg character create+get+add_xp round-trip', async () => {
+    const created = await callTool('rpg', {
+      sub: 'character', action: 'create', name: 'Thorin', characterClass: 'Fighter', race: 'Dwarf', level: 1,
     })
     expect(created.success).toBe(true)
 
-    const got = await callTool('character_manage', { action: 'get', characterId: created.characterId })
+    const got = await callTool('rpg', { sub: 'character', action: 'get', characterId: created.characterId })
     expect(got.success).toBe(true)
     expect(got.character.name).toBe('Thorin')
 
-    const xp = await callTool('character_manage', { action: 'add_xp', characterId: created.characterId, xpAmount: 300 })
+    const xp = await callTool('rpg', { sub: 'character', action: 'add_xp', characterId: created.characterId, xpAmount: 300 })
     expect(xp.success).toBe(true)
     expect(xp.totalXp).toBe(300)
   })
 
-  // ── math_manage ───────────────────────────────────────────────────────────
+  // ── rpg math ──────────────────────────────────────────────────────────────
 
-  it('math_manage roll returns a number in range', async () => {
-    const r = await callTool('math_manage', { action: 'roll', expression: '2d6' })
+  it('rpg math roll returns a number in range', async () => {
+    const r = await callTool('rpg', { sub: 'math', action: 'roll', expression: '2d6' })
     expect(r.success).toBe(true)
     expect(r.total).toBeGreaterThanOrEqual(2)
     expect(r.total).toBeLessThanOrEqual(12)
   })
 
-  it('math_manage probability returns a fraction', async () => {
-    const r = await callTool('math_manage', { action: 'probability', sides: 6, target: 4 })
+  it('rpg math probability returns a fraction', async () => {
+    const r = await callTool('rpg', { sub: 'math', action: 'probability', sides: 6, target: 4 })
     expect(r.success).toBe(true)
     expect(r.probability).toBeGreaterThan(0)
     expect(r.probability).toBeLessThanOrEqual(1)
   })
 
-  // ── party_manage ──────────────────────────────────────────────────────────
+  // ── rpg party ─────────────────────────────────────────────────────────────
 
-  it('party_manage create+add_member round-trip', async () => {
-    const world = await callTool('world_manage', { action: 'create', name: 'TestWorld', theme: 'fantasy' })
-    const party = await callTool('party_manage', {
-      action: 'create', name: 'The Wanderers', worldId: world.worldId,
+  it('rpg party create+add_member round-trip', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'TestWorld', theme: 'fantasy' })
+    const party = await callTool('rpg', {
+      sub: 'party', action: 'create', name: 'The Wanderers', worldId: world.worldId,
     })
     expect(party.success).toBe(true)
 
-    const char = await callTool('character_manage', { action: 'create', name: 'Elara', characterClass: 'Wizard' })
-    const added = await callTool('party_manage', {
-      action: 'add_member', partyId: party.partyId, characterId: char.characterId,
+    const char = await callTool('rpg', { sub: 'character', action: 'create', name: 'Elara', characterClass: 'Wizard' })
+    const added = await callTool('rpg', {
+      sub: 'party', action: 'add_member', partyId: party.partyId, characterId: char.characterId,
     })
     expect(added.success).toBe(true)
 
-    const got = await callTool('party_manage', { action: 'get', partyId: party.partyId })
+    const got = await callTool('rpg', { sub: 'party', action: 'get', partyId: party.partyId })
     expect(got.party.members.length).toBeGreaterThan(0)
   })
 
-  // ── quest_manage ──────────────────────────────────────────────────────────
+  // ── rpg quest ─────────────────────────────────────────────────────────────
 
-  it('quest_manage create+complete round-trip', async () => {
-    const world = await callTool('world_manage', { action: 'create', name: 'QWorld', theme: 'fantasy' })
-    const quest = await callTool('quest_manage', {
-      action: 'create', worldId: world.worldId, name: 'Slay the Dragon', description: 'Find and slay the ancient dragon.',
+  it('rpg quest create+complete round-trip', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'QWorld', theme: 'fantasy' })
+    const quest = await callTool('rpg', {
+      sub: 'quest', action: 'create', worldId: world.worldId, name: 'Slay the Dragon', description: 'Find and slay the ancient dragon.',
     })
     expect(quest.success).toBe(true)
 
-    const done = await callTool('quest_manage', { action: 'complete', questId: quest.questId })
+    const done = await callTool('rpg', { sub: 'quest', action: 'complete', questId: quest.questId })
     expect(done.success).toBe(true)
 
-    const got = await callTool('quest_manage', { action: 'get', questId: quest.questId })
+    const got = await callTool('rpg', { sub: 'quest', action: 'get', questId: quest.questId })
     expect(got.quest.status).toBe('completed')
   })
 
-  // ── combat_manage + combat_action ─────────────────────────────────────────
+  // ── rpg combat + combat action ────────────────────────────────────────────
 
-  it('combat_manage encounter lifecycle: create → add_combatant → start → next_turn', async () => {
-    const enc = await callTool('combat_manage', { action: 'create_encounter' })
+  it('rpg combat encounter lifecycle: create → add_combatant → start → next_turn', async () => {
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
     expect(enc.success).toBe(true)
 
-    const added = await callTool('combat_manage', {
+    const added = await callTool('rpg', {
+      sub: 'combat',
       action: 'add_combatant',
       id: enc.encounterId,
       token: { id: 'hero-1', name: 'Hero', type: 'pc', initiative: 15, hp: 20 },
     })
     expect(added.success).toBe(true)
 
-    const started = await callTool('combat_manage', { action: 'start', id: enc.encounterId })
+    const started = await callTool('rpg', { sub: 'combat', action: 'start', id: enc.encounterId })
     expect(started.success).toBe(true)
     expect(started.status).toBe('active')
 
-    const next = await callTool('combat_manage', { action: 'next_turn', id: enc.encounterId })
+    const next = await callTool('rpg', { sub: 'combat', action: 'next_turn', id: enc.encounterId })
     expect(next.success).toBe(true)
   })
 
-  it('combat_action apply_damage updates character hp', async () => {
-    const char = await callTool('character_manage', {
-      action: 'create', name: 'Guard', characterClass: 'Fighter', hp: 20, maxHp: 20,
+  it('rpg combat_action apply_damage updates character hp', async () => {
+    const char = await callTool('rpg', {
+      sub: 'character', action: 'create', name: 'Guard', characterClass: 'Fighter', hp: 20, maxHp: 20,
     })
-    const enc = await callTool('combat_manage', { action: 'create_encounter' })
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
 
-    const dmg = await callTool('combat_action', {
+    const dmg = await callTool('rpg', {
+      sub: 'combat_action',
       action: 'apply_damage',
       encounterId: enc.encounterId,
       targetIds: [char.characterId],
@@ -183,10 +186,11 @@ describe('RPG engine tools', () => {
     expect(dmg.hpChanges[char.characterId]).toBe(-8)
   })
 
-  // ── spatial_manage ────────────────────────────────────────────────────────
+  // ── rpg spatial ───────────────────────────────────────────────────────────
 
-  it('spatial_manage generate+look+get_exits round-trip', async () => {
-    const room = await callTool('spatial_manage', {
+  it('rpg spatial generate+look+get_exits round-trip', async () => {
+    const room = await callTool('rpg', {
+      sub: 'spatial',
       action: 'generate', name: 'The Dusty Hall',
       description: 'A long hall with dusty stone floors.',
       biome: 'dungeon',
@@ -194,20 +198,21 @@ describe('RPG engine tools', () => {
     })
     expect(room.success).toBe(true)
 
-    const look = await callTool('spatial_manage', { action: 'look', roomId: room.roomId })
+    const look = await callTool('rpg', { sub: 'spatial', action: 'look', roomId: room.roomId })
     expect(look.success).toBe(true)
     expect(look.name).toBe('The Dusty Hall')
 
-    const exits = await callTool('spatial_manage', { action: 'get_exits', roomId: room.roomId })
+    const exits = await callTool('rpg', { sub: 'spatial', action: 'get_exits', roomId: room.roomId })
     expect(exits.count).toBe(1)
     expect(exits.exits[0].direction).toBe('north')
   })
 
-  // ── scene_manage ──────────────────────────────────────────────────────────
+  // ── rpg scene ─────────────────────────────────────────────────────────────
 
-  it('scene_manage create+get+get_latest round-trip', async () => {
-    const world = await callTool('world_manage', { action: 'create', name: 'SceneWorld', theme: 'fantasy' })
-    const scene = await callTool('scene_manage', {
+  it('rpg scene create+get+get_latest round-trip', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'SceneWorld', theme: 'fantasy' })
+    const scene = await callTool('rpg', {
+      sub: 'scene',
       action: 'create',
       worldId: world.worldId,
       title: 'The Awakening',
@@ -215,11 +220,11 @@ describe('RPG engine tools', () => {
     })
     expect(scene.success).toBe(true)
 
-    const got = await callTool('scene_manage', { action: 'get', id: scene.sceneId })
+    const got = await callTool('rpg', { sub: 'scene', action: 'get', id: scene.sceneId })
     expect(got.success).toBe(true)
     expect(got.scene.title).toBe('The Awakening')
 
-    const latest = await callTool('scene_manage', { action: 'get_latest', worldId: world.worldId })
+    const latest = await callTool('rpg', { sub: 'scene', action: 'get_latest', worldId: world.worldId })
     expect(latest.success).toBe(true)
     expect(latest.scene.id).toBe(scene.sceneId)
   })

@@ -27,12 +27,12 @@ describe('canonical fixture — template:standard-subject as generate_entity arc
   beforeEach(() => seedKV('template:standard-subject', TEMPLATE_LORE))
 
   it('stores and retrieves template lore verbatim', async () => {
-    const res = await callTool('get_lore', { query: 'template:standard-subject' })
+    const res = await callTool('lore_manage', { action: 'get', query: 'template:standard-subject' })
     expect(res.result.content[0].text).toBe(TEMPLATE_LORE)
   })
 
   it('generate_entity creates a new entity from the template archetype', async () => {
-    const res = await callTool('generate_entity', { archetype_key: 'template:standard-subject' })
+    const res = await callTool('entity_manage', { action: 'generate', archetype_key: 'template:standard-subject' })
     expect(res.error).toBeUndefined()
     expect(res.result.entity_key).toMatch(/^entity:standard-subject-\d+$/)
     expect(res.result.entity_text).toContain('Weight-1')
@@ -40,11 +40,10 @@ describe('canonical fixture — template:standard-subject as generate_entity arc
   })
 
   it('generated entity is retrievable and inherits integer weight values', async () => {
-    const gen = await callTool('generate_entity', { archetype_key: 'template:standard-subject' })
-    const lore = await callTool('get_lore', { query: gen.result.entity_key })
+    const gen = await callTool('entity_manage', { action: 'generate', archetype_key: 'template:standard-subject' })
+    const lore = await callTool('lore_manage', { action: 'get', query: gen.result.entity_key })
     expect(lore.error).toBeUndefined()
     expect(lore.result.text).toContain('30')
     expect(lore.result.text).toContain('55')
   })
 })
-

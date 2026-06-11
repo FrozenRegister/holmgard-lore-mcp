@@ -21,7 +21,8 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   })
 
   it('get_thread_comparison reports one entity per thread and correct timeline offset', async () => {
-    const res = await callTool('get_thread_comparison', {
+    const res = await callTool('world_manage', {
+      action: 'get_thread_comparison',
       thread_a: 'primary-processing-cycle',
       thread_b: 'secondary-processing-cycle',
     })
@@ -33,7 +34,8 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   })
 
   it('check_convergence returns can_converge=false when threads share no Current-Date', async () => {
-    const res = await callTool('check_convergence', {
+    const res = await callTool('world_manage', {
+      action: 'check_convergence',
       thread_a: 'primary-processing-cycle',
       thread_b: 'secondary-processing-cycle',
     })
@@ -53,7 +55,8 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
       'Timeline-Value: 48',
       'Current-Date: convergence-point',
     ].join('\n'))
-    const res = await callTool('check_convergence', {
+    const res = await callTool('world_manage', {
+      action: 'check_convergence',
       thread_a: 'primary-processing-cycle',
       thread_b: 'secondary-processing-cycle',
     })
@@ -61,4 +64,3 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
     expect(res.result.shared_dates).toContain('convergence-point')
   })
 })
-

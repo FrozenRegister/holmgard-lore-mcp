@@ -22,7 +22,7 @@ describe('agent_manage tool', () => {
   }
 
   async function seedCharacter(): Promise<string> {
-    const r = await callTool('character_manage', { action: 'create', name: 'Ser Aldric' })
+    const r = await callTool('rpg', { sub: 'character', action: 'create', name: 'Ser Aldric' })
     return r.characterId as string
   }
 
@@ -184,7 +184,7 @@ describe('agent_manage tool', () => {
   it('broadcast narrates to multiple agents', async () => {
     const [c1, c2] = await Promise.all([
       seedCharacter(),
-      callTool('character_manage', { action: 'create', name: 'Mira' }).then((r: any) => r.characterId),
+      callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then((r: any) => r.characterId),
     ])
     const [{ agentId: a1 }, { agentId: a2 }] = await Promise.all([
       callTool('agent_manage', { action: 'create', characterId: c1 }),

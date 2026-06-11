@@ -76,29 +76,29 @@ describe('JSON-RPC protocol', () => {
   })
 })
 
-describe('ping_tool', () => {
+describe('ping_tool (via lore_manage action=ping)', () => {
   it('returns pong', async () => {
-    const res = await callTool('ping_tool')
+    const res = await callTool('lore_manage', { action: 'ping' })
     expect(res.result.content[0].text).toBe('pong')
     expect(res.result.metadata.source).toBe('internal')
   })
 })
 
-describe('check_authentication', () => {
+describe('check_authentication (via lore_manage action=auth_check)', () => {
   it('returns authenticated when correct X-Api-Key header is sent', async () => {
-    const res = await callToolWithApiKey('check_authentication', 'test-api-key-xyz')
+    const res = await callToolWithApiKey('lore_manage', 'test-api-key-xyz', { action: 'auth_check' })
     expect(res.result.content[0].text).toBe('Authenticated.')
     expect(res.result.metadata.authenticated).toBe(true)
   })
 
   it('returns not authenticated when no X-Api-Key header is sent', async () => {
-    const res = await rpc('tools/call', { name: 'check_authentication', arguments: {} })
+    const res = await rpc('tools/call', { name: 'lore_manage', arguments: { action: 'auth_check' } })
     expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
     expect(res.result.metadata.authenticated).toBe(false)
   })
 
   it('returns not authenticated when wrong X-Api-Key header is sent', async () => {
-    const res = await callToolWithApiKey('check_authentication', 'wrong-key')
+    const res = await callToolWithApiKey('lore_manage', 'wrong-key', { action: 'auth_check' })
     expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
     expect(res.result.metadata.authenticated).toBe(false)
   })

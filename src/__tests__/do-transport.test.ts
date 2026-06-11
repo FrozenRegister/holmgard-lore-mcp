@@ -148,36 +148,36 @@ describe('DO transport — tools/list', () => {
 })
 
 describe('DO transport — tools/call', () => {
-  it('ping_tool returns pong', async () => {
+  it('lore_manage ping returns pong', async () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
         jsonrpc: '2.0', id: 3, method: 'tools/call',
-        params: { name: 'ping_tool', arguments: {} },
+        params: { name: 'lore_manage', arguments: { action: 'ping' } },
       },
       { 'Mcp-Session-Id': sessionId }
     )
     expect(data.result?.content?.[0]?.text).toBe('pong')
   })
 
-  it('check_authentication returns authenticated', async () => {
+  it('lore_manage auth_check returns authenticated', async () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
         jsonrpc: '2.0', id: 3, method: 'tools/call',
-        params: { name: 'check_authentication', arguments: {} },
+        params: { name: 'lore_manage', arguments: { action: 'auth_check' } },
       },
       { 'Mcp-Session-Id': sessionId }
     )
     expect(data.result?.content?.[0]?.text).toContain('Authenticated')
   })
 
-  it('list_topics returns KV keys via DO path', async () => {
+  it('lore_manage list returns KV keys via DO path', async () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
         jsonrpc: '2.0', id: 3, method: 'tools/call',
-        params: { name: 'list_topics', arguments: {} },
+        params: { name: 'lore_manage', arguments: { action: 'list' } },
       },
       { 'Mcp-Session-Id': sessionId }
     )

@@ -46,12 +46,13 @@ describe('canonical fixture — entity:actor-primary (predator/driver, Weight-1:
   beforeEach(() => seedKV('entity:actor-primary', ACTOR_LORE))
 
   it('stores and retrieves full canonical lore verbatim', async () => {
-    const res = await callTool('get_lore', { query: 'entity:actor-primary' })
+    const res = await callTool('lore_manage', { action: 'get', query: 'entity:actor-primary' })
     expect(res.result.content[0].text).toBe(ACTOR_LORE)
   })
 
   it('analyze_utility entity_role=actor uses Weight-1:85 (normalizes to 0.85)', async () => {
-    const res = await callTool('analyze_utility', {
+    const res = await callTool('entity_manage', {
+      action: 'analyze_utility',
       entity_id: 'entity:actor-primary',
       utility_vector: 'GASTRIC',
       entity_role: 'actor',
@@ -66,9 +67,9 @@ describe('canonical fixture — entity:actor-primary (predator/driver, Weight-1:
   })
 
   it('thread_tick on primary-processing-cycle decrements actor Timeline-Value', async () => {
-    const res = await callTool('thread_tick', { thread_id: 'primary-processing-cycle' })
+    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
     expect(res.result.metadata.entities_ticked).toBe(1)
-    const lore = await callTool('get_lore', { query: 'entity:actor-primary' })
+    const lore = await callTool('lore_manage', { action: 'get', query: 'entity:actor-primary' })
     expect(lore.result.text).toContain('Timeline-Value: 7')
   })
 
@@ -78,8 +79,7 @@ describe('canonical fixture — entity:actor-primary (predator/driver, Weight-1:
       'Thread: primary-processing-cycle',
       'Timeline-Value: 12',
     ].join('\n'))
-    const res = await callTool('thread_tick', { thread_id: 'primary-processing-cycle' })
+    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
     expect(res.result.metadata.entities_ticked).toBe(2)
   })
 })
-

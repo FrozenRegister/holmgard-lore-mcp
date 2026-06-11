@@ -41,12 +41,12 @@ describe('canonical fixture — scene:threshold-discovery (YAML choice tree)', (
   beforeEach(() => seedKV('scene:threshold-discovery', SCENE_LORE))
 
   it('stores and retrieves full canonical scene lore verbatim', async () => {
-    const res = await callTool('get_lore', { query: 'scene:threshold-discovery' })
+    const res = await callTool('lore_manage', { action: 'get', query: 'scene:threshold-discovery' })
     expect(res.result.content[0].text).toBe(SCENE_LORE)
   })
 
   it('activate_scene loads scene and returns all four choice IDs', async () => {
-    const res = await callTool('activate_scene', { scene_key: 'scene:threshold-discovery' })
+    const res = await callTool('scene_manage', { action: 'activate', scene_key: 'scene:threshold-discovery' })
     expect(res.error).toBeUndefined()
     expect(res.result.scene_key).toBe('scene:threshold-discovery')
     const choices = res.result.available_choices as string[]
@@ -56,4 +56,3 @@ describe('canonical fixture — scene:threshold-discovery (YAML choice tree)', (
     expect(choices).toContain('retreat')
   })
 })
-

@@ -4,6 +4,10 @@
 
 ### Refactored
 
+- **Registry + auth guard wiring** — Replaced `src/tools/registry.ts` with 5 action-router imports; replaced `src/rpg/registry.ts` with `rpg` + 3 meta tools; updated `src/index.ts` and `src/do/HolmgardMCP.ts` to route `ping` and `auth_check` through `lore_manage`. (#82)
+
+- **Worker test suite refactor** — Updated all 35 test files from 89 old tool names to the 9-tool action-router surface (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`, `rpg`, `agent_manage`, `search_tools`, `load_tool_schema`). (#83)
+
 - **RPG definitions consolidation** — Replaced 27 individual RPG tool definitions in `src/rpg/definitions.ts` with a single `rpg` tool (routes via `sub` param) plus verbatim `agent_manage`. (#81)
 
 - **Tool definitions consolidation** — Replaced 59 individual tool definitions with 5 consolidated definitions (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) using an open schema (`OPEN_SCHEMA`). (#80)

@@ -121,15 +121,18 @@ app.post('/mcp', async (c) => {
 
       const isAuthenticated = getIsAuthenticated(c)
 
-      if (toolName === 'ping_tool') {
-        return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
-      }
-
-      if (toolName === 'check_authentication') {
-        return c.json(makeResult(id, {
-          content: [{ type: 'text', text: isAuthenticated ? 'Authenticated.' : 'Not authenticated — request was made without a valid API key.' }],
-          metadata: { authenticated: isAuthenticated }
-        }), 200)
+      if (toolName === 'lore_manage') {
+        const action = typeof args?.action === 'string' ? args.action : null
+        if (action === 'ping') {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
+        }
+        if (action === 'auth_check') {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: isAuthenticated ? 'Authenticated.' : 'Not authenticated — request was made without a valid API key.' }],
+            metadata: { authenticated: isAuthenticated }
+          }), 200)
+        }
+        // fall through to auth guard + registry for all other lore_manage actions
       }
 
       if (!isAuthenticated) {

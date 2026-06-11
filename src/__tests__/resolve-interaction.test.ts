@@ -5,7 +5,8 @@ import { expect, it, beforeEach } from 'vitest'
 describe('resolve_interaction', () => {
   it('returns error when entity_a not found', async () => {
     await seedKV('character:defender', '**Weight-2:** 5')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'nonexistent:attacker',
       entity_b_id: 'character:defender',
       action_type: 'test',
@@ -17,7 +18,8 @@ describe('resolve_interaction', () => {
 
   it('returns error when entity_b not found', async () => {
     await seedKV('character:attacker', '**Weight-1:** 5')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:attacker',
       entity_b_id: 'nonexistent:defender',
       action_type: 'test',
@@ -29,7 +31,8 @@ describe('resolve_interaction', () => {
   it('returns error when entity_a is missing Weight-1 field', async () => {
     await seedKV('character:no-weight', 'no numeric fields here')
     await seedKV('character:has-weight-2', '**Weight-2:** 3')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:no-weight',
       entity_b_id: 'character:has-weight-2',
       action_type: 'test',
@@ -43,7 +46,8 @@ describe('resolve_interaction', () => {
     // This test verifies probability is computed correctly; outcome is probabilistic
     await seedKV('character:strong', '**Weight-1:** 1.0\n**State-Level:** 0')
     await seedKV('character:weak', '**Weight-2:** 0')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:strong',
       entity_b_id: 'character:weak',
       action_type: 'consume',
@@ -64,7 +68,8 @@ describe('resolve_interaction', () => {
     // Formula: (1.0*0.7) - (0*0.3) = 0.7
     await seedKV('character:normalized-attacker', '**Weight-1:** 100\n**State-Level:** 0')
     await seedKV('character:normalized-target', '**Weight-2:** 0')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:normalized-attacker',
       entity_b_id: 'character:normalized-target',
       action_type: 'hunt',
@@ -81,7 +86,8 @@ describe('resolve_interaction', () => {
     // Formula: 0 - 1.0*0.3 = -0.3, clamped to 0 → roll always >= 0
     await seedKV('character:zero-attacker', '**Weight-1:** 0')
     await seedKV('character:strong-defender', '**Weight-2:** 1.0')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:zero-attacker',
       entity_b_id: 'character:strong-defender',
       action_type: 'consume',
@@ -95,12 +101,13 @@ describe('resolve_interaction', () => {
     // W1=1.0, W2=0 → P=0.7
     await seedKV('character:winner', '**Weight-1:** 1.0\n**State-Level:** 5')
     await seedKV('character:loser', '**Weight-2:** 0')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:winner',
       entity_b_id: 'character:loser',
       action_type: 'consume',
     })
-    const get = await callTool('get_lore', { query: 'character:winner' })
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:winner' })
     const level = parseInt(get.result.text.match(/\*\*State-Level:\*\*\s*(\d+)/)?.[1] ?? '5')
     if (res.result.success) {
       expect(level).toBe(5 + res.result.delta_value)
@@ -113,12 +120,13 @@ describe('resolve_interaction', () => {
     // W1=0, W2=1.0 → P=0 → guaranteed failure
     await seedKV('character:guaranteed-fail', '**Weight-1:** 0\n**State-Level:** 3')
     await seedKV('character:guaranteed-win', '**Weight-2:** 1.0')
-    await callTool('resolve_interaction', {
+    await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:guaranteed-fail',
       entity_b_id: 'character:guaranteed-win',
       action_type: 'consume',
     })
-    const get = await callTool('get_lore', { query: 'character:guaranteed-fail' })
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:guaranteed-fail' })
     expect(get.result.text).toContain('**State-Level:** 3')
   })
 
@@ -126,7 +134,8 @@ describe('resolve_interaction', () => {
     // 0.6 and 0.2 are in [0,1] — no normalization applied
     await seedKV('character:meta-a', '**Weight-1:** 0.6')
     await seedKV('character:meta-b', '**Weight-2:** 0.2')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:meta-a',
       entity_b_id: 'character:meta-b',
       action_type: 'test-action',
@@ -143,7 +152,8 @@ describe('resolve_interaction', () => {
     // Integer weights like "Weight-1: 30" mean 30/100 = 0.30 in float terms
     await seedKV('character:int-actor', '**Weight-1:** 30\n**State-Level:** 0')
     await seedKV('character:int-target', '**Weight-2:** 55')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:int-actor',
       entity_b_id: 'character:int-target',
       action_type: 'hunt',
@@ -162,7 +172,8 @@ describe('resolve_interaction', () => {
     // Weight-1: 10 → normalizes to 0.10
     await seedKV('character:loose-attacker', 'Weight-1: 10\nState-Level: 0')
     await seedKV('character:loose-defender', 'Weight-2: 0')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:loose-attacker',
       entity_b_id: 'character:loose-defender',
       action_type: 'hunt',
@@ -176,7 +187,8 @@ describe('resolve_interaction', () => {
   it('reads weights from markdown-header loose format (# Field: value)', async () => {
     await seedKV('character:header-attacker', '# Entity: subject-alpha\nWeight-1: 0.9\nState-Level: 0')
     await seedKV('character:header-defender', '# Entity: prey-beta\nWeight-2: 0.1')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:header-attacker',
       entity_b_id: 'character:header-defender',
       action_type: 'consume',
@@ -190,7 +202,8 @@ describe('resolve_interaction', () => {
     // Format used in real character lore: - **Weight-1 (Aggression/Predator-Drive):** 0.9
     await seedKV('character:bullet-attacker', '- **Weight-1 (Aggression/Predator-Drive):** 0.9\n**State-Level:** 0')
     await seedKV('character:bullet-defender', '- **Weight-2 (Resilience):** 0.1')
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'character:bullet-attacker',
       entity_b_id: 'character:bullet-defender',
       action_type: 'hunt',
@@ -201,4 +214,3 @@ describe('resolve_interaction', () => {
     expect(res.result.metadata.weight_2).toBe(0.1)
   })
 })
-

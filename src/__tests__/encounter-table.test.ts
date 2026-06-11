@@ -113,10 +113,10 @@ describe('roll_encounter parseEncounterTable', () => {
     await seedKV('location:decimal-woods', '**Encounter-Table:** scout:0.60, guard:0.40');
     await seedKV('archetype:scout', '**Weight-1:** 0.4\n**Status:** Scouting');
     await seedKV('archetype:guard', '**Weight-1:** 0.7\n**Status:** Guarding');
-    const res = await callTool('roll_encounter', { location_key: 'location:decimal-woods', threat_level: 5 });
+    const res = await callTool('entity_manage', { action: 'roll_encounter', location_key: 'location:decimal-woods', threat_level: 5 });
     expect(res.result.rolled).toBe(true);
     expect(res.result.entity_key).toMatch(/^entity:/);
-    const get = await callTool('get_lore', { query: res.result.entity_key });
+    const get = await callTool('lore_manage', { action: 'get', query: res.result.entity_key });
     expect(get.error).toBeUndefined();
     expect(get.result.text).toContain('Weight-1');
   });
@@ -129,7 +129,7 @@ describe('roll_encounter parseEncounterTable', () => {
     // Avoid counting on distribution — Math.random seeding in the Workers runtime is deterministic.
     const knownArchetypes = new Set(['archetype:loner', 'archetype:bystander']);
     for (let i = 0; i < 5; i++) {
-      const res = await callTool('roll_encounter', { location_key: 'location:solo-woods' });
+      const res = await callTool('entity_manage', { action: 'roll_encounter', location_key: 'location:solo-woods' });
       expect(res.result.rolled).toBe(true);
       expect(knownArchetypes.has(res.result.selected_archetype)).toBe(true);
     }
@@ -140,7 +140,7 @@ describe('roll_encounter parseEncounterTable', () => {
     await seedKV('archetype:scout', '**Weight-1:** 0.4\n**Status:** Scouting');
     let nothingCount = 0;
     for (let i = 0; i < 5; i++) {
-      const res = await callTool('roll_encounter', { location_key: 'location:quiet-woods' });
+      const res = await callTool('entity_manage', { action: 'roll_encounter', location_key: 'location:quiet-woods' });
       if (res.result.nothing) nothingCount++;
     }
     expect(nothingCount).toBeGreaterThan(0);

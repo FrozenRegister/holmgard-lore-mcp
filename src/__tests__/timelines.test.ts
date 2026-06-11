@@ -5,7 +5,7 @@ import { expect, it, beforeEach } from 'vitest'
 describe('list_consumption_timelines', () => {
   it('returns empty when no character keys have timelines', async () => {
     await seedKV('location:dungeon', '**Consumption-Timeline:** 1 hour')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
     // location:* key is not scanned — only character:* keys
     expect(res.result.timelines).toHaveLength(0)
     expect(res.result.content[0].text).toBe('No consumption timelines found.')
@@ -13,7 +13,7 @@ describe('list_consumption_timelines', () => {
 
   it('parses Consumption-Timeline field from character:* entries', async () => {
     await seedKV('character:prey-alpha', '**Status:** Active\n**Consumption-Timeline:** 3 days\n**Processor:** Alpha')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
     expect(res.result.timelines).toHaveLength(1)
     expect(res.result.timelines[0].character_key).toBe('character:prey-alpha')
     expect(res.result.timelines[0].timeline_remaining).toBe('3 days')
@@ -22,39 +22,39 @@ describe('list_consumption_timelines', () => {
 
   it('skips characters with no timeline field', async () => {
     await seedKV('character:predator', 'No consumption timeline here.')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
     expect(res.result.timelines).toHaveLength(0)
   })
 
   it('status_filter=imminent matches hours', async () => {
     await seedKV('character:soon', '**Status:** Imminent\n**Consumption-Timeline:** 2 hours\n**Processor:** Beta')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'imminent' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'imminent' })
     expect(res.result.timelines).toHaveLength(1)
     expect(res.result.timelines[0].character_key).toBe('character:soon')
   })
 
   it('status_filter=imminent matches "1 day" (PS1 test 16D)', async () => {
     await seedKV('character:one-day', '**Status:** Imminent\n**Consumption-Timeline:** 1 day\n**Processor:** Alpha')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'imminent' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'imminent' })
     expect(res.result.timelines).toHaveLength(1)
     expect(res.result.timelines[0].character_key).toBe('character:one-day')
   })
 
   it('status_filter=imminent excludes weeks', async () => {
     await seedKV('character:weeks-away', '**Status:** Active\n**Consumption-Timeline:** 3 weeks\n**Processor:** Beta')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'imminent' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'imminent' })
     expect(res.result.timelines).toHaveLength(0)
   })
 
   it('status_filter=days-to-weeks includes days', async () => {
     await seedKV('character:days-prey', '**Status:** Active\n**Consumption-Timeline:** 5 days\n**Processor:** Gamma')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'days-to-weeks' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'days-to-weeks' })
     expect(res.result.timelines).toHaveLength(1)
   })
 
   it('status_filter=consumed matches consumed entries', async () => {
     await seedKV('character:done', '**Status:** Consumed\n**Consumption-Timeline:** consumed\n**Processor:** Delta')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'consumed' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'consumed' })
     expect(res.result.timelines).toHaveLength(1)
   })
 })
@@ -62,7 +62,7 @@ describe('list_consumption_timelines', () => {
 describe('list_consumption_timelines — Projected-Consumption-Timeline fallback', () => {
   it('parses legacy Projected-Consumption-Timeline field', async () => {
     await seedKV('character:legacy-prey', '**Status:** Imminent\n**Projected-Consumption-Timeline:** 2 days\n**Processor:** Beta')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
     expect(res.result.timelines).toHaveLength(1)
     expect(res.result.timelines[0].character_key).toBe('character:legacy-prey')
     expect(res.result.timelines[0].timeline_remaining).toBe('2 days')
@@ -73,13 +73,13 @@ describe('list_consumption_timelines — Projected-Consumption-Timeline fallback
       'character:dual-field',
       '**Status:** Active\n**Consumption-Timeline:** 5 days\n**Projected-Consumption-Timeline:** 10 days\n**Processor:** Gamma',
     )
-    const res = await callTool('list_consumption_timelines', { status_filter: 'all' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
     expect(res.result.timelines[0].timeline_remaining).toBe('5 days')
   })
 
   it('legacy fallback entry appears in status_filter=imminent when matching', async () => {
     await seedKV('character:legacy-imminent', '**Status:** Imminent\n**Projected-Consumption-Timeline:** 3 hours\n**Processor:** Alpha')
-    const res = await callTool('list_consumption_timelines', { status_filter: 'imminent' })
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'imminent' })
     expect(res.result.timelines).toHaveLength(1)
     expect(res.result.timelines[0].character_key).toBe('character:legacy-imminent')
   })
@@ -87,7 +87,7 @@ describe('list_consumption_timelines — Projected-Consumption-Timeline fallback
 
 describe('list_active_threads', () => {
   it('returns message when system:active-narratives key is absent', async () => {
-    const res = await callTool('list_active_threads')
+    const res = await callTool('entity_manage', { action: 'list_active_threads' })
     expect(res.result.content[0].text).toBe('No active narratives found.')
     expect(res.result.threads).toHaveLength(0)
   })
@@ -99,7 +99,7 @@ describe('list_active_threads', () => {
       '**Dissolution Threads**',
       '  - **DarkThread** (bob)',
     ].join('\n'))
-    const res = await callTool('list_active_threads')
+    const res = await callTool('entity_manage', { action: 'list_active_threads' })
     expect(res.result.threads).toHaveLength(2)
     const names = res.result.threads.map((t: { thread_name: string }) => t.thread_name)
     expect(names).toContain('SilverThread')
@@ -109,4 +109,3 @@ describe('list_active_threads', () => {
     expect(silver.character).toBe('alice')
   })
 })
-

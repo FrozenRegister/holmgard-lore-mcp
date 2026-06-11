@@ -43,12 +43,13 @@ describe('canonical fixture — faction:processing-guild (hierarchy + standing s
   })
 
   it('stores and retrieves faction lore verbatim', async () => {
-    const res = await callTool('get_lore', { query: 'faction:processing-guild' })
+    const res = await callTool('lore_manage', { action: 'get', query: 'faction:processing-guild' })
     expect(res.result.content[0].text).toBe(GUILD_LORE)
   })
 
   it('get_faction_standing detects actor-primary as member (slug appears in faction text)', async () => {
-    const res = await callTool('get_faction_standing', {
+    const res = await callTool('world_manage', {
+      action: 'get_faction_standing',
       entity_key: 'entity:actor-primary',
       faction_key: 'faction:processing-guild',
     })
@@ -59,11 +60,11 @@ describe('canonical fixture — faction:processing-guild (hierarchy + standing s
 
   it('get_faction_standing returns non-member for entity not in guild text', async () => {
     await seedKV('entity:outsider', 'Faction: rival-guild')
-    const res = await callTool('get_faction_standing', {
+    const res = await callTool('world_manage', {
+      action: 'get_faction_standing',
       entity_key: 'entity:outsider',
       faction_key: 'faction:processing-guild',
     })
     expect(res.result.standing.is_member).toBe(false)
   })
 })
-

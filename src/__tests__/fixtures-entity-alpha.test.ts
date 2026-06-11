@@ -64,18 +64,18 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
   beforeEach(() => seedKV('entity:subject-alpha', ALPHA_LORE))
 
   it('stores and retrieves full canonical lore verbatim', async () => {
-    const res = await callTool('get_lore', { query: 'entity:subject-alpha' })
+    const res = await callTool('lore_manage', { action: 'get', query: 'entity:subject-alpha' })
     expect(res.result.content[0].text).toBe(ALPHA_LORE)
   })
 
   it('advance_state_stage reads embedded Stage-2-of-4 in Status and advances to Stage-3-of-4', async () => {
-    const res = await callTool('advance_state_stage', { entity_key: 'entity:subject-alpha' })
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'entity:subject-alpha' })
     expect(res.result.advanced).toBe(true)
     expect(res.result.old_stage).toBe(2)
     expect(res.result.new_stage).toBe(3)
     expect(res.result.total_stages).toBe(4)
     expect(res.result.is_terminal).toBe(false)
-    const lore = await callTool('get_lore', { query: 'entity:subject-alpha' })
+    const lore = await callTool('lore_manage', { action: 'get', query: 'entity:subject-alpha' })
     expect(lore.result.text).toContain('Stage-3-of-4')
     expect(lore.result.text).not.toContain('Stage-2-of-4')
   })
@@ -87,7 +87,8 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
       'Weight-2 (Vulnerability): 10',
       'State-Level: 0',
     ].join('\n'))
-    const res = await callTool('resolve_interaction', {
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
       entity_a_id: 'entity:actor-stub',
       entity_b_id: 'entity:subject-alpha',
       action_type: 'process',
@@ -102,24 +103,23 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
   })
 
   it('thread_tick finds entity:subject-alpha via Thread field in ## State Machine section', async () => {
-    const res = await callTool('thread_tick', { thread_id: 'primary-processing-cycle' })
+    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
     expect(res.result.metadata.entities_ticked).toBe(1)
-    const lore = await callTool('get_lore', { query: 'entity:subject-alpha' })
+    const lore = await callTool('lore_manage', { action: 'get', query: 'entity:subject-alpha' })
     expect(lore.result.text).toContain('Timeline-Value: 11')
   })
 
   it('get_sensory_profile reads Sound-Signature and Visual-Descriptors from canonical section', async () => {
-    const res = await callTool('get_sensory_profile', { entity_key: 'entity:subject-alpha' })
+    const res = await callTool('entity_manage', { action: 'get_sensory_profile', entity_key: 'entity:subject-alpha' })
     expect(res.error).toBeUndefined()
     expect(res.result.profile.sound_signature).toContain('elevated-respiration')
     expect(res.result.profile.visual_descriptors).toContain('lean-musculature')
   })
 
   it('search_lore finds entity:subject-alpha by stage string', async () => {
-    const res = await callTool('search_lore', { query: 'Stage-2-of-4' })
+    const res = await callTool('lore_manage', { action: 'search', query: 'Stage-2-of-4' })
     expect(res.result.metadata.match_count).toBeGreaterThan(0)
     const keys = res.result.results.map((r: { key: string }) => r.key)
     expect(keys).toContain('entity:subject-alpha')
   })
 })
-

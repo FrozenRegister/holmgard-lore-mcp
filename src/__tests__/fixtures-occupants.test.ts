@@ -18,7 +18,7 @@ describe('canonical fixture — get_location_occupants with entity: prefix keys'
       'Status: Stage-3-of-4',
       'Location: processing-chamber-secondary',
     ].join('\n'))
-    const res = await callTool('get_location_occupants', { location_key: 'processing-chamber-primary' })
+    const res = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'processing-chamber-primary' })
     expect(res.error).toBeUndefined()
     const keys = res.result.occupants.map((o: { key: string }) => o.key)
     expect(keys).toContain('entity:subject-alpha')
@@ -26,4 +26,3 @@ describe('canonical fixture — get_location_occupants with entity: prefix keys'
     expect(keys).not.toContain('entity:subject-beta')
   })
 })
-
