@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- **`present_choices` strips markdown bold markers from choice IDs** — When a scene entry uses `**bold**` formatting around a choice ID (e.g. `- **go-east**: description`), the captured ID now has leading/trailing asterisks stripped before use. Downstream `commit_choice` lookups no longer fail with "not found" due to the bolded key. (Issue #45)
+
 - **`process_stage_batch` zero-result diagnostics** — When 0 entities are processed, the response now includes a `reason` field and `entities_at_location` / `entities_with_stages` counts so agents can distinguish between empty location, occupants lacking `State-Stage` fields, and all stages already terminal. (Issue #55)
 
 - **Crypto imports: Replace Node.js with Web Crypto API** — Fixed Cloudflare Workers build failure caused by 23 RPG handler files importing `randomUUID` from Node.js's `crypto` module. Replaced all imports with calls to the global Web Crypto API (`crypto.randomUUID()`), eliminating the need for Node.js polyfills. Removed unnecessary `build` script from `package.json`; Cloudflare Workers Builds dashboard is now configured to use `npx wrangler deploy` directly, which handles all bundling internally and correctly. This eliminates esbuild platform/external flag complexity and aligns with Cloudflare's recommended deployment approach. Removed overly-strict `check-docs` PR quality check (tracked separately in Issue #71 for re-addition with better guidance). Tests: all 455 tests pass. (Issue #72)
