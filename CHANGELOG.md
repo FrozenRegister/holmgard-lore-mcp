@@ -70,6 +70,7 @@
 ### Fixed
 
 - **Inventory separator regex expanded to `[xX:×*]`** — `handle_get_inventory` and `parseInvStr` inside `handle_transfer_item` now recognise uppercase `X` and asterisk (`*`) as quantity separators in addition to lowercase `x`, colon, and `×`. Entries like `sword X3` or `potion*2` no longer silently discard their quantity, and `transfer_item` no longer reports "item not found" for affected entries. (Issues #50, #92)
+- **`present_choices` strips markdown bold markers from choice IDs** — When a scene entry uses `**bold**` formatting around a choice ID (e.g. `- **go-east**: description`), the captured ID now has leading/trailing asterisks stripped before use. Downstream `commit_choice` lookups no longer fail with "not found" due to the bolded key. (Issue #45)
 
 - **`process_stage_batch` zero-result diagnostics** — When 0 entities are processed, the response now includes a `reason` field and `entities_at_location` / `entities_with_stages` counts so agents can distinguish between empty location, occupants lacking `State-Stage` fields, and all stages already terminal. (Issue #55)
 
