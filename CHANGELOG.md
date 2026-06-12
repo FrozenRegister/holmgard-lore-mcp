@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### CI
+
+- **Build verification step** — Added a `build` job to `.github/workflows/ci.yml` that runs `pnpm run build` on every push and PR. Catches esbuild/bundling failures before they reach production deploy. (Issue #69, #97)
+
 ### Refactored
 
 - **Registry + auth guard wiring** — Replaced `src/tools/registry.ts` with 5 action-router imports; replaced `src/rpg/registry.ts` with `rpg` + 3 meta tools; updated `src/index.ts` and `src/do/HolmgardMCP.ts` to route `ping` and `auth_check` through `lore_manage`. (#82)
@@ -21,6 +25,8 @@
 - **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
 
 ### Added
+
+- **`get_map` action on `lore_manage`** — Dedicated map lookup tool (`action: "get_map"`, param `map_id`). Validates the key exists in the `map:` namespace and returns a helpful error referencing `list_maps` if not found. Thin wrapper over `get_lore` that improves discoverability for agents searching for map tooling. (Issue #56)
 
 - **`src/rpg/rpg-handler.ts`** — Single action-router dispatcher for the consolidated `rpg` tool. Accepts `{ sub, action, ...rest }`, routes to one of 27 RPG handler functions via `SUB_MAP`, and bridges the `(env, args) => McpResponse` RPG handler signature into the `ToolHandler` format. Part of 89→9 MCP tool consolidation (Issue #79).
 
@@ -62,6 +68,8 @@
   - **Pipeline Documentation** (`docs/ai-automation-pipeline.md`) — Complete guide to the automation system, label meanings, workflow triggers, and troubleshooting.
 
 ### Fixed
+
+- **`process_stage_batch` zero-result diagnostics** — When 0 entities are processed, the response now includes a `reason` field and `entities_at_location` / `entities_with_stages` counts so agents can distinguish between empty location, occupants lacking `State-Stage` fields, and all stages already terminal. (Issue #55)
 
 - **Crypto imports: Replace Node.js with Web Crypto API** — Fixed Cloudflare Workers build failure caused by 23 RPG handler files importing `randomUUID` from Node.js's `crypto` module. Replaced all imports with calls to the global Web Crypto API (`crypto.randomUUID()`), eliminating the need for Node.js polyfills. Removed unnecessary `build` script from `package.json`; Cloudflare Workers Builds dashboard is now configured to use `npx wrangler deploy` directly, which handles all bundling internally and correctly. This eliminates esbuild platform/external flag complexity and aligns with Cloudflare's recommended deployment approach. Removed overly-strict `check-docs` PR quality check (tracked separately in Issue #71 for re-addition with better guidance). Tests: all 455 tests pass. (Issue #72)
 

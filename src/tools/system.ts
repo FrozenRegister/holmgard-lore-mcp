@@ -27,6 +27,20 @@ export async function handle_list_maps({ c, id, args }: ToolContext): Promise<Re
   }), 200)
 }
 
+export async function handle_get_map({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ map_id: z.string().min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const mapId = parsed.data.map_id.trim().toLowerCase()
+  const key = mapId.startsWith('map:') ? mapId : `map:${mapId}`
+  const raw = await kvGet(c, key)
+  if (!raw) return c.json(makeError(id, -32602, `No map found for "${key}". Use list_maps to see available maps.`, null), 200)
+
+  const { text, meta } = parseKvEntry(raw)
+  return c.json(makeResult(id, { content: [{ type: 'text', text }], key, text, meta }), 200)
+}
+
 export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ query: z.string().min(1) })
   const parsed = schema.safeParse(args)
