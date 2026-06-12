@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- **KV-to-D1 character migration** — New `/admin/migrate-character` endpoint reads a `character:*` KV entry, maps prose fields to structured D1 columns via `parseKvCharToD1`, inserts into the `characters` table, and prepends a `## D1-Migrated` / `## D1-Character-ID` redirect marker to the KV entry. Idempotent on re-run. (#76)
+
+- **`get_lore` auto-redirect** — When a KV entry contains `## D1-Migrated: true`, `handle_get_lore` transparently fetches the D1 row and returns `formatD1CharToLore` output. Falls back to stale KV text if the D1 row is missing or D1 is unavailable. (#76)
+
+- **`src/rpg/utils/kv-to-d1.ts`** — Pure mapper functions: `parseKvCharToD1` (KV prose → `D1CharInsert`) and `formatD1CharToLore` (D1 row → markdown lore text). Parses named sections, bold fields, JSON blocks, and Mechanical Scaffolding sub-sections. (#76)
+
+- **Migration 0003** — `schema/migrations/0003_character_kv_fields.sql` adds KV-native columns to `characters`: `alias`, `age`, `gender`, `orientation`, `weight_1/2`, `perception_float`, `thread_id`, `state_stage`, `state_stage_timer`, `kv_origin`. (#76)
+
 ### CI
 
 - **Build verification step** — Added a `build` job to `.github/workflows/ci.yml` that runs `pnpm run build` on every push and PR. Catches esbuild/bundling failures before they reach production deploy. (Issue #69, #97)

@@ -136,7 +136,19 @@ CREATE TABLE IF NOT EXISTS characters (
   resource_pools                 TEXT DEFAULT '{}',
   background                     TEXT,
   alignment                      TEXT,
-  origin                         TEXT
+  origin                         TEXT,
+  -- KV-native character fields (migration 0003):
+  alias                          TEXT,
+  age                            TEXT,
+  gender                         TEXT,
+  orientation                    TEXT,
+  weight_1                       REAL DEFAULT 0.0,
+  weight_2                       REAL DEFAULT 0.0,
+  perception_float               REAL DEFAULT 0.0,
+  thread_id                      TEXT,
+  state_stage                    INTEGER DEFAULT 1,
+  state_stage_timer              INTEGER DEFAULT 0,
+  kv_origin                      TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_characters_type ON characters(character_type);

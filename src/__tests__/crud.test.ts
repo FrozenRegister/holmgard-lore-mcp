@@ -1,6 +1,7 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
+import { setupRpgDb } from './setup-d1'
 
 describe('list_topics', () => {
   it('lists keys present in KV', async () => {
@@ -87,6 +88,61 @@ describe('get_lore', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
     expect(res.error.message).toContain('No lore found')
+  })
+})
+
+describe('get_lore D1 redirect', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  const CHAR_KEY = 'character:redirect-test'
+  const CHAR_LORE = [
+    '# Character:Redirect Test Char',
+    '**Status:** Active, Healthy',
+    '**Race:** Human',
+    '**Class:** Fighter',
+  ].join('\n')
+
+  it('transparently returns D1 data when entry has D1-Migrated marker', async () => {
+    // Use admin migrate endpoint — creates D1 row + KV redirect marker in one step
+    await seedKV(CHAR_KEY, CHAR_LORE)
+    const migrateRes = await SELF.fetch('http://example.com/admin/migrate-character', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: CHAR_KEY, secret: ADMIN_SECRET }),
+    })
+    const migrateBody = await migrateRes.json() as Record<string, any>
+    expect(migrateBody.ok).toBe(true)
+    const d1Id = migrateBody.d1Id
+
+    const res = await callTool('lore_manage', { action: 'get', query: CHAR_KEY })
+    expect(res.error).toBeUndefined()
+    const text = res.result.content[0].text as string
+    expect(text).toContain('Redirect Test Char')
+    expect(text).toContain('*Source: D1 database (auto-redirected from legacy KV entry)*')
+    expect(res.result.meta?.d1_redirect).toBe(true)
+    expect(res.result.meta?.d1_id).toBe(d1Id)
+  })
+
+  it('returns stale KV text when D1 row is missing (deleted)', async () => {
+    // Seed KV with a redirect marker pointing to a nonexistent D1 row.
+    // The handler try-catches D1 errors and falls through to the KV text.
+    const staleText = [
+      '## D1-Migrated: true',
+      '## D1-Character-ID: nonexistent-uuid-999',
+      '## Status: Legacy entry — see D1 for current data',
+      '',
+      '# Character:Stale Entry',
+    ].join('\n')
+    await seedKV('character:stale-test', staleText)
+
+    const res = await callTool('lore_manage', { action: 'get', query: 'character:stale-test' })
+    expect(res.error).toBeUndefined()
+    const text = res.result.content[0].text as string
+    expect(text).toContain('D1-Migrated: true')
+    expect(text).toContain('Stale Entry')
+    expect(text).not.toContain('*Source: D1 database*')
   })
 })
 

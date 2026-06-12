@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { kvGet, kvList, kvListMaps } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, parseLoreSections } from '../lib/lore'
+import { formatD1CharToLore } from '../rpg/utils/kv-to-d1'
 import type { ToolContext } from './types'
 
 export async function handle_list_topics({ c, id, args }: ToolContext): Promise<Response> {
@@ -51,6 +52,27 @@ export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Res
   if (!raw) return c.json(makeError(id, -32602, `No lore found for key "${key}"`, null), 200)
 
   const { text, meta } = parseKvEntry(raw)
+
+  // Auto-redirect: if KV entry has been migrated to D1, serve live D1 data instead
+  if (text.includes('## D1-Migrated: true') && c.env.RPG_DB) {
+    const idMatch = text.match(/^## D1-Character-ID:\s*(\S+)/m)
+    if (idMatch) {
+      try {
+        const row = await c.env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?').bind(idMatch[1]).first()
+        if (row) {
+          const loreText = formatD1CharToLore(row as Record<string, unknown>)
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: loreText }],
+            key, text: loreText, meta: { ...meta, d1_redirect: true, d1_id: idMatch[1] }
+          }), 200)
+        }
+      } catch {
+        // D1 unavailable or schema not ready — fall through to stale KV text
+      }
+      // D1 row missing or D1 error — fall through and return stale KV text as-is
+    }
+  }
+
   return c.json(makeResult(id, { content: [{ type: 'text', text }], key, text, meta }), 200)
 }
 

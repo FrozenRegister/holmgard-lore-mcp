@@ -1,0 +1,159 @@
+name: Mnehmos Upstream Change Detection
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Every Monday 09:00 UTC
+  workflow_dispatch:        # Manual trigger any time
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Checkout holmgard-lore-mcp
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone Mnehmos at baseline and HEAD
+        env:
+          MNEHMOS_REPO_URL: ${{ secrets.MNEHMOS_REPO_URL }}
+          MNEHMOS_TOKEN: ${{ secrets.MNEHMOS_TOKEN }}
+          BASELINE_SHA: 2feba24bcd45b4f7024caa5621f3476151a6bc3b
+        run: |
+          # Inject token into URL if repo is private
+          if [ -n "$MNEHMOS_TOKEN" ]; then
+            CLONE_URL=$(echo "$MNEHMOS_REPO_URL" | sed "s|https://|https://${MNEHMOS_TOKEN}@|")
+          else
+            CLONE_URL="$MNEHMOS_REPO_URL"
+          fi
+
+          git clone --quiet "$CLONE_URL" mnehmos-upstream
+          cd mnehmos-upstream
+
+          # Capture baseline snapshot
+          git checkout --quiet "$BASELINE_SHA" 2>/dev/null || {
+            echo "ERROR: baseline commit $BASELINE_SHA not found in upstream"
+            exit 1
+          }
+          cp -r . ../mnehmos-baseline
+          cd ..
+
+          # Capture current HEAD snapshot
+          cd mnehmos-upstream
+          git checkout --quiet main 2>/dev/null || git checkout --quiet master 2>/dev/null
+          echo "UPSTREAM_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "UPSTREAM_DATE=$(git log -1 --format='%ci')" >> "$GITHUB_ENV"
+
+      - name: Build per-file diff report
+        id: diff
+        run: |
+          BASELINE_SHA="2feba24bcd45b4f7024caa5621f3476151a6bc3b"
+
+          # Read the source-path mapping from ported file headers
+          declare -A FILE_MAP
+          while IFS= read -r our_file; do
+            src_path=$(grep -m1 '// Source:' "$our_file" | sed 's|.*// Source: ||')
+            if [ -n "$src_path" ]; then
+              FILE_MAP["$our_file"]="$src_path"
+            fi
+          done < <(grep -rl '// Ported from Mnehmos' src/rpg/handlers/ src/rpg/utils/ 2>/dev/null)
+
+          CHANGED_FILES=()
+          DIFF_BODY=""
+
+          for our_file in "${!FILE_MAP[@]}"; do
+            src_path="${FILE_MAP[$our_file]}"
+            baseline_file="mnehmos-baseline/${src_path}"
+            upstream_file="mnehmos-upstream/${src_path}"
+
+            if [ ! -f "$baseline_file" ]; then
+              DIFF_BODY+="### \`${src_path}\`\n> ⚠️ Not found at baseline (path may have changed)\n\n"
+              CHANGED_FILES+=("$our_file")
+              continue
+            fi
+            if [ ! -f "$upstream_file" ]; then
+              DIFF_BODY+="### \`${src_path}\`\n> 🗑️ Deleted in upstream HEAD\n\n"
+              CHANGED_FILES+=("$our_file")
+              continue
+            fi
+
+            DIFF=$(diff -u "$baseline_file" "$upstream_file" || true)
+            if [ -n "$DIFF" ]; then
+              CHANGED_FILES+=("$our_file")
+              DIFF_BODY+="### \`${src_path}\` → \`${our_file}\`\n\`\`\`diff\n${DIFF}\n\`\`\`\n\n"
+            fi
+          done
+
+          echo "changed_count=${#CHANGED_FILES[@]}" >> "$GITHUB_OUTPUT"
+          # Save diff body to file to avoid env size limits
+          printf '%s' "$DIFF_BODY" > /tmp/diff_body.md
+
+      - name: Open GitHub Issue if changes detected
+        if: steps.diff.outputs.changed_count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const diffBody = fs.readFileSync('/tmp/diff_body.md', 'utf8')
+            const changedCount = ${{ steps.diff.outputs.changed_count }}
+            const upstreamHead = process.env.UPSTREAM_HEAD
+            const upstreamDate = process.env.UPSTREAM_DATE
+            const baselineSha = '2feba24bcd45b4f7024caa5621f3476151a6bc3b'
+
+            // Check for an existing open issue to avoid duplicates
+            const { data: existingIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'upstream-update',
+              state: 'open',
+            })
+
+            const title = `[upstream] Mnehmos changed ${changedCount} ported file(s) since baseline`
+
+            if (existingIssues.length > 0) {
+              // Add a comment to the existing issue instead of opening a new one
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssues[0].number,
+                body: `**New check — upstream HEAD \`${upstreamHead}\` (${upstreamDate})**\n\n${changedCount} file(s) differ from baseline \`${baselineSha}\`.\n\n${diffBody}`,
+              })
+              core.notice(`Appended to existing issue #${existingIssues[0].number}`)
+            } else {
+              const body = [
+                `Automated weekly check detected upstream changes in the Mnehmos repository.`,
+                ``,
+                `| | Value |`,
+                `|---|---|`,
+                `| Baseline commit | \`${baselineSha}\` |`,
+                `| Upstream HEAD | \`${upstreamHead}\` |`,
+                `| Upstream date | ${upstreamDate} |`,
+                `| Files changed | ${changedCount} |`,
+                ``,
+                `**Review these diffs against \`docs/mnehmos-baseline.md\` before porting.**`,
+                `Intentional adaptations (Hono bindings, Web Crypto, tool-router surface) should be skipped.`,
+                ``,
+                `---`,
+                ``,
+                diffBody,
+              ].join('\n')
+
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['upstream-update'],
+              })
+              core.notice(`Opened new upstream-update issue`)
+            }
+
+      - name: No changes summary
+        if: steps.diff.outputs.changed_count == '0'
+        run: |
+          echo "✅ No changes detected in upstream Mnehmos since baseline $BASELINE_SHA"
+          echo "Upstream HEAD: $UPSTREAM_HEAD ($UPSTREAM_DATE)"

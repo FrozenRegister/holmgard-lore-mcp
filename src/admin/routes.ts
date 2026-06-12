@@ -5,6 +5,7 @@ import { kvGet, kvPut, kvDelete, getKV, loreDB } from '../lib/kv'
 import { parseKvEntry } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
+import { parseKvCharToD1 } from '../rpg/utils/kv-to-d1'
 
 const admin = new Hono<{ Bindings: AppBindings }>()
 
@@ -165,6 +166,106 @@ admin.post('/gc', async (c) => {
     } while (cursor)
 
     return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
+  } catch (e) {
+    return c.json({ ok: false, error: String(e) }, 500)
+  }
+})
+
+// ── KV → D1 character migration ─────────────────────────────────────────────
+
+admin.post('/migrate-character', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const rawKey = (body as Record<string, unknown>).key
+    if (typeof rawKey !== 'string' || !rawKey.trim()) {
+      return c.json({ ok: false, error: 'missing or invalid key' }, 400)
+    }
+    const key = rawKey.trim().toLowerCase()
+    if (!key.startsWith('character:')) {
+      return c.json({ ok: false, error: 'key must start with "character:"' }, 400)
+    }
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    const raw = await kvGet(c, key)
+    if (!raw) return c.json({ ok: false, error: `KV key not found: ${key}` }, 404)
+
+    const { text, meta } = parseKvEntry(raw)
+
+    // Idempotency: if already migrated, return the existing D1 id
+    const idMatch = text.match(/^## D1-Character-ID:\s*(\S+)/m)
+    if (idMatch) {
+      return c.json({ ok: true, already_migrated: true, d1Id: idMatch[1], key }, 200)
+    }
+
+    // Check for existing D1 row by kv_origin to prevent duplicates
+    const existing = await db.prepare('SELECT id FROM characters WHERE kv_origin = ?').bind(key).first() as { id: string } | null
+    if (existing) {
+      return c.json({ ok: false, error: `D1 row already exists for ${key}`, d1Id: existing.id }, 409)
+    }
+
+    const newId = crypto.randomUUID()
+    const insert = parseKvCharToD1(key, text, newId)
+
+    await db.prepare(`
+      INSERT INTO characters (
+        id, name, stats, hp, max_hp, ac, level, faction_id, behavior,
+        character_type, character_class, race, background, alignment,
+        conditions, resistances, vulnerabilities, immunities,
+        known_spells, prepared_spells, cantrips_known,
+        currency, resource_pools, xp,
+        alias, age, gender, orientation,
+        weight_1, weight_2, perception_float,
+        thread_id, state_stage, state_stage_timer,
+        kv_origin, current_room_id, perception_bonus, stealth_bonus,
+        origin, created_at, updated_at
+      ) VALUES (
+        ?,?,?,?,?,?,?,?,?,
+        ?,?,?,?,?,
+        ?,?,?,?,
+        ?,?,?,
+        ?,?,?,
+        ?,?,?,?,
+        ?,?,?,
+        ?,?,?,
+        ?,?,?,?,
+        ?,?,?
+      )
+    `).bind(
+      insert.id, insert.name, insert.stats, insert.hp, insert.max_hp, insert.ac, insert.level,
+      insert.faction_id, insert.behavior,
+      insert.character_type, insert.character_class, insert.race, insert.background, insert.alignment,
+      insert.conditions, insert.resistances, insert.vulnerabilities, insert.immunities,
+      insert.known_spells, insert.prepared_spells, insert.cantrips_known,
+      insert.currency, insert.resource_pools, insert.xp,
+      insert.alias, insert.age, insert.gender, insert.orientation,
+      insert.weight_1, insert.weight_2, insert.perception_float,
+      insert.thread_id, insert.state_stage, insert.state_stage_timer,
+      insert.kv_origin, insert.current_room_id, insert.perception_bonus, insert.stealth_bonus,
+      insert.origin, insert.created_at, insert.updated_at
+    ).run()
+
+    // Update KV entry: prepend redirect marker, preserve existing text
+    const now = new Date().toISOString()
+    const newVersion = typeof meta.version === 'number' ? meta.version + 1 : 1
+    const redirectHeader = `## D1-Migrated: true\n## D1-Character-ID: ${newId}\n## Status: Legacy entry — see D1 for current data\n\n`
+    const updatedText = redirectHeader + text
+
+    await pushHistory(c, key, raw)
+    await kvPut(c, key, JSON.stringify({
+      text: updatedText,
+      meta: { ...meta, version: newVersion, updatedAt: now },
+    }))
+    loreDB[key] = updatedText
+
+    return c.json({ ok: true, d1Id: newId, key, name: insert.name }, 200)
+
   } catch (e) {
     return c.json({ ok: false, error: String(e) }, 500)
   }
