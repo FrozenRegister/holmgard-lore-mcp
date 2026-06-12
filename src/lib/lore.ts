@@ -11,7 +11,8 @@ export function parseKvEntry(raw: string): { text: string; meta: Record<string, 
     // Fallback: treat raw string as plain text (legacy or in-memory format)
     return { text: raw, meta: {} }
   }
-  throw new Error('Invalid KV entry format: expected { text, meta } JSON')
+  // Valid JSON but missing text field — treat raw string as plain text
+  return { text: raw, meta: {} }
 }
 
 // Reads a field value from lore text. Handles four formats:
