@@ -746,14 +746,14 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   const items: Array<{ item: string; quantity: number; condition: string | null }> = []
   if (invRaw) {
     for (const entry of invRaw.split(',').map(s => s.trim()).filter(Boolean)) {
-      const m = entry.match(/^(.+?)\s*[x:×]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+      const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       if (m) items.push({ item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null })
       else items.push({ item: entry, quantity: 1, condition: null })
     }
   }
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}×${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
+    content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
     metadata: { retrieved: 1, written: 0 },
     entity_key: entityKey, items, raw_inventory: invRaw ?? null
   }), 200)
@@ -780,7 +780,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
 
   const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
     raw.split(',').map(s => s.trim()).filter(Boolean).map(entry => {
-      const m = entry.match(/^(.+?)\s*[x:×]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+      const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
     })
 
@@ -795,13 +795,13 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
     return c.json(makeResult(id, { content: [{ type: 'text', text: `Item "${itemKey}" not found in "${fromKey}"'s inventory.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
   }
   if (fromItems[itemIdx].quantity < qty) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}× "${itemKey}", requested ${qty}.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
+    return c.json(makeResult(id, { content: [{ type: 'text', text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}\xd7 "${itemKey}", requested ${qty}.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
   }
 
   fromItems[itemIdx].quantity -= qty
   const newFromItems = fromItems.filter(i => i.quantity > 0)
   const fmtItem = (i: { item: string; quantity: number; condition: string | null }) =>
-    i.condition ? `${i.item}×${i.quantity}[${i.condition}]` : `${i.item}×${i.quantity}`
+    i.condition ? `${i.item}\xd7${i.quantity}[${i.condition}]` : `${i.item}\xd7${i.quantity}`
   const newFromInvStr = newFromItems.map(fmtItem).join(', ')
 
   const toInvRaw = extractRawField(toText, toInvFieldName) ?? ''
@@ -831,7 +831,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
 
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Transferred ${qty}× "${itemKey}" from "${fromKey}" to "${toKey}".` }],
+    content: [{ type: 'text', text: `Transferred ${qty}\xd7 "${itemKey}" from "${fromKey}" to "${toKey}".` }],
     metadata: { retrieved: 2, written: 2 },
     transferred: true, item_key: itemKey, quantity: qty, from_entity: fromKey, to_entity: toKey
   }), 200)

@@ -72,7 +72,8 @@ export async function handle_present_choices({ c, id, args }: ToolContext): Prom
   for (const line of sceneText.split('\n').filter(l => /^\s*-\s+\S+:/.test(l))) {
     const m = line.match(/^\s*-\s+(\S+):\s*(.+?)(?:\s*\[requires:\s*([^\]]+)\])?(?:\s*\[min-weight:\s*([\d.]+)\])?$/)
     if (!m) continue
-    const [, choiceId, desc, requires, minWeightStr] = m
+    const choiceId = m[1].replace(/^\*+|\*+$/g, '').trim()
+    const [, , desc, requires, minWeightStr] = m
     const minWeight = minWeightStr ? parseFloat(minWeightStr) : null
     let blockedReason: string | null = null
     if (requires && !entityInvRaw.toLowerCase().includes(requires.toLowerCase())) {
