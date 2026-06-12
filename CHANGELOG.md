@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`get_map` action on `lore_manage`** — Dedicated map lookup tool (`action: "get_map"`, param `map_id`). Validates the key exists in the `map:` namespace and returns a helpful error referencing `list_maps` if not found. Thin wrapper over `get_lore` that improves discoverability for agents searching for map tooling. (Issue #56)
+
+### Fixed
+
+- **`process_stage_batch` zero-result diagnostics** — When 0 entities are processed, the response now includes a `reason` field and `entities_at_location` / `entities_with_stages` counts so agents can distinguish between empty location, occupants lacking `State-Stage` fields, and all stages already terminal. (Issue #55)
+
+### CI
+
+- **Build verification step** — Added a `build` job to `.github/workflows/ci.yml` that runs `pnpm run build` on every push and PR. Catches esbuild/bundling failures before they reach production deploy. (Issue #69, #97)
+
 ### Refactored
 
 - **Registry + auth guard wiring** — Replaced `src/tools/registry.ts` with 5 action-router imports; replaced `src/rpg/registry.ts` with `rpg` + 3 meta tools; updated `src/index.ts` and `src/do/HolmgardMCP.ts` to route `ping` and `auth_check` through `lore_manage`. (#82)

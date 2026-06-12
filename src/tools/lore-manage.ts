@@ -1,6 +1,6 @@
 import type { ToolHandler } from './types'
 import { makeError } from '../lib/rpc'
-import { handle_list_topics, handle_list_maps, handle_get_lore, handle_get_lore_batch, handle_get_lore_section, handle_validate_topic_exists, handle_search_lore } from './system'
+import { handle_list_topics, handle_list_maps, handle_get_lore, handle_get_lore_batch, handle_get_lore_section, handle_validate_topic_exists, handle_search_lore, handle_get_map } from './system'
 import { handle_set_lore, handle_delete_lore, handle_patch_lore, handle_batch_set_lore, handle_batch_mutate, handle_restore_lore, handle_get_topic_histories, handle_increment_topic_field, handle_append_to_section } from './lore'
 
 const ACTION_MAP: Record<string, ToolHandler> = {
@@ -9,6 +9,7 @@ const ACTION_MAP: Record<string, ToolHandler> = {
   get_section:    handle_get_lore_section,
   list:           handle_list_topics,
   list_maps:      handle_list_maps,
+  get_map:        handle_get_map,
   search:         handle_search_lore,
   validate:       handle_validate_topic_exists,
   set:            handle_set_lore,

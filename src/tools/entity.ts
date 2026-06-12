@@ -628,10 +628,18 @@ export async function handle_process_stage_batch({ c, id, args }: ToolContext): 
     if (r.kind === 'skipped') skipped.push(r as any)
   }
 
+  const entitiesWithStages = entityKeys.length - skipped.filter(s => s.reason === 'no State-Stage field').length
+  let reason: string | undefined
+  if (outcomes.length === 0) {
+    if (entityKeys.length === 0) reason = 'No entities found at this location'
+    else if (entitiesWithStages === 0) reason = `${entityKeys.length} entity/entities at location but none have State-Stage fields`
+    else reason = `All ${skipped.length} staged entity/entities are already at terminal stage`
+  }
+
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Processed ${outcomes.length} entity/entities at "${locationKey}". ${skipped.length} skipped.` }],
-    metadata: { retrieved: entityKeys.length, written: outcomes.length },
-    location_key: locationKey, outcomes, skipped
+    content: [{ type: 'text', text: `Processed ${outcomes.length} entity/entities at "${locationKey}". ${skipped.length} skipped.${reason ? ` Reason: ${reason}` : ''}` }],
+    metadata: { retrieved: entityKeys.length, written: outcomes.length, entities_at_location: entityKeys.length, entities_with_stages: entitiesWithStages },
+    location_key: locationKey, outcomes, skipped, ...(reason ? { reason } : {})
   }), 200)
 }
 

@@ -17,7 +17,7 @@ export const toolDefinitions: any[] = [
     name: 'lore_manage',
     title: 'Lore Manage',
     version: '1.0.0',
-    description: 'KV lore store — read, write, search, and mutate lore entries. Actions: get, get_batch, get_section, list, list_maps, search, validate, set, delete, patch, batch_set, batch_mutate, restore, history, increment, append_section',
+    description: 'KV lore store — read, write, search, and mutate lore entries. Actions: get, get_batch, get_section, list, list_maps, get_map, search, validate, set, delete, patch, batch_set, batch_mutate, restore, history, increment, append_section',
     inputSchema: OPEN_SCHEMA,
   },
   {
