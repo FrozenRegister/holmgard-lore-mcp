@@ -19,6 +19,18 @@ function extractKey(body: unknown): string | null {
   return k.trim().toLowerCase()
 }
 
+/** Sanitize error messages to prevent internal implementation details from leaking. */
+function safeErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    // Only expose generic messages in production
+    if (process.env.NODE_ENV === 'production') {
+      return 'Internal server error'
+    }
+    return err.message
+  }
+  return 'Unknown error'
+}
+
 /** Extract optional text from body. Returns empty string if missing or whitespace-only. */
 function extractText(body: unknown): string {
   if (!body || typeof body !== 'object') return ''
@@ -84,7 +96,8 @@ admin.post('/set-lore', async (c) => {
     return c.json({ ok: true, version }, 200)
 
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -110,7 +123,8 @@ admin.post('/delete-lore', async (c) => {
     return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
 
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -167,7 +181,8 @@ admin.post('/gc', async (c) => {
 
     return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -267,7 +282,8 @@ admin.post('/migrate-character', async (c) => {
     return c.json({ ok: true, d1Id: newId, key, name: insert.name }, 200)
 
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -294,7 +310,8 @@ admin.post('/map/setup-db', async (c) => {
     }
     return c.json({ ok: true }, 200)
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -339,7 +356,8 @@ admin.post('/map/push-hexes', async (c) => {
 
     return c.json({ ok: true, count }, 200)
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 
@@ -389,7 +407,8 @@ admin.post('/map/push-landmarks', async (c) => {
 
     return c.json({ ok: true, count }, 200)
   } catch (e) {
-    return c.json({ ok: false, error: String(e) }, 500)
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
   }
 })
 

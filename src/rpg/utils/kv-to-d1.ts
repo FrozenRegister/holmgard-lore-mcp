@@ -161,8 +161,9 @@ export function parseKvCharToD1(kvKey: string, text: string, newId: string): D1C
   // ── resource_pools: everything that doesn't have a D1 column ───────────────
   const resourcePools: Record<string, unknown> = {}
 
-  // Flavour/meta from Interaction Weights JSON
-  const { 'Weight-1': _w1, 'Weight-2': _w2, ...restWeights } = weightsJson
+  // Flavour/meta from Interaction Weights JSON (exclude Weight-1 and Weight-2 as they're handled separately)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { 'Weight-1': _, 'Weight-2': __, ...restWeights } = weightsJson
   Object.assign(resourcePools, restWeights)
 
   // Sensory profile
