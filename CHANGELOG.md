@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- **Inventory separator regex expanded to `[xX:×*]`** — `handle_get_inventory` and `parseInvStr` inside `handle_transfer_item` now recognise uppercase `X` and asterisk (`*`) as quantity separators in addition to lowercase `x`, colon, and `×`. Entries like `sword X3` or `potion*2` no longer silently discard their quantity, and `transfer_item` no longer reports "item not found" for affected entries. (Issues #50, #92)
+
 - **`process_stage_batch` zero-result diagnostics** — When 0 entities are processed, the response now includes a `reason` field and `entities_at_location` / `entities_with_stages` counts so agents can distinguish between empty location, occupants lacking `State-Stage` fields, and all stages already terminal. (Issue #55)
 
 - **Crypto imports: Replace Node.js with Web Crypto API** — Fixed Cloudflare Workers build failure caused by 23 RPG handler files importing `randomUUID` from Node.js's `crypto` module. Replaced all imports with calls to the global Web Crypto API (`crypto.randomUUID()`), eliminating the need for Node.js polyfills. Removed unnecessary `build` script from `package.json`; Cloudflare Workers Builds dashboard is now configured to use `npx wrangler deploy` directly, which handles all bundling internally and correctly. This eliminates esbuild platform/external flag complexity and aligns with Cloudflare's recommended deployment approach. Removed overly-strict `check-docs` PR quality check (tracked separately in Issue #71 for re-addition with better guidance). Tests: all 455 tests pass. (Issue #72)
