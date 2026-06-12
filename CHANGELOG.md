@@ -34,7 +34,7 @@
 
 - **README.md and CLAUDE.md housekeeping** — Updated tool count from 59 → 89 to reflect Phase 3 (RPG engine) and Phase 4 (agent_manage) additions. Fixed CLAUDE.md to reference `wrangler.jsonc` instead of the legacy `wrangler.toml` for the local dev server command.
 
-### Added
+### Features
 
 - **`get_map` action on `lore_manage`** — Dedicated map lookup tool (`action: "get_map"`, param `map_id`). Validates the key exists in the `map:` namespace and returns a helpful error referencing `list_maps` if not found. Thin wrapper over `get_lore` that improves discoverability for agents searching for map tooling. (Issue #56)
 
@@ -109,6 +109,7 @@
 - **admin/routes.ts** — `POST /set-lore` now properly rejects empty, null, whitespace-only, and non-string keys (e.g. numbers, arrays) with a 400 response. Previously, non-string values slipped through to KV, potentially creating garbage entries with empty keys. The validation now uses `typeof` checks and a shared `extractKey()` helper used by all admin routes. (Issues #1, #7)
 
 - **admin/routes.ts** — `extractText()` now trims whitespace, so whitespace-only text values are rejected with 400 instead of being stored.
+- **admin/routes.ts** — All error handlers now sanitize error messages using a new `safeErrorMessage()` helper function. In production, returns generic "Internal server error" messages; in development, returns actual error messages for debugging. Added `console.error()` logging for all error cases. Prevents exposure of Cloudflare KV internal error strings, stack traces, and other implementation details that could aid reconnaissance. (Issue #17)
 
 ### Changed
 
