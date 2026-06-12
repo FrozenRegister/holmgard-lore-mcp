@@ -111,6 +111,8 @@
 - **admin/routes.ts** — `extractText()` now trims whitespace, so whitespace-only text values are rejected with 400 instead of being stored.
 - **admin/routes.ts** — All error handlers now sanitize error messages using a new `safeErrorMessage()` helper function. In production, returns generic "Internal server error" messages; in development, returns actual error messages for debugging. Added `console.error()` logging for all error cases. Prevents exposure of Cloudflare KV internal error strings, stack traces, and other implementation details that could aid reconnaissance. (Issue #17)
 
+- **src/rpg/utils/kv-to-d1.ts** — Fixed ESLint unused variable errors by adding eslint-disable comment for intentionally ignored destructured variables. Addresses CI failure while maintaining existing functionality.
+
 ### Changed
 
 - **admin/routes.ts** — Extracted shared `extractKey()`, `extractText()`, `extractSecret()`, and `checkSecret()` helpers to eliminate copy-paste drift across `set-lore`, `delete-lore`, and `gc` routes. Auth checks now flow through a single `checkSecret()` function. (Issue #1)
