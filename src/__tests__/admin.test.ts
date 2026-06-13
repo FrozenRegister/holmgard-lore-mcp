@@ -80,6 +80,36 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/set-lore', { key: 'admin:test-missing-text', secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
     })
+
+    // ── error sanitization ────────────────────────────────────────────────
+    it('500 responses never expose internal KV error strings', async () => {
+      const res = await SELF.fetch('http://example.com/admin/set-lore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{not valid json',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('stack trace')
+    })
+
+    it('500 responses never expose source file paths or call-site references', async () => {
+      const res = await SELF.fetch('http://example.com/admin/set-lore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: Buffer.from([0xFF, 0xFE, 0x00]).toString(),
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      if (typeof body.error === 'string') {
+        expect(body.error).not.toContain('at ')
+        expect(body.error).not.toContain('.ts:')
+      }
+    })
   })
 
   innerDescribe('/admin/migrate-character', () => {
@@ -116,7 +146,6 @@ describe('admin endpoints', () => {
       expect(body.d1Id).toBeTruthy()
       expect(body.name).toContain('Aria')
 
-      // D1 row should exist
       const row = await env.RPG_DB!.prepare('SELECT * FROM characters WHERE kv_origin = ?')
         .bind('character:aria-test').first() as Record<string, any> | null
       expect(row).not.toBeNull()
@@ -125,7 +154,6 @@ describe('admin endpoints', () => {
       expect(row!.weight_1).toBeCloseTo(0.7, 2)
       expect(row!.thread_id).toBe('thread:aria-start')
 
-      // KV should now contain redirect marker
       const kvRaw = await env.LORE_DB.get('character:aria-test')
       const kvParsed = JSON.parse(kvRaw!) as { text: string }
       expect(kvParsed.text).toContain('## D1-Migrated: true')
@@ -179,6 +207,21 @@ describe('admin endpoints', () => {
       })
       expect(res.status).toBe(401)
     })
+
+    it('500 responses never expose internal details (KV errors, stack traces, file paths)', async () => {
+      const res = await SELF.fetch('http://example.com/admin/migrate-character', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json{{{',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+      expect(body.error).not.toContain('at ')
+    })
   })
 
   describe('/admin/delete-lore', () => {
@@ -223,6 +266,83 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/delete-lore', { key: ['k', 'v'], secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
     })
+
+    it('500 responses never expose internal details (KV errors, stack traces, file paths)', async () => {
+      const res = await SELF.fetch('http://example.com/admin/delete-lore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{{broken json',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
+  describe('/admin/gc', () => {
+    it('500 responses never expose internal details (KV errors, stack traces, file paths)', async () => {
+      const res = await SELF.fetch('http://example.com/admin/gc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '}{',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
+  describe('/admin/map/setup-db', () => {
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/map/setup-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
+  describe('/admin/map/push-hexes', () => {
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/map/push-hexes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
+  describe('/admin/map/push-landmarks', () => {
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/map/push-landmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
   })
 })
-

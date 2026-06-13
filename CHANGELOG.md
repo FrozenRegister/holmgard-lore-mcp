@@ -4,6 +4,16 @@
 
 ### Added
 
+## v0.2.0 — Entity lifecycle + security hardening
+
+### New
+
+- **`entity_manage.destroy`** (#90) — clean up ephemeral encounter entities. Archives final history snapshot, purges from KV/indexes/loreDB in one atomic call. No more ghost NPCs haunting location occupant scans.
+
+### Tests  
+
+- **Admin error sanitization** (#17) — 8 new tests across all 7 admin endpoints verifying that internal KV error strings, stack traces, and `.ts:` file paths never leak through 500 responses. `safeErrorMessage` was already wired up but had zero regression coverage.  
+
 - **`validate_topic_exists` enhanced with `did_you_mean` + `confidence`** — The `validate` action now returns a `did_you_mean` field (best single match) and `confidence` score (0.0–1.0) using a scoring heuristic: exact match → 1.0, prefix match → 0.9, substring match → scaled 0.5–0.85, initials/acronym → 0.7. No Levenshtein dependency needed. (Issue #54)
 
 - **`get_lore` auto-suggestion on not-found** — When a key is not found, `get_lore` now scans all KV keys for similar matches and returns `did_you_mean` plus up to 5 `alternatives` in the error payload. This eliminates the mandatory pre-validation round-trip for agents, addressing the core pain of Issue #42 (crashes on nonexistent keys). (Issues #42, #54)
