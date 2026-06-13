@@ -24,7 +24,8 @@ describe('handle_get_topic_histories', () => {
   });
 
   it('handles malformed snapshot gracefully', async () => {
-    // Mock kv.get to return invalid JSON
+    // Mock kv.get to return invalid JSON for the history key
+    // so JSON.parse(historyRaw) throws and is caught by the outer try/catch
     const kvGetMock = vi.spyOn(mockCtx.env.LORE_DB, 'get').mockImplementation(async (key: any) => {
       if (key === '_history:test-key') {
         return 'invalid-json';

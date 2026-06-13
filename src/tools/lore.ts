@@ -416,11 +416,8 @@ export async function handle_get_topic_histories({ c, id, args }: ToolContext): 
       if (historyRaw) {
         const historyList: string[] = JSON.parse(historyRaw)
         for (const snapshot of historyList) {
-          try {
-            snapshots.push(parseKvEntry(snapshot))
-          } catch (e) {
-            console.error(`Malformed snapshot for ${key}:`, e)
-          }
+          // parseKvEntry never throws (catches internally), so no try/catch needed here
+          snapshots.push(parseKvEntry(snapshot))
         }
       }
 
