@@ -39,19 +39,20 @@ function extractSecret(body: Record<string, unknown>): string | null {
 }
 
 /**
- * Parse a strictly positive integer from a query param with clamping.
- * - Non-numeric / missing → returns `defaultVal`
+ * Parse a strictly positive integer from a raw value with clamping.
+ * - Non-numeric / null / missing → returns `defaultVal`
  * - Zero → returns `defaultVal`
  * - Values above `max` → clamped to `max`
- * Useful for `?limit=N`, `?max_age=N`, etc.
+ *
+ * Applies to both query-string params and JSON body fields.
  */
 function extractPositiveInt(
-  value: string | undefined | null,
+  value: string | number | undefined | null,
   defaultVal: number,
   max = 1000,
 ): number {
   if (value === undefined || value === null) return defaultVal
-  const n = Number(value)
+  const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n) || n < 1) return defaultVal
   return Math.min(n, max)
 }
@@ -116,17 +117,8 @@ adminRoutes.post('/gc', async (c) => {
     const body = await c.req.json() as Record<string, unknown>
     if (!checkSecret(c, body)) return c.json({ error: 'Unauthorized' }, 401)
 
-    let limit = 50
-    let maxAgeMs = 7 * 24 * 60 * 60 * 1000 // 7 days default
-
-    if (body.limit) {
-      const raw = Number(body.limit)
-      if (Number.isFinite(raw) && raw > 0) limit = Math.min(Math.floor(raw), 500)
-    }
-    if (body.max_age_ms) {
-      const raw = Number(body.max_age_ms)
-      if (Number.isFinite(raw) && raw > 0) maxAgeMs = raw
-    }
+    const limit = extractPositiveInt(body.limit, 50, 500)
+    const maxAgeMs = extractPositiveInt(body.max_age_ms, 7 * 24 * 60 * 60 * 1000, Number.MAX_SAFE_INTEGER)
 
     const kv = getKV(c)
     if (!kv) return c.json({ error: 'KV unavailable' }, 500)
@@ -194,3 +186,5 @@ adminRoutes.get('/get-lore', async (c) => {
     return c.json({ error: safeErrorMessage(e, c.env) }, 500)
   }
 })
+
+export default adminRoutes
