@@ -32,30 +32,38 @@ $env:MCP_API_KEY = "your-key"; pnpm test:live
 
 ## Pre-Commit Validation
 
-**REQUIRED**: Before creating any commit, run the pre-commit validation script. Claude Code must validate locally before committing, just like a team member would.
+**MANDATORY: Every commit must pass local validation before being made.** Running the pre-commit validation script locally catches markdown, changelog, and test failures *before* GitHub Actions — preventing PR check failures and wasted CI time.
 
-Before pushing code, run local validation to catch common issues **without waiting for GitHub Actions**:
+### Automated Setup (Required)
 
-**On Windows (PowerShell):**
+Enable the git hook so validation runs automatically on every commit:
+
+```powershell
+git config core.hooksPath scripts
+```
+
+This is **not optional** — do this once to enforce validation for all future commits.
+
+### Manual Validation (Fallback)
+
+If the hook isn't set up, manually run before committing:
 
 ```powershell
 .\scripts\pre-commit-validate.ps1          # Run full validation (includes tests)
 .\scripts\pre-commit-validate.ps1 -SkipTests  # Skip tests (faster iteration)
 ```
 
-**What gets checked:**
+### What Gets Checked
 
 1. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
-2. **CHANGELOG.md** — Requires entry if modifying `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`
+2. **CHANGELOG.md** — **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. If forgotten, GitHub PR check fails and blocks merge.
 3. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
 
-**Why run locally?** These checks run on GitHub Actions but fail *after* pushing. Running them locally saves CI time and prevents PR quality check failures.
+### Common Failures
 
-**Setup (optional):** Git can auto-run validation on commit:
-
-```powershell
-git config core.hooksPath scripts
-```
+- **CHANGELOG.md missing** — Add an entry under `[Unreleased]` describing your changes
+- **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
+- **Tests failing** — Fix the underlying issue, then re-run validation
 
 ## Workflows & Protocols
 
@@ -93,22 +101,21 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 ### What to document
 
-- **Non-obvious behavior** — How a tool actually works vs. how its name suggests it works. (e.g., `patch_lore` uses exact substring matching and rejects ambiguous targets; `list_consumption_timelines` scans **only** `character:*` keys.)
-- **Hidden constraints** — Schema quirks, foreign key relationships, field format expectations (e.g., thread_tick can't find `**Timeline-Value:**` because it expects YAML frontmatter, not markdown bold).
-- **Workflow gotchas** — Steps the system assumes but doesn't state (e.g., you must seed a regions table before creating encounters; you must use YAML frontmatter for timeline fields if you want thread_tick to find them).
-- **Failure modes** — Things that look like they should work but don't, and why (e.g., `create_encounter` fails with FK constraint; `thread_tick` returns zero entities).
-- **Performance characteristics** — Which tools are expensive, which formats cause token blowup, which batch operations exist but aren't obvious from the tool names.
-- **Edge cases found in testing** — Things that only break under specific conditions (e.g., `scene_brief` returns empty when entities are on a parent location but not the exact sub-location key).
+- **Non-obvious tool behavior** — How it actually works vs. what the name suggests
+- **Hidden constraints** — Schema quirks, field format expectations, assumptions the system makes
+- **Failure modes** — Things that look like they should work but don't, and why
+- **Performance gotchas** — Expensive operations, token-heavy formats, missing batch operations
+- **Edge cases** — Conditions that break under specific scenarios discovered during testing
 
 ### Where to put it
 
 | What | Where |
-|------|-------|
+| --- | --- |
 | Tool behavior / quirks | `docs/holmgard-user-guide.md` — add a "Known Behavior" note under the relevant tool section |
 | Broken things | `docs/issues/HIGH-*.md` — one file per issue with symptom, impact, reproduction, suggested fix |
-| Performance notes | `docs/issues/performance-optimizations-for-slow-AI.md` — or inline in the user guide under a "Performance" section |
-| Architecture gotchas | Inline code comments OR in `CLAUDE.md` under the relevant architecture section |
-| Workflow protocols | `CLAUDE.md` (this file) OR `docs/*.md` if it's complex enough for its own doc |
+| Performance notes | `docs/issues/performance-optimizations-for-slow-AI.md` — or inline in the user guide |
+| Architecture gotchas | Inline code comments OR in `CLAUDE.md` under the relevant section |
+| Workflow protocols | `CLAUDE.md` (this file) OR `docs/*.md` if complex enough for its own doc |
 
 ### The rule
 
@@ -116,30 +123,23 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 ## Key logic worth knowing
 
-**`patch_lore`** (`replace`/`append`/`delete_field`) uses exact substring matching. It rejects ambiguous targets (>1 occurrence) and missing targets with descriptive messages rather than JSON-RPC errors — the response is always `result`, never `error`, even for user mistakes.
+**`patch_lore`** uses exact substring matching and rejects ambiguous (>1 match) or missing targets with descriptive messages — response is always `result`, never `error`.
 
-**`increment_topic_field`** parses `**fieldname:** 10` markdown syntax from lore text, increments the numeric prefix, and writes back. Non-numeric fields return a JSON-RPC error.
+**`increment_topic_field`** parses `**fieldname:** 10` markdown syntax, increments the number, and writes back. Non-numeric fields error.
 
-**`list_consumption_timelines`** scans only `character:*` keys. It looks for `**Consumption-Timeline:**` (primary) or `**Projected-Consumption-Timeline:**` (legacy fallback). The `status_filter` param (`all`/`imminent`/`days-to-weeks`/`weeks-to-months`/`consumed`) filters by substring patterns in the timeline value.
+**`list_consumption_timelines`** scans only `character:*` keys for `**Consumption-Timeline:**` (primary) or `**Projected-Consumption-Timeline:**` (fallback). `status_filter` param (`all`/`imminent`/`days-to-weeks`/`weeks-to-months`/`consumed`) filters by substring.
 
-**`batch_set_lore`** writes multiple entries in parallel (`Promise.all`). Not transactional — partial success is possible; per-key results are returned in `results`. Pushes history for each overwritten key.
+**`batch_set_lore`** writes entries in parallel; not transactional (partial success possible). Per-key results in `results` array. Pushes history for overwrites.
 
-**`batch_mutate`** applies a list of `increment` or `patch` mutations sequentially (order matters; same key may appear twice). Each mutation reads, modifies, and writes its key. Failures are recorded per-mutation and do not stop the remaining mutations.
+**`batch_mutate`** applies `increment` or `patch` mutations sequentially (order matters). Failures recorded per-mutation; remaining mutations proceed.
 
-**`countOccurrences`** is a module-level helper (extracted from the `patch_lore` handler) used by both `patch_lore` and `batch_mutate` for exact substring counting.
+**`countOccurrences`** helper (in `patch_lore` and `batch_mutate`) counts exact substring occurrences.
 
 ### Validate Before Read
 
-Always validate before reading — use `lore_manage({ action: "validate", query_string: "..." })` to resolve ambiguous keys. The `validate` action returns `did_you_mean` with a `confidence` score (0.0–1.0) when the exact key doesn't exist, using a scoring heuristic: exact match → 1.0, prefix match → 0.9, substring match → scaled 0.5–0.85, initials/acronym match → 0.7.
+Always validate before reading — use `lore_manage({ action: "validate", query_string: "..." })` to resolve ambiguous keys. The `validate` action returns `did_you_mean` with a `confidence` score (0.0–1.0) when the exact key doesn't exist. When a key is not found, `get_lore` also automatically scans for similar keys and returns `did_you_mean` plus up to 5 `alternatives` in the error payload — this eliminates the need for a separate `validate` call in most cases.
 
-**`get_lore` auto-suggestion:** When a key is not found, `get_lore` now automatically scans for similar keys and returns `did_you_mean` plus up to 5 `alternatives` in the error payload. This eliminates the need for a separate `validate` call in most cases — agents get suggestions inline.
-
-**Scoring heuristic** (`scoreMatch` in `src/tools/system.ts`):
-
-1. Exact key match → 1.0
-2. Candidate starts with query → 0.9 (e.g., `"zira"` matches `"character:zira"`)
-3. Query is contiguous substring → ratio of query length to candidate length + 0.5, capped at 0.85
-4. Query matches initials/acronym of candidate parts → 0.7 (e.g., `"zk"` matches `"character:zira-khal"`)
+Confidence scoring (`scoreMatch` in `src/tools/system.ts`): exact match → 1.0 | prefix match → 0.9 | substring match → 0.5–0.85 (scaled) | initials/acronym → 0.7
 
 ## KV Access Rules (Batch Reads and Index-on-Write)
 
@@ -229,7 +229,7 @@ Do not wait to be asked. Both suites must be updated whenever a tool is added, r
 - Production `id`: `67b47914eb094043ab777f4f34da8bfc` (LORE_DB) — used by `wrangler deploy`
 - Preview `preview_id`: `d99c543e9ccf46dca6900cc28d93362a` (LORE_DB_PREVIEW) — used by `wrangler dev`
 
-This separation is critical: **never allow these IDs to be identical**, or `wrangler dev` will read from and write to production data, corrupting production lore. See [Issue #6](https://github.com/your-repo/issues/6) for details.
+This separation is critical: **never allow these IDs to be identical**, or `wrangler dev` will read from and write to production data, corrupting production lore.
 
 `ADMIN_SECRET` must be set as a Cloudflare secret — it is intentionally absent from `wrangler.jsonc`.
 
