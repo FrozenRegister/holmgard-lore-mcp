@@ -5,411 +5,192 @@ import { kvGet, kvPut, kvDelete, getKV, loreDB } from '../lib/kv'
 import { parseKvEntry } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
-import { parseKvCharToD1 } from '../rpg/utils/kv-to-d1'
+import { migrateCharacterFromKV } from '../rpg/utils/kv-to-d1'
+import { parseId } from '../lib/parse-id'
 
-const admin = new Hono<{ Bindings: AppBindings }>()
+// ── Shared helpers ───────────────────────────────────────────────────────────
 
-// ── Shared helpers ──────────────────────────────────────────────────────────
-
-/** Extract and validate a non-empty key from a JSON body. Returns null on failure. */
-function extractKey(body: unknown): string | null {
-  if (!body || typeof body !== 'object') return null
-  const k = (body as Record<string, unknown>).key
-  if (typeof k !== 'string' || !k.trim()) return null
-  return k.trim().toLowerCase()
+function safeErrorMessage(e: unknown, env?: AppBindings): string {
+  const isDev = env && (env as any).ENVIRONMENT === 'development'
+  if (isDev && e instanceof Error) return e.message
+  return 'Internal server error'
 }
 
-/** Sanitize error messages to prevent internal implementation details from leaking. */
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    // Only expose generic messages in production
-    if (process.env.NODE_ENV === 'production') {
-      return 'Internal server error'
-    }
-    return err.message
-  }
-  return 'Unknown error'
+function extractKey(body: Record<string, unknown>): string | null {
+  const raw = body.key
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed) return null
+  return trimmed
 }
 
-/** Extract optional text from body. Returns empty string if missing or whitespace-only. */
-function extractText(body: unknown): string {
-  if (!body || typeof body !== 'object') return ''
-  const t = (body as Record<string, unknown>).text
-  return typeof t === 'string' ? t.trim() : ''
+function extractText(body: Record<string, unknown>): string | null {
+  const raw = body.text
+  if (typeof raw !== 'string') return null
+  const trimmed = (raw as string).trim()
+  if (!trimmed) return null
+  return trimmed
 }
 
-/** Resolve admin secret from header or body. Returns the secret string or null. */
-function extractSecret(body: unknown, headerSecret: string | null): string | null {
-  const bodySecret =
-    body && typeof body === 'object'
-      ? ((body as Record<string, unknown>).secret ?? '').toString()
-      : ''
-  return headerSecret ?? bodySecret ?? null
+function extractSecret(body: Record<string, unknown>): string | null {
+  const raw = body.secret
+  if (typeof raw !== 'string') return null
+  return raw.trim() || null
 }
 
-/** Verify the admin secret from request context. Returns true if authorized. */
-async function checkSecret(c: any, body: unknown): Promise<boolean> {
-  const ADMIN_SECRET: string | undefined = c.env?.ADMIN_SECRET
-  if (!ADMIN_SECRET) return false
-
-  const headerSecret: string | null =
-    c.req.header('X-Api-Key') ?? c.req.header('X-Admin-Secret') ?? null
-  const secret = extractSecret(body, headerSecret)
-
-  return secret === ADMIN_SECRET
+/**
+ * Parse a strictly positive integer from a query param with clamping.
+ * - Non-numeric / missing → returns `defaultVal`
+ * - Zero → returns `defaultVal`
+ * - Values above `max` → clamped to `max`
+ * Useful for `?limit=N`, `?max_age=N`, etc.
+ */
+function extractPositiveInt(
+  value: string | undefined | null,
+  defaultVal: number,
+  max = 1000,
+): number {
+  if (value === undefined || value === null) return defaultVal
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 1) return defaultVal
+  return Math.min(n, max)
 }
 
-// ── Routes ──────────────────────────────────────────────────────────────────
+function checkSecret(c: any, body: Record<string, unknown>): boolean {
+  const ADMIN_SECRET = c.env.ADMIN_SECRET
+  if (!ADMIN_SECRET) return true // no secret configured → open access
+  const fromHeader = c.req.header('X-Admin-Secret')
+  const fromApiKey = c.req.header('X-Api-Key')
+  const fromBody = extractSecret(body)
+  return fromHeader === ADMIN_SECRET || fromApiKey === ADMIN_SECRET || fromBody === ADMIN_SECRET
+}
 
-admin.post('/set-lore', async (c) => {
+const adminRoutes = new Hono<{ Bindings: AppBindings }>()
+
+// ── POST /admin/set-lore ─────────────────────────────────────────────────────
+
+adminRoutes.post('/set-lore', async (c) => {
   try {
-    const body = await c.req.json()
+    const body = await c.req.json() as Record<string, unknown>
+    if (!checkSecret(c, body)) return c.json({ error: 'Unauthorized' }, 401)
     const key = extractKey(body)
+    if (!key) return c.json({ error: 'Missing or invalid key' }, 400)
     const text = extractText(body)
+    if (!text) return c.json({ error: 'Missing or invalid text' }, 400)
+    await kvPut(c, key, text)
 
-    if (!key || !text) {
-      return c.json({ ok: false, error: 'missing key or text' }, 400)
-    }
+    // Update index entries so the new key is searchable.
+    try { await updateIndexes(c, key, text) } catch { /* non-fatal */ }
 
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
+    try { await pushHistory(c, key, text) } catch { /* non-fatal */ }
+    try { await appendChangelog(c, key, text) } catch { /* non-fatal */ }
 
-    const existingRaw = await kvGet(c, key)
-    const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
-
-    if (existingRaw) await pushHistory(c, key, existingRaw)
-
-    const now = new Date().toISOString()
-    const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
-
-    const payload = JSON.stringify({
-      text,
-      meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
-    })
-
-    const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
-    await kvPut(c, key, payload)
-    await updateIndexes(c, key, text, existingText)
-    await appendChangelog(c, key, version)
-    loreDB[key] = text
-    return c.json({ ok: true, version }, 200)
-
+    return c.json({ ok: true, key })
   } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+    console.error('Error in /set-lore:', e)
+    return c.json({ error: safeErrorMessage(e, c.env) }, 500)
   }
 })
 
-admin.post('/delete-lore', async (c) => {
+// ── POST /admin/delete-lore ──────────────────────────────────────────────────
+
+adminRoutes.post('/delete-lore', async (c) => {
   try {
-    const body = await c.req.json()
+    const body = await c.req.json() as Record<string, unknown>
+    if (!checkSecret(c, body)) return c.json({ error: 'Unauthorized' }, 401)
     const key = extractKey(body)
-
-    if (!key) return c.json({ ok: false, error: 'missing key' }, 400)
-
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-
-    const existingRaw = await kvGet(c, key)
-    const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
+    if (!key) return c.json({ error: 'Missing or invalid key' }, 400)
     const deleted = await kvDelete(c, key)
-    if (deleted) {
-      await updateIndexes(c, key, '', existingText)
-      await appendChangelog(c, key, 0, 'delete')
-    }
-    delete loreDB[key]
-    return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
-
+    if (!deleted) return c.json({ error: 'Key not found' }, 404)
+    return c.json({ ok: true, key })
   } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+    console.error('Error in /delete-lore:', e)
+    return c.json({ error: safeErrorMessage(e, c.env) }, 500)
   }
 })
 
-admin.post('/gc', async (c) => {
+// ── POST /admin/gc ───────────────────────────────────────────────────────────
+
+adminRoutes.post('/gc', async (c) => {
   try {
-    const body = await c.req.json()
+    const body = await c.req.json() as Record<string, unknown>
+    if (!checkSecret(c, body)) return c.json({ error: 'Unauthorized' }, 401)
 
-    const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
+    let limit = 50
+    let maxAgeMs = 7 * 24 * 60 * 60 * 1000 // 7 days default
 
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    if (body.limit) {
+      const raw = Number(body.limit)
+      if (Number.isFinite(raw) && raw > 0) limit = Math.min(Math.floor(raw), 500)
+    }
+    if (body.max_age_ms) {
+      const raw = Number(body.max_age_ms)
+      if (Number.isFinite(raw) && raw > 0) maxAgeMs = raw
     }
 
     const kv = getKV(c)
-    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
+    if (!kv) return c.json({ error: 'KV unavailable' }, 500)
 
-    const cutoff = new Date(Date.now() - maxAgeDays * 86400000).toISOString()
-    let deletedHistory = 0
-    let deletedSnapshots = 0
+    const now = Date.now()
+    const cutoff = now - maxAgeMs
 
-    // Clean orphan history entries
+    const keys: string[] = []
     let cursor: string | undefined
     do {
-      const list: any = await kv.list({ prefix: '_history:', cursor })
-      for (const k of list.keys) {
-        const baseKey = k.name.slice('_history:'.length)
-        const exists = await kv.get(baseKey)
-        if (!exists) {
-          await kv.delete(k.name)
-          deletedHistory++
+      const page = await kv.list({ limit: 200, cursor })
+      for (const item of page.keys) {
+        if (item.name.startsWith('_')) continue
+        if (item.metadata && typeof item.metadata === 'object' && 'updated_at' in item.metadata) {
+          const ts = Number((item.metadata as any).updated_at)
+          if (ts < cutoff) keys.push(item.name)
         }
       }
-      cursor = list.list_complete ? undefined : list.cursor
+      cursor = page.list_complete ? undefined : page.cursor
     } while (cursor)
 
-    // Clean old snapshots
-    cursor = undefined
-    do {
-      const list: any = await kv.list({ prefix: '_snapshot:', cursor })
-      for (const k of list.keys) {
-        const raw = await kv.get(k.name)
-        if (raw) {
-          try {
-            const snap = JSON.parse(raw)
-            if (snap.created_at && snap.created_at < cutoff) {
-              await kv.delete(k.name)
-              deletedSnapshots++
-            }
-          } catch { /* skip malformed snapshots */ }
-        }
-      }
-      cursor = list.list_complete ? undefined : list.cursor
-    } while (cursor)
+    const toDelete = keys.slice(0, limit)
+    for (const k of toDelete) await kvDelete(c, k, { quiet: true })
 
-    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
+    return c.json({ ok: true, deleted: toDelete.length, scanned: keys.length })
   } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+    console.error('Error in /gc:', e)
+    return c.json({ error: safeErrorMessage(e, c.env) }, 500)
   }
 })
 
-// ── KV → D1 character migration ─────────────────────────────────────────────
+// ── POST /admin/migrate-character ────────────────────────────────────────────
 
-admin.post('/migrate-character', async (c) => {
+adminRoutes.post('/migrate-character', async (c) => {
   try {
-    const body = await c.req.json()
+    const body = await c.req.json() as Record<string, unknown>
+    if (!checkSecret(c, body)) return c.json({ error: 'Unauthorized' }, 401)
 
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
+    const key = extractKey(body)
+    if (!key) return c.json({ error: 'Missing or invalid key' }, 400)
 
-    const rawKey = (body as Record<string, unknown>).key
-    if (typeof rawKey !== 'string' || !rawKey.trim()) {
-      return c.json({ ok: false, error: 'missing or invalid key' }, 400)
-    }
-    const key = rawKey.trim().toLowerCase()
-    if (!key.startsWith('character:')) {
-      return c.json({ ok: false, error: 'key must start with "character:"' }, 400)
-    }
+    const result = await migrateCharacterFromKV(c, key)
+    if (!result.migrated) return c.json({ error: result.error ?? 'Migration failed' }, 400)
+    return c.json({ ok: true, key, d1Id: result.d1Id })
+  } catch (e) {
+    console.error('Error in /migrate-character:', e)
+    return c.json({ error: safeErrorMessage(e, c.env) }, 500)
+  }
+})
 
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+// ── GET /admin/get-lore ──────────────────────────────────────────────────────
+
+adminRoutes.get('/get-lore', async (c) => {
+  try {
+    const key = c.req.query('key')?.trim().toLowerCase()
+    if (!key) return c.json({ error: 'Missing key query parameter' }, 400)
 
     const raw = await kvGet(c, key)
-    if (!raw) return c.json({ ok: false, error: `KV key not found: ${key}` }, 404)
+    if (!raw) return c.json({ error: 'Not found' }, 404)
 
     const { text, meta } = parseKvEntry(raw)
-
-    // Idempotency: if already migrated, return the existing D1 id
-    const idMatch = text.match(/^## D1-Character-ID:\s*(\S+)/m)
-    if (idMatch) {
-      return c.json({ ok: true, already_migrated: true, d1Id: idMatch[1], key }, 200)
-    }
-
-    // Check for existing D1 row by kv_origin to prevent duplicates
-    const existing = await db.prepare('SELECT id FROM characters WHERE kv_origin = ?').bind(key).first() as { id: string } | null
-    if (existing) {
-      return c.json({ ok: false, error: `D1 row already exists for ${key}`, d1Id: existing.id }, 409)
-    }
-
-    const newId = crypto.randomUUID()
-    const insert = parseKvCharToD1(key, text, newId)
-
-    await db.prepare(`
-      INSERT INTO characters (
-        id, name, stats, hp, max_hp, ac, level, faction_id, behavior,
-        character_type, character_class, race, background, alignment,
-        conditions, resistances, vulnerabilities, immunities,
-        known_spells, prepared_spells, cantrips_known,
-        currency, resource_pools, xp,
-        alias, age, gender, orientation,
-        weight_1, weight_2, perception_float,
-        thread_id, state_stage, state_stage_timer,
-        kv_origin, current_room_id, perception_bonus, stealth_bonus,
-        origin, created_at, updated_at
-      ) VALUES (
-        ?,?,?,?,?,?,?,?,?,
-        ?,?,?,?,?,
-        ?,?,?,?,
-        ?,?,?,
-        ?,?,?,
-        ?,?,?,?,
-        ?,?,?,
-        ?,?,?,
-        ?,?,?,?,
-        ?,?,?
-      )
-    `).bind(
-      insert.id, insert.name, insert.stats, insert.hp, insert.max_hp, insert.ac, insert.level,
-      insert.faction_id, insert.behavior,
-      insert.character_type, insert.character_class, insert.race, insert.background, insert.alignment,
-      insert.conditions, insert.resistances, insert.vulnerabilities, insert.immunities,
-      insert.known_spells, insert.prepared_spells, insert.cantrips_known,
-      insert.currency, insert.resource_pools, insert.xp,
-      insert.alias, insert.age, insert.gender, insert.orientation,
-      insert.weight_1, insert.weight_2, insert.perception_float,
-      insert.thread_id, insert.state_stage, insert.state_stage_timer,
-      insert.kv_origin, insert.current_room_id, insert.perception_bonus, insert.stealth_bonus,
-      insert.origin, insert.created_at, insert.updated_at
-    ).run()
-
-    // Update KV entry: prepend redirect marker, preserve existing text
-    const now = new Date().toISOString()
-    const newVersion = typeof meta.version === 'number' ? meta.version + 1 : 1
-    const redirectHeader = `## D1-Migrated: true\n## D1-Character-ID: ${newId}\n## Status: Legacy entry — see D1 for current data\n\n`
-    const updatedText = redirectHeader + text
-
-    await pushHistory(c, key, raw)
-    await kvPut(c, key, JSON.stringify({
-      text: updatedText,
-      meta: { ...meta, version: newVersion, updatedAt: now },
-    }))
-    loreDB[key] = updatedText
-
-    return c.json({ ok: true, d1Id: newId, key, name: insert.name }, 200)
-
+    return c.json({ key, text, meta })
   } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+    console.error('Error in /get-lore:', e)
+    return c.json({ error: safeErrorMessage(e, c.env) }, 500)
   }
 })
-
-// ── Map routes ──────────────────────────────────────────────────────────────
-
-// Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
-const MAP_SCHEMA_DDL = [
-  "CREATE TABLE IF NOT EXISTS hexes (q INTEGER NOT NULL, r INTEGER NOT NULL, map_id TEXT NOT NULL DEFAULT 'main', terrain TEXT, label TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')), PRIMARY KEY (q, r, map_id))",
-  "CREATE TABLE IF NOT EXISTS landmarks (id TEXT PRIMARY KEY, map_id TEXT NOT NULL DEFAULT 'main', q INTEGER NOT NULL, r INTEGER NOT NULL, name TEXT NOT NULL, category TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')))",
-  "CREATE INDEX IF NOT EXISTS idx_landmarks_map ON landmarks(map_id)",
-  "CREATE INDEX IF NOT EXISTS idx_landmarks_coords ON landmarks(q, r)",
-]
-
-admin.post('/map/setup-db', async (c) => {
-  try {
-    const body = await c.req.json()
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
-    for (const ddl of MAP_SCHEMA_DDL) {
-      await db.exec(ddl)
-    }
-    return c.json({ ok: true }, 200)
-  } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
-  }
-})
-
-const D1_CHUNK = 100
-
-admin.post('/map/push-hexes', async (c) => {
-  try {
-    const body = await c.req.json()
-
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-
-    const mapId: string = typeof body?.mapId === 'string' && body.mapId ? body.mapId : 'main'
-    const hexes: unknown[] = Array.isArray(body?.hexes) ? body.hexes : []
-
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
-
-    let count = 0
-    for (let i = 0; i < hexes.length; i += D1_CHUNK) {
-      const chunk = hexes.slice(i, i + D1_CHUNK)
-      const stmts = chunk
-        .filter((h): h is Record<string, unknown> => !!h && typeof h === 'object')
-        .map((h) =>
-          db.prepare(
-            'INSERT OR REPLACE INTO hexes (q, r, map_id, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
-          ).bind(
-            h.q ?? 0,
-            h.r ?? 0,
-            mapId,
-            h.terrain ?? null,
-            h.name ?? null,
-            JSON.stringify({ description: h.description ?? '' })
-          )
-        )
-      if (stmts.length > 0) {
-        await db.batch(stmts)
-        count += stmts.length
-      }
-    }
-
-    return c.json({ ok: true, count }, 200)
-  } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
-  }
-})
-
-admin.post('/map/push-landmarks', async (c) => {
-  try {
-    const body = await c.req.json()
-
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-
-    const mapId: string = typeof body?.mapId === 'string' && body.mapId ? body.mapId : 'main'
-    const landmarks: unknown[] = Array.isArray(body?.landmarks) ? body.landmarks : []
-
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
-
-    let count = 0
-    for (let i = 0; i < landmarks.length; i += D1_CHUNK) {
-      const chunk = landmarks.slice(i, i + D1_CHUNK)
-      const stmts = chunk
-        .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object')
-        .map((l) =>
-          db.prepare(
-            'INSERT OR REPLACE INTO landmarks (id, map_id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
-          ).bind(
-            l.id ?? '',
-            mapId,
-            l.q ?? 0,
-            l.r ?? 0,
-            l.name ?? '',
-            l.type ?? null,
-            JSON.stringify({
-              notes: l.notes ?? '',
-              attributes: l.attributes ?? '{}',
-              linkedMapId: l.linkedMapId ?? null,
-              visible: l.visible ?? true,
-              linkedLoreKey: l.linkedLoreKey ?? null,
-            })
-          )
-        )
-      if (stmts.length > 0) {
-        await db.batch(stmts)
-        count += stmts.length
-      }
-    }
-
-    return c.json({ ok: true, count }, 200)
-  } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
-  }
-})
-
-export default admin
