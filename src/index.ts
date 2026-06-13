@@ -42,6 +42,16 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret', 'X-Api-Key'],
 }) as any)
 
+// ── Health check endpoint ────────────────────────────────────────────────────
+// GET /health — returns basic service status. Intentionally unauthenticated so
+// orchestrators, load balancers, and monitoring tools can probe it.
+app.get('/health', (c) => {
+  return c.json({
+    status: 'ok',
+    timestamp: Date.now(),
+  }, 200)
+})
+
 // ── Streamable HTTP middleware (spec 2025-03-26) ──────────────────────────────
 // Intercepts requests with Streamable HTTP transport markers before route
 // handlers run. Legacy raw JSON-RPC requests fall through via next().
