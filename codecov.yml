@@ -1,4 +1,10 @@
 # codecov.yml for holmgard-lore-mcp
+#
+# Coverage policy: 100% patch target — this is a backend Cloudflare Worker.
+# Bugs in untested code reach production directly; strict coverage is the tradeoff.
+#
+# Sister repo: holmgard-lore-editor uses 80% patch (frontend UI code).
+# Both repos pin codecov/codecov-action@v5 — update both CI files together when upgrading.
 coverage:
   precision: 2
   round: down

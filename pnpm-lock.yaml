@@ -33,7 +33,7 @@ importers:
       '@types/node':
         specifier: ^20.19.42
         version: 20.19.42
-      '@vitest/coverage-v8':
+      '@vitest/coverage-istanbul':
         specifier: ^4.1.8
         version: 4.1.8(vitest@4.1.8)
       esbuild:
@@ -56,7 +56,7 @@ importers:
         version: 8.60.1(eslint@9.39.4)(typescript@5.9.3)
       vitest:
         specifier: ^4.1.8
-        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
+        version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
       wrangler:
         specifier: ^4.98.0
         version: 4.98.0(@cloudflare/workers-types@4.20260608.1)
@@ -940,6 +940,10 @@ packages:
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
     engines: {node: '>=12'}
 
+  '@istanbuljs/schema@0.1.6':
+    resolution: {integrity: sha512-+Sg6GCR/wy1oSmQDFq4LQDAhm3ETKnorxN+y5nbLULOR3P0c14f2Wurzj3/xqPXtasLFfHd5iRFQ7AJt4KH2cw==}
+    engines: {node: '>=8'}
+
   '@jitl/quickjs-ffi-types@0.32.0':
     resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
 
@@ -1242,6 +1246,11 @@ packages:
   '@vercel/oidc@3.2.0':
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
+
+  '@vitest/coverage-istanbul@4.1.8':
+    resolution: {integrity: sha512-/h514nMZMKI6foh21mVgO1zlCH6pdDamwKMbla1uLU2GMxTlfp0PQMxovWozmzQdCIQYZ2XXEzg2zNZom2zAOg==}
+    peerDependencies:
+      vitest: 4.1.8
 
   '@vitest/coverage-v8@4.1.8':
     resolution: {integrity: sha512-lt3kovsyHwYe00wq4D1ti0Z974fWj4NLp6siqiyEufUpyFwK9Yhi7rBhac9JL5aA0zoMrJqc4vYPZRUnI7l7nw==}
@@ -3060,7 +3069,8 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@bcoe/v8-coverage@1.0.2': {}
+  '@bcoe/v8-coverage@1.0.2':
+    optional: true
 
   '@borewit/text-codec@0.2.2': {}
 
@@ -3090,7 +3100,7 @@ snapshots:
       cjs-module-lexer: 1.2.3
       esbuild: 0.27.3
       miniflare: 4.20260603.0
-      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
+      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
       wrangler: 4.98.0(@cloudflare/workers-types@4.20260608.1)
       zod: 3.25.76
     transitivePeerDependencies:
@@ -3528,6 +3538,8 @@ snapshots:
       wrap-ansi: 8.1.0
       wrap-ansi-cjs: wrap-ansi@7.0.0
 
+  '@istanbuljs/schema@0.1.6': {}
+
   '@jitl/quickjs-ffi-types@0.32.0': {}
 
   '@jitl/quickjs-wasmfile-debug-asyncify@0.32.0':
@@ -3832,6 +3844,22 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
+  '@vitest/coverage-istanbul@4.1.8(vitest@4.1.8)':
+    dependencies:
+      '@babel/core': 7.29.7
+      '@istanbuljs/schema': 0.1.6
+      '@jridgewell/gen-mapping': 0.3.13
+      '@jridgewell/trace-mapping': 0.3.31
+      istanbul-lib-coverage: 3.2.2
+      istanbul-lib-report: 3.0.1
+      istanbul-reports: 3.2.0
+      magicast: 0.5.3
+      obug: 2.1.2
+      tinyrainbow: 3.1.0
+      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
+    transitivePeerDependencies:
+      - supports-color
+
   '@vitest/coverage-v8@4.1.8(vitest@4.1.8)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -3844,7 +3872,8 @@ snapshots:
       obug: 2.1.2
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
+      vitest: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
+    optional: true
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -3974,6 +4003,7 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       estree-walker: 3.0.3
       js-tokens: 10.0.0
+    optional: true
 
   balanced-match@1.0.2: {}
 
@@ -4620,7 +4650,8 @@ snapshots:
 
   js-base64@3.7.8: {}
 
-  js-tokens@10.0.0: {}
+  js-tokens@10.0.0:
+    optional: true
 
   js-tokens@4.0.0: {}
 
@@ -5412,7 +5443,7 @@ snapshots:
       fsevents: 2.3.3
       yaml: 2.9.0
 
-  vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0)):
+  vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@20.19.42)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.8
       '@vitest/mocker': 4.1.8(vite@8.0.16(@types/node@20.19.42)(esbuild@0.18.20)(yaml@2.9.0))
@@ -5437,6 +5468,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/node': 20.19.42
+      '@vitest/coverage-istanbul': 4.1.8(vitest@4.1.8)
       '@vitest/coverage-v8': 4.1.8(vitest@4.1.8)
     transitivePeerDependencies:
       - msw
