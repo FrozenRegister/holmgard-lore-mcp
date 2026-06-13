@@ -222,6 +222,32 @@ Do not wait to be asked. Both suites must be updated whenever a tool is added, r
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 
+### Pull Requests and Issue Linking
+
+**Every PR should have clear linking to related Issues.** Use GitHub's auto-closing syntax to close issues when the PR merges:
+
+**PR title format:** Keep it concise; the commit message (or summary of all commits) is the source of truth.
+
+**PR body template:**
+
+```markdown
+## Summary
+- One-liner describing what changed and why
+
+## Related Issues
+- Closes #123 (auto-closes when PR merges)
+- Relates to #124 (reference without closing)
+- Addresses the feedback from #125
+
+## Test Plan
+- [ ] Tested locally with `pnpm test`
+- [ ] Validated on [specific scenario]
+```
+
+**Closing issues:** Use **"Closes #123"** (or "Closes #123, #124") in the PR body to auto-close issues when the PR merges. One issue per PR is ideal; multiple issues only if they're tightly coupled. Use **"Relates to #123"** or **"See #123"** to reference issues without closing.
+
+**Creating the PR:** Use `gh pr create --title "..." --body "..."` or the GitHub web UI. Always run pre-commit validation before pushing to ensure the PR starts clean.
+
 ## Deployment notes
 
 **KV Namespace Isolation (Critical)**: `wrangler.jsonc` has separate production and preview KV namespaces:

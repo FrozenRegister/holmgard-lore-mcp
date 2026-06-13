@@ -38,6 +38,8 @@
 
 - **Pre-commit validation strengthened** — CLAUDE.md updated to emphasize pre-commit validation as mandatory (not optional). Git hook setup moved from "(optional)" to required once-per-machine. Added common failure modes section and clarified CHANGELOG.md requirement. Prevents lint and test failures from being pushed to GitHub.
 
+- **PR and issue linking best practices** — Added "Pull Requests and Issue Linking" section to Git workflow in CLAUDE.md. Documents GitHub auto-closing syntax (`Closes #123`), PR body template, distinction between "Closes" (auto-close) and "Relates to" (reference only). Ensures issues are properly tracked and closed when PRs merge.
+
 - **Tool consolidation wave prompts** — Added `docs/wave1-agent-prompts.md`, `docs/wave2-agent-prompts.md`, and `docs/wave3-agent-prompts.md` with self-contained agent prompts for the 89→9 MCP tool consolidation (#77). Wave 1 (3 remaining agents — #78 complete): create `rpg-handler.ts` and replace tool/RPG definitions. Wave 2 (sequential): wire registries and update auth guard. Wave 3 (2 parallel agents): refactor worker and live test suites. Prompts updated to reflect #78 completion and to add explicit RPG collision-rename rows to the Wave 3 mapping table.
 
 - **Institutional knowledge capture** — Added `docs/holmgard-user-guide.md` (full tool reference with Known Behavior notes), four `docs/issues/` files (`HIGH-combat-manage-create-encounter-FK-constraint.md`, `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`, `HIGH-migrate-KV-to-D1-auto-redirect.md`, `performance-optimizations-for-slow-AI.md`), and a "Documenting Discoveries" section in `CLAUDE.md` codifying where and when to file these docs.
