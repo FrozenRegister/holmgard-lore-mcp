@@ -160,50 +160,65 @@ export async function handle_validate_topic_exists({ c, id, args }: ToolContext)
 }
 
 export async function handle_search_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    query: z.string().min(1),
-    max_results: z.number().min(1).max(50).default(10)
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  try {
+    const schema = z.object({
+      query: z.string().min(1),
+      max_results: z.number().min(1).max(50).default(10)
+    })
+    const parsed = schema.safeParse(args)
+    if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-  const searchQuery = parsed.data.query.toLowerCase()
-  const allKeys = await kvList(c)
-  const results: Array<{ key: string; excerpt: string }> = []
-  const CHUNK_SIZE = 50
+    const searchQuery = parsed.data.query.toLowerCase()
+    const allKeys = await kvList(c)
+    const results: Array<{ key: string; excerpt: string }> = []
+    const CHUNK_SIZE = 50
 
-  for (let chunkStart = 0; chunkStart < allKeys.length; chunkStart += CHUNK_SIZE) {
-    if (results.length >= parsed.data.max_results) break
-    const chunkKeys = allKeys.slice(chunkStart, chunkStart + CHUNK_SIZE)
-    const chunkRaws = await Promise.all(chunkKeys.map(k => kvGet(c, k)))
-
-    for (let i = 0; i < chunkKeys.length; i++) {
+    for (let chunkStart = 0; chunkStart < allKeys.length; chunkStart += CHUNK_SIZE) {
       if (results.length >= parsed.data.max_results) break
-      const raw = chunkRaws[i]
-      if (!raw) continue
-      const key = chunkKeys[i]
-      const { text } = parseKvEntry(raw)
-      const lowerText = text.toLowerCase()
-      const idx = lowerText.indexOf(searchQuery)
-      if (idx === -1) continue
+      const chunkKeys = allKeys.slice(chunkStart, chunkStart + CHUNK_SIZE)
 
-      const start = Math.max(0, idx - 30)
-      const end = Math.min(text.length, idx + searchQuery.length + 50)
-      let excerpt = text.slice(start, end)
-      if (start > 0) excerpt = '…' + excerpt
-      if (end < text.length) excerpt = excerpt + '…'
+      // Use sequential gets with individual error handling to avoid TaskGroup
+      // failures when a single KV read fails in the Workers runtime.
+      const chunkRaws: Array<string | null> = []
+      for (const k of chunkKeys) {
+        try {
+          chunkRaws.push(await kvGet(c, k))
+        } catch {
+          chunkRaws.push(null)
+        }
+      }
 
-      results.push({ key, excerpt })
+      for (let i = 0; i < chunkKeys.length; i++) {
+        if (results.length >= parsed.data.max_results) break
+        const raw = chunkRaws[i]
+        if (!raw) continue
+        const key = chunkKeys[i]
+        const { text } = parseKvEntry(raw)
+        const lowerText = text.toLowerCase()
+        const idx = lowerText.indexOf(searchQuery)
+        if (idx === -1) continue
+
+        const start = Math.max(0, idx - 30)
+        const end = Math.min(text.length, idx + searchQuery.length + 50)
+        let excerpt = text.slice(start, end)
+        if (start > 0) excerpt = '…' + excerpt
+        if (end < text.length) excerpt = excerpt + '…'
+
+        results.push({ key, excerpt })
+      }
     }
+
+    const summaryText = results.length > 0
+      ? results.map(r => `${r.key}: "${r.excerpt}"`).join('\n')
+      : `No lore entries matching "${parsed.data.query}".`
+
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: summaryText }],
+      metadata: { query: parsed.data.query, match_count: results.length },
+      results
+    }), 200)
+  } catch (e) {
+    console.error('Unhandled error in search_lore', e)
+    return c.json(makeError(id, -32603, 'Internal error during search', { message: e instanceof Error ? e.message : String(e) }), 200)
   }
-
-  const summaryText = results.length > 0
-    ? results.map(r => `${r.key}: "${r.excerpt}"`).join('\n')
-    : `No lore entries matching "${parsed.data.query}".`
-
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: summaryText }],
-    metadata: { query: parsed.data.query, match_count: results.length },
-    results
-  }), 200)
 }

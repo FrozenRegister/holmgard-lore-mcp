@@ -49,18 +49,26 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
         }
       }
 
-      const c = makeSyntheticContext(this.env)
-      const response = await handler({ c: c as any, id: null, args: args as Record<string, any>, isAuthenticated: true })
-      const json = await response.json() as { result?: Record<string, unknown>; error?: { message?: string } }
+      try {
+        const c = makeSyntheticContext(this.env)
+        const response = await handler({ c: c as any, id: null, args: args as Record<string, any>, isAuthenticated: true })
+        const json = await response.json() as { result?: Record<string, unknown>; error?: { message?: string } }
 
-      if (json.error) {
+        if (json.error) {
+          return {
+            content: [{ type: 'text' as const, text: json.error.message ?? 'Error' }],
+            isError: true,
+          }
+        }
+
+        return json.result ?? { content: [{ type: 'text' as const, text: 'ok' }] }
+      } catch (e) {
+        console.error('Unhandled error in DO tool handler', e)
         return {
-          content: [{ type: 'text' as const, text: json.error.message ?? 'Error' }],
+          content: [{ type: 'text' as const, text: `Internal error: ${e instanceof Error ? e.message : String(e)}` }],
           isError: true,
         }
       }
-
-      return json.result ?? { content: [{ type: 'text' as const, text: 'ok' }] }
     })
   }
 }
