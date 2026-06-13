@@ -407,8 +407,8 @@ export async function handle_get_topic_histories({ c, id, args }: ToolContext): 
 
   const histories: Record<string, Array<{ text: string; meta: Record<string, unknown> }>> = {}
 
-  try {
-    for (const key of keys) {
+  for (const key of keys) {
+    try {
       const historyKey = `_history:${key}`
       const historyRaw = await kv.get(historyKey)
       const snapshots: Array<{ text: string; meta: Record<string, unknown> }> = []
@@ -416,14 +416,16 @@ export async function handle_get_topic_histories({ c, id, args }: ToolContext): 
       if (historyRaw) {
         const historyList: string[] = JSON.parse(historyRaw)
         for (const snapshot of historyList) {
+          // parseKvEntry never throws (catches internally), so no try/catch needed here
           snapshots.push(parseKvEntry(snapshot))
         }
       }
 
       histories[key] = snapshots
+    } catch (e) {
+      console.error(`Failed to read history for ${key}:`, e)
+      histories[key] = []
     }
-  } catch {
-    return c.json(makeError(id, -32603, 'Failed to read histories', null), 200)
   }
 
   return c.json(makeResult(id, histories), 200)
