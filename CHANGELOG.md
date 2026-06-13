@@ -4,6 +4,10 @@
 
 ### Added
 
+- **`validate_topic_exists` enhanced with `did_you_mean` + `confidence`** — The `validate` action now returns a `did_you_mean` field (best single match) and `confidence` score (0.0–1.0) using a scoring heuristic: exact match → 1.0, prefix match → 0.9, substring match → scaled 0.5–0.85, initials/acronym → 0.7. No Levenshtein dependency needed. (Issue #54)
+
+- **`get_lore` auto-suggestion on not-found** — When a key is not found, `get_lore` now scans all KV keys for similar matches and returns `did_you_mean` plus up to 5 `alternatives` in the error payload. This eliminates the mandatory pre-validation round-trip for agents, addressing the core pain of Issue #42 (crashes on nonexistent keys). (Issues #42, #54)
+
 - **Health check endpoint** — Adds `GET /health` returning `{ status: "ok", timestamp }`. Unauthenticated so orchestrators, load balancers, and monitoring probes can always reach it. Placed before the Streamable HTTP middleware. (Issue #20)
 
 - **KV-to-D1 character migration** — New `/admin/migrate-character` endpoint reads a `character:*` KV entry, maps prose fields to structured D1 columns via `parseKvCharToD1`, inserts into the `characters` table, and prepends a `## D1-Migrated` / `## D1-Character-ID` redirect marker to the KV entry. Idempotent on re-run. (#76)

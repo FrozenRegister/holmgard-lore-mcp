@@ -49,7 +49,20 @@ export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Res
 
   const key = parsed.data.query.trim().toLowerCase()
   const raw = await kvGet(c, key)
-  if (!raw) return c.json(makeError(id, -32602, `No lore found for key "${key}"`, null), 200)
+  if (!raw) {
+    // Auto-suggest: scan keys for similar matches when not found
+    const allKeys = await kvList(c)
+    const query = key.includes(':') ? key.split(':').pop()! : key
+    const suggestions = allKeys.filter(k => k.includes(query)).slice(0, 5)
+    const errorPayload: Record<string, unknown> = { key }
+    let message = `No lore found for key "${key}"`
+    if (suggestions.length > 0) {
+      errorPayload.did_you_mean = suggestions[0]
+      errorPayload.alternatives = suggestions
+      message += `. Did you mean "${suggestions[0]}"?`
+    }
+    return c.json(makeError(id, -32602, message, errorPayload), 200)
+  }
 
   const { text, meta } = parseKvEntry(raw)
 
@@ -130,6 +143,24 @@ export async function handle_get_lore_section({ c, id, args }: ToolContext): Pro
   }), 200)
 }
 
+function scoreMatch(query: string, candidate: string): number {
+  // 1. Exact match → 1.0
+  if (query === candidate) return 1.0
+
+  // 2. Candidate starts with query → 0.9 (e.g. "zira" matches "character:zira")
+  if (candidate.startsWith(query)) return 0.9
+
+  // 3. Query appears as contiguous substring → ratio of query length to candidate length, scaled
+  const idx = candidate.indexOf(query)
+  if (idx !== -1) return Math.min(0.85, query.length / candidate.length + 0.5)
+
+  // 4. Query appears as initials/acronym → 0.7 (e.g. "zk" matches "character:zira-khal")
+  const initials = candidate.split(/[:\\\-_]/).filter(Boolean).map(s => s[0]).join('')
+  if (initials.includes(query)) return 0.7
+
+  return 0
+}
+
 export async function handle_validate_topic_exists({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ query_string: z.string().min(1) })
   const parsed = schema.safeParse(args)
@@ -141,21 +172,28 @@ export async function handle_validate_topic_exists({ c, id, args }: ToolContext)
   if (allKeys.includes(query)) {
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: `Found: ${query}` }],
-      exists: true, exact_match: query, namespace_matches: [], suggestion: query
+      exists: true, exact_match: query, namespace_matches: [], suggestion: query,
+      did_you_mean: query, confidence: 1.0
     }), 200)
   }
 
   const suggestions = allKeys.filter(k => k.includes(query))
   if (suggestions.length > 0) {
+    // Score all suggestions and pick the best
+    const scored = suggestions.map(s => ({ key: s, score: scoreMatch(query, s) }))
+    scored.sort((a, b) => b.score - a.score)
+    const best = scored[0]
     return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `No exact match for "${query}", but found: ${suggestions.join(', ')}` }],
-      exists: false, exact_match: null, namespace_matches: suggestions, suggestion: suggestions[0] || null
+      content: [{ type: 'text', text: `No exact match for "${query}", but found: ${suggestions.join(', ')}. Best match: "${best.key}" (confidence: ${best.score.toFixed(2)})` }],
+      exists: false, exact_match: null, namespace_matches: suggestions, suggestion: suggestions[0] || null,
+      did_you_mean: best.score > 0 ? best.key : null, confidence: best.score > 0 ? best.score : null
     }), 200)
   }
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `No lore found matching "${query}".` }],
-    exists: false, exact_match: null, namespace_matches: [], suggestion: null
+    exists: false, exact_match: null, namespace_matches: [], suggestion: null,
+    did_you_mean: null, confidence: null
   }), 200)
 }
 

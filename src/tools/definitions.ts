@@ -17,7 +17,7 @@ export const toolDefinitions: any[] = [
     name: 'lore_manage',
     title: 'Lore Manage',
     version: '1.0.0',
-    description: 'KV lore store — read, write, search, and mutate lore entries. Actions: get, get_batch, get_section, list, list_maps, get_map, search, validate, set, delete, patch, batch_set, batch_mutate, restore, history, increment, append_section',
+description: 'KV lore store — read, write, search, and mutate lore entries. Actions: get, get_batch, get_section, list, list_maps, get_map, search, validate, set, delete, patch, batch_set, batch_mutate, restore, history, increment, append_section. IMPORTANT: Always call validate before get_lore when the key is ambiguous, user-supplied, or AI-generated. The validate action returns did_you_mean with a confidence score — use this to resolve uncertain keys before reading. get_lore also auto-suggests alternatives in its error response when a key is not found.',
     inputSchema: OPEN_SCHEMA,
   },
   {
