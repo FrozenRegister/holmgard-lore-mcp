@@ -93,6 +93,8 @@
 
 ### Fixed
 
+- **Unit test infrastructure** — Created `tests/unit/mocks.ts` with a proper `createMockContext()` factory backed by an in-memory KV store. Migrated test files from `@jest/globals` to `vitest` (the project's actual runner). Fixed relative imports in `tests/unit/entity/` and `tests/unit/lore/`. Added `"tests"` to `tsconfig.json` `include` so ESLint and TypeScript can see test files. Added per-key error handling in `handle_get_topic_histories` so a malformed snapshot for one key doesn't fail the entire batch. (#118)
+
 - **TaskGroup error in `lore_manage` search** — Replaced `Promise.all` parallel KV fetches with sequential, individually error-handled gets to prevent Cloudflare Workers TaskGroup failures when a single KV read fails. Added top-level try/catch in `handle_search_lore` and wrapped DO handler invocation in try/catch for graceful error handling. (#88)
 
 - **`parseKvEntry` no longer throws on valid JSON without `text` field** — Replaced the `throw new Error(...)` path with a silent plain-text fallback, matching the existing `catch` branch behaviour. Callers such as `handle_get_lore` and `handle_search_lore` no longer crash with an unhandled exception when KV contains valid JSON that is missing the `text` field. (Issues #42, #88)
