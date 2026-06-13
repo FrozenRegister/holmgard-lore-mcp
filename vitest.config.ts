@@ -7,6 +7,13 @@ export default defineConfig({
     testTimeout: 30000, // 30s global timeout for slow miniflare tests
     exclude: ['tests/live/**', '**/node_modules/**'],
     globalSetup: ['./vitest.global-setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['lcov', 'text'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/__tests__/**', 'node_modules/**'],
+      reportsDirectory: './coverage',
+    },
   },
   plugins: [
     cloudflareTest({
