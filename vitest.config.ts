@@ -8,7 +8,7 @@ export default defineConfig({
     exclude: ['tests/live/**', '**/node_modules/**'],
     globalSetup: ['./vitest.global-setup.ts'],
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       reporter: ['lcov', 'text'],
       include: ['src/**/*.ts'],
       exclude: ['src/__tests__/**', 'node_modules/**'],
