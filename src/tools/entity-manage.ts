@@ -1,6 +1,6 @@
 import type { ToolHandler } from './types'
 import { makeError } from '../lib/rpc'
-import { handle_resolve_interaction, handle_analyze_utility, handle_map_integration, handle_generate_entity, handle_roll_encounter, handle_advance_state_stage, handle_process_stage_batch, handle_get_sensory_profile, handle_get_compatibility, handle_get_inventory, handle_transfer_item, handle_list_consumption_timelines, handle_list_active_threads } from './entity'
+import { handle_resolve_interaction, handle_analyze_utility, handle_map_integration, handle_generate_entity, handle_roll_encounter, handle_advance_state_stage, handle_process_stage_batch, handle_get_sensory_profile, handle_get_compatibility, handle_get_inventory, handle_transfer_item, handle_list_consumption_timelines, handle_list_active_threads, handle_destroy_entity } from './entity'
 import { handle_move_entity } from './lore'
 
 const ACTION_MAP: Record<string, ToolHandler> = {
@@ -18,6 +18,7 @@ const ACTION_MAP: Record<string, ToolHandler> = {
   list_consumption_timelines: handle_list_consumption_timelines,
   list_active_threads:        handle_list_active_threads,
   resolve_interaction:        handle_resolve_interaction,
+  destroy:                    handle_destroy_entity,
 }
 
 export const handle_entity_manage: ToolHandler = ({ c, id, args, isAuthenticated }) => {

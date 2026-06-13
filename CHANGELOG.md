@@ -28,6 +28,10 @@
 
 - **Migration 0003** — `schema/migrations/0003_character_kv_fields.sql` adds KV-native columns to `characters`: `alias`, `age`, `gender`, `orientation`, `weight_1/2`, `perception_float`, `thread_id`, `state_stage`, `state_stage_timer`, `kv_origin`. (#76)
 
+### Tests
+
+- **`entity_manage.destroy` coverage** (#90, #119) — 10 new tests in `entity-destroy.test.ts` covering the full `handle_destroy_entity` code path: happy-path destroy, KV deletion verification, history archival before deletion, loreDB in-memory cache eviction, changelog `op: "destroy"` entry, location-index cleanup, key normalization (lowercase + trim), and three error paths (missing key, empty key, nonexistent entity). Satisfies the 100% patch-coverage requirement for the new `destroy` action added in PR #119.
+
 ### CI
 
 - **Codecov integration** — Added `pnpm test:coverage` script and `coverage` job to CI. Generates `coverage/lcov.info` via `@vitest/coverage-istanbul` and uploads to Codecov with `codecov/codecov-action@v5`. Patch target is 100% (new backend code must be fully tested). `codecov.yml` updated with rationale comments and cross-reference to `holmgard-lore-editor` (which uses 80% patch for frontend). Both repos pin the same action version; update together when upgrading. `coverage/` added to `.gitignore`.
