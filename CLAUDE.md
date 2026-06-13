@@ -220,6 +220,8 @@ Do not wait to be asked. Both suites must be updated whenever a tool is added, r
 
 **Before pushing**, always run `npm test` and confirm it passes. Push only to `main` unless working on an isolated experiment.
 
+**"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
+
 ## Deployment notes
 
 **KV Namespace Isolation (Critical)**: `wrangler.jsonc` has separate production and preview KV namespaces:
