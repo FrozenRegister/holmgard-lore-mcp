@@ -20,6 +20,8 @@
 
 ### Refactored
 
+- **`extractPositiveInt()` helper** — Extracted shared integer-parsing utility in `src/admin/routes.ts` that replaces the duplicate ad-hoc `?limit=N` / `?max_age_ms=N` parse-and-clamp logic in `/gc`. Handles missing, non-numeric, and ≤0 values (returns default) and clamps to an upper bound. (Issue #30)
+
 - **Registry + auth guard wiring** — Replaced `src/tools/registry.ts` with 5 action-router imports; replaced `src/rpg/registry.ts` with `rpg` + 3 meta tools; updated `src/index.ts` and `src/do/HolmgardMCP.ts` to route `ping` and `auth_check` through `lore_manage`. (#82)
 
 - **Worker test suite refactor** — Updated all 35 test files from 89 old tool names to the 9-tool action-router surface (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`, `rpg`, `agent_manage`, `search_tools`, `load_tool_schema`). (#83)
