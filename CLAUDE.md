@@ -128,6 +128,19 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **`countOccurrences`** is a module-level helper (extracted from the `patch_lore` handler) used by both `patch_lore` and `batch_mutate` for exact substring counting.
 
+### Validate Before Read
+
+Always validate before reading — use `lore_manage({ action: "validate", query_string: "..." })` to resolve ambiguous keys. The `validate` action returns `did_you_mean` with a `confidence` score (0.0–1.0) when the exact key doesn't exist, using a scoring heuristic: exact match → 1.0, prefix match → 0.9, substring match → scaled 0.5–0.85, initials/acronym match → 0.7.
+
+**`get_lore` auto-suggestion:** When a key is not found, `get_lore` now automatically scans for similar keys and returns `did_you_mean` plus up to 5 `alternatives` in the error payload. This eliminates the need for a separate `validate` call in most cases — agents get suggestions inline.
+
+**Scoring heuristic** (`scoreMatch` in `src/tools/system.ts`):
+
+1. Exact key match → 1.0
+2. Candidate starts with query → 0.9 (e.g., `"zira"` matches `"character:zira"`)
+3. Query is contiguous substring → ratio of query length to candidate length + 0.5, capped at 0.85
+4. Query matches initials/acronym of candidate parts → 0.7 (e.g., `"zk"` matches `"character:zira-khal"`)
+
 ## KV Access Rules (Batch Reads and Index-on-Write)
 
 ### Batch Reads — Always Parallelize
