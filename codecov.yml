@@ -31,4 +31,4 @@ comment:
   layout: "header, diff, flags, files"
   behavior: default
   require_changes: false
-  require_base: yes
+  require_base: no
