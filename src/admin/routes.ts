@@ -19,6 +19,12 @@ function extractKey(body: unknown): string | null {
   return k.trim().toLowerCase()
 }
 
+/** Extract a positive integer from a value, with a default fallback. */
+function extractPositiveInt(value: unknown, defaultValue: number): number {
+  const num = parseInt((value ?? '').toString(), 10)
+  return isNaN(num) || num <= 0 ? defaultValue : num
+}
+
 /** Sanitize error messages to prevent internal implementation details from leaking. */
 function safeErrorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -132,7 +138,7 @@ admin.post('/gc', async (c) => {
   try {
     const body = await c.req.json()
 
-    const maxAgeDays = Math.max(1, parseInt((body?.max_age_days ?? '30').toString(), 10) || 30)
+    const maxAgeDays = extractPositiveInt(body?.max_age_days, 30)
 
     if (!(await checkSecret(c, body))) {
       return c.json({ ok: false, error: 'unauthorized' }, 401)
@@ -246,8 +252,8 @@ admin.post('/migrate-character', async (c) => {
         ?,?,?,?,
         ?,?,?,
         ?,?,?,
-        ?,?,?,?,
         ?,?,?,
+        ?,?,?,?,
         ?,?,?,
         ?,?,?,?,
         ?,?,?
