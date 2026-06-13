@@ -16,7 +16,7 @@
 
 ### CI
 
-- **Codecov integration** — Added `pnpm test:coverage` script and `coverage` job to CI. Generates `coverage/lcov.info` via `@vitest/coverage-v8` and uploads to Codecov with `codecov/codecov-action@v5`. Patch target is 100% (new backend code must be fully tested). `codecov.yml` updated with rationale comments and cross-reference to `holmgard-lore-editor` (which uses 80% patch for frontend). Both repos pin the same action version; update together when upgrading.
+- **Codecov integration** — Added `pnpm test:coverage` script and `coverage` job to CI. Generates `coverage/lcov.info` via `@vitest/coverage-istanbul` and uploads to Codecov with `codecov/codecov-action@v5`. Patch target is 100% (new backend code must be fully tested). `codecov.yml` updated with rationale comments and cross-reference to `holmgard-lore-editor` (which uses 80% patch for frontend). Both repos pin the same action version; update together when upgrading. `coverage/` added to `.gitignore`.
 
 - **Build verification step** — Added a `build` job to `.github/workflows/ci.yml` that runs `pnpm run build` on every push and PR. Catches esbuild/bundling failures before they reach production deploy. (Issue #69, #97)
 

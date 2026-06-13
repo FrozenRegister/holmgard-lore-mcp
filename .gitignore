@@ -35,6 +35,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# coverage
+coverage/
+
 # misc
 .DS_Store
 test-failures.json
