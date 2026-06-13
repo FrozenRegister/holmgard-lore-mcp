@@ -1,10 +1,11 @@
 // src/tools/entity.ts
 import { z } from 'zod'
-import { kvGet, kvPut, loreDB } from '../lib/kv'
+import { kvGet, kvPut, kvDelete, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
+import { updateIndexes } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_resolve_interaction({ c, id, args }: ToolContext): Promise<Response> {
@@ -59,6 +60,32 @@ export async function handle_resolve_interaction({ c, id, args }: ToolContext): 
     metadata: { entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1, weight_2: w2, weight_1_raw: w1Raw, weight_2_raw: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000 },
     success,
     delta_value
+  }), 200)
+}
+
+export async function handle_destroy_entity({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ entity_key: z.string().min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const key = parsed.data.entity_key.trim().toLowerCase()
+  const raw = await kvGet(c, key)
+  if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
+
+  const { text } = parseKvEntry(raw)
+
+  // Archive one last history snapshot before deletion
+  await pushHistory(c, key, raw)
+
+  // Purge from KV and indexes
+  await updateIndexes(c, key, '', text)
+  await kvDelete(c, key)
+  await appendChangelog(c, key, 0, 'destroy')
+  delete loreDB[key]
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Entity "${key}" destroyed.` }],
+    metadata: { entity_key: key, destroyed: true }
   }), 200)
 }
 
