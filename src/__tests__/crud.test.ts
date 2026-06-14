@@ -400,4 +400,22 @@ describe('list_tags (#96)', () => {
     const res = await callTool('continuity_manage', { action: 'list_tags', limit: 0 })
     expect(res.error).toBeDefined()
   })
+
+  it('exercises both with_counts branches for full coverage', async () => {
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['test:tag1', 'test:tag2'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['test:tag1'] })
+
+    // Test with_counts: true (line 342-343 sort branch)
+    const withCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    expect(withCounts.error).toBeUndefined()
+    const sorted = withCounts.result.tags
+    expect(sorted[0].count).toBeGreaterThanOrEqual(sorted[1].count)
+
+    // Test with_counts: false (line 344-345 sort branch)
+    const noCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: false })
+    expect(noCounts.error).toBeUndefined()
+    expect(noCounts.result.tags[0].tag.localeCompare(noCounts.result.tags[1].tag)).toBeLessThanOrEqual(0)
+  })
 })
