@@ -4,6 +4,16 @@
 
 ### Added
 
+- **`continuity_manage.list_tags`** (#96, closes #58) — Enumerates all tags in the system via `_tags:*` KV keys. Accepts optional `prefix` (e.g. `"faction:"`) for filtering, `with_counts` (default `true`) to return usage counts. Returns tags sorted by count descending or alphabetically. Solves tag namespace discoverability — agents no longer guess tag names.
+
+- **`get_sensory_profile` species fallback with source tracking** (#44) — Fixed namespace prefix bug: `Species: lamia` now correctly looks up `species:lamia` instead of bare `lamia`. Returns new `sensory_source` field indicating whether data came from entity alone or entity + species fallback (`"entity"` or `"entity + fallback from species:key"`).
+
+- **`get_faction_standing` Tags fallback** (#46) — Extended membership checks to include `Tags:` field. Now returns `is_member: true` when entity has `Tags: faction:house-crowmark`, and surfaces new `membership_source` field: `"explicit"` (Faction field or faction body match), `"tag"` (Tags field match), or `null` (non-member). Solves implicit membership detection for aliases and born members.
+
+- **`get_lore_section` semantic suggestions** (#43) — Section requests now return a `suggestions` field when a section is not found. Includes synonym matching (e.g. "Personality" → "Psychological Profile") and Levenshtein distance scoring for typos. Top 3 closest headings are suggested. Eliminates agent crashes from typos and heading-name mismatches.
+
+- **`process_stage_batch` already returns reason field** (#55) — No code change needed; was already returning structured `reason`, `entities_at_location`, and `entities_with_stages` metadata since v0.2.0.
+
 ## v0.2.0 — Entity lifecycle + security hardening
 
 ### New

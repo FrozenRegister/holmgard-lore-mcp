@@ -344,3 +344,46 @@ describe('restore_lore', () => {
     expect(get.result.text).toContain('**days_remaining:** 10')
   })
 })
+
+describe('list_tags (#96)', () => {
+  it('lists all tags created via tag_topic', async () => {
+    await seedKV('topic:one', 'Topic one')
+    await seedKV('topic:two', 'Topic two')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:one', add: ['theme:betrayal', 'faction:guild'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:two', add: ['theme:redemption'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('theme:betrayal')
+    expect(text).toContain('theme:redemption')
+    expect(text).toContain('faction:guild')
+    expect(res.result.tags.length).toBe(3)
+  })
+
+  it('returns counts when with_counts is true', async () => {
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await seedKV('topic:c', 'C')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['status:active', 'priority:high'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['status:active'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    const statusTag = res.result.tags.find((t: any) => t.tag === 'status:active')
+    expect(statusTag).toBeDefined()
+    expect(statusTag.count).toBe(2)
+    const priorityTag = res.result.tags.find((t: any) => t.tag === 'priority:high')
+    expect(priorityTag.count).toBe(1)
+  })
+
+  it('filters tags by prefix', async () => {
+    await seedKV('topic:a', 'A')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['theme:betrayal', 'faction:guild', 'status:active'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', prefix: 'theme:' })
+    expect(res.result.tags.length).toBe(1)
+    expect(res.result.tags[0].tag).toBe('theme:betrayal')
+  })
+
+  it('returns empty list when no tags exist', async () => {
+    const res = await callTool('continuity_manage', { action: 'list_tags' })
+    expect(res.result.tags.length).toBe(0)
+    expect(res.result.content[0].text).toBe('No tags found.')
+  })
+})

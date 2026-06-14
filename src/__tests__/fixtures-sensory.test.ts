@@ -42,3 +42,32 @@ describe('canonical fixture — sensory profile with Temperature-Range and Scent
     expect(scent).toContain('metabolic-heat')
   })
 })
+
+describe('species fallback with namespace prefix fix (#44)', () => {
+  it('get_sensory_profile falls back to species key with namespace prefix', async () => {
+    await seedKV('species:lamia', [
+      'Temperature: cold-blooded',
+      'Scent: musky-musk, shedding-skin',
+      'Texture: scales, smooth',
+    ].join('\n'))
+    await seedKV('entity:zira-test', [
+      'Species: lamia',
+      '# Zira (test)',
+    ].join('\n'))
+    const res = await callTool('entity_manage', { action: 'get_sensory_profile', entity_key: 'entity:zira-test' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.profile.temperature).toContain('cold-blooded')
+    expect(res.result.profile.scent).toContain('musky-musk')
+    expect(res.result.sensory_source).toContain('species:lamia')
+  })
+
+  it('get_sensory_profile returns sensory_source indicating entity-only when no species fallback', async () => {
+    await seedKV('entity:standalone', [
+      'Temperature: ambient',
+      'Scent: none',
+    ].join('\n'))
+    const res = await callTool('entity_manage', { action: 'get_sensory_profile', entity_key: 'entity:standalone' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.sensory_source).toBe('entity')
+  })
+})

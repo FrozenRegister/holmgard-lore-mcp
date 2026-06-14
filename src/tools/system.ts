@@ -130,7 +130,7 @@ export async function handle_get_lore_section({ c, id, args }: ToolContext): Pro
 
   const { text, meta } = parseKvEntry(raw)
   const version = typeof meta.version === 'number' ? meta.version : null
-  const { sections, not_found, warnings } = parseLoreSections(text, parsed.data.sections, parsed.data.mode)
+  const { sections, not_found, warnings, suggestions } = parseLoreSections(text, parsed.data.sections, parsed.data.mode)
 
   const foundCount = Object.keys(sections).length
   const summary = foundCount > 0
@@ -139,7 +139,7 @@ export async function handle_get_lore_section({ c, id, args }: ToolContext): Pro
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summary }],
-    key, version, sections, not_found, warnings
+    key, version, sections, not_found, warnings, suggestions
   }), 200)
 }
 

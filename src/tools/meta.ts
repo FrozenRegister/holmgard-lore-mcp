@@ -287,6 +287,75 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
   }), 200)
 }
 
+export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    prefix: z.string().optional(),
+    with_counts: z.boolean().default(true),
+    limit: z.number().int().min(1).max(500).default(200),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const kv = getKV(c)
+  const tags: Array<{ tag: string; count: number }> = []
+
+  if (!kv) {
+    return c.json(makeError(id, -32603, 'KV storage unavailable', null), 200)
+  }
+
+  try {
+    let cursor: string | undefined
+    let collected = 0
+
+    do {
+      const listOptions: any = { prefix: '_tags:' }
+      if (cursor) listOptions.cursor = cursor
+      const result: any = await kv.list(listOptions)
+
+      for (const key of result.keys) {
+        if (collected >= parsed.data.limit) break
+        const tagName = key.name.slice('_tags:'.length)
+        if (parsed.data.prefix && !tagName.startsWith(parsed.data.prefix)) continue
+
+        if (parsed.data.with_counts) {
+          try {
+            const raw = await kv.get(key.name)
+            const count = raw ? JSON.parse(raw).length : 0
+            tags.push({ tag: tagName, count })
+          } catch {
+            tags.push({ tag: tagName, count: 0 })
+          }
+        } else {
+          tags.push({ tag: tagName, count: 0 })
+        }
+        collected++
+      }
+
+      if (collected >= parsed.data.limit) break
+      cursor = result.list_complete ? undefined : result.cursor
+    } while (cursor)
+  } catch (e) {
+    console.error('Error listing tags', e)
+    return c.json(makeError(id, -32603, 'Error listing tags', { error: e instanceof Error ? e.message : String(e) }), 200)
+  }
+
+  if (parsed.data.with_counts) {
+    tags.sort((a, b) => b.count - a.count)
+  } else {
+    tags.sort((a, b) => a.tag.localeCompare(b.tag))
+  }
+
+  const summaryText = tags.length > 0
+    ? tags.map(t => `${t.tag}${parsed.data.with_counts ? ` (${t.count})` : ''}`).join(', ')
+    : 'No tags found.'
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: summaryText }],
+    metadata: { count: tags.length, with_counts: parsed.data.with_counts, prefix: parsed.data.prefix || null },
+    tags
+  }), 200)
+}
+
 export async function handle_bookmark_state({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({
     name: z.string().min(1),

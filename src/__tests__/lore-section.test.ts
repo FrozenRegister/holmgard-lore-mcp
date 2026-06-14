@@ -186,6 +186,50 @@ describe('get_lore_section', () => {
     const res = await callTool('lore_manage', { action: 'get_section', key: 'section:key-check', sections: ['Notes'] })
     expect(res.result.key).toBe('section:key-check')
   })
+
+  it('suggestions: synonym match for Personality → Psychological Profile', async () => {
+    await seedKV('section:syn-test', '## Psychological Profile\nKind and curious.\n## Goals\nFind truth.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:syn-test', sections: ['Personality'] })
+    expect(res.result.sections['Personality']).toBeUndefined()
+    expect(res.result.not_found).toContain('Personality')
+    expect(res.result.suggestions['Personality']).toBeDefined()
+    expect(res.result.suggestions['Personality']).toContain('psychological profile')
+  })
+
+  it('suggestions: Levenshtein distance for typos (Backgrond → Background)', async () => {
+    await seedKV('section:typo-test', '## Background\nOrigins and heritage.\n## Goals\nFind truth.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:typo-test', sections: ['Backgrond'] })
+    expect(res.result.sections['Backgrond']).toBeUndefined()
+    expect(res.result.not_found).toContain('Backgrond')
+    expect(res.result.suggestions['Backgrond']).toBeDefined()
+    expect(res.result.suggestions['Backgrond'][0]).toBe('background')
+  })
+
+  it('suggestions: Goals → Objectives synonym', async () => {
+    await seedKV('section:goals-syn', '## Objectives\nTo learn and grow.\n## Personality\nCurious.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:goals-syn', sections: ['Goals'] })
+    expect(res.result.not_found).toContain('Goals')
+    expect(res.result.suggestions['Goals']).toContain('objectives')
+  })
+
+  it('suggestions: Appearance → Physical Description synonym', async () => {
+    await seedKV('section:appear-syn', '## Physical Description\nTall and lean.\n## Notes\nWary.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:appear-syn', sections: ['Appearance'] })
+    expect(res.result.suggestions['Appearance']).toContain('physical description')
+  })
+
+  it('suggestions: empty array when no close matches', async () => {
+    await seedKV('section:no-match', '## Personality\nKind.\n## Goals\nGrow.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:no-match', sections: ['Xyzzy'] })
+    expect(res.result.suggestions['Xyzzy']).toBeDefined()
+    expect(Array.isArray(res.result.suggestions['Xyzzy'])).toBe(true)
+  })
+
+  it('suggestions: limits to top 3 closest matches by Levenshtein', async () => {
+    await seedKV('section:many', '## Personality\nA\n## Personalityb\nB\n## Personality123\nC\n## Goals\nD\n## Personalityxyz\nE')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:many', sections: ['Personalitya'] })
+    expect(res.result.suggestions['Personalitya'].length).toBeLessThanOrEqual(3)
+  })
 })
 
 describe('append_to_section', () => {

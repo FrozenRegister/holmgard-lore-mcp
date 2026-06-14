@@ -653,12 +653,16 @@ export async function handle_get_sensory_profile({ c, id, args }: ToolContext): 
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
   const { text } = parseKvEntry(raw)
-  const speciesKey = (extractRawField(text, 'Species') ?? extractRawField(text, 'Type'))?.trim().toLowerCase() ?? null
+  const rawSpeciesField = (extractRawField(text, 'Species') ?? extractRawField(text, 'Type'))?.trim().toLowerCase() ?? null
+  const speciesKey = rawSpeciesField
+    ? (rawSpeciesField.includes(':') ? rawSpeciesField : `species:${rawSpeciesField}`)
+    : null
   let speciesText = ''
+  let speciesSource = ''
   let retrieved = 1
   if (speciesKey) {
     const rawSpecies = await kvGet(c, speciesKey)
-    if (rawSpecies) { speciesText = parseKvEntry(rawSpecies).text; retrieved++ }
+    if (rawSpecies) { speciesText = parseKvEntry(rawSpecies).text; speciesSource = speciesKey; retrieved++ }
   }
 
   const get = (f: string) => extractRawField(text, f) ?? (speciesText ? extractRawField(speciesText, f) : null)
@@ -677,7 +681,7 @@ export async function handle_get_sensory_profile({ c, id, args }: ToolContext): 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: hasProfile ? `Sensory profile for "${entityKey}": ${[profile.temperature && `temp:${profile.temperature}`, profile.scent && `scent:${profile.scent}`, profile.texture && `texture:${profile.texture}`].filter(Boolean).join(', ')}.` : `No sensory profile fields found for "${entityKey}".` }],
     metadata: { retrieved, written: 0 },
-    entity_key: entityKey, species: speciesKey, profile, sensory_profile_raw: compositeRaw
+    entity_key: entityKey, species: speciesKey, profile, sensory_profile_raw: compositeRaw, sensory_source: speciesSource ? `entity + fallback from ${speciesSource}` : 'entity'
   }), 200)
 }
 

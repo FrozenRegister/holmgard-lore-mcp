@@ -1,6 +1,6 @@
 import type { ToolHandler } from './types'
 import { makeError } from '../lib/rpc'
-import { handle_append_event, handle_get_event_log, handle_recent_changes, handle_tag_topic, handle_find_by_tag, handle_bookmark_state, handle_world_diff, handle_plant_setup, handle_pay_off_setup, handle_list_unpaid_setups, handle_set_goal, handle_check_continuity } from './meta'
+import { handle_append_event, handle_get_event_log, handle_recent_changes, handle_tag_topic, handle_find_by_tag, handle_list_tags, handle_bookmark_state, handle_world_diff, handle_plant_setup, handle_pay_off_setup, handle_list_unpaid_setups, handle_set_goal, handle_check_continuity } from './meta'
 
 const ACTION_MAP: Record<string, ToolHandler> = {
   append_event:       handle_append_event,
@@ -8,6 +8,7 @@ const ACTION_MAP: Record<string, ToolHandler> = {
   recent_changes:     handle_recent_changes,
   tag_topic:          handle_tag_topic,
   find_by_tag:        handle_find_by_tag,
+  list_tags:          handle_list_tags,
   bookmark_state:     handle_bookmark_state,
   world_diff:         handle_world_diff,
   plant_setup:        handle_plant_setup,
