@@ -22,6 +22,14 @@ jobs:
               pull_number: context.payload.pull_request.number,
             })
 
+            // Fetch fresh PR from API to ensure we have current data
+            // This ensures the check always sees the current PR metadata even if edited after the workflow was triggered
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+
             const hasChangelog = files.some(f => f.filename === 'CHANGELOG.md')
 
             if (!hasChangelog) {

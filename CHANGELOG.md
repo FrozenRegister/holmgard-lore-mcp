@@ -169,4 +169,6 @@
 
 ### Changed
 
+- **PR quality workflow: fetch fresh PR data from API** (#122) — The `check-changelog` workflow now fetches the PR fresh from the GitHub API using `github.rest.pulls.get()` to ensure it always sees current PR metadata even if edited after the workflow was triggered. Improves robustness for future feature additions.
+
 - **admin/routes.ts** — Extracted shared `extractKey()`, `extractText()`, `extractSecret()`, and `checkSecret()` helpers to eliminate copy-paste drift across `set-lore`, `delete-lore`, and `gc` routes. Auth checks now flow through a single `checkSecret()` function. (Issue #1)
