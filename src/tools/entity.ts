@@ -773,10 +773,29 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
   const { text } = parseKvEntry(raw)
-  const invRaw = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items') ?? extractRawField(text, 'Carried-Items')
+  // Multi-line format: **Inventory:** alone on its line, items on following lines
+  // Must check this first — extractRawField's \s*$ can swallow \n and grab only the first item
+  let invRaw: string | null = null
+  const lines = text.split('\n')
+  let collecting = false
+  const collected: string[] = []
+  for (const line of lines) {
+    if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { collecting = true; continue }
+    if (collecting) {
+      if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
+      const t = line.trim()
+      if (t) collected.push(t)
+    }
+  }
+  if (collected.length > 0) {
+    invRaw = collected.join(',')
+  } else {
+    invRaw = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items') ?? extractRawField(text, 'Carried-Items')
+  }
   const items: Array<{ item: string; quantity: number; condition: string | null }> = []
   if (invRaw) {
-    for (const entry of invRaw.split(',').map(s => s.trim()).filter(Boolean)) {
+    const entries = invRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+    for (const entry of entries) {
       const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       if (m) items.push({ item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null })
       else items.push({ item: entry, quantity: 1, condition: null })
@@ -810,15 +829,30 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
   const { text: toText, meta: toMeta } = parseKvEntry(rawTo)
 
   const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
-    raw.split(',').map(s => s.trim()).filter(Boolean).map(entry => {
+    raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map(entry => {
       const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
     })
 
+  const extractInvRaw = (t: string): string => {
+    const tLines = t.split('\n')
+    let tCollecting = false
+    const tCollected: string[] = []
+    for (const line of tLines) {
+      if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { tCollecting = true; continue }
+      if (tCollecting) {
+        if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
+        const l = line.trim()
+        if (l) tCollected.push(l)
+      }
+    }
+    if (tCollected.length > 0) return tCollected.join(',')
+    return extractRawField(t, 'Inventory') ?? extractRawField(t, 'Items') ?? extractRawField(t, 'Carried-Items') ?? ''
+  }
 
   const fromInvFieldName = extractRawField(fromText, 'Inventory') ? 'Inventory' : extractRawField(fromText, 'Items') ? 'Items' : 'Inventory'
   const toInvFieldName = extractRawField(toText, 'Inventory') ? 'Inventory' : extractRawField(toText, 'Items') ? 'Items' : 'Inventory'
-  const fromInvRaw = extractRawField(fromText, fromInvFieldName) ?? ''
+  const fromInvRaw = extractInvRaw(fromText)
   const fromItems = parseInvStr(fromInvRaw)
   const itemIdx = fromItems.findIndex(i => i.item.toLowerCase() === itemKey.toLowerCase())
 

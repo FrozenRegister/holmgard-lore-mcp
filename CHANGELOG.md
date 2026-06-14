@@ -14,9 +14,17 @@
 
 - **`process_stage_batch` already returns reason field** (#55) — No code change needed; was already returning structured `reason`, `entities_at_location`, and `entities_with_stages` metadata since v0.2.0.
 
-### Test Coverage
+- **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (header alone on its line, items below) inventory formats. Fixed root cause: `extractRawField`'s `\s*$` pattern silently crossed newlines, returning only the first item; now uses direct line scanning to detect the header-only pattern before falling back to `extractRawField`. Tests cover: termination at next bold field, blank lines inside inventory block, bare-item quantity defaulting to 1, `Items:` field name fallback, multi-line source in `transfer_item`, and source with no inventory field.
+
+### Closed (Triage)
+
+- **Issue triage & cleanup** — Closed 14 stale/superseded issues from the #108 cluster map: 6 superseded by the RPG engine (items #39, #47, #48, #91, #51, #49), 4 out-of-scope planning artifacts (#52, #74, #61, #33), 3 duplicate sprint board tickets. Comprehensive audit comment posted to #108 documenting every closure and reversibility path.
+
+### Test Coverage (Cluster E & Inventory)
 
 - **Cluster E validation coverage** — Added test cases for list_tags (alphabetical sorting without counts, invalid params), get_sensory_profile (already-prefixed species key, orphaned species fallback). Improves patch coverage to 100%.
+
+- **Line-separated inventory test** — New test case 'parses line-separated inventory items (#41 fix)' in environment.test.ts validates that inventory with items on separate lines (e.g. `**Inventory:**\nitem1×1\nitem2×2`) parses correctly.
 
 ## v0.2.0 — Entity lifecycle + security hardening
 
@@ -24,7 +32,7 @@
 
 - **`entity_manage.destroy`** (#90) — clean up ephemeral encounter entities. Archives final history snapshot, purges from KV/indexes/loreDB in one atomic call. No more ghost NPCs haunting location occupant scans.
 
-### Tests  
+### Security & Admin Tests
 
 - **Admin error sanitization** (#17) — 8 new tests across all 7 admin endpoints verifying that internal KV error strings, stack traces, and `.ts:` file paths never leak through 500 responses. `safeErrorMessage` was already wired up but had zero regression coverage.  
 
@@ -160,5 +168,7 @@
 - **src/rpg/utils/kv-to-d1.ts** — Fixed ESLint unused variable errors by adding eslint-disable comment for intentionally ignored destructured variables. Addresses CI failure while maintaining existing functionality.
 
 ### Changed
+
+- **PR quality workflow: fetch fresh PR data from API** (#122) — The `check-changelog` workflow now fetches the PR fresh from the GitHub API using `github.rest.pulls.get()` to ensure it always sees current PR metadata even if edited after the workflow was triggered. Improves robustness for future feature additions.
 
 - **admin/routes.ts** — Extracted shared `extractKey()`, `extractText()`, `extractSecret()`, and `checkSecret()` helpers to eliminate copy-paste drift across `set-lore`, `delete-lore`, and `gc` routes. Auth checks now flow through a single `checkSecret()` function. (Issue #1)

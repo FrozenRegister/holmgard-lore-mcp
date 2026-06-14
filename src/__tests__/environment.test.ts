@@ -80,6 +80,60 @@ describe('get_inventory', () => {
     expect(res.result.items).toHaveLength(0)
     expect(res.result.raw_inventory).toBeNull()
   })
+
+  it('parses line-separated inventory items (#41 fix)', async () => {
+    // Inventory format with items on separate lines (not comma-separated)
+    await seedKV('character:kavissa', `**Inventory:**
+crowmark-seal-ring×1
+leather-purse×1
+letter-of-credit×1
+sandalwood-soap×1`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:kavissa' })
+    expect(res.result.items).toHaveLength(4)
+    const ring = res.result.items.find((i: { item: string }) => i.item === 'crowmark-seal-ring')
+    expect(ring).toBeDefined()
+    expect(ring.quantity).toBe(1)
+  })
+
+  it('stops collecting multi-line items at next bold field header', async () => {
+    await seedKV('character:bounded', `**Inventory:**
+sword×1
+shield×1
+**Status:** alive`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:bounded' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items[0].item).toBe('sword')
+    expect(res.result.items[1].item).toBe('shield')
+  })
+
+  it('skips blank lines inside multi-line inventory block', async () => {
+    await seedKV('character:spaced-items', `**Inventory:**
+torch×3
+
+rope×1
+`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:spaced-items' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items[0].item).toBe('torch')
+    expect(res.result.items[1].item).toBe('rope')
+  })
+
+  it('returns quantity 1 for bare item entries without a quantity marker', async () => {
+    await seedKV('character:bare-items', '**Inventory:** mysterious-artifact, old-coin×3')
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:bare-items' })
+    expect(res.result.items).toHaveLength(2)
+    const artifact = res.result.items.find((i: { item: string }) => i.item === 'mysterious-artifact')
+    expect(artifact.quantity).toBe(1)
+    const coin = res.result.items.find((i: { item: string }) => i.item === 'old-coin')
+    expect(coin.quantity).toBe(3)
+  })
+
+  it('falls back to Items field name when Inventory field is absent', async () => {
+    await seedKV('character:uses-items-field', '**Items:** lantern×1, rope×2')
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:uses-items-field' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items.find((i: { item: string }) => i.item === 'lantern').quantity).toBe(1)
+  })
 })
 
 describe('transfer_item', () => {
@@ -111,5 +165,27 @@ describe('transfer_item', () => {
     const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:has-one', to_entity: 'character:wants-more', item_key: 'potion', quantity: 5 })
     expect(res.result.transferred).toBe(false)
     expect(res.result.content[0].text).toContain('Insufficient')
+  })
+
+  it('rejects transfer when source entity has no inventory field', async () => {
+    await seedKV('character:no-inv', '**Status:** alive')
+    await seedKV('character:no-inv-target', '**Inventory:** gold×1')
+    const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:no-inv', to_entity: 'character:no-inv-target', item_key: 'sword', quantity: 1 })
+    expect(res.result.transferred).toBe(false)
+    expect(res.result.content[0].text).toContain('not found')
+  })
+
+  it('transfers item from multi-line inventory source with blank lines', async () => {
+    await seedKV('character:multi-seller', `**Inventory:**
+dagger×2
+
+torch×5
+**Status:** active`)
+    await seedKV('character:multi-buyer', '**Items:** gold×10')
+    const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:multi-seller', to_entity: 'character:multi-buyer', item_key: 'dagger', quantity: 1 })
+    expect(res.result.transferred).toBe(true)
+    const seller = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:multi-seller' })
+    const dagger = seller.result.items.find((i: { item: string }) => i.item === 'dagger')
+    expect(dagger.quantity).toBe(1)
   })
 })

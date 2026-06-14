@@ -10,16 +10,29 @@ permissions:
 jobs:
   check-changelog:
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-quality-checks') }}
 
     steps:
       - uses: actions/github-script@v7
         with:
           script: |
+            // Fetch fresh PR data from API
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+
+            // Check skip label on fresh data
+            const skipCheck = pr.labels.some(l => l.name === 'skip-quality-checks')
+            if (skipCheck) {
+              console.log('Skipping quality checks (skip-quality-checks label present)')
+              return
+            }
+
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
-              repo:  context.repo.repo,
-              pull_number: context.payload.pull_request.number,
+              repo: context.repo.repo,
+              pull_number: pr.number,
             })
 
             const hasChangelog = files.some(f => f.filename === 'CHANGELOG.md')
