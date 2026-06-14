@@ -422,4 +422,400 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(scene.result.entities.length).toBe(3)
     })
   })
+
+  describe('advanced scenarios: multi-location expedition', () => {
+    it('tracks party movement across multiple locations with occupancy updates', async () => {
+      // Create a chain of locations
+      await seedKV('location:inn', '**Description:** A cozy inn.')
+      await seedKV('location:forest-road', '**Description:** A forest path.')
+      await seedKV('location:tavern-end', '**Description:** A tavern at journey\'s end.')
+
+      // Create party members
+      await seedKV('character:leader', '**Location:** location:inn\n**Status:** Active\n**Role:** Party Leader\n**Health:** 100')
+      await seedKV('character:healer', '**Location:** location:inn\n**Status:** Active\n**Role:** Healer\n**Health:** 85')
+      await seedKV('character:scout', '**Location:** location:inn\n**Status:** Active\n**Role:** Scout\n**Health:** 90')
+
+      // Verify starting location
+      let innOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:inn' })
+      expect(innOccupants.result.occupants).toHaveLength(3)
+
+      // Move to forest
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:leader', new_location_key: 'location:forest-road' })
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:healer', new_location_key: 'location:forest-road' })
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:scout', new_location_key: 'location:forest-road' })
+
+      // Verify movement
+      let forestOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:forest-road' })
+      expect(forestOccupants.result.occupants).toHaveLength(3)
+
+      innOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:inn' })
+      expect(innOccupants.result.occupants).toHaveLength(0)
+
+      // Move to final location
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:leader', new_location_key: 'location:tavern-end' })
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:healer', new_location_key: 'location:tavern-end' })
+      await callTool('entity_manage', { action: 'move', entity_key: 'character:scout', new_location_key: 'location:tavern-end' })
+
+      // Verify final state
+      const tavernOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:tavern-end' })
+      expect(tavernOccupants.result.occupants).toHaveLength(3)
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:leader')
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:healer')
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:scout')
+    })
+
+    it('handles party member damage and healing across locations', async () => {
+      await seedKV('location:battle', '**Description:** A battleground.')
+      await seedKV('character:warrior', '**Location:** location:battle\n**Status:** Active\n**Health:** 100')
+      await seedKV('character:cleric', '**Location:** location:battle\n**Status:** Active\n**Health:** 100')
+
+      // Warrior takes damage
+      await callTool('lore_manage', {
+        action: 'batch_mutate',
+        mutations: [
+          {
+            key: 'character:warrior',
+            action: 'increment',
+            field_path: 'Health',
+            increment: -30,
+          },
+        ],
+      })
+
+      let warrior = await callTool('lore_manage', { action: 'get', query: 'character:warrior' })
+      expect(warrior.result.text).toContain('**Health:** 70')
+
+      // Cleric heals warrior
+      await callTool('lore_manage', {
+        action: 'batch_mutate',
+        mutations: [
+          {
+            key: 'character:warrior',
+            action: 'increment',
+            field_path: 'Health',
+            increment: 20,
+          },
+        ],
+      })
+
+      warrior = await callTool('lore_manage', { action: 'get', query: 'character:warrior' })
+      expect(warrior.result.text).toContain('**Health:** 90')
+    })
+  })
+
+  describe('setup and interaction management', () => {
+    it('plants setups that track tension and actors', async () => {
+      await seedKV('character:noble', '**Status:** Active\n**Location:** location:castle')
+      await seedKV('character:spy', '**Status:** Active\n**Location:** location:castle')
+      await seedKV('location:castle', '**Description:** The grand castle.')
+
+      // Plant a setup involving the two characters (tension max 5)
+      const setupRes = await callTool('continuity_manage', {
+        action: 'plant_setup',
+        id: 'noble-betrayal-plot',
+        description: 'The noble plans to betray the crown, and the spy must decide whether to report it.',
+        tension: 5,
+        actors: ['character:noble', 'character:spy'],
+      })
+      expect(setupRes.error).toBeUndefined()
+
+      // Scene brief should show open setups for present actors
+      const briefRes = await callTool('scene_manage', { action: 'brief', location_key: 'location:castle' })
+      const setupIds = (briefRes.result.open_setups as Array<{ id: string }>).map((s) => s.id)
+      expect(setupIds).toContain('noble-betrayal-plot')
+    })
+
+    it('deletes ephemeral NPCs after encounters', async () => {
+      await seedKV('character:goblin-npc', '**Status:** Active\n**Location:** location:dungeon\n**Role:** Enemy')
+      await seedKV('location:dungeon', '**Description:** A dark dungeon.')
+
+      // Verify NPC exists
+      let npc = await callTool('lore_manage', { action: 'get', query: 'character:goblin-npc' })
+      expect(npc.result.text).toContain('Enemy')
+
+      // After encounter, destroy the NPC
+      const destroyRes = await callTool('entity_manage', { action: 'destroy', entity_key: 'character:goblin-npc' })
+      expect(destroyRes.error).toBeUndefined()
+
+      // Verify NPC is gone
+      const getRes = await callTool('lore_manage', { action: 'get', query: 'character:goblin-npc' })
+      expect(getRes.error).toBeDefined()
+    })
+  })
+
+  describe('complex multi-thread scenarios', () => {
+    it('maintains independent thread timelines with different dates', async () => {
+      // Main quest thread
+      await seedKV('character:quest-alpha', '**Thread:** main-timeline\n**Timeline-Value:** 10\n**Current-Date:** 2026-06-14')
+      await seedKV('character:quest-beta', '**Thread:** main-timeline\n**Timeline-Value:** 8\n**Current-Date:** 2026-06-14')
+
+      // Side quest thread (different date)
+      await seedKV('character:side-alpha', '**Thread:** side-timeline\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-20')
+      await seedKV('character:side-beta', '**Thread:** side-timeline\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-20')
+
+      // Tick main timeline
+      await callTool('world_manage', { action: 'thread_tick', thread_id: 'main-timeline' })
+
+      // Verify main timeline changed
+      const mainAlpha = await callTool('lore_manage', { action: 'get', query: 'character:quest-alpha' })
+      expect(mainAlpha.result.text).toContain('**Timeline-Value:** 9')
+
+      // Verify side timeline unchanged
+      const sideAlpha = await callTool('lore_manage', { action: 'get', query: 'character:side-alpha' })
+      expect(sideAlpha.result.text).toContain('**Timeline-Value:** 5')
+
+      // Compare the two threads
+      const cmp = await callTool('world_manage', {
+        action: 'get_thread_comparison',
+        thread_a: 'main-timeline',
+        thread_b: 'side-timeline',
+      })
+      expect(cmp.result.thread_a.entity_count).toBe(2)
+      expect(cmp.result.thread_b.entity_count).toBe(2)
+      expect(cmp.result.shared_dates).toHaveLength(0) // Different dates
+    })
+
+    it('handles convergence between threads with shared dates', async () => {
+      // Set up two threads that will converge
+      await seedKV('character:thread-a-char', '**Thread:** converge-a\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-15')
+      await seedKV('character:thread-b-char', '**Thread:** converge-b\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-15')
+
+      // Both threads share the same current date - they're converging
+      const briefA = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'converge-a', thread_b: 'converge-b' })
+      expect(briefA.result.shared_dates).toContain('2026-06-15')
+    })
+
+    it('ticks multiple threads independently in a session', async () => {
+      // Create three parallel stories
+      const threadIds = ['story-1', 'story-2', 'story-3']
+      for (let i = 0; i < threadIds.length; i++) {
+        await seedKV(`character:story${i + 1}-lead`, `**Thread:** ${threadIds[i]}\n**Timeline-Value:** 10`)
+      }
+
+      // Tick each thread
+      for (const threadId of threadIds) {
+        await callTool('world_manage', { action: 'thread_tick', thread_id: threadId })
+      }
+
+      // Verify each thread progressed
+      for (let i = 0; i < threadIds.length; i++) {
+        const char = await callTool('lore_manage', { action: 'get', query: `character:story${i + 1}-lead` })
+        expect(char.result.text).toContain('**Timeline-Value:** 9')
+      }
+    })
+  })
+
+  describe('advanced lore management', () => {
+    it('patches complex nested structures and validates changes', async () => {
+      await seedKV(
+        'location:grand-library',
+        '**Description:** A vast library.\n**Sections:** Archives\n**Keepers:** librarian:chief\n**Rules:** Silence required',
+      )
+
+      // Patch to add a new section
+      await callTool('lore_manage', {
+        action: 'patch',
+        key: 'location:grand-library',
+        operation: 'append',
+        target: '**Rules:** Silence required',
+        value: '\n**Access-Level:** Restricted',
+      })
+
+      const updated = await callTool('lore_manage', { action: 'get', query: 'location:grand-library' })
+      expect(updated.result.text).toContain('**Access-Level:** Restricted')
+    })
+
+    it('uses batch operations for efficient multi-entity updates', async () => {
+      const npcs = [
+        { key: 'npc:innkeeper', text: '**Role:** Innkeeper\n**Loyalty:** Neutral\n**Fear-Level:** 0' },
+        { key: 'npc:blacksmith', text: '**Role:** Blacksmith\n**Loyalty:** Neutral\n**Fear-Level:** 0' },
+        { key: 'npc:guard', text: '**Role:** Guard\n**Loyalty:** Crown\n**Fear-Level:** 5' },
+        { key: 'npc:merchant', text: '**Role:** Merchant\n**Loyalty:** Gold\n**Fear-Level:** 2' },
+      ]
+
+      // Batch create all NPCs
+      const batchRes = await callTool('lore_manage', {
+        action: 'batch_set',
+        entries: npcs,
+      })
+      expect(batchRes.result.metadata.total).toBe(4)
+
+      // Batch mutate to update fear levels after a threat
+      const mutations = [
+        { key: 'npc:innkeeper', action: 'increment', field_path: 'Fear-Level', increment: 3 },
+        { key: 'npc:blacksmith', action: 'increment', field_path: 'Fear-Level', increment: 2 },
+        { key: 'npc:guard', action: 'increment', field_path: 'Fear-Level', increment: 1 },
+        { key: 'npc:merchant', action: 'increment', field_path: 'Fear-Level', increment: 4 },
+      ]
+
+      const mutateRes = await callTool('lore_manage', {
+        action: 'batch_mutate',
+        mutations,
+      })
+      expect(mutateRes.result.metadata.ok_count).toBe(4)
+
+      // Verify all updates
+      const innkeeper = await callTool('lore_manage', { action: 'get', query: 'npc:innkeeper' })
+      expect(innkeeper.result.text).toContain('**Fear-Level:** 3')
+    })
+
+    it('performs comprehensive search across lore database', async () => {
+      // Create a diverse lore collection
+      await seedKV('character:dragon-slayer', '**Quest:** Slay the ancient dragon\n**Weapon:** Dragon-bane sword')
+      await seedKV('location:dragon-cave', '**Description:** Lair of the ancient dragon\n**Treasure:** Dragon gold')
+      await seedKV('item:dragon-egg', '**Type:** Artifact\n**Origin:** From the dragon hoard\n**Power:** Unknown')
+      await seedKV('faction:dragon-cult', '**Goal:** Resurrect the ancient dragon\n**Members:** 5')
+      await seedKV('npc:dragon-priest', '**Role:** High priest\n**Faction:** dragon-cult\n**Status:** Active')
+
+      // Search for "dragon" - should find all 5 entries
+      const searchRes = await callTool('lore_manage', { action: 'search', query: 'dragon', max_results: 20 })
+      expect(searchRes.result.metadata.match_count).toBe(5)
+
+      const keys = searchRes.result.results.map((r: { key: string }) => r.key)
+      expect(keys).toContain('character:dragon-slayer')
+      expect(keys).toContain('location:dragon-cave')
+      expect(keys).toContain('item:dragon-egg')
+      expect(keys).toContain('faction:dragon-cult')
+      expect(keys).toContain('npc:dragon-priest')
+    })
+
+    it('lists all lore entries and respects pagination', async () => {
+      // Create multiple entries
+      const entries = Array.from({ length: 5 }, (_, i) => ({
+        key: `item:artifact-${i}`,
+        text: `Artifact number ${i} with special powers`,
+      }))
+
+      await callTool('lore_manage', {
+        action: 'batch_set',
+        entries,
+      })
+
+      // List with limit
+      const page1 = await callTool('lore_manage', { action: 'list', limit: 3, offset: 0 })
+      expect(page1.result.metadata.limit).toBe(3)
+      expect(page1.result.metadata.count).toBeLessThanOrEqual(3)
+
+      // List next page
+      const page2 = await callTool('lore_manage', { action: 'list', limit: 3, offset: 3 })
+      expect(page2.result.metadata.offset).toBe(3)
+    })
+  })
+
+  describe('narrative branching and choice chains', () => {
+    it('follows a complex choice chain with state mutations', async () => {
+      // Set up initial scene
+      await seedKV('scene:crossroads', '**Description:** A fork in the road.')
+      await seedKV('choice:left-path', '**Description:** Take the left path into the woods\n**Next-Choices:** choice:encounter-wolf, choice:find-treasure')
+      await seedKV('choice:encounter-wolf', '**Description:** You encounter a wolf!\n**State-Change:** Injured\n**Next-Choices:** choice:fight-wolf, choice:flee-wolf')
+      await seedKV('choice:find-treasure', '**Description:** You find gold coins!\n**State-Change:** Wealthy')
+      await seedKV('character:traveler', '**Status:** Healthy\n**Choice-History:**')
+
+      // Make first choice
+      const choice1 = await callTool('scene_manage', {
+        action: 'commit_choice',
+        choice_id: 'choice:left-path',
+        entity_key: 'character:traveler',
+      })
+      expect(choice1.error).toBeUndefined()
+
+      let traveler = await callTool('lore_manage', { action: 'get', query: 'character:traveler' })
+      expect(traveler.result.text).toContain('choice:left-path')
+
+      // Make second choice - encounter
+      const choice2 = await callTool('scene_manage', {
+        action: 'commit_choice',
+        choice_id: 'choice:encounter-wolf',
+        entity_key: 'character:traveler',
+      })
+      expect(choice2.result.state_change).toBe('Injured')
+
+      traveler = await callTool('lore_manage', { action: 'get', query: 'character:traveler' })
+      expect(traveler.result.text).toContain('Injured')
+      expect(traveler.result.text).toContain('choice:encounter-wolf')
+
+      // Get history
+      const history = await callTool('scene_manage', { action: 'get_history', entity_key: 'character:traveler' })
+      expect(history.result.history.length).toBe(2)
+      // Verify first choice in history
+      expect(history.result.history[0]).toBeDefined()
+      expect(history.result.history[1]).toBeDefined()
+    })
+
+    it('branches based on character inventory and attributes', async () => {
+      await seedKV('scene:treasure-room', '**Description:** A room filled with treasure.')
+      await seedKV('character:thief', '**Inventory:** lockpicks×1, rope×1\n**Skill:** Stealth\n**Experience:** 50')
+      await seedKV('character:warrior', '**Inventory:** sword×1, shield×1\n**Skill:** Combat\n**Experience:** 75')
+
+      // Thief-specific path
+      const thiefChoices = await callTool('scene_manage', {
+        action: 'present_choices',
+        scene_key: 'scene:treasure-room',
+        entity_key: 'character:thief',
+      })
+      expect(thiefChoices.error).toBeUndefined()
+
+      // Warrior-specific path
+      const warriorChoices = await callTool('scene_manage', {
+        action: 'present_choices',
+        scene_key: 'scene:treasure-room',
+        entity_key: 'character:warrior',
+      })
+      expect(warriorChoices.error).toBeUndefined()
+    })
+  })
+
+  describe('ephemeral cleanup and session management', () => {
+    it('removes temporary encounter NPCs after resolution', async () => {
+      // Create temporary encounter NPCs
+      const tempNpcs = [
+        { key: 'encounter:goblin-1', text: '**Type:** Goblin\n**Health:** 20\n**Loot:** coins×5' },
+        { key: 'encounter:goblin-2', text: '**Type:** Goblin\n**Health:** 18\n**Loot:** coins×3' },
+        { key: 'encounter:goblin-boss', text: '**Type:** Goblin Boss\n**Health:** 50\n**Loot:** sword, coins×20' },
+      ]
+
+      // Batch create them
+      await callTool('lore_manage', {
+        action: 'batch_set',
+        entries: tempNpcs,
+      })
+
+      // Verify they exist
+      let boss = await callTool('lore_manage', { action: 'get', query: 'encounter:goblin-boss' })
+      expect(boss.result.text).toContain('Goblin Boss')
+
+      // Destroy them after encounter
+      for (const npc of tempNpcs) {
+        await callTool('entity_manage', { action: 'destroy', entity_key: npc.key })
+      }
+
+      // Verify cleanup
+      const verify = await callTool('lore_manage', { action: 'get', query: 'encounter:goblin-boss' })
+      expect(verify.error).toBeDefined()
+    })
+
+    it('manages session-wide lore cleanup and archival', async () => {
+      // Create archivable entries using set (which ensures they're written properly)
+      await callTool('lore_manage', { action: 'set', key: 'session:session-001-intro', text: '**Type:** Session Record\n**Status:** Complete' })
+      await callTool('lore_manage', { action: 'set', key: 'session:session-001-battles', text: '**Type:** Battle Log\n**Encounters:** 3' })
+
+      // Verify both entries exist
+      const intro = await callTool('lore_manage', { action: 'get', query: 'session:session-001-intro' })
+      expect(intro.result.text).toContain('Session Record')
+
+      const battles = await callTool('lore_manage', { action: 'get', query: 'session:session-001-battles' })
+      expect(battles.result.text).toContain('Battle Log')
+
+      // Archive old session by deleting
+      await callTool('lore_manage', { action: 'delete', key: 'session:session-001-intro' })
+
+      // Verify deletion
+      const verify = await callTool('lore_manage', { action: 'get', query: 'session:session-001-intro' })
+      expect(verify.error).toBeDefined()
+
+      // Other session data still exists
+      const remaining = await callTool('lore_manage', { action: 'get', query: 'session:session-001-battles' })
+      expect(remaining.result.text).toContain('Battle Log')
+    })
+  })
 })

@@ -26,7 +26,7 @@
 
 - **Line-separated inventory test** — New test case 'parses line-separated inventory items (#41 fix)' in environment.test.ts validates that inventory with items on separate lines (e.g. `**Inventory:**\nitem1×1\nitem2×2`) parses correctly.
 
-- **Roleplay scenario integration test** — New comprehensive test suite (`roleplay-scenario.test.ts`) simulating multi-character, multi-thread collaborative storytelling. Tests character state mutations, location movement, thread-based timeline progression, inventory management, batch operations, scene interactions with choice mechanics, and world state consistency (restore, search, validate). Serves as canonical example for testing realistic roleplay sessions with the MCP backend.
+- **Roleplay scenario integration test** — New comprehensive test suite (`roleplay-scenario.test.ts`) with 35 test cases covering: world setup (locations, characters, threads), character mutations (health, inventory, experience), location-based movement and occupancy tracking, thread-based timeline progression with status detection, batch operations (batch_set, batch_mutate), scene interactions with choice mechanics and history, world state consistency (restore, search, validate), setup management (plant_setup, resolve via continuity_manage), entity lifecycle (destroy), NPC cleanup, multi-thread scenarios with convergence, complex choice chains with branching logic, lore search and pagination, and session-wide cleanup. Exercises 9 MCP tools (lore_manage, entity_manage, world_manage, scene_manage, continuity_manage) across realistic roleplay workflows. Serves as canonical example and reference for testing collaborative storytelling sessions.
 
 ## v0.2.0 — Entity lifecycle + security hardening
 
