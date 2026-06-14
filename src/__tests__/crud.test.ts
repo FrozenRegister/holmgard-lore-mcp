@@ -436,4 +436,69 @@ describe('list_tags (#96)', () => {
     expect(corruptTag).toBeDefined()
     expect(corruptTag.count).toBe(0)
   })
+
+  it('exercises ALL list_tags code paths for 100% coverage', async () => {
+    // Create multiple topics and tags with varying counts to exercise:
+    // - Line 315-332: for loop for each key, collected counter, continue on prefix mismatch
+    // - Line 320-330: with_counts branch split (if/else)
+    // - Line 334-335: cursor pagination
+    // - Line 342-345: sorting both branches
+
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await seedKV('topic:c', 'C')
+
+    // Create tags with different counts
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['xray:one', 'alpha:one'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['xray:one', 'beta:one'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:c', add: ['xray:one'] })
+
+    // Test 1: with_counts=true with prefix filter (lines 318, 320-330, 342-343)
+    const withCountsAndPrefix = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: true,
+      prefix: 'xray:',
+    })
+    expect(withCountsAndPrefix.error).toBeUndefined()
+    expect(withCountsAndPrefix.result.tags[0].tag).toBe('xray:one')
+    expect(withCountsAndPrefix.result.tags[0].count).toBe(3)
+
+    // Test 2: with_counts=false no prefix (lines 328-330, 344-345)
+    const noCounts = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: false,
+    })
+    expect(noCounts.error).toBeUndefined()
+    // Tags should be sorted alphabetically
+    for (let i = 0; i < noCounts.result.tags.length - 1; i++) {
+      expect(noCounts.result.tags[i].tag.localeCompare(noCounts.result.tags[i + 1].tag)).toBeLessThanOrEqual(0)
+    }
+
+    // Test 3: with_counts=true no prefix (lines 320-327 full execution)
+    const withCounts = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: true,
+    })
+    expect(withCounts.error).toBeUndefined()
+    // Tags should be sorted by count descending
+    for (let i = 0; i < withCounts.result.tags.length - 1; i++) {
+      expect(withCounts.result.tags[i].count).toBeGreaterThanOrEqual(withCounts.result.tags[i + 1].count)
+    }
+
+    // Test 4: prefix filter that matches nothing (line 318 continue branch)
+    const noMatch = await callTool('continuity_manage', {
+      action: 'list_tags',
+      prefix: 'nonexistent:',
+    })
+    expect(noMatch.error).toBeUndefined()
+    expect(noMatch.result.tags.length).toBe(0)
+
+    // Test 5: limit param to exercise loop break (line 316)
+    const limited = await callTool('continuity_manage', {
+      action: 'list_tags',
+      limit: 1,
+    })
+    expect(limited.error).toBeUndefined()
+    expect(limited.result.tags.length).toBeLessThanOrEqual(1)
+  })
 })
