@@ -386,4 +386,19 @@ describe('list_tags (#96)', () => {
     expect(res.result.tags.length).toBe(0)
     expect(res.result.content[0].text).toBe('No tags found.')
   })
+
+  it('with_counts: false returns tags sorted alphabetically without counts', async () => {
+    await seedKV('topic:a', 'A')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['zebra:tag', 'apple:tag'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: false })
+    expect(res.result.tags[0].tag).toBe('apple:tag')
+    expect(res.result.tags[1].tag).toBe('zebra:tag')
+    expect(res.result.content[0].text).not.toContain('(')
+  })
+
+  it('invalid params returns error code -32602', async () => {
+    const res = await callTool('continuity_manage', { action: 'list_tags', limit: 0 })
+    expect(res.error).toBeDefined()
+    expect(res.result.code).toBe(-32602)
+  })
 })

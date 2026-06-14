@@ -14,6 +14,10 @@
 
 - **`process_stage_batch` already returns reason field** (#55) — No code change needed; was already returning structured `reason`, `entities_at_location`, and `entities_with_stages` metadata since v0.2.0.
 
+### Test Coverage
+
+- **Cluster E validation coverage** — Added test cases for list_tags (alphabetical sorting without counts, invalid params), get_sensory_profile (already-prefixed species key, orphaned species fallback). Improves patch coverage to 100%.
+
 ## v0.2.0 — Entity lifecycle + security hardening
 
 ### New
