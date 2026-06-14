@@ -127,6 +127,13 @@ rope×1
     const coin = res.result.items.find((i: { item: string }) => i.item === 'old-coin')
     expect(coin.quantity).toBe(3)
   })
+
+  it('falls back to Items field name when Inventory field is absent', async () => {
+    await seedKV('character:uses-items-field', '**Items:** lantern×1, rope×2')
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:uses-items-field' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items.find((i: { item: string }) => i.item === 'lantern').quantity).toBe(1)
+  })
 })
 
 describe('transfer_item', () => {
@@ -168,12 +175,13 @@ describe('transfer_item', () => {
     expect(res.result.content[0].text).toContain('not found')
   })
 
-  it('transfers item from multi-line inventory source', async () => {
+  it('transfers item from multi-line inventory source with blank lines', async () => {
     await seedKV('character:multi-seller', `**Inventory:**
 dagger×2
+
 torch×5
 **Status:** active`)
-    await seedKV('character:multi-buyer', '**Inventory:** gold×10')
+    await seedKV('character:multi-buyer', '**Items:** gold×10')
     const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:multi-seller', to_entity: 'character:multi-buyer', item_key: 'dagger', quantity: 1 })
     expect(res.result.transferred).toBe(true)
     const seller = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:multi-seller' })
