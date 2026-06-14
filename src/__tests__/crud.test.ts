@@ -418,4 +418,22 @@ describe('list_tags (#96)', () => {
     expect(noCounts.error).toBeUndefined()
     expect(noCounts.result.tags[0].tag.localeCompare(noCounts.result.tags[1].tag)).toBeLessThanOrEqual(0)
   })
+
+  it('handles JSON.parse error in tag count fetch gracefully', async () => {
+    // Seed a topic and tag it
+    await seedKV('topic:corrupt', 'Corrupt topic')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:corrupt', add: ['corrupt:tag'] })
+
+    // Corrupt the tag count entry with invalid JSON
+    await env.LORE_DB.put('_tags:corrupt:tag', 'not-valid-json-array')
+
+    // Call list_tags with_counts should still succeed (catch block at line 325-326)
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    expect(res.error).toBeUndefined()
+
+    // The corrupt tag should be in the list with count: 0 (from catch block)
+    const corruptTag = res.result.tags.find((t: any) => t.tag === 'corrupt:tag')
+    expect(corruptTag).toBeDefined()
+    expect(corruptTag.count).toBe(0)
+  })
 })
