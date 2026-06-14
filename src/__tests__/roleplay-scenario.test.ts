@@ -445,7 +445,7 @@ describe('roleplay scenario: multi-character quest', () => {
       await callTool('entity_manage', { action: 'move', entity_key: 'character:scout', new_location_key: 'location:forest-road' })
 
       // Verify movement
-      let forestOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:forest-road' })
+      const forestOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:forest-road' })
       expect(forestOccupants.result.occupants).toHaveLength(3)
 
       innOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:inn' })
@@ -530,7 +530,7 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('location:dungeon', '**Description:** A dark dungeon.')
 
       // Verify NPC exists
-      let npc = await callTool('lore_manage', { action: 'get', query: 'character:goblin-npc' })
+      const npc = await callTool('lore_manage', { action: 'get', query: 'character:goblin-npc' })
       expect(npc.result.text).toContain('Enemy')
 
       // After encounter, destroy the NPC
@@ -781,7 +781,7 @@ describe('roleplay scenario: multi-character quest', () => {
       })
 
       // Verify they exist
-      let boss = await callTool('lore_manage', { action: 'get', query: 'encounter:goblin-boss' })
+      const boss = await callTool('lore_manage', { action: 'get', query: 'encounter:goblin-boss' })
       expect(boss.result.text).toContain('Goblin Boss')
 
       // Destroy them after encounter
