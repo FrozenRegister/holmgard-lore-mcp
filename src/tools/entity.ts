@@ -776,7 +776,9 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   const invRaw = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items') ?? extractRawField(text, 'Carried-Items')
   const items: Array<{ item: string; quantity: number; condition: string | null }> = []
   if (invRaw) {
-    for (const entry of invRaw.split(',').map(s => s.trim()).filter(Boolean)) {
+    // Split on both commas and newlines to support both comma-separated and line-separated formats
+    const entries = invRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+    for (const entry of entries) {
       const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       if (m) items.push({ item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null })
       else items.push({ item: entry, quantity: 1, condition: null })
@@ -810,7 +812,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
   const { text: toText, meta: toMeta } = parseKvEntry(rawTo)
 
   const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
-    raw.split(',').map(s => s.trim()).filter(Boolean).map(entry => {
+    raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map(entry => {
       const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
     })

@@ -14,9 +14,17 @@
 
 - **`process_stage_batch` already returns reason field** (#55) — No code change needed; was already returning structured `reason`, `entities_at_location`, and `entities_with_stages` metadata since v0.2.0.
 
-### Test Coverage
+- **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (`item1×1\nitem2×2`) inventory formats. Fixes silent empty-items failures when lore entry lists items on separate lines.
+
+### Closed (Triage)
+
+- **Issue triage & cleanup** — Closed 14 stale/superseded issues from the #108 cluster map: 6 superseded by the RPG engine (items #39, #47, #48, #91, #51, #49), 4 out-of-scope planning artifacts (#52, #74, #61, #33), 3 duplicate sprint board tickets. Comprehensive audit comment posted to #108 documenting every closure and reversibility path.
+
+### Test Coverage (Cluster E & Inventory)
 
 - **Cluster E validation coverage** — Added test cases for list_tags (alphabetical sorting without counts, invalid params), get_sensory_profile (already-prefixed species key, orphaned species fallback). Improves patch coverage to 100%.
+
+- **Line-separated inventory test** — New test case 'parses line-separated inventory items (#41 fix)' in environment.test.ts validates that inventory with items on separate lines (e.g. `**Inventory:**\nitem1×1\nitem2×2`) parses correctly.
 
 ## v0.2.0 — Entity lifecycle + security hardening
 
@@ -24,7 +32,7 @@
 
 - **`entity_manage.destroy`** (#90) — clean up ephemeral encounter entities. Archives final history snapshot, purges from KV/indexes/loreDB in one atomic call. No more ghost NPCs haunting location occupant scans.
 
-### Tests  
+### Security & Admin Tests
 
 - **Admin error sanitization** (#17) — 8 new tests across all 7 admin endpoints verifying that internal KV error strings, stack traces, and `.ts:` file paths never leak through 500 responses. `safeErrorMessage` was already wired up but had zero regression coverage.  
 

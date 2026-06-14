@@ -80,6 +80,20 @@ describe('get_inventory', () => {
     expect(res.result.items).toHaveLength(0)
     expect(res.result.raw_inventory).toBeNull()
   })
+
+  it('parses line-separated inventory items (#41 fix)', async () => {
+    // Inventory format with items on separate lines (not comma-separated)
+    await seedKV('character:kavissa', `**Inventory:**
+crowmark-seal-ring×1
+leather-purse×1
+letter-of-credit×1
+sandalwood-soap×1`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:kavissa' })
+    expect(res.result.items).toHaveLength(4)
+    const ring = res.result.items.find((i: { item: string }) => i.item === 'crowmark-seal-ring')
+    expect(ring).toBeDefined()
+    expect(ring.quantity).toBe(1)
+  })
 })
 
 describe('transfer_item', () => {
