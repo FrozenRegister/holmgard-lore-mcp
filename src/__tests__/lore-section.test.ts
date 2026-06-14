@@ -186,6 +186,72 @@ describe('get_lore_section', () => {
     const res = await callTool('lore_manage', { action: 'get_section', key: 'section:key-check', sections: ['Notes'] })
     expect(res.result.key).toBe('section:key-check')
   })
+
+  it('suggestions: synonym match for Personality → Psychological Profile', async () => {
+    await seedKV('section:syn-test', '## Psychological Profile\nKind and curious.\n## Goals\nFind truth.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:syn-test', sections: ['Personality'] })
+    expect(res.result.sections['Personality']).toBeUndefined()
+    expect(res.result.not_found).toContain('Personality')
+    expect(res.result.suggestions['Personality']).toBeDefined()
+    expect(res.result.suggestions['Personality']).toContain('psychological profile')
+  })
+
+  it('suggestions: Levenshtein distance for typos (Backgrond → Background)', async () => {
+    await seedKV('section:typo-test', '## Background\nOrigins and heritage.\n## Goals\nFind truth.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:typo-test', sections: ['Backgrond'] })
+    expect(res.result.sections['Backgrond']).toBeUndefined()
+    expect(res.result.not_found).toContain('Backgrond')
+    expect(res.result.suggestions['Backgrond']).toBeDefined()
+    expect(res.result.suggestions['Backgrond'][0]).toBe('background')
+  })
+
+  it('suggestions: Goals → Objectives synonym', async () => {
+    await seedKV('section:goals-syn', '## Objectives\nTo learn and grow.\n## Personality\nCurious.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:goals-syn', sections: ['Goals'] })
+    expect(res.result.not_found).toContain('Goals')
+    expect(res.result.suggestions['Goals']).toContain('objectives')
+  })
+
+  it('suggestions: Appearance → Physical Description synonym', async () => {
+    await seedKV('section:appear-syn', '## Physical Description\nTall and lean.\n## Notes\nWary.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:appear-syn', sections: ['Appearance'] })
+    expect(res.result.suggestions['Appearance']).toContain('physical description')
+  })
+
+  it('suggestions: empty array when no close matches', async () => {
+    await seedKV('section:no-match', '## Personality\nKind.\n## Goals\nGrow.')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:no-match', sections: ['Xyzzy'] })
+    expect(res.result.suggestions['Xyzzy']).toBeDefined()
+    expect(Array.isArray(res.result.suggestions['Xyzzy'])).toBe(true)
+  })
+
+  it('suggestions: limits to top 3 closest matches by Levenshtein', async () => {
+    await seedKV('section:many', '## Personality\nA\n## Personalityb\nB\n## Personality123\nC\n## Goals\nD\n## Personalityxyz\nE')
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:many', sections: ['Personalitya'] })
+    expect(res.result.suggestions['Personalitya'].length).toBeLessThanOrEqual(3)
+  })
+
+  it('suggestions: complex Levenshtein matching with multiple typos', async () => {
+    await seedKV('section:typo-complex', '## Background\nOrigins.\n## Personality\nKind.\n## Appearance\nTall.')
+    // Request with multiple typos: "Backgrond" (missing 'u'), should match "Background"
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:typo-complex', sections: ['Backgrond', 'Persnaolity', 'Apearance'] })
+    expect(res.result.suggestions['Backgrond']).toBeDefined()
+    expect(res.result.suggestions['Backgrond'][0]).toBe('background')
+    expect(res.result.suggestions['Persnaolity']).toBeDefined()
+    expect(res.result.suggestions['Persnaolity'][0]).toBe('personality')
+    expect(res.result.suggestions['Apearance']).toBeDefined()
+    expect(res.result.suggestions['Apearance'][0]).toBe('appearance')
+  })
+
+  it('suggestions: exercises all paths in Levenshtein for full coverage', async () => {
+    await seedKV('section:leven', '## Test\nA\n## Testing\nB\n## Tests\nC')
+    // Request sections with varying edit distances to exercise all Levenshtein loops
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:leven', sections: ['Tst', 'Testin', 'Testings'] })
+    // All should find suggestions via Levenshtein (lines 246-258 in lore.ts)
+    expect(res.result.suggestions['Tst'].length).toBeGreaterThan(0)
+    expect(res.result.suggestions['Testin'].length).toBeGreaterThan(0)
+    expect(res.result.suggestions['Testings'].length).toBeGreaterThan(0)
+  })
 })
 
 describe('append_to_section', () => {

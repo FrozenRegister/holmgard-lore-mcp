@@ -242,20 +242,44 @@ export function extractConsumptionInfo(characterText: string): any {
   }
 }
 
+// Levenshtein distance: edit distance between two strings (lower = more similar).
+function levenshteinDistance(a: string, b: string): number {
+  const lenA = a.length
+  const lenB = b.length
+  const matrix: number[][] = Array(lenA + 1).fill(null).map(() => Array(lenB + 1).fill(0))
+  for (let i = 0; i <= lenA; i++) matrix[i][0] = i
+  for (let j = 0; j <= lenB; j++) matrix[0][j] = j
+  for (let i = 1; i <= lenA; i++) {
+    for (let j = 1; j <= lenB; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost)
+    }
+  }
+  return matrix[lenA][lenB]
+}
+
+// Synonym map: common section name aliases.
+const SECTION_SYNONYMS: Record<string, string[]> = {
+  personality: ['psychological profile', 'psyche', 'mind', 'character'],
+  goals: ['objectives', 'agenda', 'motivations', 'aims', 'desires'],
+  appearance: ['physical description', 'looks', 'visual', 'aesthetics'],
+  background: ['history', 'backstory', 'origin', 'past'],
+}
+
 // Parses lore text into named sections delimited by #, ##, or ###.
-// Returns sections map, not_found list, and warnings array.
+// Returns sections map, not_found list, warnings array, and suggestions for not-found sections.
 export function parseLoreSections(
   text: string,
   requestedSections: string[],
   mode: 'strict' | 'loose' = 'loose'
-): { sections: Record<string, string>; not_found: string[]; warnings: string[] } {
+): { sections: Record<string, string>; not_found: string[]; warnings: string[]; suggestions: Record<string, string[]> } {
   const warnings: string[] = []
   const sections: Record<string, string> = {}
   const not_found: string[] = []
 
   if (requestedSections.length === 0) {
     warnings.push('no_sections_requested')
-    return { sections, not_found, warnings }
+    return { sections, not_found, warnings, suggestions: {} }
   }
 
   function normalize(h: string): string {
@@ -277,7 +301,7 @@ export function parseLoreSections(
   if (boundaries.length === 0) {
     warnings.push('no_sections_found')
     not_found.push(...requestedSections)
-    return { sections, not_found, warnings }
+    return { sections, not_found, warnings, suggestions: {} }
   }
 
   // Build normalized-heading → content map; first non-empty occurrence wins for duplicates
@@ -298,6 +322,8 @@ export function parseLoreSections(
     }
   }
 
+  const suggestions: Record<string, string[]> = {}
+
   for (const req of requestedSections) {
     const found = sectionMap.get(normalize(req))
     if (found !== undefined) {
@@ -305,10 +331,34 @@ export function parseLoreSections(
       if (found === '') warnings.push(`empty_section:${req}`)
     } else {
       not_found.push(req)
+      const suggestions_for_req: Array<{ heading: string; score: number }> = []
+      const normalized_req = normalize(req)
+
+      // Check synonym map first
+      const req_lower = req.toLowerCase()
+      const matching_synonyms = SECTION_SYNONYMS[req_lower] ?? []
+      for (const syn of matching_synonyms) {
+        const syn_normalized = normalize(syn)
+        if (sectionMap.has(syn_normalized)) {
+          suggestions_for_req.push({ heading: syn, score: 0 })
+        }
+      }
+
+      // Score all headings by Levenshtein distance (if no exact synonym match)
+      if (suggestions_for_req.length === 0) {
+        for (const heading of sectionMap.keys()) {
+          const distance = levenshteinDistance(normalized_req, heading)
+          suggestions_for_req.push({ heading: heading, score: distance })
+        }
+      }
+
+      // Sort by score and limit to top 3
+      suggestions_for_req.sort((a, b) => a.score - b.score)
+      suggestions[req] = suggestions_for_req.slice(0, 3).map(s => s.heading)
     }
   }
 
-  return { sections, not_found, warnings }
+  return { sections, not_found, warnings, suggestions }
 }
 
 // Applies a section-targeted insert to lore text. Returns the mutated text and

@@ -68,3 +68,42 @@ describe('canonical fixture — faction:processing-guild (hierarchy + standing s
     expect(res.result.standing.is_member).toBe(false)
   })
 })
+
+describe('faction standing implicit membership via Tags (#46)', () => {
+  it('get_faction_standing detects membership via Tags field', async () => {
+    await seedKV('faction:house-crowmark', '# House Crowmark\nStatus: active\n')
+    await seedKV('entity:kavissa-crowmark', 'Tags: faction:house-crowmark, theme:nobility\n# Kavissa Crowmark\nAlias: disguised-merchant\n')
+    const res = await callTool('world_manage', {
+      action: 'get_faction_standing',
+      entity_key: 'entity:kavissa-crowmark',
+      faction_key: 'faction:house-crowmark',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.standing.is_member).toBe(true)
+    expect(res.result.standing.membership_source).toBe('tag')
+  })
+
+  it('get_faction_standing returns explicit source when Faction field matches', async () => {
+    await seedKV('faction:house-crowmark', '# House Crowmark\n')
+    await seedKV('entity:crowmark-lord', 'Faction: house-crowmark\n# A Crowmark\n')
+    const res = await callTool('world_manage', {
+      action: 'get_faction_standing',
+      entity_key: 'entity:crowmark-lord',
+      faction_key: 'faction:house-crowmark',
+    })
+    expect(res.result.standing.is_member).toBe(true)
+    expect(res.result.standing.membership_source).toBe('explicit')
+  })
+
+  it('get_faction_standing returns null source for non-members', async () => {
+    await seedKV('faction:house-crowmark', '# House Crowmark\n')
+    await seedKV('entity:outsider', 'Tags: theme:nobility\n# An outsider\n')
+    const res = await callTool('world_manage', {
+      action: 'get_faction_standing',
+      entity_key: 'entity:outsider',
+      faction_key: 'faction:house-crowmark',
+    })
+    expect(res.result.standing.is_member).toBe(false)
+    expect(res.result.standing.membership_source).toBeNull()
+  })
+})

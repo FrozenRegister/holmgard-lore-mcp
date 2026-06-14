@@ -344,3 +344,161 @@ describe('restore_lore', () => {
     expect(get.result.text).toContain('**days_remaining:** 10')
   })
 })
+
+describe('list_tags (#96)', () => {
+  it('lists all tags created via tag_topic', async () => {
+    await seedKV('topic:one', 'Topic one')
+    await seedKV('topic:two', 'Topic two')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:one', add: ['theme:betrayal', 'faction:guild'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:two', add: ['theme:redemption'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('theme:betrayal')
+    expect(text).toContain('theme:redemption')
+    expect(text).toContain('faction:guild')
+    expect(res.result.tags.length).toBe(3)
+  })
+
+  it('returns counts when with_counts is true', async () => {
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await seedKV('topic:c', 'C')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['status:active', 'priority:high'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['status:active'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    const statusTag = res.result.tags.find((t: any) => t.tag === 'status:active')
+    expect(statusTag).toBeDefined()
+    expect(statusTag.count).toBe(2)
+    const priorityTag = res.result.tags.find((t: any) => t.tag === 'priority:high')
+    expect(priorityTag.count).toBe(1)
+  })
+
+  it('filters tags by prefix', async () => {
+    await seedKV('topic:a', 'A')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['theme:betrayal', 'faction:guild', 'status:active'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', prefix: 'theme:' })
+    expect(res.result.tags.length).toBe(1)
+    expect(res.result.tags[0].tag).toBe('theme:betrayal')
+  })
+
+  it('returns empty list when no tags exist', async () => {
+    const res = await callTool('continuity_manage', { action: 'list_tags' })
+    expect(res.result.tags.length).toBe(0)
+    expect(res.result.content[0].text).toBe('No tags found.')
+  })
+
+  it('with_counts: false returns tags sorted alphabetically without counts', async () => {
+    await seedKV('topic:a', 'A')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['zebra:tag', 'apple:tag'] })
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: false })
+    expect(res.result.tags[0].tag).toBe('apple:tag')
+    expect(res.result.tags[1].tag).toBe('zebra:tag')
+    expect(res.result.content[0].text).not.toContain('(')
+  })
+
+  it('invalid params returns error', async () => {
+    const res = await callTool('continuity_manage', { action: 'list_tags', limit: 0 })
+    expect(res.error).toBeDefined()
+  })
+
+  it('exercises both with_counts branches for full coverage', async () => {
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['test:tag1', 'test:tag2'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['test:tag1'] })
+
+    // Test with_counts: true (line 342-343 sort branch)
+    const withCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    expect(withCounts.error).toBeUndefined()
+    const sorted = withCounts.result.tags
+    expect(sorted[0].count).toBeGreaterThanOrEqual(sorted[1].count)
+
+    // Test with_counts: false (line 344-345 sort branch)
+    const noCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: false })
+    expect(noCounts.error).toBeUndefined()
+    expect(noCounts.result.tags[0].tag.localeCompare(noCounts.result.tags[1].tag)).toBeLessThanOrEqual(0)
+  })
+
+  it('handles JSON.parse error in tag count fetch gracefully', async () => {
+    // Seed a topic and tag it
+    await seedKV('topic:corrupt', 'Corrupt topic')
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:corrupt', add: ['corrupt:tag'] })
+
+    // Corrupt the tag count entry with invalid JSON
+    await env.LORE_DB.put('_tags:corrupt:tag', 'not-valid-json-array')
+
+    // Call list_tags with_counts should still succeed (catch block at line 325-326)
+    const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
+    expect(res.error).toBeUndefined()
+
+    // The corrupt tag should be in the list with count: 0 (from catch block)
+    const corruptTag = res.result.tags.find((t: any) => t.tag === 'corrupt:tag')
+    expect(corruptTag).toBeDefined()
+    expect(corruptTag.count).toBe(0)
+  })
+
+  it('exercises ALL list_tags code paths for 100% coverage', async () => {
+    // Create multiple topics and tags with varying counts to exercise:
+    // - Line 315-332: for loop for each key, collected counter, continue on prefix mismatch
+    // - Line 320-330: with_counts branch split (if/else)
+    // - Line 334-335: cursor pagination
+    // - Line 342-345: sorting both branches
+
+    await seedKV('topic:a', 'A')
+    await seedKV('topic:b', 'B')
+    await seedKV('topic:c', 'C')
+
+    // Create tags with different counts
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['xray:one', 'alpha:one'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['xray:one', 'beta:one'] })
+    await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:c', add: ['xray:one'] })
+
+    // Test 1: with_counts=true with prefix filter (lines 318, 320-330, 342-343)
+    const withCountsAndPrefix = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: true,
+      prefix: 'xray:',
+    })
+    expect(withCountsAndPrefix.error).toBeUndefined()
+    expect(withCountsAndPrefix.result.tags[0].tag).toBe('xray:one')
+    expect(withCountsAndPrefix.result.tags[0].count).toBe(3)
+
+    // Test 2: with_counts=false no prefix (lines 328-330, 344-345)
+    const noCounts = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: false,
+    })
+    expect(noCounts.error).toBeUndefined()
+    // Tags should be sorted alphabetically
+    for (let i = 0; i < noCounts.result.tags.length - 1; i++) {
+      expect(noCounts.result.tags[i].tag.localeCompare(noCounts.result.tags[i + 1].tag)).toBeLessThanOrEqual(0)
+    }
+
+    // Test 3: with_counts=true no prefix (lines 320-327 full execution)
+    const withCounts = await callTool('continuity_manage', {
+      action: 'list_tags',
+      with_counts: true,
+    })
+    expect(withCounts.error).toBeUndefined()
+    // Tags should be sorted by count descending
+    for (let i = 0; i < withCounts.result.tags.length - 1; i++) {
+      expect(withCounts.result.tags[i].count).toBeGreaterThanOrEqual(withCounts.result.tags[i + 1].count)
+    }
+
+    // Test 4: prefix filter that matches nothing (line 318 continue branch)
+    const noMatch = await callTool('continuity_manage', {
+      action: 'list_tags',
+      prefix: 'nonexistent:',
+    })
+    expect(noMatch.error).toBeUndefined()
+    expect(noMatch.result.tags.length).toBe(0)
+
+    // Test 5: limit param to exercise loop break (line 316)
+    const limited = await callTool('continuity_manage', {
+      action: 'list_tags',
+      limit: 1,
+    })
+    expect(limited.error).toBeUndefined()
+    expect(limited.result.tags.length).toBeLessThanOrEqual(1)
+  })
+})

@@ -161,14 +161,19 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
   const threatLevel = extractFieldFromText(entityText, 'Threat-Level')
   const entityNamePart = entityKey.split(':').pop() ?? entityKey
   const factionNamePart = (factionKey.split(':').pop() ?? '').toLowerCase()
-  const isMember = factionText.toLowerCase().includes(entityNamePart.toLowerCase()) ||
+  const explicitMatch = factionText.toLowerCase().includes(entityNamePart.toLowerCase()) ||
     (extractRawField(entityText, 'Faction') ?? '').toLowerCase().includes(factionNamePart)
+  const tagsField = (extractRawField(entityText, 'Tags') ?? '').toLowerCase()
+  const tagMatch = tagsField.split(/[,\s]+/).some(t => t.trim() === `faction:${factionNamePart}`)
+  const isMember = explicitMatch || tagMatch
+  const membershipSource = !isMember ? null : tagMatch && !explicitMatch ? 'tag' : 'explicit'
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Standing of "${entityKey}" in "${factionKey}": ${isMember ? 'member' : 'non-member'}${rank ? `, rank: ${rank}` : ''}.` }],
     metadata: { retrieved: 2, written: 0 },
     standing: {
       entity_key: entityKey, faction_key: factionKey, is_member: isMember,
+      membership_source: membershipSource,
       rank: rank ?? null,
       reputation: typeof reputation === 'number' ? reputation : null,
       debt: typeof debt === 'number' ? debt : null,

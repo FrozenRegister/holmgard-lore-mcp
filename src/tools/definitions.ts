@@ -45,7 +45,7 @@ description: 'KV lore store — read, write, search, and mutate lore entries. Ac
     name: 'continuity_manage',
     title: 'Continuity Manage',
     version: '1.0.0',
-    description: 'Continuity tracking — events, tags, bookmarks, world diff, setups, goals, and continuity checks. Actions: append_event, get_event_log, recent_changes, tag_topic, find_by_tag, bookmark_state, world_diff, plant_setup, pay_off_setup, list_unpaid_setups, set_goal, check_continuity',
+    description: 'Continuity tracking — events, tags, bookmarks, world diff, setups, goals, and continuity checks. Actions: append_event, get_event_log, recent_changes, tag_topic, find_by_tag, list_tags, bookmark_state, world_diff, plant_setup, pay_off_setup, list_unpaid_setups, set_goal, check_continuity',
     inputSchema: OPEN_SCHEMA,
   },
   // RPG engine tools (Mnehmos port + meta)
