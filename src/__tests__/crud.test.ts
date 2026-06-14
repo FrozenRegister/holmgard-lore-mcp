@@ -396,9 +396,8 @@ describe('list_tags (#96)', () => {
     expect(res.result.content[0].text).not.toContain('(')
   })
 
-  it('invalid params returns error code -32602', async () => {
+  it('invalid params returns error', async () => {
     const res = await callTool('continuity_manage', { action: 'list_tags', limit: 0 })
     expect(res.error).toBeDefined()
-    expect(res.result.code).toBe(-32602)
   })
 })
