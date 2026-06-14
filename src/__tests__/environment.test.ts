@@ -106,6 +106,18 @@ shield×1
     expect(res.result.items[1].item).toBe('shield')
   })
 
+  it('skips blank lines inside multi-line inventory block', async () => {
+    await seedKV('character:spaced-items', `**Inventory:**
+torch×3
+
+rope×1
+`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:spaced-items' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items[0].item).toBe('torch')
+    expect(res.result.items[1].item).toBe('rope')
+  })
+
   it('returns quantity 1 for bare item entries without a quantity marker', async () => {
     await seedKV('character:bare-items', '**Inventory:** mysterious-artifact, old-coin×3')
     const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:bare-items' })
@@ -146,6 +158,14 @@ describe('transfer_item', () => {
     const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:has-one', to_entity: 'character:wants-more', item_key: 'potion', quantity: 5 })
     expect(res.result.transferred).toBe(false)
     expect(res.result.content[0].text).toContain('Insufficient')
+  })
+
+  it('rejects transfer when source entity has no inventory field', async () => {
+    await seedKV('character:no-inv', '**Status:** alive')
+    await seedKV('character:no-inv-target', '**Inventory:** gold×1')
+    const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:no-inv', to_entity: 'character:no-inv-target', item_key: 'sword', quantity: 1 })
+    expect(res.result.transferred).toBe(false)
+    expect(res.result.content[0].text).toContain('not found')
   })
 
   it('transfers item from multi-line inventory source', async () => {
