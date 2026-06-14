@@ -230,6 +230,28 @@ describe('get_lore_section', () => {
     const res = await callTool('lore_manage', { action: 'get_section', key: 'section:many', sections: ['Personalitya'] })
     expect(res.result.suggestions['Personalitya'].length).toBeLessThanOrEqual(3)
   })
+
+  it('suggestions: complex Levenshtein matching with multiple typos', async () => {
+    await seedKV('section:typo-complex', '## Background\nOrigins.\n## Personality\nKind.\n## Appearance\nTall.')
+    // Request with multiple typos: "Backgrond" (missing 'u'), should match "Background"
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:typo-complex', sections: ['Backgrond', 'Persnaolity', 'Apearance'] })
+    expect(res.result.suggestions['Backgrond']).toBeDefined()
+    expect(res.result.suggestions['Backgrond'][0]).toBe('background')
+    expect(res.result.suggestions['Persnaolity']).toBeDefined()
+    expect(res.result.suggestions['Persnaolity'][0]).toBe('personality')
+    expect(res.result.suggestions['Apearance']).toBeDefined()
+    expect(res.result.suggestions['Apearance'][0]).toBe('appearance')
+  })
+
+  it('suggestions: exercises all paths in Levenshtein for full coverage', async () => {
+    await seedKV('section:leven', '## Test\nA\n## Testing\nB\n## Tests\nC')
+    // Request sections with varying edit distances to exercise all Levenshtein loops
+    const res = await callTool('lore_manage', { action: 'get_section', key: 'section:leven', sections: ['Tst', 'Testin', 'Testings'] })
+    // All should find suggestions via Levenshtein (lines 246-258 in lore.ts)
+    expect(res.result.suggestions['Tst'].length).toBeGreaterThan(0)
+    expect(res.result.suggestions['Testin'].length).toBeGreaterThan(0)
+    expect(res.result.suggestions['Testings'].length).toBeGreaterThan(0)
+  })
 })
 
 describe('append_to_section', () => {
