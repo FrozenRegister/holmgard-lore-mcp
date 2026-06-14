@@ -14,7 +14,7 @@
 
 - **`process_stage_batch` already returns reason field** (#55) — No code change needed; was already returning structured `reason`, `entities_at_location`, and `entities_with_stages` metadata since v0.2.0.
 
-- **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (header alone on its line, items below) inventory formats. Fixed root cause: `extractRawField`'s `\s*$` pattern silently crossed newlines, returning only the first item; now uses direct line scanning to detect the header-only pattern before falling back to `extractRawField`.
+- **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (header alone on its line, items below) inventory formats. Fixed root cause: `extractRawField`'s `\s*$` pattern silently crossed newlines, returning only the first item; now uses direct line scanning to detect the header-only pattern before falling back to `extractRawField`. Added tests for termination at next bold field, bare-item quantity defaulting to 1, and multi-line source in `transfer_item`.
 
 ### Closed (Triage)
 

@@ -94,6 +94,27 @@ sandalwood-soap×1`)
     expect(ring).toBeDefined()
     expect(ring.quantity).toBe(1)
   })
+
+  it('stops collecting multi-line items at next bold field header', async () => {
+    await seedKV('character:bounded', `**Inventory:**
+sword×1
+shield×1
+**Status:** alive`)
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:bounded' })
+    expect(res.result.items).toHaveLength(2)
+    expect(res.result.items[0].item).toBe('sword')
+    expect(res.result.items[1].item).toBe('shield')
+  })
+
+  it('returns quantity 1 for bare item entries without a quantity marker', async () => {
+    await seedKV('character:bare-items', '**Inventory:** mysterious-artifact, old-coin×3')
+    const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:bare-items' })
+    expect(res.result.items).toHaveLength(2)
+    const artifact = res.result.items.find((i: { item: string }) => i.item === 'mysterious-artifact')
+    expect(artifact.quantity).toBe(1)
+    const coin = res.result.items.find((i: { item: string }) => i.item === 'old-coin')
+    expect(coin.quantity).toBe(3)
+  })
 })
 
 describe('transfer_item', () => {
@@ -125,5 +146,18 @@ describe('transfer_item', () => {
     const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:has-one', to_entity: 'character:wants-more', item_key: 'potion', quantity: 5 })
     expect(res.result.transferred).toBe(false)
     expect(res.result.content[0].text).toContain('Insufficient')
+  })
+
+  it('transfers item from multi-line inventory source', async () => {
+    await seedKV('character:multi-seller', `**Inventory:**
+dagger×2
+torch×5
+**Status:** active`)
+    await seedKV('character:multi-buyer', '**Inventory:** gold×10')
+    const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:multi-seller', to_entity: 'character:multi-buyer', item_key: 'dagger', quantity: 1 })
+    expect(res.result.transferred).toBe(true)
+    const seller = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:multi-seller' })
+    const dagger = seller.result.items.find((i: { item: string }) => i.item === 'dagger')
+    expect(dagger.quantity).toBe(1)
   })
 })
