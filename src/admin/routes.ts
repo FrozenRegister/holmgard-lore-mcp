@@ -293,6 +293,141 @@ admin.post('/migrate-character', async (c) => {
   }
 })
 
+// Bulk migration: all characters
+admin.post('/migrate-all-characters', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const db = c.env?.RPG_DB
+    const kv = getKV(c)
+    if (!db || !kv) return c.json({ ok: false, error: 'KV or RPG_DB unavailable' }, 503)
+
+    // List all character:* keys
+    const characterKeys: string[] = []
+    let cursor: string | undefined
+    do {
+      const listed: any = await kv.list({ prefix: 'character:', cursor })
+      for (const k of listed.keys) {
+        characterKeys.push(k.name)
+      }
+      cursor = listed.list_complete ? undefined : listed.cursor
+    } while (cursor)
+
+    const results: Array<{ key: string; status: 'migrated' | 'skipped' | 'error'; d1Id?: string; error?: string }> = []
+
+    for (const key of characterKeys) {
+      try {
+        const raw = await kvGet(c, key)
+        if (!raw) {
+          results.push({ key, status: 'error', error: 'KV entry not found' })
+          continue
+        }
+
+        const { text, meta } = parseKvEntry(raw)
+
+        // Idempotency: if already migrated, skip
+        const idMatch = text.match(/## D1-Character-ID:\s*([a-f0-9-]+)/)
+        if (idMatch) {
+          results.push({ key, status: 'skipped', d1Id: idMatch[1] })
+          continue
+        }
+
+        // Check for existing D1 row by kv_origin
+        const existing = await db.prepare('SELECT id FROM characters WHERE kv_origin = ?').bind(key).first() as { id: string } | null
+        if (existing) {
+          results.push({ key, status: 'skipped', d1Id: existing.id })
+          continue
+        }
+
+        const newId = crypto.randomUUID()
+        const insert = parseKvCharToD1(key, text, newId)
+
+        // Nullify current_room_id to avoid FK violations
+        insert.current_room_id = null
+
+        await db.prepare(`
+          INSERT INTO characters (
+            id, name, stats, hp, max_hp, ac, level, faction_id, behavior,
+            character_type, character_class, race, background, alignment,
+            conditions, resistances, vulnerabilities, immunities,
+            known_spells, prepared_spells, cantrips_known,
+            currency, resource_pools, xp,
+            alias, age, gender, orientation,
+            weight_1, weight_2, perception_float,
+            thread_id, state_stage, state_stage_timer,
+            kv_origin, current_room_id, perception_bonus, stealth_bonus,
+            origin, created_at, updated_at
+          ) VALUES (
+            ?,?,?,?,?,?,?,?,?,
+            ?,?,?,?,?,
+            ?,?,?,?,
+            ?,?,?,
+            ?,?,?,
+            ?,?,?,
+            ?,?,?,?,
+            ?,?,?,
+            ?,?,?,?,
+            ?,?,?
+          )
+        `).bind(
+          insert.id, insert.name, insert.stats, insert.hp, insert.max_hp, insert.ac, insert.level,
+          insert.faction_id, insert.behavior,
+          insert.character_type, insert.character_class, insert.race, insert.background, insert.alignment,
+          insert.conditions, insert.resistances, insert.vulnerabilities, insert.immunities,
+          insert.known_spells, insert.prepared_spells, insert.cantrips_known,
+          insert.currency, insert.resource_pools, insert.xp,
+          insert.alias, insert.age, insert.gender, insert.orientation,
+          insert.weight_1, insert.weight_2, insert.perception_float,
+          insert.thread_id, insert.state_stage, insert.state_stage_timer,
+          insert.kv_origin, insert.current_room_id, insert.perception_bonus, insert.stealth_bonus,
+          insert.origin, insert.created_at, insert.updated_at
+        ).run()
+
+        // Update KV with redirect marker
+        const now = new Date().toISOString()
+        const newVersion = typeof meta.version === 'number' ? meta.version + 1 : 1
+        const redirectHeader = `## D1-Migrated: true\n## D1-Character-ID: ${newId}\n## Status: Legacy entry — see D1 for current data\n\n`
+        const updatedText = redirectHeader + text
+
+        await pushHistory(c, key, raw)
+        await kvPut(c, key, JSON.stringify({
+          text: updatedText,
+          meta: { ...meta, version: newVersion, updatedAt: now },
+        }))
+        loreDB[key] = updatedText
+
+        results.push({ key, status: 'migrated', d1Id: newId })
+      } catch (err) {
+        results.push({
+          key,
+          status: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    const migrated = results.filter(r => r.status === 'migrated').length
+    const skipped = results.filter(r => r.status === 'skipped').length
+    const failed = results.filter(r => r.status === 'error').length
+
+    return c.json({
+      ok: true,
+      total: results.length,
+      migrated,
+      skipped,
+      failed,
+      results,
+    }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
 // ── Map routes ──────────────────────────────────────────────────────────────
 
 // Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
