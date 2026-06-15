@@ -76,6 +76,8 @@
 
 - **Tool definitions consolidation** — Replaced 59 individual tool definitions with 5 consolidated definitions (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) using an open schema (`OPEN_SCHEMA`). (#80)
 
+- **`search_lore` scan_limit parameter** (closes #5, closes #11) — Added `scan_limit` (1–2000, default 500) to bound the number of KV keys scanned per search call. Prevents unbounded O(n) reads on large stores. Response metadata now includes `keys_scanned` and `scan_limit`.
+
 ### Docs
 
 - **Pre-commit validation strengthened** — CLAUDE.md updated to emphasize pre-commit validation as mandatory (not optional). Git hook setup moved from "(optional)" to required once-per-machine. Added common failure modes section and clarified CHANGELOG.md requirement. Prevents lint and test failures from being pushed to GitHub.

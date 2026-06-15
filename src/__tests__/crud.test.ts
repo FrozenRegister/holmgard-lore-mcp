@@ -237,6 +237,31 @@ describe('search_lore', () => {
     expect(res.result.metadata.match_count).toBe(0)
     expect(res.result.content[0].text).toContain('No lore entries matching')
   })
+
+  it('scan_limit caps the number of keys scanned', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', scan_limit: 1 })
+    expect(res.result.metadata.keys_scanned).toBe(1)
+    expect(res.result.metadata.scan_limit).toBe(1)
+    expect(res.result.results.length).toBeLessThanOrEqual(1)
+  })
+
+  it('metadata includes keys_scanned and scan_limit', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', max_results: 10, scan_limit: 500 })
+    expect(res.result.metadata.keys_scanned).toBeDefined()
+    expect(res.result.metadata.scan_limit).toBe(500)
+  })
+
+  it('rejects scan_limit above maximum (2001)', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', scan_limit: 2001 })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('rejects scan_limit below minimum (0)', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', scan_limit: 0 })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
 })
 
 describe('validate_topic_exists', () => {
