@@ -48,7 +48,13 @@ describe('Admin Bulk Migration', () => {
       body: JSON.stringify({ secret: ADMIN_SECRET }),
     })
 
-    const result = await response.json()
+    const result = (await response.json()) as {
+      ok: boolean
+      total: number
+      migrated: number
+      skipped: number
+      failed: number
+    }
 
     // Verify migration results
     expect(result.ok).toBe(true)
