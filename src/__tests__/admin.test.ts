@@ -345,4 +345,79 @@ describe('admin endpoints', () => {
       expect(body.error).not.toContain('.ts:')
     })
   })
+
+  describe('/admin/migrate-all-characters', () => {
+    beforeEach(async () => {
+      await setupRpgDb(env.RPG_DB)
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminPost('/admin/migrate-all-characters', { secret: 'wrong-secret' })
+      expect(res.status).toBe(401)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 401 when secret is omitted', async () => {
+      const res = await adminPost('/admin/migrate-all-characters', {})
+      expect(res.status).toBe(401)
+    })
+
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/migrate-all-characters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'invalid json {',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+
+    it('successfully migrates multiple characters and returns summary', async () => {
+      // Seed KV with test characters
+      const testChars = [
+        { key: 'character:alice', text: '# Character:Alice\n**Age:** 30' },
+        { key: 'character:bob', text: '# Character:Bob\n**Age:** 40' },
+      ]
+
+      for (const { key, text } of testChars) {
+        await env.LORE_DB.put(
+          key,
+          JSON.stringify({
+            text,
+            meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          }),
+        )
+      }
+
+      const res = await adminPost('/admin/migrate-all-characters', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.total).toBe(2)
+      expect(body.migrated).toBe(2)
+      expect(body.skipped).toBe(0)
+      expect(body.failed).toBe(0)
+      expect(Array.isArray(body.results)).toBe(true)
+    })
+
+    it('skips already-migrated characters', async () => {
+      // Seed with one already-migrated character (with proper UUID format)
+      await env.LORE_DB.put(
+        'character:old',
+        JSON.stringify({
+          text: '## D1-Migrated: true\n## D1-Character-ID: 550e8400-e29b-41d4-a716-446655440000\n# Character:Old',
+          meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        }),
+      )
+
+      const res = await adminPost('/admin/migrate-all-characters', { secret: ADMIN_SECRET })
+      const body = await res.json() as Record<string, any>
+      expect(body.skipped).toBeGreaterThanOrEqual(1)
+    })
+  })
 })
