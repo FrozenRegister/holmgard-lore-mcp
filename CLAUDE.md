@@ -55,12 +55,14 @@ If the hook isn't set up, manually run before committing:
 
 ### What Gets Checked
 
-1. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
-2. **CHANGELOG.md** — **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. If forgotten, GitHub PR check fails and blocks merge.
-3. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
+1. **TypeScript Type Checking** — `pnpm run type-check` validates all `.ts` and `.tsx` files for type safety
+2. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
+3. **CHANGELOG.md** — **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. If forgotten, GitHub PR check fails and blocks merge.
+4. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
 
 ### Common Failures
 
+- **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
 - **CHANGELOG.md missing** — Add an entry under `[Unreleased]` describing your changes
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
 - **Tests failing** — Fix the underlying issue, then re-run validation
@@ -213,6 +215,22 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 2. **Vitest live** (`tests/live/*.test.ts`) — end-to-end smoke tests against the deployed production worker
 
 Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.
+
+### Type Safety in Tests
+
+When tests call APIs that return `unknown` types (e.g., `response.json()`), always add explicit type assertions with `as`. This prevents type-check errors in CI:
+
+```typescript
+const result = (await response.json()) as {
+  ok: boolean
+  total: number
+  migrated: number
+  // ... other expected properties
+}
+expect(result.ok).toBe(true)
+```
+
+Never access properties on `unknown` without a type assertion — TypeScript will catch this in `pnpm run type-check` and fail the build.
 
 ## Git workflow
 
