@@ -119,6 +119,24 @@ describe('list_consumption_timelines — pagination', () => {
     expect(res.result.metadata.limit).toBe(50)
     expect(res.result.metadata.offset).toBe(0)
   })
+
+  it('rejects limit below minimum (0)', async () => {
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', limit: 0 })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('rejects limit above maximum (101)', async () => {
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', limit: 101 })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('rejects negative offset', async () => {
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', offset: -1 })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
 })
 
 describe('list_active_threads', () => {
