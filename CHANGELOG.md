@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Tool Definitions Type Safety** — Added proper TypeScript type definition for `toolDefinitions` array, fixing issue #12. ([PR #129](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/129))
+
 - **`continuity_manage.list_tags`** (#96, closes #58) — Enumerates all tags in the system via `_tags:*` KV keys. Accepts optional `prefix` (e.g. `"faction:"`) for filtering, `with_counts` (default `true`) to return usage counts. Returns tags sorted by count descending or alphabetically. Solves tag namespace discoverability — agents no longer guess tag names.
 
 - **`get_sensory_profile` species fallback with source tracking** (#44) — Fixed namespace prefix bug: `Species: lamia` now correctly looks up `species:lamia` instead of bare `lamia`. Returns new `sensory_source` field indicating whether data came from entity alone or entity + species fallback (`"entity"` or `"entity + fallback from species:key"`).

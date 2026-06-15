@@ -1,62 +1,83 @@
 # Holmgard Lore MCP
 
-A Cloudflare Worker implementing a JSON-RPC 2.0 / MCP interface for narrative worldbuilding. Stores and retrieves lore entries (characters, locations, factions, items, events, choices) with advanced indexing, state machines, and interactive story pathways.
+A Cloudflare Worker implementing the Model Context Protocol (MCP) for narrative worldbuilding and RPG engine operations. Stores and retrieves lore entries (characters, locations, factions, items, events, choices) with advanced indexing, state machines, interactive story pathways, and full D1 database-backed RPG mechanics.
 
 ## Overview
 
 This project exposes:
 
-- `/mcp` — JSON-RPC 2.0 endpoint with **89 MCP tools** for narrative management
-- `/admin/set-lore` and `/admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET`
-- Cloudflare KV storage with **index-on-write optimization** and fallback in-memory storage
-- Features: versioned entries, event logs, choice tracking, faction standing, state machines, sensory profiles, and multi-thread timeline management
+- `/mcp` — JSON-RPC 2.0 / Streamable HTTP endpoint with **5 core tools + 2 RPG tools + 2 meta-tools** for narrative and RPG management
+- Durable Object-backed MCP server with support for both legacy JSON-RPC and spec 2025-03-26 Streamable HTTP transport
+- Cloudflare KV storage (`LORE_DB`) with **index-on-write optimization** and in-memory fallback
+- Cloudflare D1 SQLite database (`RPG_DB`) for characters, combat, parties, quests, and session management
+- Cloudflare Workers AI integration for agent-based NPC behavior
+- Features: versioned entries, event logs, choice tracking, faction standing, state machines, sensory profiles, multi-thread timeline management, and full combat/encounter system
 
 ## Requirements
 
-- Node.js 18+
-- npm
+- Node.js 22+
+- pnpm (package manager; see `packageManager` in `package.json`)
 - Cloudflare Wrangler CLI
-- Cloudflare account with a KV namespace bound as `LORE_DB`
-- `ADMIN_SECRET` environment variable for admin endpoints (set via `wrangler secret put`)
+- Cloudflare account with:
+  - KV namespace bound as `LORE_DB` (source of truth for lore entries)
+  - D1 database bound as `RPG_DB` (character and campaign data)
+  - Durable Object class `HolmgardMCP` configured
+  - Workers AI binding (for agent NPC behavior)
+- `ADMIN_SECRET` environment variable for admin endpoints (set via `wrangler secret put` in production; auto-injected in tests)
+- `MCP_API_KEY` (optional) — if set, requests must include `X-Api-Key` header
 
 ## Installation
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## Development & Testing
 
 ```bash
-npm run dev                        # Start local dev server with wrangler
-npm test                           # Run vitest suite in Workers runtime
-npm test -- --reporter=verbose     # Verbose output with per-test names
-npm test -- src/__tests__/worker.test.ts  # Run single test file
+pnpm run dev                        # Start local dev server with wrangler
+pnpm test                           # Run vitest suite in Workers runtime
+pnpm test -- --reporter=verbose     # Verbose output with per-test names
+pnpm test -- src/__tests__/crud.test.ts  # Run single test file
+pnpm test:coverage                  # Generate coverage report (lcov)
+pnpm test:live                      # Run smoke tests against production (requires MCP_API_KEY)
 ```
+
+See [CLAUDE.md](CLAUDE.md) for complete testing & validation procedures, including the mandatory pre-commit hook setup.
 
 ## Build & Deploy
 
 ```bash
-npm run build                      # Bundle with esbuild → dist/index.js
-npm run deploy                     # Deploy to Cloudflare Workers
+pnpm run build                      # Dry-run deploy (generates dist/)
+pnpm run deploy                     # Deploy to Cloudflare Workers
 ```
 
 ## Configuration
 
-Binding and secrets are defined in `wrangler.jsonc`:
+Bindings and secrets are defined in `wrangler.jsonc`:
 
 ```jsonc
 {
   "kv_namespaces": [
-    { "binding": "LORE_DB", "id": "67b47914eb094043ab777f4f34da8bfc" }
-  ]
+    { "binding": "LORE_DB", "id": "...", "preview_id": "..." }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "MCP_OBJECT", "class_name": "HolmgardMCP" }
+    ]
+  },
+  "d1_databases": [
+    { "binding": "RPG_DB", "database_name": "holmgard-rpg", "database_id": "...", "preview_database_id": "..." }
+  ],
+  "ai": { "binding": "AI" }
 }
 ```
 
 Set secrets via:
 
 ```bash
-wrangler secret put ADMIN_SECRET  # local dev: "test-secret-123" (configured in vitest.config.ts)
+wrangler secret put ADMIN_SECRET        # Production: set your secret. Local tests auto-inject "test-secret-123" (vitest.config.ts)
+wrangler secret put MCP_API_KEY         # Optional: if set, all /mcp requests require X-Api-Key header
 ```
 
 ## Storage Format
@@ -88,125 +109,76 @@ Indexes are rebuilt automatically when entries are created, modified, or deleted
 
 **Excluded from listing**: Index keys (`_idx:*`), history (`_history:*`), changelog, events, and snapshots are automatically filtered from `kvList()` results.
 
-## JSON-RPC 2.0 Endpoint
+## MCP Tools & Actions
 
-### `POST /mcp`
+The server exposes tools via JSON-RPC 2.0 or Streamable HTTP. All tools use an **action-based architecture** where you call a tool with an `action` parameter specifying the operation.
 
-All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods are supported:
+### MCP Protocol Methods
 
-**Standard MCP methods:**
+- `initialize` — returns server metadata and tool list
+- `ping` — health check
+- `tools/list` — returns all available tools with schemas
+- `tools/call` — invokes a tool by name with action parameters
 
-- `initialize` — returns server metadata and tool discovery capability
-- `ping` — returns an empty success response
-- `tools/list` — returns all 59 available tools and their input schemas
-- `tools/call` — invokes a tool by `params.name` and `params.arguments`
+### Core Tools (5)
 
-**Legacy methods (also work via `tools/call`):**
+#### 1. `lore_manage` — KV lore store operations
 
-- `list_topics` — returns all lore topic keys
-- `get_lore` — retrieves a single lore entry by `key` or `query`
+**Actions:** `get`, `get_batch`, `get_section`, `list`, `list_maps`, `get_map`, `search`, `validate`, `set`, `delete`, `patch`, `batch_set`, `batch_mutate`, `restore`, `history`, `increment`, `append_section`
 
-## 89 MCP Tools
+Core lore management: read, write, search, and mutate entries with versioning and history.
 
-### Core Lore Management
+#### 2. `entity_manage` — Entity lifecycle and interactions
 
-- **`list_topics`** — list all topic keys
-- **`list_maps`** — list all available map topics (world-editor map hierarchies)
-- **`get_lore`** `key` or `query` — retrieve a single entry
-- **`get_lore_batch`** `keys` (array) — retrieve multiple entries in parallel
-- **`get_lore_section`** `key`, `sections` (array) — retrieve specific ## sections from an entry
-- **`set_lore`** `key`, `text` — create or overwrite a lore entry
-- **`delete_lore`** `key` — permanently delete an entry
-- **`batch_set_lore`** `entries` (array of {key, text}) — write multiple entries
-- **`patch_lore`** `key`, `operation` (replace|append|delete_field), `target`, `value` — surgically modify text
-- **`batch_mutate`** `mutations` (array) — apply increment or patch operations sequentially
-- **`restore_lore`** `key` — restore an entry to its previous version (up to 5 deep)
+**Actions:** `generate`, `move`, `roll_encounter`, `advance_stage`, `batch_stage`, `get_inventory`, `transfer_item`, `get_sensory_profile`, `get_compatibility`, `analyze_utility`, `map_integration`, `list_consumption_timelines`, `list_active_threads`, `resolve_interaction`, `destroy`
 
-### Searching & Discovery
+Entity creation, movement, inventory, encounters, and consumption timelines.
 
-- **`search_lore`** `query`, `max_results` — full-text search across all entries
-- **`validate_topic_exists`** `query_string` — check if a topic exists with suggestions
-- **`find_by_tag`** `tags` (array), `mode` (any|all), `with_excerpt` — search by thematic tags
-- **`list_unpaid_setups`** `actor`, `scope`, `min_tension` — find open story promises by tension level
+#### 3. `world_manage` — World state and relationships
 
-### Versioning & History
+**Actions:** `thread_tick`, `get_relationship`, `get_faction_standing`, `get_entity_knowledge`, `get_location_occupants`, `get_reachable_locations`, `sense_environment`, `get_thread_comparison`, `check_convergence`
 
-- **`increment_topic_field`** `key`, `field_path`, `increment`, `reason` — increment numeric fields (e.g., days remaining)
-- **`get_topic_histories`** `keys` (array) — retrieve snapshot history for multiple topics
-- **`append_to_section`** `key`, `section`, `text`, `position` (start|end) — add text to a named ## section
-- **`append_event`** `entity_key`, `verb`, `object`, `location`, `thread`, `detail`, `at` — log an event to an entity's chronicle
-- **`get_event_log`** `entity_key`, `thread`, `since`, `until`, `verbs`, `limit` — retrieve event history
-- **`recent_changes`** `key_prefix`, `since`, `limit` — KV mutation feed (what changed while you were out)
-- **`bookmark_state`** `name`, `note`, `key_prefix` — snapshot the world state
-- **`world_diff`** `from` (bookmark), `to` (bookmark), `key_prefix`, `detail` — compare snapshots
+Threads, relationships, factions, knowledge, locations, and convergence checks.
 
-### Entities & Characters
+#### 4. `scene_manage` — Scene and choice management
 
-- **`get_inventory`** `entity_key` — parse and return items an entity carries
-- **`transfer_item`** `from_entity`, `to_entity`, `item_key`, `quantity` — move items between inventories
-- **`get_entity_knowledge`** `entity_key`, `topic` — what does an entity know (prevent omniscience)
-- **`get_sensory_profile`** `entity_key` — temperature, scent, texture, sound, visual descriptors
-- **`get_choice_history`** `entity_key` — narrative path through branching choices
-- **`set_goal`** `entity_key`, `goal_id`, `description`, `status`, `obstacle`, `parent` — define or track entity goals
-- **`generate_entity`** `archetype_key`, `location_key` — spawn a new instance from an archetype
+**Actions:** `activate`, `present_choices`, `commit_choice`, `get_history`, `brief`, `render_pov`
 
-### Relationships & Factions
+Scene activation, choice presentation, and POV rendering.
 
-- **`get_relationship`** `entity_a`, `entity_b` — scan affinity, debt, threat-level, and cross-references
-- **`get_faction_standing`** `entity_key`, `faction_key` — membership status, rank, reputation, threats
+#### 5. `continuity_manage` — Narrative continuity and tracking
 
-### Environment & Perception
+**Actions:** `append_event`, `get_event_log`, `recent_changes`, `tag_topic`, `find_by_tag`, `list_tags`, `bookmark_state`, `world_diff`, `plant_setup`, `pay_off_setup`, `list_unpaid_setups`, `set_goal`, `check_continuity`
 
-- **`sense_environment`** `location_key`, `entity_key` — render location details filtered by entity's perception
-- **`get_reachable_locations`** `origin_key` — read Exits/Connections and return adjacent locations with costs
-- **`render_pov`** `pov_entity_key`, `scene_key` or `location_key`, `reveal_threshold`, `include_voice_hints` — reproject a scene through one entity's senses and knowledge
+Events, tags, bookmarks, world diffs, setups, goals, and continuity checks.
 
-### State Machines & Timelines
+### RPG Tools (2 primary + 24 sub-systems)
 
-- **`advance_state_stage`** `entity_key` — tick an entity through its state machine stages
-- **`list_active_threads`** — return all active consumption/predation threads
-- **`process_stage_batch`** `location_key` — tick all entities at a location that have stages
-- **`thread_tick`** `thread_id` — advance a timeline thread by one tick, then sync cross-thread convergences
-- **`check_convergence`** `thread_a`, `thread_b` — determine if two threads can intersect
-- **`get_thread_comparison`** `thread_a`, `thread_b` — compare entity counts, timeline values, and overlaps
-- **`list_consumption_timelines`** `status_filter` (all|imminent|days-to-weeks|weeks-to-months|consumed) — all character consumption states
+#### 6. `rpg` — RPG engine unified dispatch
 
-### Choices & Narrative
+**Sub-systems:** `math`, `world`, `character`, `party`, `quest`, `item`, `inventory`, `corpse`, `narrative`, `secret`, `theft`, `aura`, `improvisation`, `npc`, `session`, `combat`, `combat_action`, `combat_map`, `spawn`, `strategy`, `turn`, `spatial`, `world_map`, `batch`, `travel`, `perception`, `scene`
 
-- **`present_choices`** `scene_key`, `entity_key` — filter valid choices against inventory and weight
-- **`commit_choice`** `choice_id`, `entity_key` — apply choice consequences and unlock next choices
-- **`plant_setup`** `id`, `description`, `actors`, `tension`, `planted_in`, `expected_in` — register a story promise (Chekhov's gun)
-- **`pay_off_setup`** `id`, `resolution`, `status` (paid|abandoned|deferred), `paid_in` — close a setup debt
+D1-backed RPG system with character management, combat, encounters, quests, and session tracking. Call with `{ sub: "character", action: "create", ... }`.
 
-### Interactions & Combat
+#### 7. `agent_manage` — NPC AI agent management
 
-- **`resolve_interaction`** `entity_a_id`, `entity_b_id`, `action_type` — weighted probability outcome (Weight-1 vs Weight-2)
-- **`roll_encounter`** `location_key`, `threat_level` — generate an entity instance from a location's encounter table
-- **`get_compatibility`** `entity_a`, `entity_b`, `interaction_type` — validate size ratio, weight thresholds, and environment overlap
+**Actions:** `create`, `get`, `list`, `update`, `delete`, `resume`, `health`, `budget`, `set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `broadcast`, `preview_prompt`, `add_secret`, `list_secrets`, `remove_secret`, `add_journal`, `get_journal`, `invoke`, `replay`
 
-### Analysis & Utility Scoring
+Cloudflare Workers AI-backed NPC behavior and intention system.
 
-- **`analyze_utility`** `entity_id`, `utility_vector` (GASTRIC|BUTCHERY|INCUBATION|SCULPTURE|PARASITISM|THRALL|DISTRIBUTED), `entity_role` (subject|actor) — score suitability for a narrative pathway
+### Meta-Tools (2)
 
-### Scene & Location Tools
+#### 8. `search_tools` — Tool discovery
 
-- **`activate_scene`** `scene_key` — set active scene and hydrate entities and location
-- **`scene_brief`** `scene_key` or `location_key`, `include` — assemble location text, entities, setups, relationships, and sensory data
-- **`get_location_occupants`** `location_key` — find all entities at a location
-- **`move_entity`** `entity_key`, `new_location_key` — change an entity's Location field and update indexes
+Fuzzy-search the full tool catalog by name or description.
 
-### Tags & Metadata
+#### 9. `load_tool_schema` — Get tool input schema
 
-- **`tag_topic`** `key`, `add`, `remove` — attach thematic tags (cross-prefix) for discovery
-- **`map_integration`** `source_id`, `target_id`, `integration_depth` — transfer [Transferable]-tagged traits on state merge
-
-### Administrative
-
-- **`check_authentication`** — verify API key validity
-- **`check_continuity`** `checks`, `scope`, `severity_floor` — scan for dangling refs, occupancy conflicts, inventory ghosts
-- **`ping_tool`** — trivial validation tool
+Return the full JSON schema for a named tool to see all available parameters.
 
 ## Example JSON-RPC Request
+
+Get a lore entry using `lore_manage` with action `get`:
 
 ```json
 {
@@ -214,15 +186,39 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
   "id": 1,
   "method": "tools/call",
   "params": {
-    "name": "get_lore",
+    "name": "lore_manage",
     "arguments": {
+      "action": "get",
       "query": "character:zira"
     }
   }
 }
 ```
 
+Create a character using `rpg` with sub-system `character` and action `create`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "rpg",
+    "arguments": {
+      "sub": "character",
+      "action": "create",
+      "name": "Aldric",
+      "characterClass": "fighter",
+      "race": "human",
+      "level": 1
+    }
+  }
+}
+```
+
 ## Example Response
+
+Response from `lore_manage` action `get`:
 
 ```json
 {
@@ -246,57 +242,128 @@ All requests must be JSON-RPC 2.0 with a `method` field. Three types of methods 
 }
 ```
 
-## HTTP Admin Endpoints
-
-Protected by `ADMIN_SECRET`. Use the HTTP endpoints for direct admin operations (outside of JSON-RPC).
-
-### `POST /admin/set-lore`
+Response from `rpg` action `create` (character):
 
 ```json
 {
-  "key": "character:new-npc",
-  "text": "NPC description, stats, relationships...",
-  "secret": "your-admin-secret"
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "id": "char_6a9e2f1c",
+    "name": "Aldric",
+    "characterClass": "fighter",
+    "race": "human",
+    "level": 1,
+    "hp": 10,
+    "maxHp": 10,
+    "createdAt": "2026-06-15T12:00:00.000Z"
+  }
 }
+```
+
+## HTTP Admin Endpoints
+
+Protected by `ADMIN_SECRET` (passed as `X-Admin-Secret` header). Direct HTTP endpoints for admin operations outside JSON-RPC.
+
+### `POST /admin/set-lore`
+
+```bash
+curl -X POST http://127.0.0.1:8787/admin/set-lore \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Secret: your-admin-secret" \
+  -d '{
+    "key": "character:new-npc",
+    "text": "NPC description, stats, relationships..."
+  }'
 ```
 
 ### `POST /admin/delete-lore`
 
-```json
-{
-  "key": "character:new-npc",
-  "secret": "your-admin-secret"
-}
+```bash
+curl -X POST http://127.0.0.1:8787/admin/delete-lore \
+  -H "X-Admin-Secret: your-admin-secret" \
+  -d '{"key": "character:new-npc"}'
+```
+
+### `GET /health`
+
+```bash
+curl http://127.0.0.1:8787/health
+# Returns: { "status": "ok", "timestamp": 1234567890 }
 ```
 
 ## Notes
 
-- CORS is enabled for all origins on `/mcp`
-- Batch JSON-RPC requests are not supported
-- The project uses `esbuild` to bundle `src/index.ts` into `dist/index.js`
-- `dist/` is generated output and should not be edited directly
+- **CORS** is enabled for all origins on `/mcp`, `/health`, and `/admin` endpoints
+- **API Key Auth** (optional): If `MCP_API_KEY` is set, all `/mcp` requests must include `X-Api-Key` header
+- **Streamable HTTP** (MCP spec 2025-03-26): Requests with `Mcp-Session-Id` header or `text/event-stream` Accept header are routed to the Durable Object
+- **Legacy JSON-RPC** (POST /mcp): Still supported; falls through from streamable HTTP middleware
+- **Batch JSON-RPC requests** are not supported
+- **Rate limiting** is enforced (see `src/middleware/rate-limit.ts`)
+- **Health endpoint** (`GET /health`) is unauthenticated for load balancers and monitoring
+- The project bundles with `esbuild` (via `wrangler build`) → `dist/index.js` (generated, not edited)
 
 ## Project scripts
 
-- `npm run build` — bundle the Worker
-- `npm run dev` — run local Wrangler dev
-- `npm run deploy` — deploy to Cloudflare
-- `npm run clean` — remove `dist`
+```bash
+pnpm run dev           # Start local dev server (wrangler)
+pnpm run build         # Dry-run deploy (generates dist/)
+pnpm run deploy        # Deploy to Cloudflare Workers
+pnpm test              # Run tests via vitest (Workers runtime)
+pnpm test:coverage     # Tests + coverage report
+pnpm test:live         # Smoke tests against production
+pnpm run lint          # ESLint validation
+pnpm run type-check    # TypeScript type checking
+pnpm run fix:md        # Auto-fix markdown formatting
+```
 
 ## Local testing
 
-Run the Worker locally with:
+Start the local dev server:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-Example `curl` request against the `/mcp` endpoint:
+The server runs on `http://127.0.0.1:8787` with KV and D1 handled by miniflare.
+
+### Example requests
+
+Get a lore entry:
 
 ```bash
 curl -X POST http://127.0.0.1:8787/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_lore","arguments":{"query":"lamia"}}}'
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "lore_manage",
+      "arguments": {
+        "action": "get",
+        "query": "character:zira"
+      }
+    }
+  }'
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8787/health
+```
+
+Run all tests:
+
+```bash
+pnpm test
+```
+
+Run tests with verbose output:
+
+```bash
+pnpm test -- --reporter=verbose
 ```
 
 ## Example MCP Method Responses
@@ -327,17 +394,25 @@ curl -X POST http://127.0.0.1:8787/mcp \
   "result": {
     "tools": [
       {
-        "name": "get_lore",
-        "title": "Get Lore",
-        "description": "Retrieve lore by topic key or query.",
+        "name": "lore_manage",
+        "title": "Lore Manage",
+        "description": "KV lore store — read, write, search, and mutate lore entries. Actions: get, get_batch, get_section, list, list_maps, ...",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "Topic key to retrieve" }
-          }
+            "action": { "type": "string", "description": "Action to perform (get, set, list, etc.)" }
+          },
+          "required": ["action"],
+          "additionalProperties": true
         }
+      },
+      {
+        "name": "entity_manage",
+        "title": "Entity Manage",
+        "description": "Entity lifecycle — generate, move, inventory, encounters, ...",
+        "inputSchema": { ... }
       }
-      // ... 88 more tools
+      // ... 7 more tools (world_manage, scene_manage, continuity_manage, rpg, agent_manage, search_tools, load_tool_schema)
     ]
   }
 }
@@ -347,79 +422,109 @@ curl -X POST http://127.0.0.1:8787/mcp \
 
 ### `ADMIN_SECRET`
 
-Protect admin endpoints (`/admin/set-lore`, `/admin/delete-lore`) with this secret.
+Protect admin endpoints (`/admin/set-lore`, `/admin/delete-lore`) via `X-Admin-Secret` header.
 
 **Production:** Set via `wrangler secret put ADMIN_SECRET`  
-**Local tests:** Automatically injected as `test-secret-123` (see `vitest.config.ts`)
+**Local tests:** Auto-injected as `test-secret-123` (see `vitest.config.ts`)
 
-## Project Scripts
+### `MCP_API_KEY` (optional)
 
-```bash
-npm run build      # Bundle src/index.ts with esbuild → dist/index.js
-npm run dev        # Start local Wrangler dev server
-npm run deploy     # Deploy to Cloudflare Workers
-npm test           # Run vitest suite in Workers runtime
-npm run clean      # Remove dist/ directory
-```
+If set, all `/mcp` requests must include `X-Api-Key: <value>` header.
+
+**Production:** Set via `wrangler secret put MCP_API_KEY`  
+**Local tests:** Leave unset (no auth required)
+
+### `MCP_OBJECT` (Durable Object binding)
+
+Configured in `wrangler.jsonc`. Routes requests to the HolmgardMCP Durable Object instance.
 
 ## Testing
 
-Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-pool-workers`. KV storage is in-memory (miniflare).
+Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-pool-workers` with Miniflare for KV/D1 storage.
+
+### Test Suites
+
+1. **Unit/Integration tests** (`pnpm test`): Run full `src/__tests__/*.test.ts` suite in Workers runtime
+2. **Coverage** (`pnpm test:coverage`): Generate LCOV report to `./coverage/lcov.info`
+3. **Live smoke tests** (`pnpm test:live`): End-to-end tests against production worker (requires `MCP_API_KEY` env var)
 
 **Key testing patterns:**
 
-- Use `env.LORE_DB.put()` to seed test data (bypasses `set_lore` to keep tests isolated)
-- `reset()` from `cloudflare:test` wipes all KV between tests
+- Seed test data with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` (bypasses handlers for isolation)
+- Seed D1 with direct `env.RPG_DB.prepare(...).run()`
+- `reset()` from `cloudflare:test` wipes all storage between tests
 - Both MCP tool logic and HTTP endpoints are tested
-
-**Integration tests:** Run `tests/run-all.ps1` (PowerShell Pester) for end-to-end tests against a deployed worker.
 
 ## Architecture Notes
 
-- **Single-file worker:** All logic in `src/index.ts` (Hono app)
-- **KV-first:** `LORE_DB` is source of truth; `loreDB` module-level fallback for offline dev
-- **Versioned entries:** All writes increment metadata version and store creation/update timestamps
-- **History tracking:** Up to 5 prior versions per entry, restorable via `restore_lore`
-- **Index-on-write:** Automatic prefix, location, and thread indexes for fast lookups
-- **CORS enabled:** `/mcp` accepts cross-origin requests
-- **No batch JSON-RPC:** Only single requests per call
+- **Durable Object-backed MCP:** HolmgardMCP DO handles both legacy JSON-RPC and spec 2025-03-26 Streamable HTTP transport
+- **Dual storage:**
+  - `LORE_DB` (KV) — narrative lore entries (source of truth)
+  - `RPG_DB` (D1) — characters, sessions, combat, quests (RPG system state)
+- **Versioned KV entries:** All writes increment metadata (version, createdAt, updatedAt)
+- **History tracking:** Up to 5 prior versions per KV entry, restorable via `restore` action in `lore_manage`
+- **Index-on-write:** Automatic prefix, location, and thread indexes for fast lookups in KV
+- **Workers AI integration:** `agent_manage` invokes Cloudflare AI for NPC behavior generation
+- **Tool architecture:** Meta-tools accept `action` parameters (e.g., `{ name: "lore_manage", arguments: { action: "get", ... } }`)
+- **CORS enabled:** `/mcp`, `/health`, and `/admin` accept cross-origin requests
+- **Rate limiting:** Enforced via `src/middleware/rate-limit.ts`
+- **No batch JSON-RPC:** Only single requests; use `batch_set_lore` or `batch_mutate` for bulk operations
 
-## KV Notes
+## Storage Notes
 
-- All KV keys are **lowercase** with `:` namespacing (e.g., `character:zira`, `location:undercity`)
-- Markdown-style fields (`**Field-Name:** value`) are parsed for automation (state machines, consumption timelines, goals, etc.)
-- `patch_lore` requires exact substring matching and rejects ambiguous targets
-- Indexes exclude system keys: `_idx:*`, `_history:*`, `_changelog`, `events:*`, `_snapshot:*`, `_tags:*`, `map:*`
-- Response format is always `{ content: [{ type: 'text', text: '...' }], ... }` for MCP compatibility
+### KV (`LORE_DB`)
+
+- **Key format:** Lowercase with `:` namespacing (e.g., `character:zira`, `location:undercity`)
+- **Entry format:** `{ text: string, meta: { version, createdAt, updatedAt } }`
+- **Markdown automation:** Fields like `**Consumption-Timeline:** ...` are parsed for state machines, timelines, goals
+- **Exact matching:** `patch` action requires exact substring matching; rejects ambiguous or missing targets
+- **Reserved prefixes:** `_idx:*` (indexes), `_history:*` (version history), `_changelog`, `events:*`, `_snapshot:*`, `_tags:*`, `map:*`
+- **Response format:** Always `{ content: [{ type: 'text', text: '...' }], key, text, meta }` for MCP compatibility
+
+### D1 (`RPG_DB`)
+
+- **Schema:** Character stats, sessions, combat encounters, quests, parties, NPCs
+- **Migrations:** Managed in `schema/migrations/` directory
+- **Access:** Via `env.RPG_DB.prepare(...).run()` or action parameters in `rpg` sub-tools
 
 ## Quick Start
 
 1. **Clone & install:**
 
    ```bash
-   npm install
-   npm run build
+   pnpm install
+   pnpm run build
    ```
 
 2. **Run locally:**
 
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
-   Access `/mcp` endpoint at `http://127.0.0.1:8787/mcp`
+   The server runs at `http://127.0.0.1:8787` with:
+   - MCP endpoint: `/mcp`
+   - Health check: `/health`
+   - Admin endpoints: `/admin/set-lore`, `/admin/delete-lore`
 
 3. **Test it:**
 
    ```bash
-   npm test
+   pnpm test                    # Run all tests
+   pnpm test -- --reporter=verbose  # Verbose output
    ```
 
 4. **Deploy:**
 
    ```bash
-   wrangler secret put ADMIN_SECRET  # Set your secret
-   npm run deploy
+   wrangler secret put ADMIN_SECRET      # Set your secret
+   wrangler secret put MCP_API_KEY       # Optional: set API key for auth
+   pnpm run deploy
    ```
 
-See [CLAUDE.md](CLAUDE.md) for detailed architecture, KV access patterns, and development guidelines.
+## Documentation
+
+- **Architecture & patterns:** See [CLAUDE.md](CLAUDE.md)
+- **Testing & validation:** See [docs/testing-and-linting-guide.md](docs/testing-and-linting-guide.md)
+- **Issue resolution protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](ISSUE_RESOLUTION_PROTOCOL.md)
+- **User guide:** See [docs/holmgard-user-guide.md](docs/holmgard-user-guide.md)
