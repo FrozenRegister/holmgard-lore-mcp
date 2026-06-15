@@ -59,10 +59,24 @@ If the hook isn't set up, manually run before committing:
 2. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
 3. **CHANGELOG.md** — **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. If forgotten, GitHub PR check fails and blocks merge.
 4. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
+5. **Coverage** — When adding new code or tests, run `pnpm test:coverage` to verify patch coverage stays at or above 100% (for new/modified code paths). This generates `coverage/lcov.info`; CI will fail if coverage drops below target.
+
+### Pre-Commit Checklist (Before Pushing)
+
+**Always run these locally:**
+
+```powershell
+pnpm run type-check      # Catch type errors early
+pnpm fix:md              # Fix markdown formatting
+pnpm test                # Run full test suite
+pnpm test:coverage       # Verify coverage (required for new code)
+.\scripts\pre-commit-validate.ps1  # Final validation before commit
+```
 
 ### Common Failures
 
 - **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
+- **Coverage below 100% on new code** — Run `pnpm test:coverage` to inspect the coverage report. Check `coverage/lcov.info` or use an IDE plugin to highlight uncovered lines. Add tests for all new code paths.
 - **CHANGELOG.md missing** — Add an entry under `[Unreleased]` describing your changes
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
 - **Tests failing** — Fix the underlying issue, then re-run validation

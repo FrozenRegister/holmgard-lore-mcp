@@ -36,6 +36,8 @@
 
 - **Type-check errors in admin-bulk-migrate.test.ts** (#126) — Fixed TS18046 errors by adding explicit type assertions for `response.json()` return values. Updated CLAUDE.md pre-commit validation section to list type-checking as the first validation step, and added Testing subsection documenting type-safety patterns for tests (always use `as` assertions for unknown types in test assertions).
 
+- **Coverage checking in pre-commit validation** — Added `pnpm test:coverage` to the pre-commit checklist in CLAUDE.md. Coverage must remain at 100% patch for all new/modified code. Added troubleshooting guidance and links to coverage reports. Catches coverage drops locally before CI, eliminating feedback-loop delays.
+
 ## v0.2.0 — Entity lifecycle + security hardening
 
 ### New
