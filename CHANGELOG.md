@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- **README accuracy update** — Updated README.md to reflect current architecture: corrected tool count from "89 MCP tools" to actual structure (5 core + 2 RPG + 2 meta tools with action-based interface). Updated requirements to Node.js 22+, pnpm, and documented D1/Durable Object/Workers AI integration. Updated all examples to show action parameters, corrected package manager from npm to pnpm, and added documentation links.
+
 ### Added
 
 - **`continuity_manage.list_tags`** (#96, closes #58) — Enumerates all tags in the system via `_tags:*` KV keys. Accepts optional `prefix` (e.g. `"faction:"`) for filtering, `with_counts` (default `true`) to return usage counts. Returns tags sorted by count descending or alphabetically. Solves tag namespace discoverability — agents no longer guess tag names.
