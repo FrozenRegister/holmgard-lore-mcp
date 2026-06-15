@@ -4,6 +4,8 @@
 
 ### Added
 
+- **`list_consumption_timelines` pagination** (closes #4) — Added `limit` (1–100, default 50) and `offset` (default 0) parameters to prevent unbounded KV reads. Keys are sliced before fetching so only the requested page is read. Response metadata now includes `total_keys`, `limit`, and `offset` for callers to implement paging.
+
 - **Tool Definitions Type Safety** — Added proper TypeScript type definition for `toolDefinitions` array, fixing issue #12. ([PR #129](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/129))
 
 - **`continuity_manage.list_tags`** (#96, closes #58) — Enumerates all tags in the system via `_tags:*` KV keys. Accepts optional `prefix` (e.g. `"faction:"`) for filtering, `with_counts` (default `true`) to return usage counts. Returns tags sorted by count descending or alphabetically. Solves tag namespace discoverability — agents no longer guess tag names.

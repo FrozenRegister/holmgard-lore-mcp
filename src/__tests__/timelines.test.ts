@@ -85,6 +85,42 @@ describe('list_consumption_timelines — Projected-Consumption-Timeline fallback
   })
 })
 
+describe('list_consumption_timelines — pagination', () => {
+  it('limit restricts the number of keys fetched', async () => {
+    await seedKV('character:a', '**Consumption-Timeline:** 1 day')
+    await seedKV('character:b', '**Consumption-Timeline:** 2 days')
+    await seedKV('character:c', '**Consumption-Timeline:** 3 days')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all', limit: 2, offset: 0 })
+    expect(res.result.timelines).toHaveLength(2)
+    expect(res.result.metadata.limit).toBe(2)
+    expect(res.result.metadata.offset).toBe(0)
+    expect(res.result.metadata.total_keys).toBe(3)
+  })
+
+  it('offset skips earlier keys', async () => {
+    await seedKV('character:a', '**Consumption-Timeline:** 1 day')
+    await seedKV('character:b', '**Consumption-Timeline:** 2 days')
+    await seedKV('character:c', '**Consumption-Timeline:** 3 days')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all', limit: 10, offset: 2 })
+    expect(res.result.timelines).toHaveLength(1)
+    expect(res.result.metadata.offset).toBe(2)
+  })
+
+  it('offset beyond total returns empty timelines', async () => {
+    await seedKV('character:a', '**Consumption-Timeline:** 1 day')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all', limit: 10, offset: 5 })
+    expect(res.result.timelines).toHaveLength(0)
+    expect(res.result.content[0].text).toBe('No consumption timelines found.')
+  })
+
+  it('defaults limit=50 offset=0 when not provided', async () => {
+    await seedKV('character:only', '**Consumption-Timeline:** 1 week')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
+    expect(res.result.metadata.limit).toBe(50)
+    expect(res.result.metadata.offset).toBe(0)
+  })
+})
+
 describe('list_active_threads', () => {
   it('returns message when system:active-narratives key is absent', async () => {
     const res = await callTool('entity_manage', { action: 'list_active_threads' })
