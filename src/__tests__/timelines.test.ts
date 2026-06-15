@@ -137,6 +137,13 @@ describe('list_consumption_timelines — pagination', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('skips stale index entries where kvGet returns null', async () => {
+    // Seed the index with a key that has no KV entry (simulates a stale index)
+    await env.LORE_DB.put('_idx:prefix:character', JSON.stringify(['character:ghost-key']))
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
+    expect(res.result.timelines).toHaveLength(0)
+  })
 })
 
 describe('list_active_threads', () => {
