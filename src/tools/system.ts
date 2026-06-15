@@ -201,18 +201,20 @@ export async function handle_search_lore({ c, id, args }: ToolContext): Promise<
   try {
     const schema = z.object({
       query: z.string().min(1),
-      max_results: z.number().min(1).max(50).default(10)
+      max_results: z.number().min(1).max(50).default(10),
+      scan_limit: z.number().int().min(1).max(2000).default(500),
     })
     const parsed = schema.safeParse(args)
     if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
-    const searchQuery = parsed.data.query.toLowerCase()
-    const allKeys = await kvList(c)
+    const { query: queryArg, max_results, scan_limit } = parsed.data
+    const searchQuery = queryArg.toLowerCase()
+    const allKeys = (await kvList(c)).slice(0, scan_limit)
     const results: Array<{ key: string; excerpt: string }> = []
     const CHUNK_SIZE = 50
 
     for (let chunkStart = 0; chunkStart < allKeys.length; chunkStart += CHUNK_SIZE) {
-      if (results.length >= parsed.data.max_results) break
+      if (results.length >= max_results) break
       const chunkKeys = allKeys.slice(chunkStart, chunkStart + CHUNK_SIZE)
 
       // Use sequential gets with individual error handling to avoid TaskGroup
@@ -227,7 +229,7 @@ export async function handle_search_lore({ c, id, args }: ToolContext): Promise<
       }
 
       for (let i = 0; i < chunkKeys.length; i++) {
-        if (results.length >= parsed.data.max_results) break
+        if (results.length >= max_results) break
         const raw = chunkRaws[i]
         if (!raw) continue
         const key = chunkKeys[i]
@@ -248,11 +250,11 @@ export async function handle_search_lore({ c, id, args }: ToolContext): Promise<
 
     const summaryText = results.length > 0
       ? results.map(r => `${r.key}: "${r.excerpt}"`).join('\n')
-      : `No lore entries matching "${parsed.data.query}".`
+      : `No lore entries matching "${queryArg}".`
 
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: summaryText }],
-      metadata: { query: parsed.data.query, match_count: results.length },
+      metadata: { query: queryArg, match_count: results.length, keys_scanned: allKeys.length, scan_limit },
       results
     }), 200)
   } catch (e) {
