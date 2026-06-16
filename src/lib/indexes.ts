@@ -1,6 +1,6 @@
 // src/lib/indexes.ts
-import { getKV, kvList } from './kv'
-import { extractFieldFromText } from './lore'
+import { getKV, kvList, kvGet } from './kv'
+import { extractFieldFromText, parseKvEntry, extractRawField } from './lore'
 
 // Maintains _idx:location:<loc>, _idx:thread:<thread>, _idx:prefix:<prefix> indexes
 // Call after writing a lore entry to keep indexes in sync. Pass oldText=null on creation.
@@ -101,4 +101,32 @@ export async function getIndexedKeys(c: any, indexKey: string): Promise<string[]
   }
   // Location/Thread indexes fall back to kvList + full scan (slower, but maintains compatibility)
   return []
+}
+
+// Resolves entity keys + raw values from an index, falling back to a full KV scan
+// when the index doesn't exist (e.g. fresh KV stores without pre-built indexes).
+export async function resolveIndexedEntities(
+  c: any,
+  indexKey: string,
+  matchField: string,
+  matchValue: string,
+): Promise<{ keys: string[]; rawValues: (string | null)[] }> {
+  const keys = await getIndexedKeys(c, indexKey)
+
+  if (keys.length === 0) {
+    const allKeys = await kvList(c)
+    const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+    // Filter to entries that exist and match the target field value
+    const pairs = allKeys
+      .map((k, i) => ({ key: k, raw: allRaws[i] }))
+      .filter((p): p is { key: string; raw: string } => p.raw !== null)
+      .filter(({ raw }) => {
+        const { text } = parseKvEntry(raw)
+        return extractRawField(text, matchField)?.trim().toLowerCase() === matchValue.toLowerCase()
+      })
+    return { keys: pairs.map(p => p.key), rawValues: pairs.map(p => p.raw) }
+  }
+
+  const rawValues = await Promise.all(keys.map(k => kvGet(c, k)))
+  return { keys, rawValues }
 }
