@@ -32,54 +32,65 @@ $env:MCP_API_KEY = "your-key"; pnpm test:live
 
 ## Pre-Commit Validation
 
-**MANDATORY: Every commit must pass local validation before being made.** Running the pre-commit validation script locally catches markdown, changelog, and test failures *before* GitHub Actions — preventing PR check failures and wasted CI time.
+**Policy: run fast checks locally, let CI be the full gate.** The full `pnpm test` suite is slow on a local Windows machine (~5–6 min, dominated by filesystem I/O) and the istanbul coverage run is slower still. GitHub Actions runs the *entire* gate — Node 20 + Node 22 matrix, coverage, type-check, lint, and build — in parallel in **~2 minutes** wall-clock. So locally you should validate fast and cheaply, then push and rely on CI to run the full matrix and enforce 100% patch coverage.
 
-### Automated Setup (Required)
+What this means in practice:
 
-Enable the git hook so validation runs automatically on every commit:
+- **Locally (every iteration):** type-check, lint, markdown/CHANGELOG, and the *specific test file(s) you touched* — not the whole suite.
+- **CI (the real gate):** full suite across both Node versions + coverage. Coverage failures surface there with a ~2-min feedback loop; you do **not** need to run istanbul coverage locally.
+
+> Run the full `pnpm test` / `pnpm test:coverage` locally only when you specifically want to (e.g. debugging a cross-cutting change, or no network/CI available). It is no longer a required pre-commit step.
+
+### Automated Setup (Recommended)
+
+Enable the git hook so the fast checks run automatically on every commit:
 
 ```powershell
 git config core.hooksPath scripts
 ```
 
-This is **not optional** — do this once to enforce validation for all future commits.
+The hook runs in `-SkipTests` mode by default under this policy — it validates type-check, markdown, and CHANGELOG, but leaves the full suite to CI.
 
-### Manual Validation (Fallback)
-
-If the hook isn't set up, manually run before committing:
+### Manual Validation
 
 ```powershell
-.\scripts\pre-commit-validate.ps1          # Run full validation (includes tests)
-.\scripts\pre-commit-validate.ps1 -SkipTests  # Skip tests (faster iteration)
+.\scripts\pre-commit-validate.ps1 -SkipTests  # Fast local gate (type-check, markdown, CHANGELOG) — default
+.\scripts\pre-commit-validate.ps1             # Full validation incl. tests — optional, when you want it
 ```
 
 ### What Gets Checked
 
-1. **TypeScript Type Checking** — `pnpm run type-check` validates all `.ts` and `.tsx` files for type safety
-2. **Markdown Linting** — `pnpm fix:md` (validates all `.md` files, auto-fixes where possible)
-3. **CHANGELOG.md** — **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. If forgotten, GitHub PR check fails and blocks merge.
-4. **Tests** — Full `pnpm test` suite (can skip with `-SkipTests` for faster iteration)
-5. **Coverage** — When adding new code or tests, run `pnpm test:coverage` to verify patch coverage stays at or above 100% (for new/modified code paths). This generates `coverage/lcov.info`; CI will fail if coverage drops below target.
+| Check | Where | Notes |
+| --- | --- | --- |
+| **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
+| **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
+| **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
+| **CHANGELOG.md** | Local + CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. Missing entry fails the PR check and blocks merge. |
+| **Touched test file(s)** | Local | `pnpm test -- src/__tests__/<file>.test.ts` for the area you changed |
+| **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
+| **Coverage** (100% patch, istanbul) | **CI** | CI generates `coverage/lcov.info` and uploads to Codecov; CI fails if patch coverage drops below 100% |
 
 ### Pre-Commit Checklist (Before Pushing)
 
-**Always run these locally:**
+**Run these locally — fast:**
 
 ```powershell
-pnpm run type-check      # Catch type errors early
-pnpm fix:md              # Fix markdown formatting
-pnpm test                # Run full test suite
-pnpm test:coverage       # Verify coverage (required for new code)
-.\scripts\pre-commit-validate.ps1  # Final validation before commit
+pnpm run type-check                              # Catch type errors early
+pnpm run lint                                    # Lint
+pnpm fix:md                                      # Fix markdown formatting
+pnpm test -- src/__tests__/<touched-file>.test.ts  # Only the tests you touched
+.\scripts\pre-commit-validate.ps1 -SkipTests     # Fast local gate
 ```
+
+Then push and let CI run the full matrix + coverage (~2 min). Treat green CI as the bar.
 
 ### Common Failures
 
 - **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
-- **Coverage below 100% on new code** — Run `pnpm test:coverage` to inspect the coverage report. Check `coverage/lcov.info` or use an IDE plugin to highlight uncovered lines. Add tests for all new code paths.
+- **Coverage below 100% on new code (CI)** — Open the failing `coverage` job or the Codecov report to see uncovered lines, add tests, push again. To reproduce locally if needed: `pnpm test:coverage`, then inspect `coverage/lcov.info`.
 - **CHANGELOG.md missing** — Add an entry under `[Unreleased]` describing your changes
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
-- **Tests failing** — Fix the underlying issue, then re-run validation
+- **Tests failing in CI** — Reproduce locally by running just that file (`pnpm test -- <file>`), fix, push again
 
 ## Workflows & Protocols
 
@@ -250,7 +261,7 @@ Never access properties on `unknown` without a type assertion — TypeScript wil
 
 **Commit messages** should follow conventional commits (`feat:`, `fix:`, `test:`, `refactor:`) and mention the specific tools or routes affected. Example: `feat: add resolve_interaction tool with utility scoring`.
 
-**Before pushing**, always run `npm test` and confirm it passes. Push only to `main` unless working on an isolated experiment.
+**Before pushing**, run the fast local gate (`pnpm run type-check`, `pnpm run lint`, and the test file(s) you touched) — see [Pre-Commit Validation](#pre-commit-validation). The full suite + coverage runs in CI (~2 min); treat green CI as the bar rather than grinding the whole suite locally. Push only to `main` unless working on an isolated experiment.
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 
@@ -293,6 +304,6 @@ This separation is critical: **never allow these IDs to be identical**, or `wran
 
 ## Coverage and Codecov
 
-Coverage is generated by `pnpm test:coverage` (`@vitest/coverage-v8`) and uploaded to Codecov by the `coverage` job in `.github/workflows/ci.yml`. The lcov report lands at `./coverage/lcov.info`.
+Coverage is generated by `pnpm test:coverage` (`@vitest/coverage-istanbul`, configured via `provider: 'istanbul'` in `vitest.config.ts`) and uploaded to Codecov by the `coverage` job in `.github/workflows/ci.yml`. The lcov report lands at `./coverage/lcov.info`. Coverage runs in CI, not as a required local step (see [Pre-Commit Validation](#pre-commit-validation)).
 
 **Sister repo sync**: `holmgard-lore-editor` uses the same `codecov/codecov-action@v5`. When upgrading the action version, update both repos' CI files at the same time. Coverage targets intentionally differ: this repo enforces **100% patch** (backend Worker — untested code reaches production directly); the editor uses **80% patch** (frontend UI code).
