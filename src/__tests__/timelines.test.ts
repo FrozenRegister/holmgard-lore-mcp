@@ -57,6 +57,31 @@ describe('list_consumption_timelines', () => {
     const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'consumed' })
     expect(res.result.timelines).toHaveLength(1)
   })
+
+  it('status_filter=days-to-weeks excludes entries with no day or week in timeline', async () => {
+    await seedKV('character:months-away', '**Status:** Active\n**Consumption-Timeline:** 3 months\n**Processor:** Alpha')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'days-to-weeks' })
+    expect(res.result.timelines).toHaveLength(0)
+  })
+
+  it('status_filter=weeks-to-months includes weeks entries', async () => {
+    await seedKV('character:weeks-prey', '**Status:** Active\n**Consumption-Timeline:** 3 weeks\n**Processor:** Gamma')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'weeks-to-months' })
+    expect(res.result.timelines).toHaveLength(1)
+    expect(res.result.timelines[0].character_key).toBe('character:weeks-prey')
+  })
+
+  it('status_filter=weeks-to-months excludes entries with no week, month, or year in timeline', async () => {
+    await seedKV('character:hours-prey', '**Status:** Active\n**Consumption-Timeline:** 6 hours\n**Processor:** Beta')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'weeks-to-months' })
+    expect(res.result.timelines).toHaveLength(0)
+  })
+
+  it('status_filter=consumed excludes entries without consumed in timeline', async () => {
+    await seedKV('character:alive', '**Status:** Active\n**Consumption-Timeline:** 3 days\n**Processor:** Alpha')
+    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'consumed' })
+    expect(res.result.timelines).toHaveLength(0)
+  })
 })
 
 describe('list_consumption_timelines — Projected-Consumption-Timeline fallback', () => {
