@@ -1,6 +1,6 @@
 // src/tools/entity.ts
 import { z } from 'zod'
-import { kvGet, kvPut, kvDelete, loreDB } from '../lib/kv'
+import { kvGet, kvPut, kvDelete, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
@@ -51,6 +51,7 @@ export async function handle_resolve_interaction({ c, id, args }: ToolContext): 
       await kvPut(c, keyA, JSON.stringify({ text: updatedTextA, meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType } }))
       await appendChangelog(c, keyA, version)
       loreDB[keyA] = updatedTextA
+      clearRequestCache(c)
     }
   }
 
@@ -81,6 +82,7 @@ export async function handle_destroy_entity({ c, id, args }: ToolContext): Promi
   await kvDelete(c, key)
   await appendChangelog(c, key, 0, 'destroy')
   delete loreDB[key]
+  clearRequestCache(c)
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Entity "${key}" destroyed.` }],
@@ -871,7 +873,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
   ])
   loreDB[fromKey] = newFromText
   loreDB[toKey] = newToText
-
+  clearRequestCache(c)
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Transferred ${qty}\xd7 "${itemKey}" from "${fromKey}" to "${toKey}".` }],
