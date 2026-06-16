@@ -904,33 +904,38 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
 
 export async function handle_list_consumption_timelines({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({
-    status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all')
+    status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all'),
+    limit: z.number().int().min(1).max(100).default(50),
+    offset: z.number().int().min(0).default(0),
   })
   const parsed = schema.safeParse(args)
   if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
+  const { status_filter, limit, offset } = parsed.data
+
   // v0.2.0: scan ALL character:* keys via index, not just livestock/prisoner
   const characterKeys = await getIndexedKeys(c, '_idx:prefix:character')
+  const paginatedKeys = characterKeys.slice(offset, offset + limit)
 
-  const rawValues = await Promise.all(characterKeys.map(k => kvGet(c, k)))
+  const rawValues = await Promise.all(paginatedKeys.map(k => kvGet(c, k)))
 
   const timelines: Array<any> = []
-  for (let i = 0; i < characterKeys.length; i++) {
+  for (let i = 0; i < paginatedKeys.length; i++) {
     const raw = rawValues[i]
     if (!raw) continue
-    const key = characterKeys[i]
+    const key = paginatedKeys[i]
     const { text } = parseKvEntry(raw)
     const info = extractConsumptionInfo(text)
 
     // Skip characters with no timeline (predators, ascended staff, etc.)
     if (!info.timeline_remaining) continue
 
-    if (parsed.data.status_filter !== 'all') {
+    if (status_filter !== 'all') {
       const tl = info.timeline_remaining.toLowerCase()
-      if (parsed.data.status_filter === 'imminent' && !tl.includes('hour') && !/\b1\s*day\b/.test(tl)) continue
-      if (parsed.data.status_filter === 'days-to-weeks' && !tl.includes('day') && !tl.includes('week')) continue
-      if (parsed.data.status_filter === 'weeks-to-months' && !tl.includes('week') && !tl.includes('month') && !tl.includes('year')) continue
-      if (parsed.data.status_filter === 'consumed' && !tl.includes('consumed')) continue
+      if (status_filter === 'imminent' && !tl.includes('hour') && !/\b1\s*day\b/.test(tl)) continue
+      if (status_filter === 'days-to-weeks' && !tl.includes('day') && !tl.includes('week')) continue
+      if (status_filter === 'weeks-to-months' && !tl.includes('week') && !tl.includes('month') && !tl.includes('year')) continue
+      if (status_filter === 'consumed' && !tl.includes('consumed')) continue
     }
 
     timelines.push({
@@ -948,7 +953,7 @@ export async function handle_list_consumption_timelines({ c, id, args }: ToolCon
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text }],
-    metadata: { count: timelines.length },
+    metadata: { count: timelines.length, total_keys: characterKeys.length, offset, limit },
     timelines
   }), 200)
 }
