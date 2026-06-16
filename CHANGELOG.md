@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Request-scoped KV list caching** (closes #26) — Added per-request cache for `kvList()` and `kvListMaps()` results to eliminate redundant KV calls within a single MCP request. Multiple tools within one request that read all keys now hit the cache instead of KV. Cache is cleared automatically after any mutation (set_lore, patch_lore, delete_lore, batch_mutate, etc.). New `src/lib/cache.ts` module provides `getRequestCache()`, `clearRequestCache()` utilities. Typical impact: 2–4 redundant KV calls per request eliminated, reducing latency and KV billing.
+
 - **`resolveIndexedEntities` utility extraction** (#9) — Extracted the repeated index-fallback-scan pattern from `handle_thread_tick`, `handle_get_location_occupants`, `handle_get_thread_comparison`, `handle_check_convergence`, and `handle_process_stage_batch` into a shared utility in `src/lib/indexes.ts`. Reduces code duplication (~100 lines) and eliminates copy-paste risk.
 - **`list_consumption_timelines` pagination** (closes #4) — Added `limit` (1–100, default 50) and `offset` (default 0) parameters to prevent unbounded KV reads. Keys are sliced before fetching so only the requested page is read. Response metadata now includes `total_keys`, `limit`, and `offset` for callers to implement paging.
 
