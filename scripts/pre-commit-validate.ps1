@@ -1,8 +1,15 @@
 # Pre-commit validation script for Windows
 # Usage: .\scripts\pre-commit-validate.ps1
 # Or add to git hook: git config core.hooksPath scripts
+#
+# Policy: this is the FAST local gate (type-check, lint, markdown, CHANGELOG).
+# The full test suite + coverage run in CI (~2 min). Tests are OFF by default
+# here; pass -WithTests to run the full suite locally when you specifically want it.
+# (-SkipTests is accepted for backward compatibility and is now a no-op, since
+# tests are already skipped by default.)
 
 param(
+  [switch]$WithTests = $false,
   [switch]$SkipTests = $false
 )
 
@@ -25,7 +32,27 @@ Write-Host ""
 Write-Host "Running pre-commit validation..." -ForegroundColor Yellow
 
 try {
-  # 1. Check markdown linting
+  # 1. TypeScript type checking (fast)
+  Write-CheckHeader "Checking TypeScript types"
+  $typeResult = & pnpm run type-check 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Type checking failed"
+    Write-Host $typeResult
+    exit 1
+  }
+  Write-Success "Type checking passed"
+
+  # 2. Lint (fast)
+  Write-CheckHeader "Checking lint"
+  $lintResult = & pnpm run lint 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Lint failed"
+    Write-Host $lintResult
+    exit 1
+  }
+  Write-Success "Lint passed"
+
+  # 3. Check markdown linting
   Write-CheckHeader "Checking markdown linting"
   $markdownResult = & pnpm fix:md 2>&1
   if ($LASTEXITCODE -ne 0) {
@@ -35,7 +62,7 @@ try {
   }
   Write-Success "Markdown linting passed"
 
-  # 2. Check if CHANGELOG.md should be updated
+  # 4. Check if CHANGELOG.md should be updated
   Write-CheckHeader "Checking CHANGELOG.md requirement"
   $stagedFiles = & git diff --cached --name-only
   $requiresChangelog = $stagedFiles | Where-Object { $_ -match '(src/|docs/|wrangler|CLAUDE)' }
@@ -49,7 +76,7 @@ try {
   }
   Write-Success "CHANGELOG.md check passed"
 
-  # 3. Check docs requirement (mirrors check-docs CI gate)
+  # 5. Check docs requirement (mirrors check-docs CI gate)
   Write-CheckHeader "Checking docs requirement"
   $stagedFiles = & git diff --cached --name-only
   $hasSrcChanges = $stagedFiles | Where-Object { $_ -match '^src/' }
@@ -62,9 +89,9 @@ try {
   }
   Write-Success "Docs check passed"
 
-  # 4. Run tests (optional with -SkipTests flag)
-  if (-not $SkipTests) {
-    Write-CheckHeader "Running test suite"
+  # 6. Run tests (opt-in with -WithTests; the full suite + coverage otherwise run in CI)
+  if ($WithTests) {
+    Write-CheckHeader "Running full test suite"
     $testResult = & pnpm test 2>&1
     if ($LASTEXITCODE -ne 0) {
       Write-Error "Tests failed"
@@ -74,7 +101,7 @@ try {
     Write-Success "Tests passed"
   }
   else {
-    Write-Host "(Tests skipped with -SkipTests flag)" -ForegroundColor Gray
+    Write-Host "(Full test suite left to CI — pass -WithTests to run it locally)" -ForegroundColor Gray
   }
 
   Write-Host ""

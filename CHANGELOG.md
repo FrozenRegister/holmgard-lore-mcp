@@ -21,6 +21,10 @@
 
 - **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (header alone on its line, items below) inventory formats. Fixed root cause: `extractRawField`'s `\s*$` pattern silently crossed newlines, returning only the first item; now uses direct line scanning to detect the header-only pattern before falling back to `extractRawField`. Tests cover: termination at next bold field, blank lines inside inventory block, bare-item quantity defaulting to 1, `Items:` field name fallback, multi-line source in `transfer_item`, and source with no inventory field.
 
+### Changed
+
+- **Pre-commit policy: fast local gate, CI as the full gate** — Shifted the local validation workflow away from running the full `pnpm test` suite (~5–6 min on Windows) before every commit. Locally you now run the fast checks (type-check, lint, markdown, CHANGELOG) plus only the test file(s) you touched; the full Node 20 + 22 matrix and 100% patch coverage run in CI (~2 min wall-clock). Updated `CLAUDE.md` (Pre-Commit Validation, Git workflow, Coverage sections) and reworked `scripts/pre-commit-validate.ps1` / `.sh` to add type-check + lint steps and make the full suite opt-in (`-WithTests` / `--with-tests`) instead of on-by-default. Also corrected a stale `@vitest/coverage-v8` reference in `CLAUDE.md` (the project uses `@vitest/coverage-istanbul`), and set MD024 `siblings_only` in `.markdownlint.yaml` so the Keep-a-Changelog `### Added`/`### Changed`/`### Fixed` headings can legitimately repeat across versions.
+
 ### Closed (Triage)
 
 - **Issue triage & cleanup** — Closed 14 stale/superseded issues from the #108 cluster map: 6 superseded by the RPG engine (items #39, #47, #48, #91, #51, #49), 4 out-of-scope planning artifacts (#52, #74, #61, #33), 3 duplicate sprint board tickets. Comprehensive audit comment posted to #108 documenting every closure and reversibility path.
