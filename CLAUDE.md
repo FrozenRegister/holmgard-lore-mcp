@@ -261,7 +261,17 @@ Never access properties on `unknown` without a type assertion — TypeScript wil
 
 **Commit messages** should follow conventional commits (`feat:`, `fix:`, `test:`, `refactor:`) and mention the specific tools or routes affected. Example: `feat: add resolve_interaction tool with utility scoring`.
 
-**Before pushing**, run the fast local gate (`pnpm run type-check`, `pnpm run lint`, and the test file(s) you touched) — see [Pre-Commit Validation](#pre-commit-validation). The full suite + coverage runs in CI (~2 min); treat green CI as the bar rather than grinding the whole suite locally. Push only to `main` unless working on an isolated experiment.
+**Before pushing**, run the fast local gate (`pnpm run type-check`, `pnpm run lint`, and the test file(s) you touched) — see [Pre-Commit Validation](#pre-commit-validation). The full suite + coverage runs in CI (~2 min); treat green CI as the bar rather than grinding the whole suite locally.
+
+**Push to a feature branch first, never directly to main:**
+
+1. Create a feature branch: `git checkout -b feat/my-feature`
+2. Commit locally: `git commit -m "..."`
+3. Push to the branch: `git push -u origin feat/my-feature`
+4. Create a PR on GitHub (see [Pull Requests](#pull-requests-and-issue-linking) below)
+5. Add the `auto-merge` label to your PR — CI will run the full suite, and the PR will auto-merge when all checks pass
+
+This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`. Auto-merge PRs eliminate manual merge steps once CI validates the change.
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 
