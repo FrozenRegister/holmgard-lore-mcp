@@ -4,6 +4,8 @@
 
 ### Added
 
+- **`resolveIndexedEntities` utility extraction** (#9) — Extracted the repeated index-fallback-scan pattern from `handle_thread_tick`, `handle_get_location_occupants`, `handle_get_thread_comparison`, `handle_check_convergence`, and `handle_process_stage_batch` into a shared utility in `src/lib/indexes.ts`. Reduces code duplication (~100 lines) and eliminates copy-paste risk.
+
 - **Tool Definitions Type Safety** — Added proper TypeScript type definition for `toolDefinitions` array, fixing issue #12. ([PR #129](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/129))
 
 - **`continuity_manage.list_tags`** (#96, closes #58) — Enumerates all tags in the system via `_tags:*` KV keys. Accepts optional `prefix` (e.g. `"faction:"`) for filtering, `with_counts` (default `true`) to return usage counts. Returns tags sorted by count descending or alphabetically. Solves tag namespace discoverability — agents no longer guess tag names.

@@ -4,7 +4,7 @@ import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys } from '../lib/indexes'
+import { getIndexedKeys, resolveIndexedEntities } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<Response> {
@@ -13,27 +13,11 @@ export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<
   if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
   const threadId = parsed.data.thread_id.trim()
-  let threadKeys = await getIndexedKeys(c, `_idx:thread:${threadId}`)
+  const { keys: threadKeys, rawValues: threadRawValues } = await resolveIndexedEntities(c, `_idx:thread:${threadId}`, 'Thread', threadId)
+
+  // Fetch all entities for global snapshot comparison
   const allKeys = await kvList(c)
   const allRawValues = await Promise.all(allKeys.map(k => kvGet(c, k)))
-
-  // Fallback: if index is empty, scan for entities in this thread
-  let threadRawValues: (string | null)[]
-  if (threadKeys.length === 0) {
-    threadKeys = []
-    threadRawValues = []
-    for (let i = 0; i < allKeys.length; i++) {
-      const r = allRawValues[i]
-      if (!r) continue
-      const { text } = parseKvEntry(r)
-      if (extractRawField(text, 'Thread')?.toLowerCase() === threadId.toLowerCase()) {
-        threadKeys.push(allKeys[i])
-        threadRawValues.push(r)
-      }
-    }
-  } else {
-    threadRawValues = await Promise.all(threadKeys.map(k => kvGet(c, k)))
-  }
 
   type ThreadEntity = { key: string; raw: string; text: string; meta: Record<string, unknown> }
   const threadEntities: ThreadEntity[] = []
@@ -224,27 +208,7 @@ export async function handle_get_location_occupants({ c, id, args }: ToolContext
 
   const locationKey = parsed.data.location_key.trim().toLowerCase()
 
-  let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
-
-  // Fallback: if index is empty, scan kvList for entities at this location
-  let rawValues: (string | null)[]
-  if (entityKeys.length === 0) {
-    const allKeys = await kvList(c)
-    const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
-    entityKeys = []
-    rawValues = []
-    for (let i = 0; i < allKeys.length; i++) {
-      const r = rawVals[i]
-      if (!r) continue
-      const { text } = parseKvEntry(r)
-      if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
-        entityKeys.push(allKeys[i])
-        rawValues.push(r)
-      }
-    }
-  } else {
-    rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
-  }
+  const { keys: entityKeys, rawValues } = await resolveIndexedEntities(c, `_idx:location:${locationKey}`, 'Location', locationKey)
 
   const occupants: Array<{ key: string; status: string | null }> = []
   for (let i = 0; i < entityKeys.length; i++) {
@@ -349,47 +313,8 @@ export async function handle_get_thread_comparison({ c, id, args }: ToolContext)
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()
-  let keysA = await getIndexedKeys(c, `_idx:thread:${threadA}`)
-  let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
-
-  // Fallback: if indexes are empty, scan kvList
-  let rawValuesA: (string | null)[]
-  let rawValuesB: (string | null)[]
-  if (keysA.length === 0 || keysB.length === 0) {
-    const allKeys = await kvList(c)
-    const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
-    const mapA = new Map<string, string>()
-    const mapB = new Map<string, string>()
-    if (keysA.length === 0) {
-      keysA = []
-      for (let i = 0; i < allKeys.length; i++) {
-        const r = allRaws[i]
-        if (!r) continue
-        const { text } = parseKvEntry(r)
-        if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
-          keysA.push(allKeys[i])
-          mapA.set(allKeys[i], r)
-        }
-      }
-    }
-    if (keysB.length === 0) {
-      keysB = []
-      for (let i = 0; i < allKeys.length; i++) {
-        const r = allRaws[i]
-        if (!r) continue
-        const { text } = parseKvEntry(r)
-        if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
-          keysB.push(allKeys[i])
-          mapB.set(allKeys[i], r)
-        }
-      }
-    }
-    rawValuesA = keysA.map(k => mapA.get(k) ?? null)
-    rawValuesB = keysB.map(k => mapB.get(k) ?? null)
-  } else {
-    rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
-    rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
-  }
+  const { keys: keysA, rawValues: rawValuesA } = await resolveIndexedEntities(c, `_idx:thread:${threadA}`, 'Thread', threadA)
+  const { keys: keysB, rawValues: rawValuesB } = await resolveIndexedEntities(c, `_idx:thread:${threadB}`, 'Thread', threadB)
   type TInfo = { key: string; timeline_value: number | null; current_date: string | null; location: string | null }
   const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
@@ -451,47 +376,8 @@ export async function handle_check_convergence({ c, id, args }: ToolContext): Pr
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()
-  let keysA = await getIndexedKeys(c, `_idx:thread:${threadA}`)
-  let keysB = await getIndexedKeys(c, `_idx:thread:${threadB}`)
-
-  // Fallback: if indexes are empty, scan kvList
-  let rawValuesA: (string | null)[]
-  let rawValuesB: (string | null)[]
-  if (keysA.length === 0 || keysB.length === 0) {
-    const allKeys = await kvList(c)
-    const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
-    const mapA = new Map<string, string>()
-    const mapB = new Map<string, string>()
-    if (keysA.length === 0) {
-      keysA = []
-      for (let i = 0; i < allKeys.length; i++) {
-        const r = allRaws[i]
-        if (!r) continue
-        const { text } = parseKvEntry(r)
-        if (extractRawField(text, 'Thread')?.toLowerCase() === threadA.toLowerCase()) {
-          keysA.push(allKeys[i])
-          mapA.set(allKeys[i], r)
-        }
-      }
-    }
-    if (keysB.length === 0) {
-      keysB = []
-      for (let i = 0; i < allKeys.length; i++) {
-        const r = allRaws[i]
-        if (!r) continue
-        const { text } = parseKvEntry(r)
-        if (extractRawField(text, 'Thread')?.toLowerCase() === threadB.toLowerCase()) {
-          keysB.push(allKeys[i])
-          mapB.set(allKeys[i], r)
-        }
-      }
-    }
-    rawValuesA = keysA.map(k => mapA.get(k) ?? null)
-    rawValuesB = keysB.map(k => mapB.get(k) ?? null)
-  } else {
-    rawValuesA = await Promise.all(keysA.map(k => kvGet(c, k)))
-    rawValuesB = await Promise.all(keysB.map(k => kvGet(c, k)))
-  }
+  const { keys: keysA, rawValues: rawValuesA } = await resolveIndexedEntities(c, `_idx:thread:${threadA}`, 'Thread', threadA)
+  const { keys: keysB, rawValues: rawValuesB } = await resolveIndexedEntities(c, `_idx:thread:${threadB}`, 'Thread', threadB)
   type TInfo = { key: string; current_date: string | null; location: string | null }
   const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 

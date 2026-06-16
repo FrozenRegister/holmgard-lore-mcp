@@ -4,8 +4,7 @@ import { kvGet, kvPut, kvDelete, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys } from '../lib/indexes'
-import { updateIndexes } from '../lib/indexes'
+import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_resolve_interaction({ c, id, args }: ToolContext): Promise<Response> {
@@ -595,28 +594,7 @@ export async function handle_process_stage_batch({ c, id, args }: ToolContext): 
   if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
 
   const locationKey = parsed.data.location_key.trim().toLowerCase()
-  let entityKeys = await getIndexedKeys(c, `_idx:location:${locationKey}`)
-
-  // Fallback: if index is empty, scan kvList for entities at this location
-  let rawValues: (string | null)[]
-  if (entityKeys.length === 0) {
-    const { kvList } = await import('../lib/kv')
-    const allKeys = await kvList(c)
-    const rawVals = await Promise.all(allKeys.map(k => kvGet(c, k)))
-    entityKeys = []
-    rawValues = []
-    for (let i = 0; i < allKeys.length; i++) {
-      const r = rawVals[i]
-      if (!r) continue
-      const { text } = parseKvEntry(r)
-      if (extractRawField(text, 'Location')?.trim().toLowerCase() === locationKey) {
-        entityKeys.push(allKeys[i])
-        rawValues.push(r)
-      }
-    }
-  } else {
-    rawValues = await Promise.all(entityKeys.map(k => kvGet(c, k)))
-  }
+  const { keys: entityKeys, rawValues } = await resolveIndexedEntities(c, `_idx:location:${locationKey}`, 'Location', locationKey)
   const now = new Date().toISOString()
 
   const batchResults = await Promise.all(entityKeys.map(async (key, i) => {
