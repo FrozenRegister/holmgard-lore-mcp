@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { env } from 'cloudflare:test'
 import { reset } from 'cloudflare:test'
-import { migrateCharactersKvToD1 } from '../rpg/utils/migrate-kv-to-d1-bulk'
+import { migrateCharacterKvToD1, migrateCharactersKvToD1 } from '../rpg/utils/migrate-kv-to-d1-bulk'
 import { setupRpgDb } from './setup-d1'
 
 const ELOWEN_LORE = [
@@ -108,6 +108,7 @@ const DAVE_LORE = [
 
 describe('Bulk KV-to-D1 Migration', () => {
   beforeEach(async () => {
+    await reset()
     await setupRpgDb(env.RPG_DB)
   })
 
@@ -281,5 +282,44 @@ describe('Bulk KV-to-D1 Migration', () => {
     expect(d1Row).toBeDefined()
     expect(d1Row?.name).toContain('Redirect Test')
     expect(d1Row?.faction_id).toBe('test-faction')
+  })
+
+  it('returns error when KV key does not exist', async () => {
+    const result = await migrateCharacterKvToD1({ env }, 'character:nonexistent-key')
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('KV entry not found')
+  })
+
+  it('returns error when RPG_DB binding is unavailable (catch block)', async () => {
+    await env.LORE_DB.put(
+      'character:catch-test',
+      JSON.stringify({
+        text: '# Character:Catch Test\n**Age:** 20\n## Mechanical Scaffolding\n**Weight-1:** 0.5',
+        meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      }),
+    )
+    // Pass a context without RPG_DB to trigger the catch block
+    const result = await migrateCharacterKvToD1({ env: { LORE_DB: env.LORE_DB } }, 'character:catch-test')
+    expect(result.status).toBe('error')
+    expect(result.error).toMatch(/TypeError|Cannot read|undefined/)
+  })
+
+  it('returns error when no character keys exist in KV', async () => {
+    // KV is empty (reset runs afterEach), so no character:* keys
+    const results = await migrateCharactersKvToD1({ env })
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('error')
+    expect(results[0].error).toBe('No character keys found in KV')
+  })
+
+  it('uses default limit of 5 when not specified', async () => {
+    // Seed 3 characters — fewer than the default limit of 5
+    await env.LORE_DB.put('character:def-a', JSON.stringify({ text: '# Character:Def A\n**Weight-1:** 0.5', meta: {} }))
+    await env.LORE_DB.put('character:def-b', JSON.stringify({ text: '# Character:Def B\n**Weight-1:** 0.5', meta: {} }))
+    await env.LORE_DB.put('character:def-c', JSON.stringify({ text: '# Character:Def C\n**Weight-1:** 0.5', meta: {} }))
+    // Call without explicit limit — uses default of 5
+    const results = await migrateCharactersKvToD1({ env })
+    expect(results).toHaveLength(3)
+    expect(results.every(r => r.status === 'migrated')).toBe(true)
   })
 })

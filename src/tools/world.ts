@@ -4,7 +4,7 @@ import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys, resolveIndexedEntities } from '../lib/indexes'
+import { resolveIndexedEntities } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<Response> {

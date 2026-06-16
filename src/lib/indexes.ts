@@ -111,23 +111,20 @@ export async function resolveIndexedEntities(
   matchField: string,
   matchValue: string,
 ): Promise<{ keys: string[]; rawValues: (string | null)[] }> {
-  let keys = await getIndexedKeys(c, indexKey)
+  const keys = await getIndexedKeys(c, indexKey)
 
   if (keys.length === 0) {
     const allKeys = await kvList(c)
     const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
-    keys = []
-    const rawValues: (string | null)[] = []
-    for (let i = 0; i < allKeys.length; i++) {
-      const r = allRaws[i]
-      if (!r) continue
-      const { text } = parseKvEntry(r)
-      if (extractRawField(text, matchField)?.trim().toLowerCase() === matchValue.toLowerCase()) {
-        keys.push(allKeys[i])
-        rawValues.push(r)
-      }
-    }
-    return { keys, rawValues }
+    // Filter to entries that exist and match the target field value
+    const pairs = allKeys
+      .map((k, i) => ({ key: k, raw: allRaws[i] }))
+      .filter((p): p is { key: string; raw: string } => p.raw !== null)
+      .filter(({ raw }) => {
+        const { text } = parseKvEntry(raw)
+        return extractRawField(text, matchField)?.trim().toLowerCase() === matchValue.toLowerCase()
+      })
+    return { keys: pairs.map(p => p.key), rawValues: pairs.map(p => p.raw) }
   }
 
   const rawValues = await Promise.all(keys.map(k => kvGet(c, k)))
