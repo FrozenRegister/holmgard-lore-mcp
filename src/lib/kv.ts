@@ -1,6 +1,7 @@
 // src/lib/kv.ts
 import type { AppBindings } from '../types'
 import { CHANGELOG_KEY } from '../constants'
+import { getKvListCache, setKvListCache, getKvListMapsCache, setKvListMapsCache } from './cache'
 
 // ── In-memory fallback ────────────────────────────────────────────────────────
 // Keeps the server functional when Cloudflare KV is unavailable (e.g. local dev).
@@ -9,6 +10,7 @@ export const loreDB: Record<string, string> = {}
 
 // ── KV helpers ────────────────────────────────────────────────────────────────
 // Reads fall back to loreDB automatically so callers don't need to handle it.
+// List operations are cached within request scope to avoid redundant KV calls.
 
 export function getKV(c: { env: AppBindings }): KVNamespace | null {
   return c.env.LORE_DB ?? null
@@ -23,6 +25,10 @@ export async function kvGet(c: { env: AppBindings }, key: string): Promise<strin
 }
 
 export async function kvList(c: { env: AppBindings }): Promise<string[]> {
+  // Check request-scoped cache first (avoids redundant KV calls within single request)
+  const cached = getKvListCache(c as any)
+  if (cached) return cached
+
   try {
     const kv = getKV(c)
     if (kv) {
@@ -35,16 +41,23 @@ export async function kvList(c: { env: AppBindings }): Promise<string[]> {
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
+      setKvListCache(c as any, keys)
       return keys
     }
   } catch (e) {
     console.warn('KV list failed', e)
   }
 
-  return Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
+  const fallbackKeys = Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:'))
+  setKvListCache(c as any, fallbackKeys)
+  return fallbackKeys
 }
 
 export async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
+  // Check request-scoped cache first (avoids redundant KV calls within single request)
+  const cached = getKvListMapsCache(c as any)
+  if (cached) return cached
+
   try {
     const kv = getKV(c)
     if (kv) {
@@ -57,13 +70,16 @@ export async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
+      setKvListMapsCache(c as any, keys)
       return keys
     }
   } catch (e) {
     console.warn('KV list maps failed', e)
   }
 
-  return Object.keys(loreDB).filter(k => k.startsWith('map:'))
+  const fallbackKeys = Object.keys(loreDB).filter(k => k.startsWith('map:'))
+  setKvListMapsCache(c as any, fallbackKeys)
+  return fallbackKeys
 }
 
 export async function kvPut(c: { env: AppBindings }, key: string, value: string): Promise<boolean> {
@@ -81,3 +97,6 @@ export async function kvDelete(c: { env: AppBindings }, key: string): Promise<bo
   } catch (e) { console.warn('KV delete failed', e) }
   return false
 }
+
+// Export cache utilities for mutation handlers to clear cache after writes
+export { clearRequestCache } from './cache'
