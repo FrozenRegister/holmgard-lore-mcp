@@ -1,6 +1,6 @@
 // src/tools/lore.ts
 import { z } from 'zod'
-import { kvGet, kvPut, kvDelete, getKV, loreDB, clearRequestCache } from '../lib/kv'
+import { kvGet, kvPut, kvDelete, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
@@ -33,7 +33,6 @@ export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Res
   await updateIndexes(c, key, text, existingText)
   await appendChangelog(c, key, version)
   loreDB[key] = text
-  clearRequestCache(c)
   return c.json(makeResult(id, {
     content: [{
       type: 'text',
@@ -57,7 +56,6 @@ export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<
     await appendChangelog(c, key, 0, 'delete')
   }
   delete loreDB[key]
-  clearRequestCache(c)
   return c.json(makeResult(id,
     {
       content: [{
@@ -156,7 +154,6 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
-  clearRequestCache(c)
   return c.json(makeResult(id,
     {
       content: [{ type: 'text', text: successMessage }],
@@ -209,7 +206,6 @@ export async function handle_batch_set_lore({ c, id, args }: ToolContext): Promi
     ? `Saved ${okCount} lore entr${okCount === 1 ? 'y' : 'ies'}.`
     : `Saved ${okCount}/${cleanedEntries.length} entries. ${failCount} failed — see results.`
 
-  clearRequestCache(c)
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
     metadata: { total: cleanedEntries.length, set_count: okCount, failed_count: failCount },
@@ -346,7 +342,6 @@ export async function handle_batch_mutate({ c, id, args }: ToolContext): Promise
     ? `Applied ${okCount} mutation${okCount === 1 ? '' : 's'}.`
     : `Applied ${okCount}/${mutationResults.length} mutations. ${failCount} failed — see results.`
 
-  clearRequestCache(c)
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
     metadata: { total: mutationResults.length, ok_count: okCount, failed_count: failCount },
@@ -395,7 +390,6 @@ export async function handle_restore_lore({ c, id, args }: ToolContext): Promise
   }
 
   const { meta } = parseKvEntry(previous)
-  clearRequestCache(c)
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.` }],
     metadata: { key, restored: true, restored_version: meta.version ?? null, remaining_history: history.length }
@@ -480,7 +474,6 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
-  clearRequestCache(c)
   return c.json(makeResult(id,
     {
       content: [{
@@ -549,7 +542,6 @@ export async function handle_append_to_section({ c, id, args }: ToolContext): Pr
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
   loreDB[key] = mutatedText
-  clearRequestCache(c)
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `${action}: "${section}" in "${key}" (v${version}).` }],
@@ -584,7 +576,6 @@ export async function handle_move_entity({ c, id, args }: ToolContext): Promise<
   await updateIndexes(c, key, updatedText, oldText)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
-  clearRequestCache(c)
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Moved "${key}" to "${newLoc}".` }],
