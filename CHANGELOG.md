@@ -12,6 +12,8 @@
 
 ### Added
 
+- **`POST /admin/set-lore-batch` and `POST /admin/delete-lore-batch`** — Bulk admin endpoints for the lore editor sync layer. `set-lore-batch` accepts `{ items: [{key, text}] }` and writes all entries in parallel with full history/version/index/changelog handling (same logic as `/admin/set-lore`). `delete-lore-batch` accepts `{ keys: string[] }` and deletes all entries in parallel. Reduces lore editor Worker invocations from N+1 per sync cycle to 1 per operation (100-topic sync goes from 101 HTTP requests to 2).
+
 - **Request-scoped KV list caching** (closes #26) — Added per-request cache for `kvList()` and `kvListMaps()` results to eliminate redundant KV calls within a single MCP request. Multiple tools within one request that read all keys now hit the cache instead of KV. Cache is cleared automatically after any mutation (set_lore, patch_lore, delete_lore, batch_mutate, etc.). New `src/lib/cache.ts` module provides `getRequestCache()`, `clearRequestCache()` utilities. Typical impact: 2–4 redundant KV calls per request eliminated, reducing latency and KV billing.
 
 - **`resolveIndexedEntities` utility extraction** (#9) — Extracted the repeated index-fallback-scan pattern from `handle_thread_tick`, `handle_get_location_occupants`, `handle_get_thread_comparison`, `handle_check_convergence`, and `handle_process_stage_batch` into a shared utility in `src/lib/indexes.ts`. Reduces code duplication (~100 lines) and eliminates copy-paste risk.

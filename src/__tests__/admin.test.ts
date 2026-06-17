@@ -282,6 +282,122 @@ describe('admin endpoints', () => {
     })
   })
 
+  describe('/admin/set-lore-batch', () => {
+    it('stores multiple items and returns saved count', async () => {
+      const res = await adminPost('/admin/set-lore-batch', {
+        secret: ADMIN_SECRET,
+        items: [
+          { key: 'batch:set-a', text: 'Batch A text' },
+          { key: 'batch:set-b', text: 'Batch B text' },
+        ],
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.saved).toBe(2)
+      const rawA = await env.LORE_DB.get('batch:set-a')
+      const rawB = await env.LORE_DB.get('batch:set-b')
+      expect(rawA).not.toBeNull()
+      expect(rawB).not.toBeNull()
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminPost('/admin/set-lore-batch', {
+        secret: 'wrong-secret',
+        items: [{ key: 'batch:unauth', text: 'text' }],
+      })
+      expect(res.status).toBe(401)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 401 when secret is omitted', async () => {
+      const res = await adminPost('/admin/set-lore-batch', {
+        items: [{ key: 'batch:unauth', text: 'text' }],
+      })
+      expect(res.status).toBe(401)
+    })
+
+    it('returns 400 when items is missing', async () => {
+      const res = await adminPost('/admin/set-lore-batch', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 400 when items is an empty array', async () => {
+      const res = await adminPost('/admin/set-lore-batch', { secret: ADMIN_SECRET, items: [] })
+      expect(res.status).toBe(400)
+    })
+
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/set-lore-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json{',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
+  describe('/admin/delete-lore-batch', () => {
+    it('deletes multiple keys and returns deleted count', async () => {
+      await env.LORE_DB.put('batch:del-a', JSON.stringify({ text: 'Del A', meta: {} }))
+      await env.LORE_DB.put('batch:del-b', JSON.stringify({ text: 'Del B', meta: {} }))
+      const res = await adminPost('/admin/delete-lore-batch', {
+        secret: ADMIN_SECRET,
+        keys: ['batch:del-a', 'batch:del-b'],
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.deleted).toBe(2)
+      expect(await env.LORE_DB.get('batch:del-a')).toBeNull()
+      expect(await env.LORE_DB.get('batch:del-b')).toBeNull()
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminPost('/admin/delete-lore-batch', {
+        secret: 'wrong-secret',
+        keys: ['batch:del-x'],
+      })
+      expect(res.status).toBe(401)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 400 when keys is missing', async () => {
+      const res = await adminPost('/admin/delete-lore-batch', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(400)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 400 when keys is an empty array', async () => {
+      const res = await adminPost('/admin/delete-lore-batch', { secret: ADMIN_SECRET, keys: [] })
+      expect(res.status).toBe(400)
+    })
+
+    it('500 responses never expose internal details', async () => {
+      const res = await SELF.fetch('http://example.com/admin/delete-lore-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '}{broken',
+      })
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(typeof body.error).toBe('string')
+      expect(body.error).not.toContain('KVNamespace')
+      expect(body.error).not.toContain('.ts:')
+    })
+  })
+
   describe('/admin/gc', () => {
     it('deletes _csp_report:* keys and returns deleted_csp_reports count', async () => {
       await env.LORE_DB.put('_csp_report:2026-01-01T00:00:00.000Z:aaa111', JSON.stringify({ blocked: 'data' }))

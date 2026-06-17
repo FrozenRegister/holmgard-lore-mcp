@@ -21,4 +21,26 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints', () => {
     expect(res.ok).toBe(true)
     expect(typeof res.deleted_csp_reports).toBe('number')
   })
+
+  it('admin/set-lore-batch endpoint', async () => {
+    const k1 = `test:batch-set-${uid()}`
+    const k2 = `test:batch-set-${uid()}`
+    const res = await adminPost('/admin/set-lore-batch', {
+      items: [{ key: k1, text: 'Batch A' }, { key: k2, text: 'Batch B' }],
+    })
+    expect(res.ok).toBe(true)
+    expect(res.saved).toBe(2)
+    await adminPost('/admin/delete-lore-batch', { keys: [k1, k2] })
+  })
+
+  it('admin/delete-lore-batch endpoint', async () => {
+    const k1 = `test:batch-del-${uid()}`
+    const k2 = `test:batch-del-${uid()}`
+    await adminPost('/admin/set-lore-batch', {
+      items: [{ key: k1, text: 'Del A' }, { key: k2, text: 'Del B' }],
+    })
+    const res = await adminPost('/admin/delete-lore-batch', { keys: [k1, k2] })
+    expect(res.ok).toBe(true)
+    expect(res.deleted).toBe(2)
+  })
 })
