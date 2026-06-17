@@ -1,5 +1,5 @@
 // src/middleware/rate-limit.ts
-import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX } from '../constants'
+import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, WS_RECONNECT_WINDOW_MS, WS_RECONNECT_LIMIT } from '../constants'
 
 // In-memory rate limiter (per-instance; sufficient for a single-worker
 // deployment. For multi-instance scale, use Cloudflare Rate Limiting rules.)
@@ -29,4 +29,39 @@ export default async function rateLimitMiddleware(c: any, next: any): Promise<an
     return c.json({ error: 'Rate limit exceeded' }, 429)
   }
   await next()
+}
+
+// Separate, tighter rate limit for WebSocket upgrade requests.
+// Healthy MCP clients connect once and hold the session; repeated upgrades
+// from the same IP indicate a reconnect loop and are throttled here before
+// the request ever reaches the Durable Object.
+const wsReconnectMap = new Map<string, { count: number; resetAt: number }>()
+
+export function wsReconnectRateLimit(c: any, next: any): Promise<any> {
+  const ip = c.req.header('CF-Connecting-IP')
+  if (!ip) return next()
+
+  const upgrade = c.req.header('Upgrade') ?? ''
+  if (upgrade.toLowerCase() !== 'websocket') return next()
+
+  const now = Date.now()
+
+  if (wsReconnectMap.size > 5000) {
+    for (const [key, val] of wsReconnectMap) {
+      if (val.resetAt < now) wsReconnectMap.delete(key)
+    }
+  }
+
+  let entry = wsReconnectMap.get(ip)
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + WS_RECONNECT_WINDOW_MS }
+    wsReconnectMap.set(ip, entry)
+  }
+  entry.count++
+  if (entry.count > WS_RECONNECT_LIMIT) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000)
+    c.header('Retry-After', String(retryAfter))
+    return Promise.resolve(c.json({ error: 'Too many reconnect attempts. Back off and retry.' }, 429))
+  }
+  return next()
 }

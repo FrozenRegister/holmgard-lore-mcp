@@ -6,7 +6,7 @@ import type { AppBindings } from './types'
 import { makeResult, makeError, validateRequest } from './lib/rpc'
 import { kvGet, kvList, getKV } from './lib/kv'
 import { parseKvEntry } from './lib/lore'
-import rateLimitMiddleware from './middleware/rate-limit'
+import rateLimitMiddleware, { wsReconnectRateLimit } from './middleware/rate-limit'
 import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
@@ -55,6 +55,8 @@ app.get('/health', (c) => {
 // ── Streamable HTTP middleware (spec 2025-03-26) ──────────────────────────────
 // Intercepts requests with Streamable HTTP transport markers before route
 // handlers run. Legacy raw JSON-RPC requests fall through via next().
+app.use('/mcp', wsReconnectRateLimit)
+
 app.use('/mcp', async (c, next) => {
   const sessionId = c.req.header('Mcp-Session-Id')
   const acceptHeader = c.req.header('Accept') ?? ''
