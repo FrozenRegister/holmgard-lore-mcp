@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **API surface convention documented; D1 map readback re-specced as MCP, not REST** — Added an "API surface convention" section to `CLAUDE.md`: reads/queries belong on `POST /mcp` (JSON-RPC, as `tools/call` tools plus bare-method aliases like `get_lore`/`list_topics`), while privileged writes and bulk admin ops stay on `POST /admin/*` gated by `ADMIN_SECRET`. Reworked `docs/d1-readback-api-design.md` accordingly: the planned map readback is now three `/mcp` methods (`get_map_hexes`, `get_map_landmarks`, `get_map_meta`) returning structured JSON in `result`, instead of the previously-drafted `GET /map/{mapId}/...` REST routes. Map **push** endpoints (`/admin/map/push-*`) are unchanged. Planning/docs only — no code change yet; the MCP tool count rises 15 → 18 when the methods are implemented.
+
 ### Fixed
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
