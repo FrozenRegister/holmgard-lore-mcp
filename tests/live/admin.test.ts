@@ -16,9 +16,9 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints', () => {
     expect(res.ok).toBe(true)
   })
 
-  it('admin/purge-csp-reports returns ok:true with deleted count', async () => {
-    const res = await adminPost('/admin/purge-csp-reports', {})
+  it('admin/gc returns ok:true with deleted_csp_reports count', async () => {
+    const res = await adminPost('/admin/gc', {})
     expect(res.ok).toBe(true)
-    expect(typeof res.deleted).toBe('number')
+    expect(typeof res.deleted_csp_reports).toBe('number')
   })
 })

@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Added `POST /admin/purge-csp-reports` endpoint to bulk-delete the accumulated entries from production KV.
+- **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Extended `/admin/gc` to purge all `_csp_report:*` keys automatically; response now includes `deleted_csp_reports` count.
 
 ### Added
 

@@ -185,7 +185,19 @@ admin.post('/gc', async (c) => {
       cursor = list.list_complete ? undefined : list.cursor
     } while (cursor)
 
-    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
+    // Purge all CSP violation reports (never needed after logging)
+    let deletedCspReports = 0
+    cursor = undefined
+    do {
+      const list: any = await kv.list({ prefix: '_csp_report:', cursor })
+      for (const k of list.keys) {
+        await kv.delete(k.name)
+        deletedCspReports++
+      }
+      cursor = list.list_complete ? undefined : list.cursor
+    } while (cursor)
+
+    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots, deleted_csp_reports: deletedCspReports }, 200)
   } catch (e) {
     console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
     return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
@@ -422,35 +434,6 @@ admin.post('/migrate-all-characters', async (c) => {
       failed,
       results,
     }, 200)
-  } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
-  }
-})
-
-admin.post('/purge-csp-reports', async (c) => {
-  try {
-    const body = await c.req.json()
-
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-
-    const kv = getKV(c)
-    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
-
-    let deleted = 0
-    let cursor: string | undefined
-    do {
-      const list: any = await kv.list({ prefix: '_csp_report:', cursor })
-      for (const k of list.keys) {
-        await kv.delete(k.name)
-        deleted++
-      }
-      cursor = list.list_complete ? undefined : list.cursor
-    } while (cursor)
-
-    return c.json({ ok: true, deleted }, 200)
   } catch (e) {
     console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
     return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
