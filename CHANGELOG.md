@@ -6,9 +6,13 @@
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
 
+- **Slack alert on WebSocket rate limit** — When `SLACK_WEBHOOK_URL` is set as a Worker secret, the rate limiter posts a notification to Slack on the first excess request per IP per window. Fires exactly once per window via `waitUntil` (best-effort, never blocks the 429 response). Set the secret with `wrangler secret put SLACK_WEBHOOK_URL`.
+
 - **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Extended `/admin/gc` to purge all `_csp_report:*` keys automatically; response now includes `deleted_csp_reports` count.
 
 ### Added
+
+- **`POST /admin/set-lore-batch` and `POST /admin/delete-lore-batch`** — Bulk admin endpoints for the lore editor sync layer. `set-lore-batch` accepts `{ items: [{key, text}] }` and writes all entries in parallel with full history/version/index/changelog handling (same logic as `/admin/set-lore`). `delete-lore-batch` accepts `{ keys: string[] }` and deletes all entries in parallel. Reduces lore editor Worker invocations from N+1 per sync cycle to 1 per operation (100-topic sync goes from 101 HTTP requests to 2).
 
 - **Request-scoped KV list caching** (closes #26) — Added per-request cache for `kvList()` and `kvListMaps()` results to eliminate redundant KV calls within a single MCP request. Multiple tools within one request that read all keys now hit the cache instead of KV. Cache is cleared automatically after any mutation (set_lore, patch_lore, delete_lore, batch_mutate, etc.). New `src/lib/cache.ts` module provides `getRequestCache()`, `clearRequestCache()` utilities. Typical impact: 2–4 redundant KV calls per request eliminated, reducing latency and KV billing.
 

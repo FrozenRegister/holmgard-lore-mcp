@@ -134,6 +134,98 @@ admin.post('/delete-lore', async (c) => {
   }
 })
 
+admin.post('/set-lore-batch', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const items: unknown[] = Array.isArray(body?.items) ? body.items : []
+    if (!items.length) {
+      return c.json({ ok: false, error: 'items must be a non-empty array' }, 400)
+    }
+
+    const now = new Date().toISOString()
+    const failedKeys: string[] = []
+
+    await Promise.all(items.map(async (item) => {
+      const key = extractKey(item)
+      const text = extractText(item)
+      if (!key || !text) { failedKeys.push(String((item as Record<string, unknown>)?.key ?? '?')); return }
+
+      try {
+        const existingRaw = await kvGet(c, key)
+        const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
+        if (existingRaw) await pushHistory(c, key, existingRaw)
+
+        const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+        const payload = JSON.stringify({
+          text,
+          meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
+        })
+        const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
+        await kvPut(c, key, payload)
+        await updateIndexes(c, key, text, existingText)
+        await appendChangelog(c, key, version)
+        loreDB[key] = text
+      } catch {
+        failedKeys.push(key)
+      }
+    }))
+
+    if (failedKeys.length) {
+      return c.json({ ok: false, error: 'KV write failed', failedKeys }, 500)
+    }
+    return c.json({ ok: true, saved: items.length }, 200)
+
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
+admin.post('/delete-lore-batch', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const rawKeys: unknown[] = Array.isArray(body?.keys) ? body.keys : []
+    if (!rawKeys.length) {
+      return c.json({ ok: false, error: 'keys must be a non-empty array' }, 400)
+    }
+
+    const keys = rawKeys
+      .filter((k): k is string => typeof k === 'string' && !!k.trim())
+      .map(k => k.trim().toLowerCase())
+
+    if (!keys.length) {
+      return c.json({ ok: false, error: 'keys must be a non-empty array' }, 400)
+    }
+
+    await Promise.all(keys.map(async (key) => {
+      const existingRaw = await kvGet(c, key)
+      const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
+      const deleted = await kvDelete(c, key)
+      if (deleted) {
+        await updateIndexes(c, key, '', existingText)
+        await appendChangelog(c, key, 0, 'delete')
+      }
+      delete loreDB[key]
+    }))
+
+    return c.json({ ok: true, deleted: keys.length }, 200)
+
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
 admin.post('/gc', async (c) => {
   try {
     const body = await c.req.json()

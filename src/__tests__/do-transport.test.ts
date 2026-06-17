@@ -190,6 +190,29 @@ describe('WebSocket reconnect rate limit', () => {
     expect(body.error).toMatch(/reconnect/i)
   })
 
+  it('fires Slack notification on first excess request (SLACK_WEBHOOK_URL is set)', async () => {
+    // The miniflare env has SLACK_WEBHOOK_URL set to a fake URL. The middleware
+    // attempts the fetch on count === WS_RECONNECT_LIMIT + 1; the connection error
+    // is caught and swallowed. Response must still be 429 (notification is best-effort).
+    const ip = '1.2.3.100'
+    const headers = {
+      'Upgrade': 'websocket',
+      'Connection': 'Upgrade',
+      'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+      'Sec-WebSocket-Version': '13',
+      'CF-Connecting-IP': ip,
+      'X-Api-Key': 'test-api-key-xyz',
+      'Accept': 'text/event-stream',
+      'Mcp-Session-Id': 'test-session-rate-limit-3',
+    }
+    for (let i = 0; i < 10; i++) {
+      await SELF.fetch('http://example.com/mcp', { method: 'GET', headers })
+    }
+    const res = await SELF.fetch('http://example.com/mcp', { method: 'GET', headers })
+    // Notification fires asynchronously via waitUntil; response is still 429
+    expect(res.status).toBe(429)
+  })
+
   it('does not rate-limit non-WebSocket upgrade requests', async () => {
     // Regular POST to /mcp should not be affected by WS rate limiter
     const res = await SELF.fetch('http://example.com/mcp', {

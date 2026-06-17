@@ -1,6 +1,21 @@
 // src/middleware/rate-limit.ts
 import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, WS_RECONNECT_WINDOW_MS, WS_RECONNECT_LIMIT } from '../constants'
 
+async function notifySlack(webhookUrl: string | undefined, ip: string, windowEndMs: number): Promise<void> {
+  if (!webhookUrl) return
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `*WS Reconnect Rate Limit Hit*\nIP \`${ip}\` exceeded ${WS_RECONNECT_LIMIT} WebSocket reconnects/minute. Throttled until ${new Date(windowEndMs).toISOString()}.`,
+      }),
+    })
+  } catch {
+    // Best-effort — never block the response for a notification failure
+  }
+}
+
 // In-memory rate limiter (per-instance; sufficient for a single-worker
 // deployment. For multi-instance scale, use Cloudflare Rate Limiting rules.)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
@@ -61,6 +76,10 @@ export function wsReconnectRateLimit(c: any, next: any): Promise<any> {
   if (entry.count > WS_RECONNECT_LIMIT) {
     const retryAfter = Math.ceil((entry.resetAt - now) / 1000)
     c.header('Retry-After', String(retryAfter))
+    // Notify Slack exactly once per IP per window (on the first excess request)
+    if (entry.count === WS_RECONNECT_LIMIT + 1 && c.executionCtx?.waitUntil) {
+      c.executionCtx.waitUntil(notifySlack(c.env?.SLACK_WEBHOOK_URL, ip, entry.resetAt))
+    }
     return Promise.resolve(c.json({ error: 'Too many reconnect attempts. Back off and retry.' }, 429))
   }
   return next()

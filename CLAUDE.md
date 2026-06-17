@@ -263,15 +263,35 @@ Never access properties on `unknown` without a type assertion — TypeScript wil
 
 **Before pushing**, run the fast local gate (`pnpm run type-check`, `pnpm run lint`, and the test file(s) you touched) — see [Pre-Commit Validation](#pre-commit-validation). The full suite + coverage runs in CI (~2 min); treat green CI as the bar rather than grinding the whole suite locally.
 
-**Push to a feature branch first, never directly to main:**
+### Branch naming
 
-1. Create a feature branch: `git checkout -b feat/my-feature`
-2. Commit locally: `git commit -m "..."`
-3. Push to the branch: `git push -u origin feat/my-feature`
-4. Create a PR on GitHub (see [Pull Requests](#pull-requests-and-issue-linking) below)
-5. Add the `auto-merge` label to your PR — CI will run the full suite, and the PR will auto-merge when all checks pass
+Every branch must use one of these prefixes, matching the conventional commit type for the primary change:
 
-This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`. Auto-merge PRs eliminate manual merge steps once CI validates the change.
+| Prefix | When to use |
+|---|---|
+| `feat/` | New feature or capability |
+| `fix/` | Bug fix |
+| `refactor/` | Code restructuring with no behavior change |
+| `test/` | Adding or improving tests only |
+| `docs/` | Documentation only |
+| `chore/` | Maintenance — deps, config, CI, tooling |
+| `perf/` | Performance improvement |
+
+Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upgrade-vitest`.
+
+**Never push directly to `main`.** All changes must go through a PR so CI runs first.
+
+### Required workflow — every change
+
+1. **Create a GitHub Issue** describing the problem or feature before writing any code. Use `gh issue create` or the GitHub UI. This gives the PR something to close and provides a paper trail.
+2. **Create a branch** using the appropriate prefix: `git checkout -b feat/my-feature`
+3. **Commit** locally with a conventional commit message
+4. **Run the fast local gate** before pushing (type-check, lint, touched test file)
+5. **Push** to the branch: `git push -u origin feat/my-feature`
+6. **Create a PR** linking to the Issue (see [Pull Requests](#pull-requests-and-issue-linking) below) — this triggers CI
+7. **Add the `auto-merge` label** — CI will run the full suite, and the PR will auto-merge when all checks pass
+
+This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`.
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 

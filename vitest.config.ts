@@ -28,6 +28,9 @@ export default defineConfig({
         bindings: {
           ADMIN_SECRET: process.env.ADMIN_SECRET || 'test-secret-123',
           MCP_API_KEY: process.env.MCP_API_KEY || 'test-api-key-xyz',
+          // Fake URL so the notifySlack fetch path executes in tests (connection
+          // error is caught and swallowed — no real Slack message is sent)
+          SLACK_WEBHOOK_URL: 'http://127.0.0.1:0/slack',
         },
         // Local AI mock — returns { response: "AI response mock" } for run() calls.
         ai: { binding: 'AI' },
