@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Added `POST /admin/purge-csp-reports` endpoint to bulk-delete the accumulated entries from production KV.
+
 ### Added
 
 - **Request-scoped KV list caching** (closes #26) — Added per-request cache for `kvList()` and `kvListMaps()` results to eliminate redundant KV calls within a single MCP request. Multiple tools within one request that read all keys now hit the cache instead of KV. Cache is cleared automatically after any mutation (set_lore, patch_lore, delete_lore, batch_mutate, etc.). New `src/lib/cache.ts` module provides `getRequestCache()`, `clearRequestCache()` utilities. Typical impact: 2–4 redundant KV calls per request eliminated, reducing latency and KV billing.

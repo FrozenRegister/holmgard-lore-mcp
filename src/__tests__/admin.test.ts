@@ -420,4 +420,66 @@ describe('admin endpoints', () => {
       expect(body.skipped).toBeGreaterThanOrEqual(1)
     })
   })
+
+  describe('/admin/purge-csp-reports', () => {
+    it('deletes all _csp_report:* keys and returns count', async () => {
+      await env.LORE_DB.put('_csp_report:2026-01-01T00:00:00.000Z:aaa111', JSON.stringify({ blocked: 'data' }))
+      await env.LORE_DB.put('_csp_report:2026-01-02T00:00:00.000Z:bbb222', JSON.stringify({ blocked: 'data' }))
+
+      const res = await adminPost('/admin/purge-csp-reports', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.deleted).toBe(2)
+
+      expect(await env.LORE_DB.get('_csp_report:2026-01-01T00:00:00.000Z:aaa111')).toBeNull()
+      expect(await env.LORE_DB.get('_csp_report:2026-01-02T00:00:00.000Z:bbb222')).toBeNull()
+    })
+
+    it('returns deleted:0 when no CSP report keys exist', async () => {
+      const res = await adminPost('/admin/purge-csp-reports', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.deleted).toBe(0)
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminPost('/admin/purge-csp-reports', { secret: 'wrong' })
+      expect(res.status).toBe(401)
+    })
+
+    it('does not delete non-CSP keys', async () => {
+      await env.LORE_DB.put('lore:safe-entry', JSON.stringify({ text: 'keep me', meta: {} }))
+      await env.LORE_DB.put('_csp_report:2026-01-01T00:00:00.000Z:cleanup', JSON.stringify({ blocked: 'data' }))
+
+      await adminPost('/admin/purge-csp-reports', { secret: ADMIN_SECRET })
+
+      expect(await env.LORE_DB.get('lore:safe-entry')).not.toBeNull()
+    })
+  })
+
+  describe('/csp-report endpoint', () => {
+    it('returns status:reported without writing to KV', async () => {
+      const reportPayload = {
+        'blocked-uri': 'https://evil.example.com/script.js',
+        'violated-directive': 'script-src',
+        'source-file': 'https://myapp.example.com/',
+        'original-policy': "default-src 'self'",
+        disposition: 'enforce',
+      }
+      const res = await SELF.fetch('http://example.com/csp-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportPayload),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.status).toBe('reported')
+
+      // Verify nothing was written to KV
+      const listed: any = await env.LORE_DB.list({ prefix: '_csp_report:' })
+      expect(listed.keys).toHaveLength(0)
+    })
+  })
 })

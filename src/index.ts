@@ -257,17 +257,6 @@ app.post('/csp-report', async (c) => {
 
     console.log('[CSP Violation]', JSON.stringify(violation))
 
-    // Optionally store in KV for later review (TODO: implement dashboard)
-    const kv = getKV(c)
-    if (kv) {
-      try {
-        const key = `_csp_report:${timestamp}:${Math.random().toString(36).slice(2, 9)}`
-        await kv.put(key, JSON.stringify(violation))
-      } catch (e) {
-        console.error('[CSP Report] Failed to store in KV:', e)
-      }
-    }
-
     return c.json({ status: 'reported' }, 200)
   } catch (e) {
     console.error('[CSP Report] Error processing report:', e)

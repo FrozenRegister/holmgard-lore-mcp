@@ -428,6 +428,35 @@ admin.post('/migrate-all-characters', async (c) => {
   }
 })
 
+admin.post('/purge-csp-reports', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const kv = getKV(c)
+    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
+
+    let deleted = 0
+    let cursor: string | undefined
+    do {
+      const list: any = await kv.list({ prefix: '_csp_report:', cursor })
+      for (const k of list.keys) {
+        await kv.delete(k.name)
+        deleted++
+      }
+      cursor = list.list_complete ? undefined : list.cursor
+    } while (cursor)
+
+    return c.json({ ok: true, deleted }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
 // ── Map routes ──────────────────────────────────────────────────────────────
 
 // Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
