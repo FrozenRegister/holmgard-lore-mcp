@@ -26,6 +26,7 @@ export type AppBindings = {
   ADMIN_SECRET?: string
   MCP_OBJECT?: DurableObjectNamespace
   AI?: Ai
+  SLACK_WEBHOOK_URL?: string
 }
 
 // Satisfies the McpAgent<Env extends Cloudflare.Env> constraint — required bindings
