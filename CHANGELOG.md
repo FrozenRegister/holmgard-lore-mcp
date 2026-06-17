@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Changed
-
-- **API surface convention documented; D1 map readback re-specced as MCP, not REST** — Added an "API surface convention" section to `CLAUDE.md`: reads/queries belong on `POST /mcp` (JSON-RPC, as `tools/call` tools plus bare-method aliases like `get_lore`/`list_topics`), while privileged writes and bulk admin ops stay on `POST /admin/*` gated by `ADMIN_SECRET`. Reworked `docs/d1-readback-api-design.md` accordingly: the planned map readback is now three `/mcp` methods (`get_map_hexes`, `get_map_landmarks`, `get_map_meta`) returning structured JSON in `result`, instead of the previously-drafted `GET /map/{mapId}/...` REST routes. Map **push** endpoints (`/admin/map/push-*`) are unchanged. Planning/docs only — no code change yet; the MCP tool count rises 15 → 18 when the methods are implemented.
-
 ### Fixed
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
@@ -38,6 +34,8 @@
 - **`get_inventory` / `transfer_item` support line-separated inventory** (#41) — Parser now accepts both comma-separated (`item1×1, item2×2`) and line-separated (header alone on its line, items below) inventory formats. Fixed root cause: `extractRawField`'s `\s*$` pattern silently crossed newlines, returning only the first item; now uses direct line scanning to detect the header-only pattern before falling back to `extractRawField`. Tests cover: termination at next bold field, blank lines inside inventory block, bare-item quantity defaulting to 1, `Items:` field name fallback, multi-line source in `transfer_item`, and source with no inventory field.
 
 ### Changed
+
+- **API surface convention documented; D1 map readback re-specced as MCP, not REST** — Added an "API surface convention" section to `CLAUDE.md`: reads/queries belong on `POST /mcp` (JSON-RPC, as `tools/call` tools plus bare-method aliases like `get_lore`/`list_topics`), while privileged writes and bulk admin ops stay on `POST /admin/*` gated by `ADMIN_SECRET`. Reworked `docs/d1-readback-api-design.md` accordingly: the planned map readback is now three `/mcp` methods (`get_map_hexes`, `get_map_landmarks`, `get_map_meta`) returning structured JSON in `result`, instead of the previously-drafted `GET /map/{mapId}/...` REST routes. Map **push** endpoints (`/admin/map/push-*`) are unchanged. Planning/docs only — no code change yet; the MCP tool count rises 15 → 18 when the methods are implemented.
 
 - **Pre-commit policy: fast local gate, CI as the full gate** — Shifted the local validation workflow away from running the full `pnpm test` suite (~5–6 min on Windows) before every commit. Locally you now run the fast checks (type-check, lint, markdown, CHANGELOG) plus only the test file(s) you touched; the full Node 20 + 22 matrix and 100% patch coverage run in CI (~2 min wall-clock). Updated `CLAUDE.md` (Pre-Commit Validation, Git workflow, Coverage sections) and reworked `scripts/pre-commit-validate.ps1` / `.sh` to add type-check + lint steps and make the full suite opt-in (`-WithTests` / `--with-tests`) instead of on-by-default. Also corrected a stale `@vitest/coverage-v8` reference in `CLAUDE.md` (the project uses `@vitest/coverage-istanbul`), and set MD024 `siblings_only` in `.markdownlint.yaml` so the Keep-a-Changelog `### Added`/`### Changed`/`### Fixed` headings can legitimately repeat across versions.
 
