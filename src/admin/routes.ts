@@ -185,7 +185,19 @@ admin.post('/gc', async (c) => {
       cursor = list.list_complete ? undefined : list.cursor
     } while (cursor)
 
-    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots }, 200)
+    // Purge all CSP violation reports (never needed after logging)
+    let deletedCspReports = 0
+    cursor = undefined
+    do {
+      const list: any = await kv.list({ prefix: '_csp_report:', cursor })
+      for (const k of list.keys) {
+        await kv.delete(k.name)
+        deletedCspReports++
+      }
+      cursor = list.list_complete ? undefined : list.cursor
+    } while (cursor)
+
+    return c.json({ ok: true, deleted_history: deletedHistory, deleted_snapshots: deletedSnapshots, deleted_csp_reports: deletedCspReports }, 200)
   } catch (e) {
     console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
     return c.json({ ok: false, error: safeErrorMessage(e) }, 500)

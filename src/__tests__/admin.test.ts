@@ -283,6 +283,20 @@ describe('admin endpoints', () => {
   })
 
   describe('/admin/gc', () => {
+    it('deletes _csp_report:* keys and returns deleted_csp_reports count', async () => {
+      await env.LORE_DB.put('_csp_report:2026-01-01T00:00:00.000Z:aaa111', JSON.stringify({ blocked: 'data' }))
+      await env.LORE_DB.put('_csp_report:2026-01-02T00:00:00.000Z:bbb222', JSON.stringify({ blocked: 'data' }))
+
+      const res = await adminPost('/admin/gc', { secret: ADMIN_SECRET })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.deleted_csp_reports).toBe(2)
+
+      expect(await env.LORE_DB.get('_csp_report:2026-01-01T00:00:00.000Z:aaa111')).toBeNull()
+      expect(await env.LORE_DB.get('_csp_report:2026-01-02T00:00:00.000Z:bbb222')).toBeNull()
+    })
+
     it('500 responses never expose internal details (KV errors, stack traces, file paths)', async () => {
       const res = await SELF.fetch('http://example.com/admin/gc', {
         method: 'POST',
@@ -418,6 +432,30 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/migrate-all-characters', { secret: ADMIN_SECRET })
       const body = await res.json() as Record<string, any>
       expect(body.skipped).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('/csp-report endpoint', () => {
+    it('returns status:reported without writing to KV', async () => {
+      const reportPayload = {
+        'blocked-uri': 'https://evil.example.com/script.js',
+        'violated-directive': 'script-src',
+        'source-file': 'https://myapp.example.com/',
+        'original-policy': "default-src 'self'",
+        disposition: 'enforce',
+      }
+      const res = await SELF.fetch('http://example.com/csp-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportPayload),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.status).toBe('reported')
+
+      // Verify nothing was written to KV
+      const listed: any = await env.LORE_DB.list({ prefix: '_csp_report:' })
+      expect(listed.keys).toHaveLength(0)
     })
   })
 })
