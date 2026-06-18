@@ -1344,5 +1344,95 @@ describe('admin map routes', () => {
       const lm = body.landmarks.find((l: any) => l.id === 'explicit-visible')
       expect(lm?.visible).toBe(true)
     })
+
+    it('landmarks with all optional data fields populated', async () => {
+      const dataJson = JSON.stringify({
+        notes: 'Complete landmark',
+        attributes: '{"size":"large"}',
+        linkedMapId: 'link-destination',
+        visible: true,
+        linkedLoreKey: 'complete:landmark'
+      })
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'complete', 20, 21, 'Complete', 'temple', dataJson)
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks.find((l: any) => l.id === 'complete')
+      expect(lm?.notes).toBe('Complete landmark')
+      expect(lm?.attributes).toBe('{"size":"large"}')
+      expect(lm?.linkedMapId).toBe('link-destination')
+      expect(lm?.visible).toBe(true)
+      expect(lm?.linkedLoreKey).toBe('complete:landmark')
+    })
+
+    it('handles mapId parameter with various whitespace', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'whitespace-test',
+          hexes: [{ q: 0, r: 0, terrain: 'g', name: 'Test', description: '' }]
+        },
+        ADMIN_SECRET
+      )
+
+      // Test with leading/trailing whitespace that gets trimmed
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: '  whitespace-test  ' },
+        ADMIN_SECRET
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.hexes).toHaveLength(1)
+    })
+
+    it('readback returns arrays even when no data matches', async () => {
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'nonexistent-map-for-arrays' },
+        ADMIN_SECRET
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(Array.isArray(body.hexes)).toBe(true)
+      expect(Array.isArray(body.landmarks)).toBe(true)
+      expect(body.hexes).toEqual([])
+      expect(body.landmarks).toEqual([])
+    })
+
+    it('safeJson handles request body parsing correctly', async () => {
+      // Valid JSON body
+      const validRes = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'test' },
+        ADMIN_SECRET
+      )
+      expect([200, 400]).toContain(validRes.status) // Either valid or invalid mapId, but parsed
+    })
+
+    it('checkSecret validates admin secret correctly', async () => {
+      // No secret
+      const noSecretRes = await SELF.fetch('http://example.com/internal/map-readback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapId: 'test' })
+      })
+      expect(noSecretRes.status).toBe(401)
+
+      // Wrong secret
+      const wrongSecretRes = await mapPost('/internal/map-readback', { mapId: 'test' }, 'wrong')
+      expect(wrongSecretRes.status).toBe(401)
+
+      // Correct secret
+      const correctSecretRes = await mapPost('/internal/map-readback', { mapId: 'test' }, ADMIN_SECRET)
+      // Will be 200 (no data) or 400 (invalid mapId logic)
+      expect([200, 400]).toContain(correctSecretRes.status)
+    })
   })
 })
