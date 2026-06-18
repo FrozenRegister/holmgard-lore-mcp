@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`agent_manage` characterId support** — Enhanced `agent_manage` tool to support `characterId` parameter for slice operations (`set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `preview_prompt`), journal operations (`add_journal`, `get_journal`), and secrets operations (`add_secret`, `list_secrets`). Users can now reference agents by `characterId` in addition to `agentId`/`id`, improving usability and API consistency. ([PR #142](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/142))
+
 ### Fixed
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
