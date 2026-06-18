@@ -338,5 +338,242 @@ describe('admin map routes', () => {
       const res = await mapPost('/internal/map-readback', { mapId: '' }, ADMIN_SECRET)
       expect(res.status).toBe(400)
     })
+
+    it('handles hexes with missing data field', async () => {
+      // Directly insert hex with minimal fields to test rowToHex defaults
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 2, 3, 'mountain', 'Peak')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(1)
+      const hex = body.hexes[0]
+      expect(hex.q).toBe(2)
+      expect(hex.r).toBe(3)
+      expect(hex.terrain).toBe('mountain')
+      expect(hex.name).toBe('Peak')
+      expect(hex.description).toBe('') // should default to empty string
+    })
+
+    it('handles landmarks with all optional fields null', async () => {
+      // Insert landmark with minimal fields to test defaults in rowToLandmark
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'lm-minimal', 1, 2, 'Minimal', 'ruin')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(1)
+      const landmark = body.landmarks[0]
+      expect(landmark.id).toBe('lm-minimal')
+      expect(landmark.name).toBe('Minimal')
+      expect(landmark.type).toBe('ruin')
+      expect(landmark.notes).toBe('')
+      expect(landmark.attributes).toBe('{}')
+      expect(landmark.linkedMapId).toBeNull()
+      expect(landmark.visible).toBe(true) // defaults to true
+      expect(landmark.linkedLoreKey).toBeNull()
+    })
+
+    it('handles landmarks with visible:false', async () => {
+      const res = await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'lm-hidden',
+              q: 0,
+              r: 0,
+              name: 'Hidden',
+              type: 'secret',
+              notes: 'Not visible',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: false,
+              linkedLoreKey: null,
+            },
+          ],
+        },
+        ADMIN_SECRET,
+      )
+      expect(res.status).toBe(200)
+
+      const readRes = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(readRes.status).toBe(200)
+      const body = await readRes.json() as Record<string, any>
+      expect(body.landmarks[0].visible).toBe(false)
+    })
+
+    it('handles multiple hexes with varying terrain types', async () => {
+      const hexes = [
+        { q: 0, r: 0, terrain: 'forest', name: 'Forest', description: 'Trees' },
+        { q: 1, r: 0, terrain: 'plains', name: 'Plains', description: 'Grass' },
+        { q: 0, r: 1, terrain: 'mountain', name: 'Mountain', description: 'Peaks' },
+        { q: 1, r: 1, terrain: 'water', name: 'Water', description: 'Ocean' },
+      ]
+      await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(4)
+      expect(body.hexes.map((h: any) => h.terrain).sort()).toEqual(['forest', 'mountain', 'plains', 'water'])
+    })
+
+    it('handles multiple landmarks with different types and lore links', async () => {
+      const landmarks = [
+        {
+          id: 'city1',
+          q: 0,
+          r: 0,
+          name: 'Capital',
+          type: 'city',
+          notes: 'The great capital',
+          attributes: '{"population": 50000}',
+          linkedMapId: null,
+          visible: true,
+          linkedLoreKey: 'location:capital',
+        },
+        {
+          id: 'dungeon1',
+          q: 5,
+          r: 5,
+          name: 'Deep Crypt',
+          type: 'dungeon',
+          notes: 'Ancient tomb',
+          attributes: '{"level": 3}',
+          linkedMapId: 'dungeon-map',
+          visible: true,
+          linkedLoreKey: 'location:crypt',
+        },
+      ]
+      await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(2)
+
+      const capital = body.landmarks.find((l: any) => l.id === 'city1')
+      const crypt = body.landmarks.find((l: any) => l.id === 'dungeon1')
+
+      expect(capital.linkedLoreKey).toBe('location:capital')
+      expect(capital.linkedMapId).toBeNull()
+
+      expect(crypt.linkedLoreKey).toBe('location:crypt')
+      expect(crypt.linkedMapId).toBe('dungeon-map')
+    })
+
+    it('preserves complex JSON in landmark attributes', async () => {
+      const complexAttributes = {
+        level: 5,
+        difficulty: 'hard',
+        rewards: ['gold', 'magic'],
+        boss: { name: 'Dragon', hp: 500 },
+      }
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'boss-lair',
+              q: 10,
+              r: 10,
+              name: 'Dragon Lair',
+              type: 'boss',
+              notes: 'Final encounter',
+              attributes: JSON.stringify(complexAttributes),
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null,
+            },
+          ],
+        },
+        ADMIN_SECRET,
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks[0].attributes).toEqual(JSON.stringify(complexAttributes))
+      expect(JSON.parse(body.landmarks[0].attributes)).toEqual(complexAttributes)
+    })
+
+    it('handles mixed empty and non-empty descriptions on hexes', async () => {
+      const hexes = [
+        { q: 0, r: 0, terrain: 'grass', name: 'Described', description: 'Has a description' },
+        { q: 1, r: 0, terrain: 'grass', name: 'Empty', description: '' },
+      ]
+      await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes[0].description).toBe('Has a description')
+      expect(body.hexes[1].description).toBe('')
+    })
+
+    it('handles landmarks with linkedLoreKey but no linkedMapId', async () => {
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'location1',
+              q: 3,
+              r: 3,
+              name: 'Location',
+              type: 'point',
+              notes: 'A significant location',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: 'location:somewhere',
+            },
+          ],
+        },
+        ADMIN_SECRET,
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks[0].linkedLoreKey).toBe('location:somewhere')
+      expect(body.landmarks[0].linkedMapId).toBeNull()
+    })
+
+    it('correctly orders hexes by q, r and landmarks by name', async () => {
+      const hexes = [
+        { q: 1, r: 0, terrain: 'g', name: 'H1' },
+        { q: 0, r: 1, terrain: 'g', name: 'H2' },
+        { q: 0, r: 0, terrain: 'g', name: 'H3' },
+      ]
+      const landmarks = [
+        { id: 'z', q: 0, r: 0, name: 'Zebra', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
+        { id: 'a', q: 0, r: 0, name: 'Apple', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
+        { id: 'm', q: 0, r: 0, name: 'Middle', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
+      ]
+      await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
+      await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+
+      // Hexes should be ordered by q, r
+      expect(body.hexes.map((h: any) => `${h.q},${h.r}`)).toEqual(['0,0', '0,1', '1,0'])
+      // Landmarks should be ordered by name
+      expect(body.landmarks.map((l: any) => l.name)).toEqual(['Apple', 'Middle', 'Zebra'])
+    })
   })
 })
