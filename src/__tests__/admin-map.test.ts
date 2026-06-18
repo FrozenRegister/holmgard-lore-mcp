@@ -1434,5 +1434,125 @@ describe('admin map routes', () => {
       // Will be 200 (no data) or 400 (invalid mapId logic)
       expect([200, 400]).toContain(correctSecretRes.status)
     })
+
+    it('large batch of hexes all converted correctly', async () => {
+      const hexes = Array.from({ length: 50 }, (_, i) => ({
+        q: i,
+        r: i * 2,
+        terrain: `terrain-${i % 3}`,
+        name: `Hex-${i}`,
+        description: `Hex number ${i}`
+      }))
+      await mapPost('/admin/map/push-hexes', { mapId: 'large-batch', hexes }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'large-batch' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(50)
+      expect(body.hexes.every((h: any) => typeof h.q === 'number')).toBe(true)
+      expect(body.hexes.every((h: any) => typeof h.terrain === 'string')).toBe(true)
+    })
+
+    it('large batch of landmarks all converted correctly', async () => {
+      const landmarks = Array.from({ length: 30 }, (_, i) => ({
+        id: `lm-${i}`,
+        q: i,
+        r: i * 2,
+        name: `Landmark-${i}`,
+        type: `type-${i % 5}`,
+        notes: `Notes for landmark ${i}`,
+        attributes: JSON.stringify({ index: i }),
+        linkedMapId: i % 2 === 0 ? `map-${i}` : null,
+        visible: i % 3 !== 0,
+        linkedLoreKey: i % 4 === 0 ? `key:${i}` : null
+      }))
+      await mapPost('/admin/map/push-landmarks', { mapId: 'large-landmarks', landmarks }, ADMIN_SECRET)
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'large-landmarks' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(30)
+      expect(body.landmarks.every((l: any) => typeof l.id === 'string')).toBe(true)
+      expect(body.landmarks.every((l: any) => typeof l.visible === 'boolean')).toBe(true)
+    })
+
+    it('mixed maps do not interfere with each other', async () => {
+      // Create hex data in map1
+      await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'map1', hexes: [{ q: 0, r: 0, terrain: 'g', name: 'H1', description: '' }] },
+        ADMIN_SECRET
+      )
+      // Create different hex data in map2
+      await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'map2', hexes: [{ q: 1, r: 1, terrain: 'h', name: 'H2', description: '' }] },
+        ADMIN_SECRET
+      )
+
+      const res1 = await mapPost('/internal/map-readback', { mapId: 'map1' }, ADMIN_SECRET)
+      const res2 = await mapPost('/internal/map-readback', { mapId: 'map2' }, ADMIN_SECRET)
+
+      const body1 = await res1.json() as Record<string, any>
+      const body2 = await res2.json() as Record<string, any>
+
+      expect(body1.hexes[0].name).toBe('H1')
+      expect(body2.hexes[0].name).toBe('H2')
+      expect(body1.hexes[0].q).toBe(0)
+      expect(body2.hexes[0].q).toBe(1)
+    })
+
+    it('response contains ok:true for successful operations', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'ok-test', hexes: [{ q: 0, r: 0, terrain: 'g', name: 'T', description: '' }] },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'ok-test' }, ADMIN_SECRET)
+      const body = await res.json() as Record<string, any>
+      expect(body).toHaveProperty('ok')
+      expect(body.ok).toBe(true)
+      expect(body).toHaveProperty('hexes')
+      expect(body).toHaveProperty('landmarks')
+    })
+
+    it('all data fields present in response structure', async () => {
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'structure-test',
+          landmarks: [{
+            id: 'lm-struct',
+            q: 0,
+            r: 0,
+            name: 'Struct',
+            type: 'test',
+            notes: 'Test',
+            attributes: '{}',
+            linkedMapId: 'test-map',
+            visible: true,
+            linkedLoreKey: 'test:key'
+          }]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'structure-test' }, ADMIN_SECRET)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks[0]
+
+      expect(lm).toHaveProperty('mapId')
+      expect(lm).toHaveProperty('id')
+      expect(lm).toHaveProperty('q')
+      expect(lm).toHaveProperty('r')
+      expect(lm).toHaveProperty('name')
+      expect(lm).toHaveProperty('type')
+      expect(lm).toHaveProperty('notes')
+      expect(lm).toHaveProperty('attributes')
+      expect(lm).toHaveProperty('linkedMapId')
+      expect(lm).toHaveProperty('visible')
+      expect(lm).toHaveProperty('linkedLoreKey')
+    })
   })
 })
