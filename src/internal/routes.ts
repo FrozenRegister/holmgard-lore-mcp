@@ -9,12 +9,10 @@ const internal = new Hono<{ Bindings: AppBindings }>()
 
 /** Verify the admin secret from request context. Returns true if authorized. */
 async function checkSecret(c: any): Promise<boolean> {
-  const ADMIN_SECRET: string | undefined = c.env?.ADMIN_SECRET
+  const ADMIN_SECRET = c.env.ADMIN_SECRET as string | undefined
   if (!ADMIN_SECRET) return false
 
-  const headerSecret: string | null =
-    c.req.header('X-Api-Key') ?? c.req.header('X-Admin-Secret') ?? null
-
+  const headerSecret = c.req.header('X-Api-Key') ?? c.req.header('X-Admin-Secret')
   return headerSecret === ADMIN_SECRET
 }
 
@@ -102,9 +100,7 @@ internal.post('/map-readback', async (c) => {
       return c.json({ ok: false, error: 'mapId must be a non-empty string' }, 400)
     }
 
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
-
+    const db = c.env.RPG_DB as any
     const [hexesResult, landmarksResult] = await Promise.all([
       db.prepare('SELECT q, r, map_id, terrain, label, data FROM hexes WHERE map_id = ? ORDER BY q, r')
         .bind(mapId)
@@ -114,13 +110,12 @@ internal.post('/map-readback', async (c) => {
         .all(),
     ])
 
-    const hexes = (hexesResult.results as Array<Record<string, unknown>> | undefined)?.map(rowToHex) ?? []
-    const landmarks = (landmarksResult.results as Array<Record<string, unknown>> | undefined)?.map(rowToLandmark) ?? []
+    const hexes = (hexesResult.results as Array<Record<string, unknown>>).map(rowToHex)
+    const landmarks = (landmarksResult.results as Array<Record<string, unknown>>).map(rowToLandmark)
 
     return c.json({ ok: true, hexes, landmarks }, 200)
   } catch (e) {
-    console.error(`[internal] ${c.req.method} ${c.req.path}:`, e)
-    return c.json({ ok: false, error: e instanceof Error ? e.message : 'Internal error' }, 500)
+    return c.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500)
   }
 })
 
