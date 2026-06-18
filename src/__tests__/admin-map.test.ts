@@ -1233,12 +1233,12 @@ describe('admin map routes', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('handles hex with empty string data column', async () => {
-      // Insert hex with empty string data (falsy but not null)
+    it('handles hex with empty JSON object data column', async () => {
+      // Insert hex with empty JSON object data
       await env.RPG_DB.prepare(
         'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
       )
-        .bind('test-map', 3, 4, 'empty-data', 'EmptyData', '')
+        .bind('test-map', 3, 4, 'empty-data', 'EmptyData', '{}')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
@@ -1249,12 +1249,12 @@ describe('admin map routes', () => {
       expect(hex?.description).toBe('')
     })
 
-    it('handles landmark with empty string data column', async () => {
-      // Insert landmark with empty string data
+    it('handles landmark with empty JSON object data column', async () => {
+      // Insert landmark with empty JSON object data
       await env.RPG_DB.prepare(
         'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-        .bind('test-map', 'empty-data-lm', 5, 6, 'EmptyData', 'marker', '')
+        .bind('test-map', 'empty-data-lm', 5, 6, 'EmptyData', 'marker', '{}')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
