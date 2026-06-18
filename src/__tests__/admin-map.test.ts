@@ -1200,5 +1200,37 @@ describe('admin map routes', () => {
       expect(JSON.parse(lm.attributes)).toEqual(complexAttrs)
       expect(lm.linkedLoreKey).toBe('artifact:test')
     })
+
+    it('handles malformed JSON data in hex gracefully', async () => {
+      // Insert hex with invalid JSON in data column to trigger error handling
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('bad-json-map', 0, 0, 'grass', 'BadHex', 'not valid json {')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'bad-json-map' }, ADMIN_SECRET)
+      // Should return error due to JSON parse failure in rowToHex
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(body.error).toBeDefined()
+    })
+
+    it('handles malformed JSON data in landmark gracefully', async () => {
+      // Insert landmark with invalid JSON in data column
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind('bad-landmark-json', 'bad-lm', 0, 0, 'BadLandmark', 'point', 'invalid { json ')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'bad-landmark-json' }, ADMIN_SECRET)
+      // Should return error due to JSON parse failure in rowToLandmark
+      expect(res.status).toBe(500)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(body.error).toBeDefined()
+    })
   })
 })
