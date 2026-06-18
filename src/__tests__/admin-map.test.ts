@@ -575,5 +575,101 @@ describe('admin map routes', () => {
       // Landmarks should be ordered by name
       expect(body.landmarks.map((l: any) => l.name)).toEqual(['Apple', 'Middle', 'Zebra'])
     })
+
+    it('handles hexes with all optional fields present and populated', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'test-map',
+          hexes: [
+            {
+              q: 10,
+              r: 20,
+              terrain: 'volcanic',
+              name: 'Mount Doom',
+              description: 'A very dark mountain with molten lava flows'
+            }
+          ]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const hex = body.hexes[0]
+      expect(hex.q).toBe(10)
+      expect(hex.r).toBe(20)
+      expect(hex.terrain).toBe('volcanic')
+      expect(hex.name).toBe('Mount Doom')
+      expect(hex.description).toBe('A very dark mountain with molten lava flows')
+    })
+
+    it('returns 401 when secret is missing from header', async () => {
+      const res = await SELF.fetch('http://example.com/internal/map-readback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapId: 'test-map' })
+      })
+      expect(res.status).toBe(401)
+    })
+
+    it('returns 400 when mapId is not a string', async () => {
+      const res = await mapPost('/internal/map-readback', { mapId: 123 }, ADMIN_SECRET)
+      expect(res.status).toBe(400)
+    })
+
+    it('handles landmarks without all optional fields', async () => {
+      // Insert landmark with only required fields via D1
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'lm-sparse', 5, 5, 'Sparse Landmark', 'monument')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(1)
+      const landmark = body.landmarks[0]
+      expect(landmark.id).toBe('lm-sparse')
+      expect(landmark.name).toBe('Sparse Landmark')
+      expect(landmark.type).toBe('monument')
+      expect(landmark.notes).toBe('')
+      expect(JSON.parse(landmark.attributes)).toEqual({})
+      expect(landmark.linkedMapId).toBeNull()
+      expect(landmark.visible).toBe(true)
+      expect(landmark.linkedLoreKey).toBeNull()
+    })
+
+    it('handles hexes and landmarks from different maps separately', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'map-a',
+          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Forest A', description: '' }]
+        },
+        ADMIN_SECRET
+      )
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'map-b',
+          hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Mountain B', description: '' }]
+        },
+        ADMIN_SECRET
+      )
+
+      const resA = await mapPost('/internal/map-readback', { mapId: 'map-a' }, ADMIN_SECRET)
+      const resB = await mapPost('/internal/map-readback', { mapId: 'map-b' }, ADMIN_SECRET)
+
+      const bodyA = await resA.json() as Record<string, any>
+      const bodyB = await resB.json() as Record<string, any>
+
+      expect(bodyA.hexes).toHaveLength(1)
+      expect(bodyA.hexes[0].name).toBe('Forest A')
+      expect(bodyB.hexes).toHaveLength(1)
+      expect(bodyB.hexes[0].name).toBe('Mountain B')
+    })
   })
 })
