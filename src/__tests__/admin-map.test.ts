@@ -906,5 +906,119 @@ describe('admin map routes', () => {
       expect(lm.visible).toBe(false)
       expect(lm.linkedLoreKey).toBeNull()
     })
+
+    it('returns error 400 when body is not valid JSON', async () => {
+      const res = await SELF.fetch('http://example.com/internal/map-readback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Secret': ADMIN_SECRET
+        },
+        body: 'not valid json {'
+      })
+      expect(res.status).toBe(400)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns error when mapId is whitespace only', async () => {
+      const res = await mapPost('/internal/map-readback', { mapId: '   ' }, ADMIN_SECRET)
+      expect(res.status).toBe(400)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns correct response for map with no hexes but some landmarks', async () => {
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'landmarks-only',
+          landmarks: [
+            {
+              id: 'lm1',
+              q: 0,
+              r: 0,
+              name: 'Solo',
+              type: 'point',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null
+            }
+          ]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'landmarks-only' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.hexes).toEqual([])
+      expect(body.landmarks).toHaveLength(1)
+    })
+
+    it('returns correct response for map with some hexes but no landmarks', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'hexes-only',
+          hexes: [{ q: 0, r: 0, terrain: 'grass', name: 'Solo', description: '' }]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'hexes-only' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.hexes).toHaveLength(1)
+      expect(body.landmarks).toEqual([])
+    })
+
+    it('handles landmark with only required fields from DB', async () => {
+      // Insert with minimal required fields via D1 to test conversion defaults
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'minimal-lm', 0, 0, 'Minimal', 'monument')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(1)
+      const lm = body.landmarks[0]
+      expect(lm.id).toBe('minimal-lm')
+      expect(lm.name).toBe('Minimal')
+      expect(lm.type).toBe('monument')
+      // All optional fields should have defaults
+      expect(lm.notes).toBe('')
+      expect(lm.attributes).toBe('{}')
+      expect(lm.linkedMapId).toBeNull()
+      expect(lm.visible).toBe(true)
+      expect(lm.linkedLoreKey).toBeNull()
+    })
+
+    it('handles hex with only required fields from DB', async () => {
+      // Insert with minimal required fields via D1 to test conversion defaults
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 1, 2, 'mountain', 'MinimalHex')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(1)
+      const hex = body.hexes[0]
+      expect(hex.q).toBe(1)
+      expect(hex.r).toBe(2)
+      expect(hex.terrain).toBe('mountain')
+      expect(hex.name).toBe('MinimalHex')
+      expect(hex.description).toBe('')
+    })
   })
 })
