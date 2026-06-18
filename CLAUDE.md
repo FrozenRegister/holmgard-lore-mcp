@@ -120,6 +120,15 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 - `POST /mcp` — JSON-RPC 2.0 endpoint. Handles MCP protocol methods (`initialize`, `ping`, `tools/list`, `tools/call`) plus legacy bare methods (`list_topics`, `get_lore`).
 - `POST /admin/set-lore` / `POST /admin/delete-lore` — HTTP endpoints protected by `ADMIN_SECRET` env var (set via `wrangler secret put ADMIN_SECRET` in production; injected via `vitest.config.ts` miniflare bindings in tests).
 
+### API surface convention — prefer MCP for reads, REST for privileged writes
+
+This is a **read/write split + match-the-consumer** rule, not a blanket "MCP everywhere." When adding a new capability, decide by what the operation *is*:
+
+- **Reads & queries → `POST /mcp` (JSON-RPC).** Add them as `tools/call` tools (discoverable via `tools/list`, so the agent can use them) **and**, when a programmatic client needs clean bulk JSON, register a **bare-method alias** that returns the structured payload directly in `result` — exactly how `get_lore` / `list_topics` work. Prefer this over adding ad-hoc REST `GET` routes: it keeps one discoverable read surface and reuses the editor's existing `rpc()` transport (`holmgard-lore-editor/src/lib/sync.ts`).
+- **Privileged writes & bulk admin ops → `POST /admin/*` (REST), gated by `ADMIN_SECRET`.** This is where `set-lore`, `delete-lore`, the batch variants, migrations, and the map **push** endpoints live. Do **not** move these onto the public MCP surface — the secret gate must stay server-side.
+
+Rationale: a single agent-usable read surface; secrets never exposed via MCP; bulk reads return structured JSON (not LLM content-blocks) by using the bare-method form. Worked example: **map readback** (`get_map_hexes`/`get_map_landmarks`/`get_map_meta` on `/mcp`; pushes stay on `/admin/map/*`) — see `docs/d1-readback-api-design.md`.
+
 **15 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`, `restore_lore`, `batch_set_lore`, `batch_mutate`.
 
 ## Documenting Discoveries (Capture Institutional Knowledge)

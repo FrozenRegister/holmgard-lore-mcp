@@ -13,6 +13,7 @@ import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
 import { setToolIndex, setSchemaIndex } from './rpg/registry'
+import internalRoutes from './internal/routes'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
@@ -268,6 +269,9 @@ app.post('/csp-report', async (c) => {
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.route('/admin', adminRoutes)
+
+// ── Internal routes ────────────────────────────────────────────────────────────
+app.route('/internal', internalRoutes)
 
 // ── GET /changes ──────────────────────────────────────────────────────────────
 app.route('/changes', changesRouter)
