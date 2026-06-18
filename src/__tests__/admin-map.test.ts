@@ -214,4 +214,129 @@ describe('admin map routes', () => {
       expect(res.status).toBe(401)
     })
   })
+
+  // ── /internal/map-readback ────────────────────────────────────────────────
+
+  innerDescribe('/internal/map-readback', () => {
+    it('returns hexes and landmarks with correct field mapping', async () => {
+      // Push test data
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'test-map',
+          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'Dense forest' }],
+        },
+        ADMIN_SECRET,
+      )
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'lm-1',
+              q: 0,
+              r: 0,
+              name: 'Thornkeep',
+              type: 'castle',
+              notes: 'Old fortress',
+              attributes: '{"strength": 100}',
+              linkedMapId: 'inner-map',
+              visible: true,
+              linkedLoreKey: 'location:thornkeep',
+            },
+          ],
+        },
+        ADMIN_SECRET,
+      )
+
+      // Readback
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+
+      // Check hexes
+      expect(body.hexes).toHaveLength(1)
+      const hex = body.hexes[0]
+      expect(hex.mapId).toBe('test-map')
+      expect(hex.q).toBe(0)
+      expect(hex.r).toBe(0)
+      expect(hex.terrain).toBe('forest')
+      expect(hex.name).toBe('Thornwood') // label → name
+      expect(hex.description).toBe('Dense forest')
+
+      // Check landmarks
+      expect(body.landmarks).toHaveLength(1)
+      const landmark = body.landmarks[0]
+      expect(landmark.mapId).toBe('test-map')
+      expect(landmark.id).toBe('lm-1')
+      expect(landmark.q).toBe(0)
+      expect(landmark.r).toBe(0)
+      expect(landmark.name).toBe('Thornkeep')
+      expect(landmark.type).toBe('castle') // category → type
+      expect(landmark.notes).toBe('Old fortress')
+      expect(JSON.parse(landmark.attributes)).toEqual({ strength: 100 })
+      expect(landmark.linkedMapId).toBe('inner-map')
+      expect(landmark.visible).toBe(true)
+      expect(landmark.linkedLoreKey).toBe('location:thornkeep')
+    })
+
+    it('returns empty arrays for non-existent map', async () => {
+      const res = await mapPost('/internal/map-readback', { mapId: 'nonexistent' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.hexes).toEqual([])
+      expect(body.landmarks).toEqual([])
+    })
+
+    it('defaults mapId to "main" behavior (returns only main map data)', async () => {
+      // Push to main
+      await mapPost(
+        '/admin/map/push-hexes',
+        { hexes: [{ q: 5, r: 5, terrain: 'plains', name: 'Mainfield', description: '' }] },
+        ADMIN_SECRET,
+      )
+      // Push to other map
+      await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'other-map', hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Otherpeak', description: '' }] },
+        ADMIN_SECRET,
+      )
+
+      // Readback main (implicit, default)
+      const res = await mapPost('/internal/map-readback', { mapId: 'main' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(1)
+      expect(body.hexes[0].name).toBe('Mainfield')
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, 'wrong-secret')
+      expect(res.status).toBe(401)
+    })
+
+    it('returns 401 when secret is omitted', async () => {
+      const res = await SELF.fetch('http://example.com/internal/map-readback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapId: 'test-map' }),
+      })
+      expect(res.status).toBe(401)
+    })
+
+    it('returns 400 when mapId is missing', async () => {
+      const res = await mapPost('/internal/map-readback', {}, ADMIN_SECRET)
+      expect(res.status).toBe(400)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+    })
+
+    it('returns 400 when mapId is an empty string', async () => {
+      const res = await mapPost('/internal/map-readback', { mapId: '' }, ADMIN_SECRET)
+      expect(res.status).toBe(400)
+    })
+  })
 })
