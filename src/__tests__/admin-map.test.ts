@@ -793,5 +793,118 @@ describe('admin map routes', () => {
       expect(body.hexes.every((h: any) => h.mapId === 'special-map')).toBe(true)
       expect(body.landmarks.every((l: any) => l.mapId === 'special-map')).toBe(true)
     })
+
+    it('handles null and undefined fields in hex data column', async () => {
+      // Directly insert hex with null data to test default handling
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, NULL)'
+      )
+        .bind('test-map', 10, 20, 'swamp', 'NullDataHex')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.hexes).toHaveLength(1)
+      expect(body.hexes[0].q).toBe(10)
+      expect(body.hexes[0].r).toBe(20)
+      expect(body.hexes[0].description).toBe('')
+    })
+
+    it('handles null and undefined fields in landmark data column', async () => {
+      // Directly insert landmark with null data
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, NULL)'
+      )
+        .bind('test-map', 'null-lm', 5, 5, 'NullData', 'unknown')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks).toHaveLength(1)
+      const lm = body.landmarks[0]
+      expect(lm.notes).toBe('')
+      expect(lm.attributes).toBe('{}')
+      expect(lm.visible).toBe(true)
+      expect(lm.linkedMapId).toBeNull()
+      expect(lm.linkedLoreKey).toBeNull()
+    })
+
+    it('handles landmark with empty string attributes', async () => {
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'empty-attr',
+              q: 0,
+              r: 0,
+              name: 'EmptyAttr',
+              type: 'marker',
+              notes: 'Test',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null
+            }
+          ]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      const body = await res.json() as Record<string, any>
+      expect(body.landmarks[0].attributes).toBe('{}')
+      expect(JSON.parse(body.landmarks[0].attributes)).toEqual({})
+    })
+
+    it('handles hex with zero values for q and r', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'test-map', hexes: [{ q: 0, r: 0, terrain: 'center', name: 'Origin', description: '' }] },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      const body = await res.json() as Record<string, any>
+      const hex = body.hexes[0]
+      expect(hex.q).toBe(0)
+      expect(hex.r).toBe(0)
+      expect(typeof hex.q).toBe('number')
+      expect(typeof hex.r).toBe('number')
+    })
+
+    it('handles landmark with all fields explicitly null/false', async () => {
+      await mapPost(
+        '/admin/map/push-landmarks',
+        {
+          mapId: 'test-map',
+          landmarks: [
+            {
+              id: 'all-null',
+              q: 0,
+              r: 0,
+              name: 'AllNull',
+              type: 'point',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: false,
+              linkedLoreKey: null
+            }
+          ]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks[0]
+      expect(lm.linkedMapId).toBeNull()
+      expect(lm.visible).toBe(false)
+      expect(lm.linkedLoreKey).toBeNull()
+    })
   })
 })
