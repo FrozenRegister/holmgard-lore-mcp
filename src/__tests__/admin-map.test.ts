@@ -1232,5 +1232,117 @@ describe('admin map routes', () => {
       expect(body.ok).toBe(false)
       expect(body.error).toBeDefined()
     })
+
+    it('handles hex with empty string data column', async () => {
+      // Insert hex with empty string data (falsy but not null)
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 3, 4, 'empty-data', 'EmptyData', '')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const hex = body.hexes.find((h: any) => h.q === 3)
+      expect(hex).toBeDefined()
+      expect(hex?.description).toBe('')
+    })
+
+    it('handles landmark with empty string data column', async () => {
+      // Insert landmark with empty string data
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'empty-data-lm', 5, 6, 'EmptyData', 'marker', '')
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks.find((l: any) => l.id === 'empty-data-lm')
+      expect(lm).toBeDefined()
+      expect(lm?.notes).toBe('')
+      expect(lm?.attributes).toBe('{}')
+    })
+
+    it('hex with all fields explicitly set in data JSON', async () => {
+      const dataJson = JSON.stringify({ description: 'Detailed description' })
+      await env.RPG_DB.prepare(
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 7, 8, 'detailed', 'Detailed', dataJson)
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const hex = body.hexes.find((h: any) => h.q === 7)
+      expect(hex?.description).toBe('Detailed description')
+    })
+
+    it('landmark with all data fields explicitly set in JSON', async () => {
+      const dataJson = JSON.stringify({
+        notes: 'Detailed notes',
+        attributes: '{"key":"value"}',
+        linkedMapId: 'link-map',
+        visible: false,
+        linkedLoreKey: 'key:value'
+      })
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'detailed-lm', 9, 10, 'Detailed', 'artifact', dataJson)
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks.find((l: any) => l.id === 'detailed-lm')
+      expect(lm?.notes).toBe('Detailed notes')
+      expect(lm?.visible).toBe(false)
+      expect(lm?.linkedMapId).toBe('link-map')
+      expect(lm?.linkedLoreKey).toBe('key:value')
+    })
+
+    it('hex coordinates remain numeric type through readback', async () => {
+      await mapPost(
+        '/admin/map/push-hexes',
+        {
+          mapId: 'numeric-type-test',
+          hexes: [
+            { q: 0, r: 0, terrain: 'zero', name: 'Z', description: '' },
+            { q: 1, r: -1, terrain: 'mixed', name: 'M', description: '' },
+            { q: -10, r: 10, terrain: 'neg', name: 'N', description: '' }
+          ]
+        },
+        ADMIN_SECRET
+      )
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'numeric-type-test' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      body.hexes.forEach((h: any) => {
+        expect(typeof h.q).toBe('number')
+        expect(typeof h.r).toBe('number')
+        expect(Number.isNaN(h.q)).toBe(false)
+        expect(Number.isNaN(h.r)).toBe(false)
+      })
+    })
+
+    it('landmark visible explicitly true through conversion', async () => {
+      const dataJson = JSON.stringify({ visible: true })
+      await env.RPG_DB.prepare(
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind('test-map', 'explicit-visible', 11, 12, 'VisibleTrue', 'marker', dataJson)
+        .run()
+
+      const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      const lm = body.landmarks.find((l: any) => l.id === 'explicit-visible')
+      expect(lm?.visible).toBe(true)
+    })
   })
 })
