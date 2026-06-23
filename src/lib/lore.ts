@@ -147,6 +147,9 @@ export function countOccurrences(haystack: string, needle: string): number {
 }
 
 // Parses the system:active-narratives entry into structured thread objects.
+// Thread line format: - **Thread_Name** (character:key): optional description
+// The parenthetical must capture full lore keys including colons and dashes
+// (e.g. character:sarah-weaver or character:finn-hartwell, character:elowen-thorne).
 export function extractActiveThreads(narrativeText: string): Array<any> {
   const threads: Array<any> = []
   const lines = narrativeText.split('\n')
@@ -154,7 +157,9 @@ export function extractActiveThreads(narrativeText: string): Array<any> {
   for (const line of lines) {
     if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'
     if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
-    const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\((\w+)\))?/)
+    // Use [^)]+ to capture full lore keys containing colons, dashes, commas, spaces.
+    // The old (\w+) stopped at the first colon, truncating character:sarah-weaver → character.
+    const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\(([^)]+)\))?/)
     if (threadMatch) {
       threads.push({
         thread_name: threadMatch[1],
