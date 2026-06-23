@@ -4,7 +4,7 @@ import { kvGet, kvPut, kvDelete, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys, updateIndexes, resolveIndexedEntities, addToIndex } from '../lib/indexes'
+import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
 import type { ToolContext } from './types'
 
 export async function handle_resolve_interaction({ c, id, args }: ToolContext): Promise<Response> {
@@ -277,11 +277,11 @@ export async function handle_analyze_utility({ c, id, args }: ToolContext): Prom
 
   const grade =
     compositeScore >= 90 ? 'S'
-    : compositeScore >= 75 ? 'A'
-    : compositeScore >= 55 ? 'B'
-    : compositeScore >= 35 ? 'C'
-    : compositeScore >= 15 ? 'D'
-    : 'F'
+      : compositeScore >= 75 ? 'A'
+        : compositeScore >= 55 ? 'B'
+          : compositeScore >= 35 ? 'C'
+            : compositeScore >= 15 ? 'D'
+              : 'F'
 
   const VECTOR_NARRATIVES: Record<string, Record<string, string>> = {
     GASTRIC: {
@@ -421,6 +421,7 @@ export async function handle_map_integration({ c, id, args }: ToolContext): Prom
   }))
   await appendChangelog(c, targetKey, version)
   loreDB[targetKey] = updatedTargetText
+
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Integrated ${traitsToTransfer.length} trait(s) from "${sourceKey}" into "${targetKey}" at depth ${depth}.` }],
@@ -759,9 +760,9 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   let collecting = false
   const collected: string[] = []
   for (const line of lines) {
-    if (/^\s*\*\*\*?(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { collecting = true; continue }
+    if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { collecting = true; continue }
     if (collecting) {
-      if (/^\s*\*\*\*\w|^\s*#{1,3}\s/.test(line)) break
+      if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
       const t = line.trim()
       if (t) collected.push(t)
     }
@@ -775,14 +776,14 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   if (invRaw) {
     const entries = invRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
     for (const entry of entries) {
-      const m = entry.match(/^(.+?)\s*[xX:\xd7\*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+      const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       if (m) items.push({ item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null })
       else items.push({ item: entry, quantity: 1, condition: null })
     }
   }
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}×${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
+    content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
     metadata: { retrieved: 1, written: 0 },
     entity_key: entityKey, items, raw_inventory: invRaw ?? null
   }), 200)
@@ -809,7 +810,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
 
   const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
     raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map(entry => {
-      const m = entry.match(/^(.+?)\s*[xX:\xd7\*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+      const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
     })
 
@@ -818,9 +819,9 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
     let tCollecting = false
     const tCollected: string[] = []
     for (const line of tLines) {
-      if (/^\s*\*\*\*?(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { tCollecting = true; continue }
+      if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { tCollecting = true; continue }
       if (tCollecting) {
-        if (/^\s*\*\*\*\w|^\s*#{1,3}\s/.test(line)) break
+        if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
         const l = line.trim()
         if (l) tCollected.push(l)
       }
@@ -839,13 +840,13 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
     return c.json(makeResult(id, { content: [{ type: 'text', text: `Item "${itemKey}" not found in "${fromKey}"'s inventory.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
   }
   if (fromItems[itemIdx].quantity < qty) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}× "${itemKey}", requested ${qty}.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
+    return c.json(makeResult(id, { content: [{ type: 'text', text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}\xd7 "${itemKey}", requested ${qty}.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
   }
 
   fromItems[itemIdx].quantity -= qty
   const newFromItems = fromItems.filter(i => i.quantity > 0)
   const fmtItem = (i: { item: string; quantity: number; condition: string | null }) =>
-    i.condition ? `${i.item}×${i.quantity}[${i.condition}]` : `${i.item}×${i.quantity}`
+    i.condition ? `${i.item}\xd7${i.quantity}[${i.condition}]` : `${i.item}\xd7${i.quantity}`
   const newFromInvStr = newFromItems.map(fmtItem).join(', ')
 
   const toInvRaw = extractRawField(toText, toInvFieldName) ?? ''
@@ -875,7 +876,7 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
   clearRequestCache(c)
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Transferred ${qty}× "${itemKey}" from "${fromKey}" to "${toKey}".` }],
+    content: [{ type: 'text', text: `Transferred ${qty}\xd7 "${itemKey}" from "${fromKey}" to "${toKey}".` }],
     metadata: { retrieved: 2, written: 2 },
     transferred: true, item_key: itemKey, quantity: qty, from_entity: fromKey, to_entity: toKey
   }), 200)
@@ -898,7 +899,7 @@ export async function handle_list_consumption_timelines({ c, id, args }: ToolCon
 
   const rawValues = await Promise.all(paginatedKeys.map(k => kvGet(c, k)))
 
-  const timelines: Array<Record<string, unknown>> = []
+  const timelines: Array<any> = []
   for (let i = 0; i < paginatedKeys.length; i++) {
     const raw = rawValues[i]
     if (!raw) continue
@@ -976,12 +977,15 @@ export async function handle_create_consumption_timeline({ c, id, args }: ToolCo
   const predatorKey = parsed.data.predator_key.trim().toLowerCase()
   const { stages, stage_timer, terminal_state, current_stage } = parsed.data
 
+  // Validate entity exists
   const rawEntity = await kvGet(c, entityKey)
   if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
+  // Validate predator exists
   const rawPredator = await kvGet(c, predatorKey)
   if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${predatorKey}" not found`, null), 200)
 
+  // Check if timeline already exists
   const timelineKey = `_idx:consumption:${entityKey}`
   const existing = await kvGet(c, timelineKey)
   if (existing) {
@@ -1000,8 +1004,10 @@ export async function handle_create_consumption_timeline({ c, id, args }: ToolCo
     updated_at: now,
   }
 
+  // Store timeline in KV
   await kvPut(c, timelineKey, JSON.stringify(timelineData))
 
+  // Update entity's lore text with consumption fields using existing field helpers
   const { text: entityText, meta: entityMeta } = parseKvEntry(rawEntity)
   let updatedText = updateFieldInText(entityText, 'Consumption-Status', 'active')
   updatedText = updateFieldInText(updatedText, 'Consumption-Stage', `${current_stage}-of-${stages}`)
@@ -1014,8 +1020,6 @@ export async function handle_create_consumption_timeline({ c, id, args }: ToolCo
   await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now } }))
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
-
-  await addToIndex(c, 'system:consumption-timelines', entityKey)
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Consumption timeline created for "${entityKey}" → predator "${predatorKey}": stage ${current_stage}/${stages}, timer ${stage_timer}, terminal "${terminal_state}".` }],
@@ -1038,9 +1042,11 @@ export async function handle_set_consumption_timeline({ c, id, args }: ToolConte
 
   const entityKey = parsed.data.entity_key.trim().toLowerCase()
 
+  // Validate entity exists
   const rawEntity = await kvGet(c, entityKey)
   if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
+  // Get existing timeline
   const timelineKey = `_idx:consumption:${entityKey}`
   const existingRaw = await kvGet(c, timelineKey)
   if (!existingRaw) {
@@ -1050,6 +1056,7 @@ export async function handle_set_consumption_timeline({ c, id, args }: ToolConte
   const existing = JSON.parse(existingRaw)
   const now = new Date().toISOString()
 
+  // Merge updates
   const updates: Record<string, unknown> = {}
   if (parsed.data.predator_key !== undefined) updates.predator_key = parsed.data.predator_key.trim().toLowerCase()
   if (parsed.data.stages !== undefined) updates.stages = parsed.data.stages
@@ -1059,15 +1066,19 @@ export async function handle_set_consumption_timeline({ c, id, args }: ToolConte
 
   const updatedTimeline = { ...existing, ...updates, updated_at: now }
 
+  // If predator_key changed, validate the new predator exists
   if (updatedTimeline.predator_key && updatedTimeline.predator_key !== existing.predator_key) {
     const rawPredator = await kvGet(c, updatedTimeline.predator_key)
     if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${updatedTimeline.predator_key}" not found`, null), 200)
   }
 
+  // Check if terminal stage reached
   const isTerminal = updatedTimeline.current_stage >= updatedTimeline.stages
 
+  // Store updated timeline
   await kvPut(c, timelineKey, JSON.stringify(updatedTimeline))
 
+  // Update entity lore text
   const { text: entityText, meta: entityMeta } = parseKvEntry(rawEntity)
   let updatedText = entityText
   if (isTerminal) {
