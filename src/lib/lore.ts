@@ -41,7 +41,7 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
   }
 
   // Pass 2: JSON block  "Field": 0.9
-  const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\d+(?:\.\d+)?)`, 'i')
+  const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
   const jsonMatch = text.match(jsonRegex)
   if (jsonMatch) return parseFloat(jsonMatch[1])
 
@@ -97,7 +97,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
   }
 
   // Pass 2: JSON block  "Field": 0.9
-  const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\d+(?:\.\d+)?)`, 'i')
+  const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
   const jsonMatch = text.match(jsonRegex)
   if (jsonMatch) {
     return (
@@ -110,7 +110,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
 
   // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
   const looseRegex = new RegExp(
-    `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\d+(?:\.\d+)?)`,
+    `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
     'im'
   )
   const looseMatch = text.match(looseRegex)
