@@ -663,4 +663,312 @@ describe('agent_manage tool', () => {
     expect(r.error).toBe('invalid_action')
     expect(r.message).toMatch(/Unknown action/)
   })
+
+  // ── Additional Coverage Tests ──────────────────────────────────────────────
+
+  it('set_slice updates existing slice with same kind (upsert behavior)', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const first = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'v1'
+    })
+    const firstId = first.sliceId
+
+    const second = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'v2'
+    })
+    const secondId = second.sliceId
+    expect(firstId).toBe(secondId)
+
+    const slices = await callTool('agent_manage', { action: 'list_slices', agentId })
+    expect(slices.count).toBe(1)
+    expect(slices.slices[0].content).toBe('v2')
+  })
+
+  it('set_slice with all valid kinds', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    for (const kind of ['persona', 'directive', 'secrets', 'narrative_feed', 'recent', 'character_state', 'custom']) {
+      const r = await callTool('agent_manage', {
+        action: 'set_slice',
+        agentId,
+        kind,
+        content: `Content for ${kind}`
+      })
+      expect(r.success).toBe(true)
+    }
+  })
+
+  it('list_slices with disabled filter', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const slice1 = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'Enabled'
+    })
+    const slice2 = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'directive',
+      content: 'Disabled soon'
+    })
+
+    await callTool('agent_manage', {
+      action: 'toggle_slice',
+      sliceId: slice2.sliceId,
+      enabled: false
+    })
+
+    const enabled = await callTool('agent_manage', {
+      action: 'list_slices',
+      agentId,
+      filter: 'enabled'
+    })
+    expect(enabled.count).toBe(1)
+
+    const disabled = await callTool('agent_manage', {
+      action: 'list_slices',
+      agentId,
+      filter: 'disabled'
+    })
+    expect(disabled.count).toBe(1)
+  })
+
+  it('add_secret without importance (defaults to null)', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'No importance specified'
+    })
+    expect(r.success).toBe(true)
+    expect(r.secretId).toBeTruthy()
+  })
+
+  it('list_secrets filters by all importance levels', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'Low secret',
+      importance: 'low'
+    })
+    await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'Medium secret',
+      importance: 'medium'
+    })
+    await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'High secret',
+      importance: 'high'
+    })
+
+    const low = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'low' })
+    expect(low.count).toBe(1)
+    expect(low.secrets[0].importance).toBe('low')
+
+    const medium = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'medium' })
+    expect(medium.count).toBe(1)
+
+    const high = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'high' })
+    expect(high.count).toBe(1)
+  })
+
+  it('add_journal with encounterId and round', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'add_journal',
+      agentId,
+      content: 'Fought goblins in round 3',
+      journalKind: 'observation',
+      encounterId: 'goblin-cave-001',
+      round: 3
+    })
+    expect(r.success).toBe(true)
+    expect(r.entryId).toBeTruthy()
+  })
+
+  it('get_journal filters by encounterId', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    await callTool('agent_manage', {
+      action: 'add_journal',
+      agentId,
+      content: 'Encounter 1 event',
+      journalKind: 'observation',
+      encounterId: 'enc-001'
+    })
+    await callTool('agent_manage', {
+      action: 'add_journal',
+      agentId,
+      content: 'Encounter 2 event',
+      journalKind: 'observation',
+      encounterId: 'enc-002'
+    })
+
+    const enc1 = await callTool('agent_manage', {
+      action: 'get_journal',
+      agentId,
+      encounterId: 'enc-001'
+    })
+    expect(enc1.count).toBe(1)
+  })
+
+  it('get_journal respects limit parameter', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    for (let i = 0; i < 5; i++) {
+      await callTool('agent_manage', {
+        action: 'add_journal',
+        agentId,
+        content: `Entry ${i}`,
+        journalKind: 'observation'
+      })
+    }
+
+    const limit2 = await callTool('agent_manage', {
+      action: 'get_journal',
+      agentId,
+      limit: 2
+    })
+    expect(limit2.entries.length).toBeLessThanOrEqual(2)
+  })
+
+  it('invoke with paused agent returns paused status', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    await callTool('agent_manage', { action: 'update', agentId, status: 'paused' })
+
+    const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'Test.' })
+    expect(r.success).toBe(false)
+    expect(r.status).toBe('paused')
+  })
+
+  it('broadcast to single agent', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'broadcast',
+      agentIds: [agentId],
+      observation: 'Single broadcast'
+    })
+    expect(r.success).toBe(true)
+    expect(r.count).toBe(1)
+  })
+
+  it('broadcast with empty agentIds array returns error', async () => {
+    const r = await callTool('agent_manage', {
+      action: 'broadcast',
+      agentIds: [],
+      observation: 'Will fail'
+    })
+    expect(r.error).toBe(true)
+  })
+
+  it('remove_secret validates secret exists before deletion', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const secret = await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'Temporary secret'
+    })
+
+    // First removal should succeed
+    const firstRemove = await callTool('agent_manage', {
+      action: 'remove_secret',
+      secretId: secret.secretId
+    })
+    expect(firstRemove.success).toBe(true)
+
+    // Second removal should fail (secret already gone)
+    const secondRemove = await callTool('agent_manage', {
+      action: 'remove_secret',
+      secretId: secret.secretId
+    })
+    expect(secondRemove.error).toBe(true)
+    expect(secondRemove.message).toContain('not found')
+  })
+
+  it('set_slice with characterId resolution', async () => {
+    const charId = await seedCharacter()
+    await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'set_slice',
+      characterId: charId,
+      kind: 'persona',
+      content: 'Via characterId'
+    })
+    expect(r.success).toBe(true)
+    expect(r.sliceId).toBeTruthy()
+  })
+
+  it('narrate with characterId resolution and label', async () => {
+    const charId = await seedCharacter()
+    await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'narrate',
+      characterId: charId,
+      observation: 'Something happened',
+      label: 'important_event'
+    })
+    expect(r.success).toBe(true)
+    expect(r.sliceId).toBeTruthy()
+  })
+
+  it('list_slices returns empty when no slices exist', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', { action: 'list_slices', agentId })
+    expect(r.success).toBe(true)
+    expect(r.count).toBe(0)
+    expect(r.slices).toEqual([])
+  })
+
+  it('list_secrets returns empty when no secrets exist', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', { action: 'list_secrets', agentId })
+    expect(r.success).toBe(true)
+    expect(r.count).toBe(0)
+  })
+
+  it('get_journal returns empty when no entries exist', async () => {
+    const charId = await seedCharacter()
+    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', { action: 'get_journal', agentId })
+    expect(r.success).toBe(true)
+    expect(r.count).toBe(0)
+    expect(r.entries).toEqual([])
+  })
 })
