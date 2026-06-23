@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- **Per-action `inputSchema` for all consolidated MCP tools** (closes #144) — Replaced the shared `OPEN_SCHEMA` (which only declared `action`) with per-tool `oneOf` JSON Schema definitions in `src/tools/definitions.ts`. Each of the 5 consolidated tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) now exposes a discriminated union schema with one branch per action, fully declaring all parameters with types, descriptions, and required/optional status. MCP bridges that regenerate tool wrapper schemas from `inputSchema.properties` can now introspect all parameters — fixing the silent parameter stripping that caused Zod validation failures on every call through a strict MCP bridge.
+
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
 
 - **Slack alert on WebSocket rate limit** — When `SLACK_WEBHOOK_URL` is set as a Worker secret, the rate limiter posts a notification to Slack on the first excess request per IP per window. Fires exactly once per window via `waitUntil` (best-effort, never blocks the 429 response). Set the secret with `wrangler secret put SLACK_WEBHOOK_URL`.
