@@ -41,7 +41,7 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
   }
 
   // Pass 2: JSON block  "Field": 0.9
-  const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i')
+  const jsonRegex = new RegExp(`"${escapedField}"\\s*:\\s*(-?\d+(?:\.\d+)?)`, 'i')
   const jsonMatch = text.match(jsonRegex)
   if (jsonMatch) return parseFloat(jsonMatch[1])
 
@@ -97,7 +97,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
   }
 
   // Pass 2: JSON block  "Field": 0.9
-  const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'i')
+  const jsonRegex = new RegExp(`("${escapedField}"\\s*:\\s*)(-?\d+(?:\.\d+)?)`, 'i')
   const jsonMatch = text.match(jsonRegex)
   if (jsonMatch) {
     return (
@@ -110,7 +110,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
 
   // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
   const looseRegex = new RegExp(
-    `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
+    `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\d+(?:\.\d+)?)`,
     'im'
   )
   const looseMatch = text.match(looseRegex)
@@ -155,8 +155,11 @@ export function extractActiveThreads(narrativeText: string): Array<any> {
   const lines = narrativeText.split('\n')
   let currentCategory = ''
   for (const line of lines) {
-    if (line.includes('**Ascension Threads')) currentCategory = 'Ascension'
-    if (line.includes('**Dissolution Threads')) currentCategory = 'Dissolution'
+    // Category detection: match any heading that contains "Ascension Threads"
+    // or "Dissolution Threads" regardless of markdown formatting
+    // (covers **bold**, ## heading, ### heading, or plain text).
+    if (/Ascension\s*Threads/i.test(line)) currentCategory = 'Ascension'
+    if (/Dissolution\s*Threads/i.test(line)) currentCategory = 'Dissolution'
     // Use [^)]+ to capture full lore keys containing colons, dashes, commas, spaces.
     // The old (\w+) stopped at the first colon, truncating character:sarah-weaver → character.
     const threadMatch = line.match(/^\s*-\s*\*\*(\w[\w_]*)\*\*\s*(?:\(([^)]+)\))?/)
