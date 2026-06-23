@@ -960,3 +960,148 @@ export async function handle_list_active_threads({ c, id }: ToolContext): Promis
     threads
   }), 200)
 }
+
+export async function handle_create_consumption_timeline({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    entity_key: z.string().min(1),
+    predator_key: z.string().min(1),
+    stages: z.number().int().min(1).max(20),
+    stage_timer: z.number().int().min(1),
+    terminal_state: z.string().min(1),
+    current_stage: z.number().int().min(0).default(0),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+  const predatorKey = parsed.data.predator_key.trim().toLowerCase()
+  const { stages, stage_timer, terminal_state, current_stage } = parsed.data
+
+  // Validate entity exists
+  const rawEntity = await kvGet(c, entityKey)
+  if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+  // Validate predator exists
+  const rawPredator = await kvGet(c, predatorKey)
+  if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${predatorKey}" not found`, null), 200)
+
+  // Check if timeline already exists
+  const timelineKey = `_idx:consumption:${entityKey}`
+  const existing = await kvGet(c, timelineKey)
+  if (existing) {
+    return c.json(makeError(id, -32602, `Consumption timeline already exists for "${entityKey}". Use set_consumption_timeline to update.`, null), 200)
+  }
+
+  const now = new Date().toISOString()
+  const timelineData = {
+    entity_key: entityKey,
+    predator_key: predatorKey,
+    stages,
+    stage_timer,
+    current_stage,
+    terminal_state,
+    created_at: now,
+    updated_at: now,
+  }
+
+  // Store timeline in KV
+  await kvPut(c, timelineKey, JSON.stringify(timelineData))
+
+  // Update entity's lore text with consumption fields using existing field helpers
+  const { text: entityText, meta: entityMeta } = parseKvEntry(rawEntity)
+  let updatedText = updateFieldInText(entityText, 'Consumption-Status', 'active')
+  updatedText = updateFieldInText(updatedText, 'Consumption-Stage', `${current_stage}-of-${stages}`)
+  updatedText = updateFieldInText(updatedText, 'Consumption-Timer', stage_timer)
+  updatedText = updateFieldInText(updatedText, 'Consumed-By', predatorKey)
+  updatedText = updateFieldInText(updatedText, 'Terminal-State', terminal_state)
+
+  await pushHistory(c, entityKey, rawEntity)
+  const version = typeof entityMeta.version === 'number' ? entityMeta.version + 1 : 1
+  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now } }))
+  await appendChangelog(c, entityKey, version)
+  loreDB[entityKey] = updatedText
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Consumption timeline created for "${entityKey}" → predator "${predatorKey}": stage ${current_stage}/${stages}, timer ${stage_timer}, terminal "${terminal_state}".` }],
+    metadata: { entity_key: entityKey, predator_key: predatorKey, stages, stage_timer, current_stage, terminal_state, created_at: now },
+    timeline: timelineData,
+  }), 200)
+}
+
+export async function handle_set_consumption_timeline({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    entity_key: z.string().min(1),
+    predator_key: z.string().min(1).optional(),
+    stages: z.number().int().min(1).max(20).optional(),
+    stage_timer: z.number().int().min(0).optional(),
+    current_stage: z.number().int().min(0).optional(),
+    terminal_state: z.string().min(1).optional(),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+
+  // Validate entity exists
+  const rawEntity = await kvGet(c, entityKey)
+  if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+  // Get existing timeline
+  const timelineKey = `_idx:consumption:${entityKey}`
+  const existingRaw = await kvGet(c, timelineKey)
+  if (!existingRaw) {
+    return c.json(makeError(id, -32602, `No consumption timeline exists for "${entityKey}". Use create_consumption_timeline first.`, null), 200)
+  }
+
+  const existing = JSON.parse(existingRaw)
+  const now = new Date().toISOString()
+
+  // Merge updates
+  const updates: Record<string, unknown> = {}
+  if (parsed.data.predator_key !== undefined) updates.predator_key = parsed.data.predator_key.trim().toLowerCase()
+  if (parsed.data.stages !== undefined) updates.stages = parsed.data.stages
+  if (parsed.data.stage_timer !== undefined) updates.stage_timer = parsed.data.stage_timer
+  if (parsed.data.current_stage !== undefined) updates.current_stage = parsed.data.current_stage
+  if (parsed.data.terminal_state !== undefined) updates.terminal_state = parsed.data.terminal_state
+
+  const updatedTimeline = { ...existing, ...updates, updated_at: now }
+
+  // If predator_key changed, validate the new predator exists
+  if (updatedTimeline.predator_key && updatedTimeline.predator_key !== existing.predator_key) {
+    const rawPredator = await kvGet(c, updatedTimeline.predator_key)
+    if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${updatedTimeline.predator_key}" not found`, null), 200)
+  }
+
+  // Check if terminal stage reached
+  const isTerminal = updatedTimeline.current_stage >= updatedTimeline.stages
+
+  // Store updated timeline
+  await kvPut(c, timelineKey, JSON.stringify(updatedTimeline))
+
+  // Update entity lore text
+  const { text: entityText, meta: entityMeta } = parseKvEntry(rawEntity)
+  let updatedText = entityText
+  if (isTerminal) {
+    updatedText = updateFieldInText(updatedText, 'Consumption-Status', updatedTimeline.terminal_state)
+  } else {
+    updatedText = updateFieldInText(updatedText, 'Consumption-Status', 'active')
+  }
+  updatedText = updateFieldInText(updatedText, 'Consumption-Stage', `${updatedTimeline.current_stage}-of-${updatedTimeline.stages}`)
+  updatedText = updateFieldInText(updatedText, 'Consumption-Timer', updatedTimeline.stage_timer)
+  updatedText = updateFieldInText(updatedText, 'Consumed-By', updatedTimeline.predator_key)
+  updatedText = updateFieldInText(updatedText, 'Terminal-State', updatedTimeline.terminal_state)
+
+  await pushHistory(c, entityKey, rawEntity)
+  const version = typeof entityMeta.version === 'number' ? entityMeta.version + 1 : 1
+  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now } }))
+  await appendChangelog(c, entityKey, version)
+  loreDB[entityKey] = updatedText
+
+  const changedFields = Object.keys(updates)
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Consumption timeline updated for "${entityKey}": stage ${updatedTimeline.current_stage}/${updatedTimeline.stages}, timer ${updatedTimeline.stage_timer}${isTerminal ? ' [TERMINAL]' : ''}. Changed: ${changedFields.join(', ') || 'none'}.` }],
+    metadata: { entity_key: entityKey, updates: changedFields, is_terminal: isTerminal },
+    timeline: updatedTimeline,
+  }), 200)
+}

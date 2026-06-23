@@ -346,6 +346,34 @@ const ENTITY_MANAGE_SCHEMA = {
     },
     {
       type: 'object',
+      required: ['action', 'entity_key', 'predator_key', 'stages', 'stage_timer', 'terminal_state'],
+      properties: {
+        action: { type: 'string', const: 'create_consumption_timeline', description: 'Create a new consumption timeline binding an entity to a predator' },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key being consumed' },
+        predator_key: { type: 'string', minLength: 1, description: 'Predator entity lore key doing the consuming' },
+        stages: { type: 'number', minimum: 1, maximum: 20, description: 'Total number of dissolution stages' },
+        stage_timer: { type: 'number', minimum: 1, description: 'Timer ticks per stage (decrements toward 0)' },
+        terminal_state: { type: 'string', minLength: 1, description: 'Final conversion state (e.g. consumed-nutrient, vessel, ornament)' },
+        current_stage: { type: 'number', minimum: 0, description: 'Starting stage index (default: 0)' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action', 'entity_key'],
+      properties: {
+        action: { type: 'string', const: 'set_consumption_timeline', description: 'Update an existing consumption timeline with new parameters' },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key whose timeline to update' },
+        predator_key: { type: 'string', minLength: 1, description: 'New predator entity lore key' },
+        stages: { type: 'number', minimum: 1, maximum: 20, description: 'New total stage count' },
+        stage_timer: { type: 'number', minimum: 0, description: 'New timer value' },
+        current_stage: { type: 'number', minimum: 0, description: 'New current stage index' },
+        terminal_state: { type: 'string', minLength: 1, description: 'New terminal conversion state' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
       required: ['action'],
       properties: {
         action: { type: 'string', const: 'list_active_threads', description: 'List all active world threads' },
@@ -741,7 +769,7 @@ export const toolDefinitions: ToolDefinition[] = [
     name: 'entity_manage',
     title: 'Entity Manage',
     version: '1.0.0',
-    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, list_active_threads, resolve_interaction',
+    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, create_consumption_timeline, set_consumption_timeline, list_active_threads, resolve_interaction',
     inputSchema: ENTITY_MANAGE_SCHEMA,
   },
   {
