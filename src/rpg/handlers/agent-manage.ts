@@ -287,14 +287,12 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     }
 
     case 'remove_slice': {
-      const resolvedAgentId = await resolveAgentId();
       if (!a.sliceId) return err('"sliceId" is required')
       await db.prepare('DELETE FROM agent_prompt_slices WHERE id = ?').bind(a.sliceId).run()
       return ok({ success: true, actionType: 'remove_slice', sliceId: a.sliceId })
     }
 
     case 'toggle_slice': {
-      const resolvedAgentId = await resolveAgentId();
       if (!a.sliceId || a.enabled === undefined) return err('"sliceId" and "enabled" are required')
       await db.prepare('UPDATE agent_prompt_slices SET enabled = ?, updated_at = ? WHERE id = ?').bind(a.enabled ? 1 : 0, now, a.sliceId).run()
       return ok({ success: true, actionType: 'toggle_slice', sliceId: a.sliceId, enabled: a.enabled })

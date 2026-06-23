@@ -12,18 +12,19 @@ import { setupRpgDb } from '../../../src/__tests__/setup-d1'
 
 // Mock environment bindings
 const mockEnv: AppBindings = {
-  RPG_DB: env.RPG_DB,
+  RPG_DB: env.RPG_DB as D1Database,
   AI: {
-    run: vi.fn().mockImplementation(async (model: string, options: any) => {
+    run: vi.fn().mockImplementation(async (model: string, options: Record<string, unknown>) => {
+      const messages = options.messages as Array<{ content: string }>
       return {
-        response: `Mock response from ${model} for: ${options.messages[1].content}`,
+        response: `Mock response from ${model} for: ${messages[1].content}`,
         usage: {
           prompt_tokens: 10,
           completion_tokens: 15
         }
       }
     })
-  }
+  } as unknown as Ai
 }
 
 const ctx = { sessionId: 'test-session' }
@@ -55,7 +56,7 @@ function extractJson(result: { content: Array<{ type: string, text: string }> })
 async function createCharacter(name: string): Promise<string> {
   const id = randomUUID()
   const now = new Date().toISOString()
-  await mockEnv.RPG_DB.prepare(
+  await (mockEnv.RPG_DB as D1Database).prepare(
     'INSERT INTO characters (id, name, character_class, race, character_type, level, hp, max_hp, ac, stats, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
   ).bind(
     id,
@@ -76,7 +77,7 @@ async function createCharacter(name: string): Promise<string> {
 
 describe('agent_manage tool', () => {
   beforeEach(async () => {
-    await setupRpgDb(mockEnv.RPG_DB)
+    await setupRpgDb(mockEnv.RPG_DB as D1Database)
     // Clear any existing agents from previous tests
     const allAgents = extractJson(await handleAgentManage(mockEnv, { action: 'list' }))
     if (allAgents && allAgents.agents) {
@@ -315,6 +316,7 @@ describe('agent_manage tool', () => {
         kind: 'persona',
         content: 'v1'
       }))
+      expect(first.success).toBe(true)
       expect(first.sliceId).toBeDefined()
 
       const second = extractJson(await handleAgentManage(mockEnv, {
@@ -323,9 +325,19 @@ describe('agent_manage tool', () => {
         kind: 'persona',
         content: 'v2'
       }))
+      expect(second.success).toBe(true)
       expect(second.sliceId).toBeDefined()
       expect(first.sliceId).toBe(second.sliceId)
-      expect(second.content).toBe('v2')
+
+      // Verify the content was actually updated
+      const list = extractJson(await handleAgentManage(mockEnv, {
+        action: 'list_slices',
+        characterId,
+        kind: 'persona'
+      }))
+      expect(list.success).toBe(true)
+      expect(list.count).toBe(1)
+      expect(list.slices[0].content).toBe('v2')
     })
 
     it('toggles a slice', async () => {
@@ -461,35 +473,46 @@ describe('agent_manage tool', () => {
     })
 
     it('adds and retrieves journal entries with filters', async () => {
-      const { characterId, agentId } = await setupAgent()
+      const characterId = await createCharacter('Kara')
+      const createResult = extractJson(await handleAgentManage(mockEnv, {
+        action: 'create',
+        characterId,
+        provider: 'cloudflare',
+        model: '@cf/meta/llama-3.1-8b-instruct'
+      }))
+      expect(createResult.success).toBe(true)
+      const agentId = createResult.agentId
 
       const add1 = extractJson(await handleAgentManage(mockEnv, {
         action: 'add_journal',
-        characterId,
-        kind: 'observation',
-        content: 'A glint behind the curtain.'
+        agentId,
+        content: 'I plan to scout the area.',
+        journalKind: 'plan',
+        encounterId: 'enc-1',
+        round: 2
       }))
+      expect(add1.success).toBe(true)
       expect(add1.entryId).toBeDefined()
 
       const add2 = extractJson(await handleAgentManage(mockEnv, {
         action: 'add_journal',
-        characterId,
-        kind: 'plan',
-        content: 'Reach the door before they spot me.',
-        encounterId: 'enc-1',
-        round: 2
+        agentId,
+        content: 'I observed a strange light.',
+        journalKind: 'observation'
       }))
+      expect(add2.success).toBe(true)
       expect(add2.entryId).toBeDefined()
 
-      const all = extractJson(await handleAgentManage(mockEnv, { action: 'get_journal', characterId }))
+      const all = extractJson(await handleAgentManage(mockEnv, { action: 'get_journal', agentId }))
       expect(all.success).toBe(true)
       expect(all.count).toBe(2)
 
        const filtered = extractJson(await handleAgentManage(mockEnv, {
          action: 'get_journal',
-         characterId,
+         agentId,
          filter: 'plan'
        }))
+       expect(filtered.success).toBe(true)
        expect(filtered.count).toBe(1)
        expect(filtered.entries[0].kind).toBe('plan')
     })
@@ -500,19 +523,22 @@ describe('agent_manage tool', () => {
   describe('invocation', () => {
     it('invoke returns a response when AI binding is present', async () => {
       const characterId = await createCharacter('Kara')
-      await handleAgentManage(mockEnv, {
+      const createResult = extractJson(await handleAgentManage(mockEnv, {
         action: 'create',
         characterId,
         provider: 'cloudflare',
         model: '@cf/meta/llama-3.1-8b-instruct'
-      })
+      }))
+      expect(createResult.success).toBe(true)
+      const agentId = createResult.agentId
 
       const result = extractJson(await handleAgentManage(mockEnv, {
         action: 'invoke',
-        characterId,
+        agentId,
         situation: "It's your turn."
       }))
 
+      expect(result.success).toBe(true)
       expect(result.status).toBe('ok')
       expect(result.response).toBeDefined()
       expect(result.promptTokens).toBe(10)
@@ -542,19 +568,22 @@ describe('agent_manage tool', () => {
 
     it('replay returns dry-mode info for a stored call', async () => {
       const characterId = await createCharacter('Kara')
-      await handleAgentManage(mockEnv, {
+      const createResult = extractJson(await handleAgentManage(mockEnv, {
         action: 'create',
         characterId,
         provider: 'cloudflare',
         model: '@cf/meta/llama-3.1-8b-instruct'
-      })
+      }))
+      expect(createResult.success).toBe(true)
+      const agentId = createResult.agentId
 
       // Trigger an invoke so there's a call to replay
       const invokeResult = extractJson(await handleAgentManage(mockEnv, {
         action: 'invoke',
-        characterId,
+        agentId,
         situation: "go"
       }))
+      expect(invokeResult.success).toBe(true)
 
       if (invokeResult.callId) {
         const replay = extractJson(await handleAgentManage(mockEnv, {

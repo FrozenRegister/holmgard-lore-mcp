@@ -4,6 +4,8 @@
 
 ### Added
 
+- **`agent_manage` test suite expanded** — Migrated comprehensive tests from the Mnehmos reference repo into both `src/__tests__/agent-manage.test.ts` (47 integration tests via Workers runtime) and `tests/unit/agent/agent-manage.test.ts` (24 unit tests via direct handler calls). New coverage: slice kind validation, secret importance validation, journal kind validation, `list_slices` kind filter, `list_secrets` importance filter, `narrate` with label, `broadcast` skipping non-existent agents, `invoke` circuit-open/budget-exhausted guards, `invoke` circuit breaker lifecycle, `replay` audit row creation, and `returns helpful error for invalid action`. Fixed two unused-variable lint errors in `agent-manage.ts` (`remove_slice` and `toggle_slice` cases).
+
 - **`agent_manage` characterId support** — Enhanced `agent_manage` tool to support `characterId` parameter for slice operations (`set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `preview_prompt`), journal operations (`add_journal`, `get_journal`), and secrets operations (`add_secret`, `list_secrets`). Users can now reference agents by `characterId` in addition to `agentId`/`id`, improving usability and API consistency. ([PR #142](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/142))
 
 ### Fixed
@@ -13,8 +15,6 @@
 - **Slack alert on WebSocket rate limit** — When `SLACK_WEBHOOK_URL` is set as a Worker secret, the rate limiter posts a notification to Slack on the first excess request per IP per window. Fires exactly once per window via `waitUntil` (best-effort, never blocks the 429 response). Set the secret with `wrangler secret put SLACK_WEBHOOK_URL`.
 
 - **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Extended `/admin/gc` to purge all `_csp_report:*` keys automatically; response now includes `deleted_csp_reports` count.
-
-### Added
 
 - **`POST /internal/map-readback`** — Internal endpoint for hex map cold-start readback. Editor calls this to fetch hexes and landmarks from D1 for a given `mapId`. Returns `{ hexes, landmarks }` with field mapping (D1 `label`→`name`, `category`→`type`, JSON `data` unpacking). Gated by `ADMIN_SECRET`, same as `/admin/*` routes. Part of Phase 1 of D1 map readback feature.
 
