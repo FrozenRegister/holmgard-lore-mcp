@@ -373,3 +373,208 @@ describe('handle_set_consumption_timeline', () => {
     expect(body.result.timeline.terminal_state).toBe('distributed-nutrient');
   });
 });
+
+describe('coverage gaps — edge paths', () => {
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
+  /* ── handle_create_consumption_timeline ── */
+
+  it('create: returns error on invalid Zod params (branch: !parsed.success)', async () => {
+    const mockCtx = createMockContext({});
+    const result = await handle_create_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        // Missing required fields entity_key, predator_key, stages, stage_timer, terminal_state
+        entity_key: 'character:prey',
+      } as any,
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeDefined();
+    expect(body.error.message).toContain('Invalid params');
+  });
+
+  it('create: uses fallback version=1 when meta.version is not numeric (ternary false branch)', async () => {
+    const ENTITY_STR_VERSION = JSON.stringify({
+      text: '**Name:** Seraphine\n**Role:** herbalist',
+      meta: { version: 'v1', createdAt: '2026-06-23T00:00:00.000Z' },
+    });
+    const mockCtx = createMockContext({
+      'character:versioned': ENTITY_STR_VERSION,
+      'entity:stalker': JSON.stringify({
+        text: '**Name:** Stalker\n**Role:** hunter',
+        meta: { version: 1, createdAt: '2026-06-23T00:00:00.000Z' },
+      }),
+    });
+    const result = await handle_create_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: 'character:versioned',
+        predator_key: 'entity:stalker',
+        stages: 3,
+        stage_timer: 2,
+        terminal_state: 'consumed-nutrient',
+      },
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeUndefined();
+    expect(body.result.timeline.entity_key).toBe('character:versioned');
+    // Verify version field was written to KV by checking content text
+    expect(body.result.content[0].text).toContain('Consumption timeline created');
+  });
+
+  it('create: handles missing meta.createdAt via nullish coalesce', async () => {
+    const ENTITY_NO_CREATED = JSON.stringify({
+      text: '**Name:** Seraphine\n**Role:** herbalist',
+      meta: { version: 1 },
+    });
+    const mockCtx = createMockContext({
+      'character:nocreated': ENTITY_NO_CREATED,
+      'entity:stalker': JSON.stringify({
+        text: '**Name:** Stalker',
+        meta: { version: 1 },
+      }),
+    });
+    const result = await handle_create_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: 'character:nocreated',
+        predator_key: 'entity:stalker',
+        stages: 3,
+        stage_timer: 2,
+        terminal_state: 'consumed-nutrient',
+      },
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeUndefined();
+  });
+
+  /* ── handle_set_consumption_timeline ── */
+
+  it('set: returns error on invalid Zod params (branch: !parsed.success)', async () => {
+    const mockCtx = createMockContext({});
+    const result = await handle_set_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: '',
+      } as any,
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeDefined();
+    expect(body.error.message).toContain('Invalid params');
+  });
+
+  it('set: handles empty predator_key in existing timeline (short-circuit on && first operand)', async () => {
+    const ENTITY = JSON.stringify({
+      text: '**Name:** Prey\n**Role:** target',
+      meta: { version: 1, createdAt: '2026-06-23T00:00:00.000Z' },
+    });
+    const TIMELINE_EMPTY_PRED = JSON.stringify({
+      entity_key: 'character:empty-pred',
+      predator_key: '',
+      stages: 5,
+      stage_timer: 3,
+      current_stage: 0,
+      terminal_state: 'consumed-nutrient',
+      created_at: '2026-06-23T00:00:00.000Z',
+      updated_at: '2026-06-23T00:00:00.000Z',
+    });
+    const mockCtx = createMockContext({
+      'character:empty-pred': ENTITY,
+      '_idx:consumption:character:empty-pred': TIMELINE_EMPTY_PRED,
+    });
+    const result = await handle_set_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: 'character:empty-pred',
+        stage_timer: 1,
+      },
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeUndefined();
+    expect(body.result.timeline.stage_timer).toBe(1);
+  });
+
+  it('set: uses fallback version=1 when meta.version is not numeric (ternary false branch)', async () => {
+    const ENTITY_STR_VERSION = JSON.stringify({
+      text: '**Name:** Prey\n**Role:** target',
+      meta: { version: 'v2', createdAt: '2026-06-23T00:00:00.000Z' },
+    });
+    const EXISTING = JSON.stringify({
+      entity_key: 'character:str-version',
+      predator_key: 'entity:stalker',
+      stages: 5,
+      stage_timer: 3,
+      current_stage: 0,
+      terminal_state: 'consumed-nutrient',
+      created_at: '2026-06-23T00:00:00.000Z',
+      updated_at: '2026-06-23T00:00:00.000Z',
+    });
+    const mockCtx = createMockContext({
+      'character:str-version': ENTITY_STR_VERSION,
+      '_idx:consumption:character:str-version': EXISTING,
+    });
+    const result = await handle_set_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: 'character:str-version',
+        stage_timer: 1,
+      },
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeUndefined();
+    expect(body.result.timeline.stage_timer).toBe(1);
+  });
+
+  it('set: handles missing meta.createdAt via nullish coalesce', async () => {
+    const ENTITY_NO_CREATED = JSON.stringify({
+      text: '**Name:** Prey\n**Role:** target',
+      meta: { version: 1 },
+    });
+    const EXISTING = JSON.stringify({
+      entity_key: 'character:nocreated-set',
+      predator_key: 'entity:stalker',
+      stages: 5,
+      stage_timer: 3,
+      current_stage: 0,
+      terminal_state: 'consumed-nutrient',
+      created_at: '2026-06-23T00:00:00.000Z',
+      updated_at: '2026-06-23T00:00:00.000Z',
+    });
+    const mockCtx = createMockContext({
+      'character:nocreated-set': ENTITY_NO_CREATED,
+      '_idx:consumption:character:nocreated-set': EXISTING,
+    });
+    const result = await handle_set_consumption_timeline({
+      c: mockCtx,
+      id: 'test-id',
+      isAuthenticated: true,
+      args: {
+        entity_key: 'character:nocreated-set',
+        stage_timer: 1,
+      },
+    });
+    expect(result.status).toBe(200);
+    const body: any = await result.json();
+    expect(body.error).toBeUndefined();
+  });
+});
