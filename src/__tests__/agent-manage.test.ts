@@ -971,4 +971,124 @@ describe('agent_manage tool', () => {
     expect(r.count).toBe(0)
     expect(r.entries).toEqual([])
   })
+
+  it('list with filter parameter (status filter)', async () => {
+    const charId1 = await seedCharacter()
+    const charId2 = await seedCharacter()
+    const charId3 = await seedCharacter()
+
+    const { agentId: agent1 } = await callTool('agent_manage', { action: 'create', characterId: charId1, status: 'active' })
+    const { agentId: agent2 } = await callTool('agent_manage', { action: 'create', characterId: charId2, status: 'paused' })
+    const { agentId: agent3 } = await callTool('agent_manage', { action: 'create', characterId: charId3, status: 'retired' })
+
+    // List only paused agents using filter parameter
+    const r = await callTool('agent_manage', { action: 'list', filter: 'paused' })
+    expect(r.success).toBe(true)
+    expect(r.count).toBeGreaterThan(0)
+    const pausedAgents = r.agents.filter((a: any) => a.status === 'paused')
+    expect(pausedAgents.length).toBeGreaterThan(0)
+  })
+
+  it('list with filter "all" returns all agents', async () => {
+    const charId1 = await seedCharacter()
+    const charId2 = await seedCharacter()
+
+    await callTool('agent_manage', { action: 'create', characterId: charId1, status: 'active' })
+    await callTool('agent_manage', { action: 'create', characterId: charId2, status: 'paused' })
+
+    const r = await callTool('agent_manage', { action: 'list', filter: 'all' })
+    expect(r.success).toBe(true)
+    const allStatuses = r.agents.map((a: any) => a.status)
+    expect(allStatuses).toContain('active')
+    expect(allStatuses).toContain('paused')
+  })
+
+  it('add_secret with invalid importance level', async () => {
+    const charId = await seedCharacter()
+    await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'add_secret',
+      characterId: charId,
+      content: 'Secret content',
+      importance: 'invalid_level'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('Invalid enum value')
+  })
+
+  it('add_journal with invalid kind', async () => {
+    const charId = await seedCharacter()
+    await callTool('agent_manage', { action: 'create', characterId: charId })
+
+    const r = await callTool('agent_manage', {
+      action: 'add_journal',
+      characterId: charId,
+      content: 'Journal entry',
+      journalKind: 'invalid_kind'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('Invalid enum value')
+  })
+
+  it('set_slice without agentId or characterId returns error', async () => {
+    const r = await callTool('agent_manage', {
+      action: 'set_slice',
+      kind: 'persona',
+      content: 'Some content'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('list_slices without agentId or characterId returns error', async () => {
+    const r = await callTool('agent_manage', { action: 'list_slices' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('narrate without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', {
+      action: 'narrate',
+      observation: 'Some observation'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('add_secret without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', {
+      action: 'add_secret',
+      content: 'Secret'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('list_secrets without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', { action: 'list_secrets' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('add_journal without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', {
+      action: 'add_journal',
+      content: 'Journal entry'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('get_journal without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', { action: 'get_journal' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('preview_prompt without characterId or agentId returns error', async () => {
+    const r = await callTool('agent_manage', { action: 'preview_prompt' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
 })
