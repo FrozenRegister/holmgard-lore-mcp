@@ -10,6 +10,7 @@ import { handle_rpg } from './rpg-handler'
 import { handleSearchTools, setToolIndex } from './handlers/search-tools'
 import { handleLoadToolSchema, setSchemaIndex } from './handlers/load-tool-schema'
 import { handleAgentManage } from './handlers/agent-manage'
+import { handleCharacterManage } from './handlers/character-manage'
 
 export { setToolIndex, setSchemaIndex }
 
@@ -25,6 +26,7 @@ function wrap(fn: RpgFn): ToolHandler {
 export const rpgToolRegistry: Record<string, ToolHandler> = {
   rpg:              handle_rpg,
   agent_manage:     wrap(handleAgentManage),
+  character_manage: wrap(handleCharacterManage),
   search_tools:     wrap(handleSearchTools),
   load_tool_schema: wrap(handleLoadToolSchema),
 }
