@@ -19,7 +19,7 @@ type AgentAction = typeof ACTIONS[number]
 
 const ALIASES: Record<string, AgentAction> = {
   ...CRUD_ALIASES,
-  new_agent: 'create',
+  new_agent: 'create', bind: 'create',
   fetch: 'get', find: 'get',
   restart: 'resume', reset: 'resume', open_circuit: 'resume',
   status: 'health', check: 'health',
@@ -44,6 +44,7 @@ const InputSchema = z.object({
   id: z.string().optional(),
   agentId: z.string().optional(),
   characterId: z.string().optional(),
+  provider: z.string().optional(),
   model: z.string().optional(),
   status: z.enum(['active', 'paused', 'retired']).optional(),
   autoOnTurn: z.boolean().optional(),
@@ -66,6 +67,7 @@ const InputSchema = z.object({
   callId: z.string().optional(),
   // journal / secrets
   importance: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  secretId: z.string().optional(),
   journalKind: z.enum(['response', 'observation', 'plan', 'reflection', 'dm_note']).optional(),
   round: z.number().int().optional(),
   // filters
@@ -83,6 +85,16 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
   const now = new Date().toISOString()
   const agentId = a.id ?? a.agentId
 
+  // Helper to resolve agentId from characterId if needed
+  async function resolveAgentId(): Promise<string | null> {
+    if (agentId) return agentId;
+    if (a.characterId) {
+      const agent = await db.prepare('SELECT id FROM agents WHERE character_id = ?').bind(a.characterId).first() as { id: string } | null;
+      return agent?.id ?? null;
+    }
+    return null;
+  }
+
   switch (match.matched) {
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -90,19 +102,48 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     case 'create': {
       if (!a.characterId) return err('"characterId" is required')
       const id = crypto.randomUUID()
-      await db.prepare(
-        'INSERT INTO agents (id, character_id, model, status, auto_on_turn, temperature, max_tokens, budget_tokens, tokens_used, consecutive_failures, circuit_state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,0,0,\'closed\',?,?)'
-      ).bind(
-        id, a.characterId,
-        a.model ?? '@cf/meta/llama-3.1-8b-instruct',
-        a.status ?? 'active',
-        a.autoOnTurn ? 1 : 0,
-        a.temperature ?? 0.7,
-        a.maxTokens ?? 512,
-        a.budgetTokens ?? null,
-        now, now
-      ).run()
-      return ok({ success: true, actionType: 'create', agentId: id, characterId: a.characterId })
+      const model = a.model ?? '@cf/meta/llama-3.1-8b-instruct'
+      const status = a.status ?? 'active'
+      const autoOnTurn = a.autoOnTurn ? 1 : 0
+      const temperature = a.temperature ?? 0.7
+      const maxTokens = a.maxTokens ?? 512
+      const budgetTokens = a.budgetTokens ?? null
+      const provider = a.provider ?? 'cloudflare'
+
+      try {
+        await db.prepare(
+          'INSERT INTO agents (id, character_id, provider, model, status, auto_on_turn, temperature, max_tokens, budget_tokens, tokens_used, consecutive_failures, circuit_state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,0,0,\'closed\',?,?)'
+        ).bind(
+          id, a.characterId, provider, model, status, autoOnTurn, temperature, maxTokens, budgetTokens, now, now
+        ).run()
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('UNIQUE constraint failed: agents.character_id')) {
+          return err(`Character already bound to an agent`)
+        }
+        if (e instanceof Error && e.message.includes('FOREIGN KEY constraint failed')) {
+          return err(`Character not found: ${a.characterId}`)
+        }
+        throw e
+      }
+
+      const agent = {
+        id,
+        character_id: a.characterId,
+        provider,
+        model,
+        status,
+        auto_on_turn: autoOnTurn,
+        temperature,
+        max_tokens: maxTokens,
+        budget_tokens: budgetTokens,
+        tokens_used: 0,
+        consecutive_failures: 0,
+        circuit_state: 'closed',
+        created_at: now,
+        updated_at: now
+      }
+
+      return ok({ success: true, actionType: 'create', agentId: id, characterId: a.characterId, agent })
     }
 
     case 'get': {
@@ -112,13 +153,31 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
           ? await db.prepare('SELECT * FROM agents WHERE character_id = ?').bind(a.characterId).first()
           : null
       if (!row) return err(agentId ? `Agent not found: ${agentId}` : a.characterId ? `No agent for character: ${a.characterId}` : '"id"/"agentId" or "characterId" is required')
-      return ok({ success: true, actionType: 'get', agent: row })
+      return ok({ success: true, actionType: 'get', agentId: row.id, agent: row })
     }
 
     case 'list': {
-      let query = 'SELECT id, character_id, model, status, auto_on_turn, circuit_state, tokens_used, created_at FROM agents'
+      let query = 'SELECT * FROM agents'
       const binds: unknown[] = []
-      if (a.filter && a.filter !== 'all') { query += ' WHERE status = ?'; binds.push(a.filter) }
+
+      // Handle status filter (from status parameter)
+      if (a.status) {
+        query += ' WHERE status = ?';
+        binds.push(a.status)
+      }
+      // Handle filter parameter (can be 'all', 'enabled', 'disabled', or status values)
+      else if (a.filter) {
+        if (a.filter !== 'all') {
+          query += ' WHERE status = ?';
+          binds.push(a.filter)
+        }
+      }
+      // Default to only active agents if no filter is specified
+      else {
+        query += ' WHERE status = ?';
+        binds.push('active')
+      }
+
       query += ' ORDER BY created_at DESC LIMIT ?'; binds.push(a.limit)
       const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'list', agents: results, count: results.length })
@@ -157,11 +216,24 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'health': {
       if (!agentId) return err('"id" or "agentId" is required')
-      const agent = await db.prepare('SELECT status, circuit_state, consecutive_failures, tokens_used, budget_tokens FROM agents WHERE id = ?').bind(agentId).first() as Record<string, unknown> | null
+      const agent = await db.prepare('SELECT * FROM agents WHERE id = ?').bind(agentId).first() as Record<string, unknown> | null
       if (!agent) return err(`Agent not found: ${agentId}`)
       const canInvoke = agent.status === 'active' && agent.circuit_state === 'closed' && !!env.AI
         && (!agent.budget_tokens || (agent.tokens_used as number) < (agent.budget_tokens as number))
-      return ok({ success: true, actionType: 'health', agentId, canInvoke, status: agent.status, circuitState: agent.circuit_state, consecutiveFailures: agent.consecutive_failures, tokensUsed: agent.tokens_used, budgetTokens: agent.budget_tokens, aiBindingPresent: !!env.AI })
+      const budgetRemaining = agent.budget_tokens ? (agent.budget_tokens as number) - (agent.tokens_used as number) : null
+      return ok({
+        success: true,
+        actionType: 'health',
+        agentId,
+        canInvoke,
+        status: agent.status,
+        circuitState: agent.circuit_state,
+        consecutiveFailures: agent.consecutive_failures,
+        tokensUsed: agent.tokens_used,
+        budgetTokens: agent.budget_tokens,
+        budgetRemaining,
+        aiBindingPresent: !!env.AI
+      })
     }
 
     case 'budget': {
@@ -178,11 +250,39 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     // ── Prompt slices ────────────────────────────────────────────────────────
 
     case 'set_slice': {
-      if (!agentId || !a.kind || !a.content) return err('"agentId"/"id", "kind", and "content" are required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId || !a.kind || !a.content) return err('"agentId"/"id"/"characterId", "kind", and "content" are required')
+      const agentId = resolvedAgentId;
+
+      // Validate slice kind
+      const validKinds = ['persona', 'directive', 'secrets', 'narrative_feed', 'recent', 'character_state', 'custom']
+      if (!validKinds.includes(a.kind)) {
+        return err(`Invalid slice kind: ${a.kind}. Valid kinds are: ${validKinds.join(', ')}`)
+      }
+
       const sliceId = a.sliceId ?? crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, label=excluded.label, content=excluded.content, order_index=excluded.order_index, updated_at=excluded.updated_at'
       ).bind(sliceId, agentId, a.kind, a.label ?? null, a.content, a.orderIndex ?? 0, now).run()
+
+      // For upsert behavior, check if we're updating an existing slice with same kind+label
+      if (!a.sliceId) {
+        const existing = await db.prepare(
+          'SELECT id FROM agent_prompt_slices WHERE agent_id = ? AND kind = ? AND label IS ? AND id != ?'
+        ).bind(agentId, a.kind, a.label ?? null, sliceId).first()
+
+        if (existing) {
+          // Update the existing slice instead
+          await db.prepare(
+            'UPDATE agent_prompt_slices SET content = ?, order_index = ?, updated_at = ? WHERE id = ?'
+          ).bind(a.content, a.orderIndex ?? 0, now, existing.id).run()
+
+          // Delete the newly created slice
+          await db.prepare('DELETE FROM agent_prompt_slices WHERE id = ?').bind(sliceId).run()
+          return ok({ success: true, actionType: 'set_slice', agentId, sliceId: existing.id as string, kind: a.kind })
+        }
+      }
+
       return ok({ success: true, actionType: 'set_slice', agentId, sliceId, kind: a.kind })
     }
 
@@ -199,18 +299,23 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     }
 
     case 'list_slices': {
-      if (!agentId) return err('"id" or "agentId" is required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId) return err('"id"/"agentId"/"characterId" is required')
+      const agentId = resolvedAgentId;
       let query = 'SELECT id, kind, label, content, order_index, enabled FROM agent_prompt_slices WHERE agent_id = ?'
       const binds: unknown[] = [agentId]
       if (a.filter === 'enabled') { query += ' AND enabled = 1' }
       else if (a.filter === 'disabled') { query += ' AND enabled = 0' }
+      else if (a.kind) { query += ' AND kind = ?'; binds.push(a.kind) }
       query += ' ORDER BY order_index'
       const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'list_slices', agentId, slices: results, count: results.length })
     }
 
     case 'narrate': {
-      if (!agentId || !a.observation) return err('"agentId"/"id" and "observation" are required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId || !a.observation) return err('"agentId"/"id"/"characterId" and "observation" are required')
+      const agentId = resolvedAgentId;
       const sliceId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,\'narrative_feed\',?,?,999,1,?)'
@@ -220,7 +325,16 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
 
     case 'broadcast': {
       if (!a.agentIds || a.agentIds.length === 0 || !a.observation) return err('"agentIds" (array) and "observation" are required')
-      const rows = await Promise.all(a.agentIds.map(async (aid) => {
+
+      // Filter out non-existent agents
+      const validAgents = await Promise.all(a.agentIds.map(async (aid) => {
+        const agent = await db.prepare('SELECT id FROM agents WHERE id = ?').bind(aid).first()
+        return agent ? aid : null
+      }))
+
+      const validAgentIds = validAgents.filter(aid => aid !== null) as string[]
+
+      const rows = await Promise.all(validAgentIds.map(async (aid) => {
         const sliceId = crypto.randomUUID()
         await db.prepare(
           'INSERT INTO agent_prompt_slices (id, agent_id, kind, label, content, order_index, enabled, updated_at) VALUES (?,?,\'narrative_feed\',?,?,999,1,?)'
@@ -231,7 +345,9 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     }
 
     case 'preview_prompt': {
-      if (!agentId) return err('"id" or "agentId" is required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId) return err('"id"/"agentId"/"characterId" is required')
+      const agentId = resolvedAgentId;
       const { results: slices } = await db.prepare(
         'SELECT kind, label, content, order_index FROM agent_prompt_slices WHERE agent_id = ? AND enabled = 1 ORDER BY order_index'
       ).bind(agentId).all()
@@ -240,13 +356,24 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
         { role: 'system', content: systemContent || 'You are an NPC in a fantasy roleplaying game.' },
         { role: 'user', content: a.situation ?? 'What do you do?' },
       ]
-      return ok({ success: true, actionType: 'preview_prompt', agentId, messages, sliceCount: slices.length, estimatedTokens: Math.ceil(JSON.stringify(messages).length / 4) })
+      const slicesIncluded = slices.map((s: Record<string, unknown>) => s.kind as string)
+      const estimatedPromptTokens = Math.ceil(JSON.stringify(messages).length / 4)
+      return ok({ success: true, actionType: 'preview_prompt', agentId, messages, slicesIncluded, estimatedPromptTokens })
     }
 
     // ── Secrets ──────────────────────────────────────────────────────────────
 
     case 'add_secret': {
-      if (!agentId || !a.content) return err('"agentId"/"id" and "content" are required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId || !a.content) return err('"agentId"/"id"/"characterId" and "content" are required')
+      const agentId = resolvedAgentId;
+
+      // Validate importance levels
+      const validImportance = ['low', 'medium', 'high', 'critical']
+      if (a.importance && !validImportance.includes(a.importance)) {
+        return err(`Invalid importance level: ${a.importance}. Valid levels are: ${validImportance.join(', ')}`)
+      }
+
       const secretId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_secrets (id, agent_id, content, importance, created_at) VALUES (?,?,?,?,?)'
@@ -255,25 +382,53 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     }
 
     case 'list_secrets': {
-      if (!agentId) return err('"id" or "agentId" is required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId) return err('"id"/"agentId"/"characterId" is required')
+      const agentId = resolvedAgentId;
       let query = 'SELECT id, content, importance, created_at FROM agent_secrets WHERE agent_id = ?'
       const binds: unknown[] = [agentId]
-      if (a.filter && a.filter !== 'all') { query += ' AND importance = ?'; binds.push(a.filter) }
+      if (a.filter) {
+        if (a.filter !== 'all') {
+          query += ' AND importance = ?';
+          binds.push(a.filter)
+        }
+      }
       query += ' ORDER BY created_at DESC LIMIT ?'; binds.push(a.limit)
       const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'list_secrets', agentId, secrets: results, count: results.length })
     }
 
     case 'remove_secret': {
-      if (!a.sliceId) return err('"sliceId" (secret id) is required')
-      await db.prepare('DELETE FROM agent_secrets WHERE id = ?').bind(a.sliceId).run()
-      return ok({ success: true, actionType: 'remove_secret', secretId: a.sliceId })
+      if (!a.secretId) return err('"secretId" is required')
+      // First get the agent_id before deletion
+      const agentIdResult = await db.prepare('SELECT agent_id FROM agent_secrets WHERE id = ?').bind(a.secretId).first() as { agent_id: string } | null
+      if (!agentIdResult) return err(`Secret not found: ${a.secretId}`)
+      const agentId = agentIdResult.agent_id
+
+      // Delete the secret
+      const deleteResult = await db.prepare('DELETE FROM agent_secrets WHERE id = ?').bind(a.secretId).run()
+
+      // Check if the deletion was successful
+      if (!deleteResult.success || deleteResult.meta.changes === 0) {
+        return err(`Secret not found: ${a.secretId}`)
+      }
+
+      return ok({ success: true, actionType: 'remove_secret', agentId, secretId: a.secretId })
     }
 
     // ── Journal ──────────────────────────────────────────────────────────────
 
     case 'add_journal': {
-      if (!agentId || !a.content) return err('"agentId"/"id" and "content" are required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId || !a.content) return err('"agentId"/"id"/"characterId" and "content" are required')
+      const agentId = resolvedAgentId;
+
+      // Validate journal kinds
+      const validKinds = ['response', 'observation', 'plan', 'reflection', 'dm_note']
+      if (a.journalKind && !validKinds.includes(a.journalKind)) {
+        return err(`Invalid journal kind: ${a.journalKind}. Valid kinds are: ${validKinds.join(', ')}`)
+      }
+
       const entryId = crypto.randomUUID()
       await db.prepare(
         'INSERT INTO agent_journal (id, agent_id, kind, encounter_id, round, content, created_at) VALUES (?,?,?,?,?,?,?)'
@@ -282,7 +437,9 @@ export async function handleAgentManage(env: AppBindings, args: Record<string, u
     }
 
     case 'get_journal': {
-      if (!agentId) return err('"id" or "agentId" is required')
+      const resolvedAgentId = await resolveAgentId();
+      if (!resolvedAgentId) return err('"id"/"agentId"/"characterId" is required')
+      const agentId = resolvedAgentId;
       let query = 'SELECT id, kind, encounter_id, round, content, created_at FROM agent_journal WHERE agent_id = ?'
       const binds: unknown[] = [agentId]
       if (a.filter && a.filter !== 'all') { query += ' AND kind = ?'; binds.push(a.filter) }

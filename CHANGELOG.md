@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`agent_manage` test suite expanded** — Migrated comprehensive tests from the Mnehmos reference repo and added targeted coverage tests. Now 64 integration tests (src/**tests**/agent-manage.test.ts, Workers runtime) + 24 unit tests (tests/unit/agent/agent-manage.test.ts, direct handler calls) = 88 total tests. New coverage includes: slice upsert behavior, all 7 valid slice kinds, slice disabled filter, secret importance level filters, journal encounterId/round parameters, journal limit parameter, paused agent invocation, broadcast single-agent and empty-array validation, secret removal with duplicate-delete detection, characterId resolution across all operations, empty state validation for lists, and AI binding error scenarios. Reaches high line coverage of agent-manage.ts. Fixed two unused-variable lint errors in `agent-manage.ts` (`remove_slice` and `toggle_slice`).
+
+- **`agent_manage` characterId support** — Enhanced `agent_manage` tool to support `characterId` parameter for slice operations (`set_slice`, `remove_slice`, `toggle_slice`, `list_slices`, `narrate`, `preview_prompt`), journal operations (`add_journal`, `get_journal`), and secrets operations (`add_secret`, `list_secrets`). Users can now reference agents by `characterId` in addition to `agentId`/`id`, improving usability and API consistency. ([PR #142](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/142))
+
 ### Fixed
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
@@ -9,8 +15,6 @@
 - **Slack alert on WebSocket rate limit** — When `SLACK_WEBHOOK_URL` is set as a Worker secret, the rate limiter posts a notification to Slack on the first excess request per IP per window. Fires exactly once per window via `waitUntil` (best-effort, never blocks the 429 response). Set the secret with `wrangler secret put SLACK_WEBHOOK_URL`.
 
 - **CSP reports no longer stored in KV** (closes #135) — The `/csp-report` endpoint was writing every CSP violation to KV under `_csp_report:*` keys (1,400+ accumulated entries). KV storage is removed; violations are now logged to `console.log` only. Added `_csp_report:` to the `kvList()` exclusion filter so any existing entries are hidden from lore list results. Extended `/admin/gc` to purge all `_csp_report:*` keys automatically; response now includes `deleted_csp_reports` count.
-
-### Added
 
 - **`POST /internal/map-readback`** — Internal endpoint for hex map cold-start readback. Editor calls this to fetch hexes and landmarks from D1 for a given `mapId`. Returns `{ hexes, landmarks }` with field mapping (D1 `label`→`name`, `category`→`type`, JSON `data` unpacking). Gated by `ADMIN_SECRET`, same as `/admin/*` routes. Part of Phase 1 of D1 map readback feature.
 
