@@ -14,6 +14,7 @@ import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
 import { setToolIndex, setSchemaIndex } from './rpg/registry'
 import internalRoutes from './internal/routes'
+import entityReadsRouter from './api/entity-reads'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
@@ -272,6 +273,9 @@ app.route('/admin', adminRoutes)
 
 // ── Internal routes ────────────────────────────────────────────────────────────
 app.route('/internal', internalRoutes)
+
+// ── Entity list reads (open, no auth) ─────────────────────────────────────────
+app.route('/api/entities', entityReadsRouter)
 
 // ── GET /changes ──────────────────────────────────────────────────────────────
 app.route('/changes', changesRouter)
