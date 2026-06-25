@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Character relationship + inventory endpoints (Phase 5 — Holmgard OS)** — `GET /api/entities/characters/:id/relationships` returns bidirectional NPC relationships (from `npc_relationships`, both directions) and co-party members (from `party_members` + `parties` join); `GET /api/entities/characters/:id/inventory` returns `inventory_items` joined with `items`. Both normalise missing fields to safe defaults. 8 new unit tests (total entity-reads tests: 44). (part of holmgard-lore-editor#143)
+
 - **Edge-case tests for `GET/PATCH /characters/:id`** — 5 new unit tests: `GET /characters/:id` with a partially populated D1 row (some nulls, some present — verifies per-field defaults); `PATCH` with a single patchable field; `PATCH` accepting `X-Api-Key` as fallback auth header; `PATCH` returning 200 for a non-existent character id (no affected-rows check — documents intended behaviour); `PATCH` silently dropping `id`/`kv_origin` when mixed with a valid patchable field. Total entity-reads tests: 36.
 
 - **Coverage: 503/500 error paths for `GET/PATCH /characters/:id`** — Added `/* c8 ignore next */` on the two unreachable 503 guards (miniflare always provides RPG_DB in tests) and added 4 new tests covering: `GET /characters/:id` returns 503 when RPG_DB is null, `GET /characters/:id` returns 500 when the DB query throws, `PATCH /characters/:id` returns 503 when RPG_DB is null, `PATCH /characters/:id` returns 500 when the UPDATE throws.
