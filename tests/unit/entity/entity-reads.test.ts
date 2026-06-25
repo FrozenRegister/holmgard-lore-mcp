@@ -483,3 +483,123 @@ describe('GET /items', () => {
     expect(body.items[0].weight).toBe(0);
   });
 });
+
+// ── GET /characters/:id/relationships ─────────────────────────────────────────
+
+describe('GET /characters/:id/relationships', () => {
+  it('returns npc_relationships and party_members', async () => {
+    const db = createMockD1({
+      npc_relationships: [
+        { target_id: 'c2', target_name: 'Elara', target_type: 'pc', target_kv_origin: 'character:elara',
+          familiarity: 'friend', disposition: 'friendly', interaction_count: 7, last_interaction_at: '2026-01-01' },
+      ],
+      party_members: [
+        { character_id: 'c3', name: 'Borgil', character_type: 'npc', kv_origin: null,
+          role: 'member', party_id: 'p1', party_name: 'The Wanderers' },
+      ],
+    });
+    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.npc_relationships).toHaveLength(1);
+    expect(body.npc_relationships[0].target_name).toBe('Elara');
+    expect(body.npc_relationships[0].familiarity).toBe('friend');
+    expect(body.npc_relationships[0].disposition).toBe('friendly');
+    expect(body.npc_relationships[0].interaction_count).toBe(7);
+    expect(body.npc_relationships[0].target_kv_origin).toBe('character:elara');
+    expect(body.party_members).toHaveLength(1);
+    expect(body.party_members[0].name).toBe('Borgil');
+    expect(body.party_members[0].role).toBe('member');
+    expect(body.party_members[0].party_name).toBe('The Wanderers');
+  });
+
+  it('returns empty arrays when character has no relationships or party', async () => {
+    const db = createMockD1({ npc_relationships: [], party_members: [] });
+    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.npc_relationships).toHaveLength(0);
+    expect(body.party_members).toHaveLength(0);
+  });
+
+  it('normalises missing relationship fields to defaults', async () => {
+    const db = createMockD1({
+      npc_relationships: [{ target_id: 'c9' }],
+      party_members: [],
+    });
+    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    const rel = body.npc_relationships[0];
+    expect(rel.target_name).toBe('Unknown');
+    expect(rel.familiarity).toBe('stranger');
+    expect(rel.disposition).toBe('neutral');
+    expect(rel.interaction_count).toBe(0);
+    expect(rel.target_kv_origin).toBeNull();
+    expect(rel.last_interaction_at).toBeNull();
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ all: async () => { throw new Error('D1 rel fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 rel fail');
+  });
+});
+
+// ── GET /characters/:id/inventory ─────────────────────────────────────────────
+
+describe('GET /characters/:id/inventory', () => {
+  it('returns inventory items with equipped and slot', async () => {
+    const db = createMockD1({
+      inventory_items: [
+        { item_id: 'i1', name: 'Iron Sword', type: 'weapon', quantity: 1, equipped: 1, slot: 'main_hand', value: 50, weight: 5 },
+        { item_id: 'i2', name: 'Health Potion', type: 'consumable', quantity: 3, equipped: 0, slot: null, value: 25, weight: 0 },
+      ],
+    });
+    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.items).toHaveLength(2);
+    expect(body.total).toBe(2);
+    expect(body.items[0].name).toBe('Iron Sword');
+    expect(body.items[0].equipped).toBe(true);
+    expect(body.items[0].slot).toBe('main_hand');
+    expect(body.items[0].quantity).toBe(1);
+    expect(body.items[1].name).toBe('Health Potion');
+    expect(body.items[1].equipped).toBe(false);
+    expect(body.items[1].slot).toBeNull();
+    expect(body.items[1].quantity).toBe(3);
+  });
+
+  it('returns empty items list when character has no inventory', async () => {
+    const db = createMockD1({ inventory_items: [] });
+    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.items).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
+
+  it('normalises missing inventory fields to defaults', async () => {
+    const db = createMockD1({ inventory_items: [{ item_id: 'i9' }] });
+    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    const item = body.items[0];
+    expect(item.name).toBe('Unknown');
+    expect(item.type).toBe('');
+    expect(item.quantity).toBe(1);
+    expect(item.equipped).toBe(false);
+    expect(item.slot).toBeNull();
+    expect(item.value).toBe(0);
+    expect(item.weight).toBe(0);
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ all: async () => { throw new Error('D1 inv fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 inv fail');
+  });
+});

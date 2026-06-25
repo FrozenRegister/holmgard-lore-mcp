@@ -95,6 +95,105 @@ entityReads.patch('/characters/:id', async (c) => {
   }
 })
 
+// ── Character relationships ───────────────────────────────────────────────────
+
+entityReads.get('/characters/:id/relationships', async (c) => {
+  const db = c.env.RPG_DB
+  /* c8 ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+
+    // Bidirectional NPC relationships — this char as initiator OR target
+    const relResult = await db.prepare(`
+      SELECT nr.npc_id AS target_id, c.name AS target_name,
+             c.character_type AS target_type, c.kv_origin AS target_kv_origin,
+             nr.familiarity, nr.disposition, nr.interaction_count, nr.last_interaction_at
+      FROM npc_relationships nr
+      JOIN characters c ON c.id = nr.npc_id
+      WHERE nr.character_id = ?
+      UNION ALL
+      SELECT nr.character_id AS target_id, c.name AS target_name,
+             c.character_type AS target_type, c.kv_origin AS target_kv_origin,
+             nr.familiarity, nr.disposition, nr.interaction_count, nr.last_interaction_at
+      FROM npc_relationships nr
+      JOIN characters c ON c.id = nr.character_id
+      WHERE nr.npc_id = ?
+      ORDER BY familiarity, last_interaction_at DESC
+    `).bind(id, id).all()
+
+    // Co-party members through any shared party
+    const partyResult = await db.prepare(`
+      SELECT pm2.character_id, c2.name, c2.character_type, c2.kv_origin,
+             pm2.role, p.id AS party_id, p.name AS party_name
+      FROM party_members pm1
+      JOIN parties p ON p.id = pm1.party_id
+      JOIN party_members pm2 ON pm2.party_id = p.id AND pm2.character_id != ?
+      JOIN characters c2 ON c2.id = pm2.character_id
+      WHERE pm1.character_id = ?
+      ORDER BY pm2.role, c2.name
+    `).bind(id, id).all()
+
+    const npc_relationships = (relResult.results as Array<Record<string, unknown>>).map(row => ({
+      target_id:         String(row.target_id ?? ''),
+      target_name:       String(row.target_name ?? 'Unknown'),
+      target_type:       String(row.target_type ?? 'npc'),
+      target_kv_origin:  row.target_kv_origin ? String(row.target_kv_origin) : null,
+      familiarity:       String(row.familiarity ?? 'stranger'),
+      disposition:       String(row.disposition ?? 'neutral'),
+      interaction_count: Number(row.interaction_count ?? 0),
+      last_interaction_at: row.last_interaction_at ? String(row.last_interaction_at) : null,
+    }))
+
+    const party_members = (partyResult.results as Array<Record<string, unknown>>).map(row => ({
+      character_id:   String(row.character_id ?? ''),
+      name:           String(row.name ?? 'Unknown'),
+      character_type: String(row.character_type ?? 'npc'),
+      kv_origin:      row.kv_origin ? String(row.kv_origin) : null,
+      role:           String(row.role ?? 'member'),
+      party_id:       String(row.party_id ?? ''),
+      party_name:     String(row.party_name ?? ''),
+    }))
+
+    return c.json({ npc_relationships, party_members })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+// ── Character inventory ───────────────────────────────────────────────────────
+
+entityReads.get('/characters/:id/inventory', async (c) => {
+  const db = c.env.RPG_DB
+  /* c8 ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const result = await db.prepare(`
+      SELECT ii.item_id, i.name, i.type, ii.quantity, ii.equipped, ii.slot, i.value, i.weight
+      FROM inventory_items ii
+      JOIN items i ON i.id = ii.item_id
+      WHERE ii.character_id = ?
+      ORDER BY ii.equipped DESC, i.name ASC
+    `).bind(id).all()
+
+    const items = (result.results as Array<Record<string, unknown>>).map(row => ({
+      item_id:  String(row.item_id ?? ''),
+      name:     String(row.name ?? 'Unknown'),
+      type:     String(row.type ?? ''),
+      quantity: Number(row.quantity ?? 1),
+      equipped: Boolean(row.equipped),
+      slot:     row.slot ? String(row.slot) : null,
+      value:    Number(row.value ?? 0),
+      weight:   Number(row.weight ?? 0),
+    }))
+
+    return c.json({ items, total: items.length })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Locations (room_nodes) ───────────────────────────────────────────────────
 
 entityReads.get('/locations', async (c) => {
