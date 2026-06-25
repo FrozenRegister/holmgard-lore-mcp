@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Location detail + occupants endpoints (Phase 6 — Holmgard OS)** — `GET /api/entities/locations/:id` returns a single room_node by id with `biome_context`, `base_description`, `visited_count`, `last_visited_at`, `local_x`, `local_y`, `network_id`; `GET /api/entities/locations/:id/occupants` returns all characters with `current_room_id = id`. Character list and single-character endpoints now include `current_room_id` so editors can link characters to their current location. Normaliser updated; 11 new unit tests (total entity-reads tests: 55). (part of holmgard-lore-editor#143)
+
 - **Character relationship + inventory endpoints (Phase 5 — Holmgard OS)** — `GET /api/entities/characters/:id/relationships` returns bidirectional NPC relationships (from `npc_relationships`, both directions) and co-party members (from `party_members` + `parties` join); `GET /api/entities/characters/:id/inventory` returns `inventory_items` joined with `items`. Both normalise missing fields to safe defaults. 8 new unit tests (total entity-reads tests: 44). (part of holmgard-lore-editor#143)
 
 - **Edge-case tests for `GET/PATCH /characters/:id`** — 5 new unit tests: `GET /characters/:id` with a partially populated D1 row (some nulls, some present — verifies per-field defaults); `PATCH` with a single patchable field; `PATCH` accepting `X-Api-Key` as fallback auth header; `PATCH` returning 200 for a non-existent character id (no affected-rows check — documents intended behaviour); `PATCH` silently dropping `id`/`kv_origin` when mixed with a valid patchable field. Total entity-reads tests: 36.

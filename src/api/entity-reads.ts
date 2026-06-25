@@ -23,6 +23,7 @@ function normaliseCharacter(row: Record<string, unknown>) {
     alignment: row.alignment ? String(row.alignment) : null,
     background: row.background ? String(row.background) : null,
     faction_id: row.faction_id ? String(row.faction_id) : null,
+    current_room_id: row.current_room_id ? String(row.current_room_id) : null,
     kv_origin: row.kv_origin ? String(row.kv_origin) : null,
   }
 }
@@ -34,7 +35,7 @@ entityReads.get('/characters', async (c) => {
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const result = await db.prepare(
-      'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, alignment, background, faction_id, kv_origin FROM characters ORDER BY name ASC LIMIT 100'
+      'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, alignment, background, faction_id, current_room_id, kv_origin FROM characters ORDER BY name ASC LIMIT 100'
     ).all()
     const characters = (result.results as Array<Record<string, unknown>>).map(normaliseCharacter)
     return c.json({ characters, total: characters.length })
@@ -50,7 +51,7 @@ entityReads.get('/characters/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const row = await db.prepare(
-      'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, alignment, background, faction_id, kv_origin FROM characters WHERE id = ? LIMIT 1'
+      'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, alignment, background, faction_id, current_room_id, kv_origin FROM characters WHERE id = ? LIMIT 1'
     ).bind(id).first() as Record<string, unknown> | null
     if (!row) return c.json({ error: 'Not found' }, 404)
     return c.json({ character: normaliseCharacter(row) })
@@ -196,6 +197,20 @@ entityReads.get('/characters/:id/inventory', async (c) => {
 
 // ── Locations (room_nodes) ───────────────────────────────────────────────────
 
+function normaliseLocation(row: Record<string, unknown>) {
+  return {
+    id: String(row.id ?? ''),
+    name: String(row.name ?? 'Unknown'),
+    biome_context: row.biome_context ? String(row.biome_context) : null,
+    base_description: row.base_description ? String(row.base_description) : null,
+    visited_count: Number(row.visited_count ?? 0),
+    last_visited_at: row.last_visited_at ? String(row.last_visited_at) : null,
+    local_x: row.local_x !== undefined && row.local_x !== null ? Number(row.local_x) : null,
+    local_y: row.local_y !== undefined && row.local_y !== null ? Number(row.local_y) : null,
+    network_id: row.network_id ? String(row.network_id) : null,
+  }
+}
+
 entityReads.get('/locations', async (c) => {
   const db = c.env.RPG_DB
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
@@ -211,6 +226,38 @@ entityReads.get('/locations', async (c) => {
       last_visited_at: row.last_visited_at ? String(row.last_visited_at) : null,
     }))
     return c.json({ locations, total: locations.length })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/locations/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* c8 ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, biome_context, base_description, visited_count, last_visited_at, local_x, local_y, network_id FROM room_nodes WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ location: normaliseLocation(row) })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/locations/:id/occupants', async (c) => {
+  const db = c.env.RPG_DB
+  /* c8 ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const result = await db.prepare(
+      'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, alignment, background, faction_id, current_room_id, kv_origin FROM characters WHERE current_room_id = ? ORDER BY name ASC'
+    ).bind(id).all()
+    const occupants = (result.results as Array<Record<string, unknown>>).map(normaliseCharacter)
+    return c.json({ occupants, total: occupants.length })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
