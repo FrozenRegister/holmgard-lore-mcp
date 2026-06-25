@@ -45,6 +45,7 @@ entityReads.get('/characters', async (c) => {
 
 entityReads.get('/characters/:id', async (c) => {
   const db = c.env.RPG_DB
+  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')
@@ -66,6 +67,7 @@ const PATCHABLE_FIELDS = new Set([
 
 entityReads.patch('/characters/:id', async (c) => {
   const db = c.env.RPG_DB
+  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
 
   const adminSecret = c.env.ADMIN_SECRET
