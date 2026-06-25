@@ -199,6 +199,62 @@ describe('PATCH /characters/:id', () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/c1', {
+        method: 'PATCH',
+        body: JSON.stringify({ level: 6 }),
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeEnv(null),
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it('returns 500 when the UPDATE query throws', async () => {
+    const throwingDb = {
+      prepare: () => ({
+        run: async () => { throw new Error('D1 update fail'); },
+        bind: function () { return this as any; },
+      }),
+    };
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/c1', {
+        method: 'PATCH',
+        body: JSON.stringify({ level: 6 }),
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeEnv(throwingDb),
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 update fail');
+  });
+});
+
+// ── GET /characters/:id — error paths ─────────────────────────────────────────
+
+describe('GET /characters/:id — error paths', () => {
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = {
+      prepare: () => ({
+        first: async () => { throw new Error('D1 fail'); },
+        bind: function () { return this as any; },
+      }),
+    };
+    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 fail');
+  });
 });
 
 // ── Locations ─────────────────────────────────────────────────────────────────

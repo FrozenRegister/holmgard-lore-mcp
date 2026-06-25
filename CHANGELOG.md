@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Coverage: 503/500 error paths for `GET/PATCH /characters/:id`** — Added `/* c8 ignore next */` on the two unreachable 503 guards (miniflare always provides RPG_DB in tests) and added 4 new tests covering: `GET /characters/:id` returns 503 when RPG_DB is null, `GET /characters/:id` returns 500 when the DB query throws, `PATCH /characters/:id` returns 503 when RPG_DB is null, `PATCH /characters/:id` returns 500 when the UPDATE throws.
+
 - **Character detail + write endpoints (Phase 2+3)** — `GET /api/entities/characters/:id` returns a single character by D1 UUID; `PATCH /api/entities/characters/:id` updates a safe subset of fields (`character_type`, `race`, `character_class`, `level`, `hp`, `max_hp`, `ac`, `alignment`, `background`) with admin secret auth (`X-Admin-Secret` header). Called by the lore-editor when a character lore topic is saved and contains a `## Character Sheet` section. Extended character list endpoint to also return `ac`, `alignment`, `background` fields.
 
 - **REST entity list endpoints for D1 reads** — Added `src/api/entity-reads.ts` Hono sub-router registered at `/api/entities`. Six GET endpoints: `/characters`, `/locations`, `/nations`, `/regions`, `/quests`, `/items`. Each queries D1 with defensive field normalization (String/Number coercion, null-safety) and returns plain JSON — no MCP wrapper, no auth required. Consumed by the lore-editor entity category pages (Phase 1 of holmgard-lore-editor#145). ([PR #155](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/155))
