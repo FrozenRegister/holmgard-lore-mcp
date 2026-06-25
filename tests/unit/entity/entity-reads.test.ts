@@ -123,6 +123,19 @@ describe('GET /characters/:id', () => {
     expect(body.character.alignment).toBeNull();
     expect(body.character.background).toBeNull();
   });
+
+  it('normalises a partially populated row, preserving present fields', async () => {
+    const db = createMockD1({
+      characters: [{ id: 'p1', name: 'Partial', level: 7, hp: null, max_hp: null, ac: null }],
+    });
+    const res = await entityReads.request(makeRequest('/characters/p1'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.character.level).toBe(7);   // present — preserved
+    expect(body.character.hp).toBe(0);       // null → default 0
+    expect(body.character.max_hp).toBe(0);
+    expect(body.character.ac).toBe(10);      // null → default 10
+  });
 });
 
 // ── PATCH /characters/:id ─────────────────────────────────────────────────────
@@ -198,6 +211,64 @@ describe('PATCH /characters/:id', () => {
       makeAdminEnv(),
     );
     expect(res.status).toBe(400);
+  });
+
+  it('returns 200 when only a single patchable field is provided', async () => {
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/c1', {
+        method: 'PATCH',
+        body: JSON.stringify({ level: 9 }),
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeAdminEnv(),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.ok).toBe(true);
+  });
+
+  it('accepts X-Api-Key as a fallback auth header', async () => {
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/c1', {
+        method: 'PATCH',
+        body: JSON.stringify({ level: 4 }),
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeAdminEnv(),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 200 for a non-existent character id (no affected-rows check)', async () => {
+    // UPDATE silently affects 0 rows; the endpoint does not validate meta.changes
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/does-not-exist', {
+        method: 'PATCH',
+        body: JSON.stringify({ level: 5 }),
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeAdminEnv(),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.ok).toBe(true);
+  });
+
+  it('silently drops non-patchable fields when mixed with patchable ones', async () => {
+    // id and kv_origin are blocked by PATCHABLE_FIELDS; level is allowed — should succeed
+    const res = await entityReads.request(
+      new Request('http://localhost/characters/c1', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: 'hack-attempt', kv_origin: 'tamper', level: 3 }),
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': TEST_ADMIN_SECRET },
+      }),
+      undefined,
+      makeAdminEnv(),
+    );
+    expect(res.status).toBe(200);
   });
 
   it('returns 503 when RPG_DB is unavailable', async () => {
