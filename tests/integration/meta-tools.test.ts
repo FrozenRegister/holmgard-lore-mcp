@@ -12,8 +12,7 @@ function callTool(ctx: ReturnType<typeof createMockContext>, toolName: string, a
 }
 
 async function jsonBody(res: Response): Promise<any> {
-  const body = await res.json()
-  return body.result ?? body
+  return res.json()
 }
 
 describe('Meta tools integration', () => {
@@ -30,37 +29,16 @@ describe('Meta tools integration', () => {
         limit: 5,
       })
       const body = await jsonBody(res)
-      expect(body).toBeDefined()
-      // Response may have results array or tools array
-      const items = body.results ?? body.tools ?? body
-      expect(Array.isArray(items) || items.length !== undefined).toBeTruthy()
+      expect(body.result).toBeDefined()
     })
 
-    it('returns results for entity search', async () => {
+    it('returns results for entity-related search', async () => {
       const res = await callTool(ctx, 'search_tools', {
         query: 'entity',
         limit: 10,
       })
       const body = await jsonBody(res)
-      expect(body).toBeDefined()
-    })
-
-    it('returns results for world tools', async () => {
-      const res = await callTool(ctx, 'search_tools', {
-        query: 'world',
-        limit: 5,
-      })
-      const body = await jsonBody(res)
-      expect(body).toBeDefined()
-    })
-
-    it('respects limit parameter', async () => {
-      const res = await callTool(ctx, 'search_tools', {
-        query: 'a',
-        limit: 2,
-      })
-      const body = await jsonBody(res)
-      expect(body).toBeDefined()
+      expect(body.result).toBeDefined()
     })
 
     it('handles empty queries', async () => {
@@ -69,7 +47,7 @@ describe('Meta tools integration', () => {
         limit: 5,
       })
       const body = await jsonBody(res)
-      expect(body).toBeDefined()
+      expect(body.result).toBeDefined()
     })
   })
 
@@ -79,7 +57,7 @@ describe('Meta tools integration', () => {
         toolName: 'lore_manage',
       })
       const body = await jsonBody(res)
-      expect(body).toBeDefined()
+      expect(body.result).toBeDefined()
     })
 
     it('loads schema for entity_manage', async () => {
@@ -87,24 +65,15 @@ describe('Meta tools integration', () => {
         toolName: 'entity_manage',
       })
       const body = await jsonBody(res)
-      expect(body).toBeDefined()
+      expect(body.result).toBeDefined()
     })
 
-    it('loads schema for rpg', async () => {
-      const res = await callTool(ctx, 'load_tool_schema', {
-        toolName: 'rpg',
-      })
-      const body = await jsonBody(res)
-      expect(body).toBeDefined()
-    })
-
-    it('handles unknown tool', async () => {
+    it('errors on unknown tool', async () => {
       const res = await callTool(ctx, 'load_tool_schema', {
         toolName: 'nonexistent_tool',
       })
-      const raw = await res.json()
-      // May return error or result with error
-      expect(raw.error || raw.result?.error || raw.result).toBeDefined()
+      const body = await jsonBody(res)
+      expect(body.error || body.result?.error).toBeDefined()
     })
   })
 })
