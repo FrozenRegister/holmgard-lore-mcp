@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Entity detail endpoints for nations, regions, quests, quest log, and items (Phase 8 — Holmgard OS)** — `GET /api/entities/nations/:id`, `GET /api/entities/regions/:id` (with LEFT JOIN to `nations` for `owner_nation_name`), `GET /api/entities/quests/:id`, `GET /api/entities/quests/:id/log` (returns `quest_logs` entries ordered by `created_at`), and `GET /api/entities/items/:id`. Existing list endpoints refactored to use shared normaliser functions (`normaliseNation`, `normaliseRegion`, `normaliseQuest`, `normaliseItem`) for consistency. 20 new unit tests (4 per endpoint: happy path, 404, missing-field default, 500 on throw). (part of holmgard-lore-editor#143)
+
 - **Location detail + occupants endpoints (Phase 6 — Holmgard OS)** — `GET /api/entities/locations/:id` returns a single room_node by id with `biome_context`, `base_description`, `visited_count`, `last_visited_at`, `local_x`, `local_y`, `network_id`; `GET /api/entities/locations/:id/occupants` returns all characters with `current_room_id = id`. Character list and single-character endpoints now include `current_room_id` so editors can link characters to their current location. Normaliser updated; 11 new unit tests (total entity-reads tests: 55). (part of holmgard-lore-editor#143)
 
 - **Character relationship + inventory endpoints (Phase 5 — Holmgard OS)** — `GET /api/entities/characters/:id/relationships` returns bidirectional NPC relationships (from `npc_relationships`, both directions) and co-party members (from `party_members` + `parties` join); `GET /api/entities/characters/:id/inventory` returns `inventory_items` joined with `items`. Both normalise missing fields to safe defaults. 8 new unit tests (total entity-reads tests: 44). (part of holmgard-lore-editor#143)

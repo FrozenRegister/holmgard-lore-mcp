@@ -265,6 +265,19 @@ entityReads.get('/locations/:id/occupants', async (c) => {
 
 // ── Nations ──────────────────────────────────────────────────────────────────
 
+function normaliseNation(row: Record<string, unknown>) {
+  return {
+    id:         String(row.id ?? ''),
+    name:       String(row.name ?? 'Unknown'),
+    leader:     String(row.leader ?? ''),
+    ideology:   String(row.ideology ?? ''),
+    aggression: Number(row.aggression ?? 50),
+    trust:      Number(row.trust ?? 50),
+    paranoia:   Number(row.paranoia ?? 50),
+    gdp:        Number(row.gdp ?? 0),
+  }
+}
+
 entityReads.get('/nations', async (c) => {
   const db = c.env.RPG_DB
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
@@ -272,23 +285,40 @@ entityReads.get('/nations', async (c) => {
     const result = await db.prepare(
       'SELECT id, name, leader, ideology, aggression, trust, paranoia, gdp FROM nations ORDER BY name ASC'
     ).all()
-    const nations = (result.results as Array<Record<string, unknown>>).map(row => ({
-      id: String(row.id ?? ''),
-      name: String(row.name ?? 'Unknown'),
-      leader: String(row.leader ?? ''),
-      ideology: String(row.ideology ?? ''),
-      aggression: Number(row.aggression ?? 50),
-      trust: Number(row.trust ?? 50),
-      paranoia: Number(row.paranoia ?? 50),
-      gdp: Number(row.gdp ?? 0),
-    }))
+    const nations = (result.results as Array<Record<string, unknown>>).map(normaliseNation)
     return c.json({ nations, total: nations.length })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
 })
 
+entityReads.get('/nations/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, leader, ideology, aggression, trust, paranoia, gdp FROM nations WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ nation: normaliseNation(row) })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Regions ──────────────────────────────────────────────────────────────────
+
+function normaliseRegion(row: Record<string, unknown>) {
+  return {
+    id:               String(row.id ?? ''),
+    name:             String(row.name ?? 'Unknown'),
+    type:             String(row.type ?? ''),
+    owner_nation_id:  row.owner_nation_id ? String(row.owner_nation_id) : null,
+    owner_nation_name: row.owner_nation_name ? String(row.owner_nation_name) : null,
+  }
+}
 
 entityReads.get('/regions', async (c) => {
   const db = c.env.RPG_DB
@@ -297,19 +327,42 @@ entityReads.get('/regions', async (c) => {
     const result = await db.prepare(
       'SELECT id, name, type, owner_nation_id FROM regions ORDER BY name ASC'
     ).all()
-    const regions = (result.results as Array<Record<string, unknown>>).map(row => ({
-      id: String(row.id ?? ''),
-      name: String(row.name ?? 'Unknown'),
-      type: String(row.type ?? ''),
-      owner_nation_id: row.owner_nation_id ? String(row.owner_nation_id) : null,
-    }))
+    const regions = (result.results as Array<Record<string, unknown>>).map(normaliseRegion)
     return c.json({ regions, total: regions.length })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
 })
 
+entityReads.get('/regions/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(`
+      SELECT r.id, r.name, r.type, r.owner_nation_id, n.name AS owner_nation_name
+      FROM regions r LEFT JOIN nations n ON n.id = r.owner_nation_id
+      WHERE r.id = ? LIMIT 1
+    `).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ region: normaliseRegion(row) })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Quests ───────────────────────────────────────────────────────────────────
+
+function normaliseQuest(row: Record<string, unknown>) {
+  return {
+    id:          String(row.id ?? ''),
+    name:        String(row.name ?? 'Unknown'),
+    description: String(row.description ?? ''),
+    status:      String(row.status ?? ''),
+    giver:       row.giver ? String(row.giver) : null,
+  }
+}
 
 entityReads.get('/quests', async (c) => {
   const db = c.env.RPG_DB
@@ -318,20 +371,60 @@ entityReads.get('/quests', async (c) => {
     const result = await db.prepare(
       'SELECT id, name, description, status, giver FROM quests ORDER BY created_at DESC LIMIT 100'
     ).all()
-    const quests = (result.results as Array<Record<string, unknown>>).map(row => ({
-      id: String(row.id ?? ''),
-      name: String(row.name ?? 'Unknown'),
-      description: String(row.description ?? ''),
-      status: String(row.status ?? ''),
-      giver: row.giver ? String(row.giver) : null,
-    }))
+    const quests = (result.results as Array<Record<string, unknown>>).map(normaliseQuest)
     return c.json({ quests, total: quests.length })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
 })
 
+entityReads.get('/quests/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, description, status, giver FROM quests WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ quest: normaliseQuest(row) })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/quests/:id/log', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const result = await db.prepare(
+      'SELECT id, note, created_at FROM quest_logs WHERE quest_id = ? ORDER BY created_at ASC'
+    ).bind(id).all()
+    const entries = (result.results as Array<Record<string, unknown>>).map(row => ({
+      id:         String(row.id ?? ''),
+      note:       String(row.note ?? ''),
+      created_at: String(row.created_at ?? ''),
+    }))
+    return c.json({ entries, total: entries.length })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Items ─────────────────────────────────────────────────────────────────────
+
+function normaliseItem(row: Record<string, unknown>) {
+  return {
+    id:     String(row.id ?? ''),
+    name:   String(row.name ?? 'Unknown'),
+    type:   String(row.type ?? ''),
+    value:  Number(row.value ?? 0),
+    weight: Number(row.weight ?? 0),
+  }
+}
 
 entityReads.get('/items', async (c) => {
   const db = c.env.RPG_DB
@@ -340,14 +433,24 @@ entityReads.get('/items', async (c) => {
     const result = await db.prepare(
       'SELECT id, name, type, value, weight FROM items ORDER BY name ASC LIMIT 100'
     ).all()
-    const items = (result.results as Array<Record<string, unknown>>).map(row => ({
-      id: String(row.id ?? ''),
-      name: String(row.name ?? 'Unknown'),
-      type: String(row.type ?? ''),
-      value: Number(row.value ?? 0),
-      weight: Number(row.weight ?? 0),
-    }))
+    const items = (result.results as Array<Record<string, unknown>>).map(normaliseItem)
     return c.json({ items, total: items.length })
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/items/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, type, value, weight FROM items WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ item: normaliseItem(row) })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
