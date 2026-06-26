@@ -26,6 +26,7 @@ ignore:
   - "*.config.*"
   - "wrangler.jsonc"
   - "node_modules/**"
+  - "schema/**" # SQL migrations and schema are not code-coverable
 
 comment:
   layout: "header, diff, flags, files"
