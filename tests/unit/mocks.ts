@@ -34,7 +34,7 @@ export function createMockKV(seed: Record<string, string> = {}): MockKVStore {
 }
 
 /** A stub D1Meta that satisfies the type without real metrics. */
-const mockD1Meta: D1Meta = {
+const mockD1Meta: D1Meta & Record<string, unknown> = {
   duration: 0,
   size_after: 0,
   rows_read: 0,
