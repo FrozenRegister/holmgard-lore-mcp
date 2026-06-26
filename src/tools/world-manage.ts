@@ -1,6 +1,6 @@
 import type { ToolHandler } from './types'
 import { makeError } from '../lib/rpc'
-import { handle_thread_tick, handle_get_relationship, handle_get_faction_standing, handle_get_entity_knowledge, handle_get_location_occupants, handle_get_reachable_locations, handle_sense_environment, handle_get_thread_comparison, handle_check_convergence } from './world'
+import { handle_thread_tick, handle_get_relationship, handle_get_faction_standing, handle_get_entity_knowledge, handle_get_location_occupants, handle_get_reachable_locations, handle_sense_environment, handle_get_thread_comparison, handle_check_convergence, handle_get_world_state } from './world'
 
 const ACTION_MAP: Record<string, ToolHandler> = {
   thread_tick:             handle_thread_tick,
@@ -12,6 +12,7 @@ const ACTION_MAP: Record<string, ToolHandler> = {
   sense_environment:       handle_sense_environment,
   get_thread_comparison:   handle_get_thread_comparison,
   check_convergence:       handle_check_convergence,
+  get_world_state:         handle_get_world_state,
 }
 
 export const handle_world_manage: ToolHandler = ({ c, id, args, isAuthenticated }) => {

@@ -36,7 +36,7 @@ $env:MCP_API_KEY = "your-key"; pnpm test:live
 
 What this means in practice:
 
-- **Locally (every iteration):** type-check, lint, markdown/CHANGELOG, and the *specific test file(s) you touched* — not the whole suite.
+- **Locally (every iteration):** type-check, lint, and the *specific test file(s) you touched* — not the whole suite.
 - **CI (the real gate):** full suite across both Node versions + coverage. Coverage failures surface there with a ~2-min feedback loop; you do **not** need to run istanbul coverage locally.
 
 > Run the full `pnpm test` / `pnpm test:coverage` locally only when you specifically want to (e.g. debugging a cross-cutting change, or no network/CI available). It is no longer a required pre-commit step.
@@ -49,12 +49,12 @@ Enable the git hook so the fast checks run automatically on every commit:
 git config core.hooksPath scripts
 ```
 
-The hook runs in `-SkipTests` mode by default under this policy — it validates type-check, markdown, and CHANGELOG, but leaves the full suite to CI.
+The hook runs in `-SkipTests` mode by default under this policy — it validates type-check and markdown formatting, but leaves the full suite to CI.
 
 ### Manual Validation
 
 ```powershell
-.\scripts\pre-commit-validate.ps1 -SkipTests  # Fast local gate (type-check, markdown, CHANGELOG) — default
+.\scripts\pre-commit-validate.ps1 -SkipTests  # Fast local gate (type-check, markdown) — default
 .\scripts\pre-commit-validate.ps1             # Full validation incl. tests — optional, when you want it
 ```
 
@@ -65,7 +65,7 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 | **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
-| **CHANGELOG.md** | Local + CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add entry under `[Unreleased]`. Missing entry fails the PR check and blocks merge. |
+| **Changelog fragment** | CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add a `.md` file under `.changelog/fragments/`. Fragments are assembled at release time — no merge conflicts. |
 | **Touched test file(s)** | Local | `pnpm test -- src/__tests__/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | CI generates `coverage/lcov.info` and uploads to Codecov; CI fails if patch coverage drops below 100% |
@@ -78,6 +78,9 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 pnpm run type-check                              # Catch type errors early
 pnpm run lint                                    # Lint
 pnpm fix:md                                      # Fix markdown formatting
+# If src/, docs/, wrangler.jsonc, or CLAUDE.md changed — add a changelog fragment:
+# New-Item .changelog\fragments\my-feature.md    # PowerShell
+# touch .changelog/fragments/my-feature.md       # bash
 pnpm test -- src/__tests__/<touched-file>.test.ts  # Only the tests you touched
 .\scripts\pre-commit-validate.ps1 -SkipTests     # Fast local gate
 ```
@@ -88,7 +91,7 @@ Then push and let CI run the full matrix + coverage (~2 min). Treat green CI as 
 
 - **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
 - **Coverage below 100% on new code (CI)** — Open the failing `coverage` job or the Codecov report to see uncovered lines, add tests, push again. To reproduce locally if needed: `pnpm test:coverage`, then inspect `coverage/lcov.info`.
-- **CHANGELOG.md missing** — Add an entry under `[Unreleased]` describing your changes
+- **Changelog fragment missing** — Create a `.md` file under `.changelog/fragments/` describing your changes (e.g. `.changelog/fragments/my-feature.md`)
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
 - **Tests failing in CI** — Reproduce locally by running just that file (`pnpm test -- <file>`), fix, push again
 
@@ -328,6 +331,10 @@ This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch cover
 
 **Closing issues:** Use **"Closes #123"** (or "Closes #123, #124") in the PR body to auto-close issues when the PR merges. One issue per PR is ideal; multiple issues only if they're tightly coupled. Use **"Relates to #123"** or **"See #123"** to reference issues without closing.
 
+**Important:** GitHub only processes closing keywords from the **PR body**, not the title. A keyword in the title (e.g. `feat: add X (closes #123)`) will not auto-close the issue.
+
+**Cross-repo issues:** GitHub cannot auto-close an issue in a different repository. For changes that span both `holmgard-lore-mcp` and `holmgard-lore-editor`, close the issue manually after both PRs merge, or duplicate the issue in both repos.
+
 **Creating the PR:** Use `gh pr create --title "..." --body "..."` or the GitHub web UI. Always run pre-commit validation before pushing to ensure the PR starts clean.
 
 ## Deployment notes
@@ -345,4 +352,4 @@ This separation is critical: **never allow these IDs to be identical**, or `wran
 
 Coverage is generated by `pnpm test:coverage` (`@vitest/coverage-istanbul`, configured via `provider: 'istanbul'` in `vitest.config.ts`) and uploaded to Codecov by the `coverage` job in `.github/workflows/ci.yml`. The lcov report lands at `./coverage/lcov.info`. Coverage runs in CI, not as a required local step (see [Pre-Commit Validation](#pre-commit-validation)).
 
-**Sister repo sync**: `holmgard-lore-editor` uses the same `codecov/codecov-action@v5`. When upgrading the action version, update both repos' CI files at the same time. Coverage targets intentionally differ: this repo enforces **100% patch** (backend Worker — untested code reaches production directly); the editor uses **80% patch** (frontend UI code).
+**Sister repo sync**: `holmgard-lore-editor` uses the same `codecov/codecov-action@v5`. When upgrading the action version, update both repos' CI files at the same time. Coverage targets intentionally differ: this repo enforces **100% patch** (backend Worker — untested code reaches production directly); the editor uses **80% lines** (frontend UI code, enforced by Istanbul gap analysis).
