@@ -20,7 +20,7 @@ describe('Character management integration', () => {
   let ctx: ReturnType<typeof createMockContext>
 
   beforeEach(() => {
-    ctx = createMockContext({}, { rpgDb: true })
+    ctx = createMockContext({}, true)
   })
 
   describe('Character lifecycle', () => {

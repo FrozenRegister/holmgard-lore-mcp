@@ -1,9 +1,5 @@
 // tests/integration/rpg-engine.test.ts
 // Integration test: rpg handler — dispatches across 27 sub-systems
-// Covers at least one action per sub-system: math, world, character, party, quest,
-//   item, inventory, corpse, narrative, secret, theft, aura, improvisation,
-//   npc, session, combat, combat_action, combat_map, spawn, strategy, turn,
-//   spatial, world_map, batch, travel, perception, scene
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../unit/mocks'
@@ -28,7 +24,7 @@ describe('RPG engine integration', () => {
   beforeEach(() => {
     ctx = createMockContext(
       { [LOCATION_KEY]: JSON.stringify({ text: LOCATION_TEXT, meta: { version: 1 } }) },
-      { rpgDb: true }
+      true,
     )
   })
 

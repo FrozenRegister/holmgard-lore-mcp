@@ -26,13 +26,12 @@ describe('Agent management integration', () => {
   beforeEach(() => {
     ctx = createMockContext(
       { [CHARACTER_KEY]: JSON.stringify({ text: CHARACTER_TEXT, meta: { version: 1 } }) },
-      { rpgDb: true }
+      true,
     )
   })
 
   describe('Agent lifecycle', () => {
     it('creates, gets, lists, and deletes an agent', async () => {
-      // 1. CREATE
       const createRes = await callAgent(ctx, {
         action: 'create',
         characterId: CHARACTER_KEY,
@@ -43,17 +42,14 @@ describe('Agent management integration', () => {
       expect(createBody.result).toBeDefined()
       const agentId = createBody.result.id || createBody.result.agentId || 'test-agent-1'
 
-      // 2. GET
       const getRes = await callAgent(ctx, { action: 'get', id: agentId })
       const getBody = await jsonBody(getRes)
       expect(getBody.result).toBeDefined()
 
-      // 3. LIST
       const listRes = await callAgent(ctx, { action: 'list' })
       const listBody = await jsonBody(listRes)
       expect(listBody.result).toBeDefined()
 
-      // 4. DELETE
       const deleteRes = await callAgent(ctx, { action: 'delete', id: agentId })
       const deleteBody = await jsonBody(deleteRes)
       expect(deleteBody.result).toBeDefined()
@@ -140,7 +136,6 @@ describe('Agent management integration', () => {
     it('does not crash on unknown action', async () => {
       const res = await callAgent(ctx, { action: 'nonexistent_action' })
       expect(res.status).toBe(200)
-      // handler survived — that's the real assertion
     })
 
     it('does not crash on missing action', async () => {

@@ -33,6 +33,17 @@ export function createMockKV(seed: Record<string, string> = {}): MockKVStore {
   }
 }
 
+/** A stub D1Meta that satisfies the type without real metrics. */
+const mockD1Meta: D1Meta = {
+  duration: 0,
+  size_after: 0,
+  rows_read: 0,
+  rows_written: 0,
+  last_row_id: 0,
+  changed_db: false,
+  changes: 0,
+}
+
 /** Minimal D1Database-compatible mock backed by in-memory tables. */
 export function createMockD1Database(): D1Database {
   const tables: Record<string, Record<string, unknown>[]> = {}
@@ -44,7 +55,6 @@ export function createMockD1Database(): D1Database {
 
   return {
     prepare(sql: string) {
-      // Parse table name from INSERT/SELECT/UPDATE/DELETE
       const insertMatch = sql.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i)
       const selectMatch = sql.match(/SELECT\s+.+?\s+FROM\s+(\w+)/i)
       const updateMatch = sql.match(/UPDATE\s+(\w+)\s+SET/i)
@@ -61,14 +71,13 @@ export function createMockD1Database(): D1Database {
         },
         async all(): Promise<D1Result<Record<string, unknown>>> {
           const rows = ensureTable(tableName)
-          return { results: rows as Record<string, unknown>[], success: true, meta: {} }
+          return { results: rows as Record<string, unknown>[], success: true, meta: mockD1Meta }
         },
         async first<T = Record<string, unknown>>(): Promise<T | null> {
           const rows = ensureTable(tableName)
           return (rows[0] as T) ?? null
         },
         async run(): Promise<D1Result<Record<string, unknown>>> {
-          // Minimal INSERT simulation for RPG tests
           if (insertMatch) {
             const row: Record<string, unknown> = {}
             const cols = sql.match(/\(([^)]+)\)/)?.[1]?.split(',').map(c => c.trim()) ?? []
@@ -77,7 +86,7 @@ export function createMockD1Database(): D1Database {
             })
             ensureTable(tableName).push(row)
           }
-          return { results: [], success: true, meta: {} }
+          return { results: [], success: true, meta: mockD1Meta }
         },
         async raw(): Promise<unknown[]> {
           return []
@@ -86,7 +95,7 @@ export function createMockD1Database(): D1Database {
       return self
     },
     async exec(_sql: string): Promise<D1Result<Record<string, unknown>>> {
-      return { results: [], success: true, meta: {} }
+      return { results: [], success: true, meta: mockD1Meta }
     },
     async batch(_stmts: unknown[]): Promise<D1Result<Record<string, unknown>>[]> {
       return []
@@ -102,7 +111,7 @@ export function createMockD1Database(): D1Database {
  * Cast to the full Context type since we only use `env` and `json()`.
  *
  * @param seed - Optional KV seed data
- * @param includeD1 - If true, also provide mock DB and RPG_DM bindings (default: true)
+ * @param includeD1 - If true, also provide mock DB and RPG_DB bindings
  */
 export function createMockContext(
   seed?: Record<string, string>,
