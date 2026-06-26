@@ -10,10 +10,6 @@
 
 - **Pre-commit policy: fast local gate, CI as the full gate** — Shifted the local validation workflow away from running the full `pnpm test` suite (~5–6 min on Windows) before every commit. Locally you now run the fast checks (type-check, lint, markdown) plus only the test file(s) you touched; the full Node 20 + 22 matrix and 100% patch coverage run in CI (~2 min wall-clock). Updated `CLAUDE.md` (Pre-Commit Validation, Git workflow, Coverage sections) and reworked `scripts/pre-commit-validate.ps1` / `.sh` to add type-check + lint steps and make the full suite opt-in (`-WithTests` / `--with-tests`) instead of on-by-default. Also corrected a stale `@vitest/coverage-v8` reference in `CLAUDE.md` (the project uses `@vitest/coverage-istanbul`), and set MD024 `siblings_only` in `.markdownlint.yaml` so the Keep-a-Changelog `### Added`/`### Changed`/`### Fixed` headings can legitimately repeat across versions.
 
-### Fixed
-
-- **Pre-existing test failures in `world-manage` and `continuity-manage`** — Implemented `handle_get_world_state` in `src/tools/world.ts` and registered it in `world-manage.ts` ACTION_MAP (fixes `Unknown action "get_world_state"`). Fixed `continuity-manage.test.ts` "strips action from args" test to use `list_unpaid_setups` (all-optional params) instead of `get_event_log` (requires `entity_key`). Closes #169.
-
 ### Added
 
 - **Explicit entity relations (Phase 9 — Holmgard OS #161)** — New `entity_relations` D1 table (`schema/migrations/0004_entity_relations.sql`) supporting typed, bidirectional relations between any two entities (characters, locations, nations, regions, quests, items). New read endpoint `GET /api/entities/:type/:id/relations` merges both directions (from + to) ordered by pinned-first. Three admin endpoints: `POST /admin/relations` (create with full field set), `PATCH /admin/relations/:id` (update relation_type/attitude/is_bidirectional/color/is_pinned/is_private/notes), `DELETE /admin/relations/:id`. All admin routes require `X-Admin-Secret` header. Full integration test suite in `src/__tests__/entity-relations.test.ts` (35 cases). `normaliseRelation` exported for future reuse.
@@ -32,6 +28,7 @@
 
 ### Fixed
 
+- **Pre-existing test failures in `world-manage` and `continuity-manage`** — Implemented `handle_get_world_state` in `src/tools/world.ts` and registered it in `world-manage.ts` ACTION_MAP (fixes `Unknown action "get_world_state"`). Fixed `continuity-manage.test.ts` "strips action from args" test to use `list_unpaid_setups` (all-optional params) instead of `get_event_log` (requires `entity_key`). Closes #169.
 - **`mockD1Meta` type annotation** — Changed to `D1Meta & Record<string, unknown>` to fix TS2322 errors.
 - **Codecov patch branch coverage for catch-block ternaries** — Added `/* istanbul ignore next */` to unreachable `String(e)` branches in `entity-reads.ts`.
 - **Per-action `inputSchema` for all consolidated MCP tools** (closes #144) — Replaced `OPEN_SCHEMA` with per-tool `oneOf` JSON Schema definitions.
