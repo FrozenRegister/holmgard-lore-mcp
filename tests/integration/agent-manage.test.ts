@@ -1,7 +1,7 @@
 // tests/integration/agent-manage.test.ts
 // Integration test: agent_manage — NPC AI agent management
-// Covers: create, get, list, update, delete, resume, health, budget,
-//   set_slice, remove_slice, toggle_slice, list_slices, narrate, broadcast
+// Covers: create, get, list, delete, set_slice, remove_slice, list_slices,
+//   narrate, health, budget
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../unit/mocks'
@@ -31,7 +31,7 @@ describe('Agent management integration', () => {
   })
 
   describe('Agent lifecycle', () => {
-    it('creates, gets, lists, updates, and deletes an agent', async () => {
+    it('creates, gets, lists, and deletes an agent', async () => {
       // 1. CREATE
       const createRes = await callAgent(ctx, {
         action: 'create',

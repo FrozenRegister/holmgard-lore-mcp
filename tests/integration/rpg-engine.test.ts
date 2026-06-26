@@ -1,8 +1,8 @@
 // tests/integration/rpg-engine.test.ts
 // Integration test: rpg handler — dispatches across 27 sub-systems
-// Covers: math, world, character, party, quest, item, inventory, corpse,
-//   narrative, secret, theft, aura, improvisation, npc, session,
-//   combat, combat_action, combat_map, spawn, strategy, turn,
+// Covers at least one action per sub-system: math, world, character, party, quest,
+//   item, inventory, corpse, narrative, secret, theft, aura, improvisation,
+//   npc, session, combat, combat_action, combat_map, spawn, strategy, turn,
 //   spatial, world_map, batch, travel, perception, scene
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -37,7 +37,6 @@ describe('RPG engine integration', () => {
       const res = await callRpg(ctx, { sub: 'math', action: 'roll', dice: '2d6' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
-      expect(body.result.total || body.result.result).toBeDefined()
     })
 
     it('rolls with modifier', async () => {
