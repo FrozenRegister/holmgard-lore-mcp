@@ -2,10 +2,10 @@
   "name": "holmgard-lore-mcp",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@11.5.1",
+  "packageManager": "pnpm@10.15.0",
   "engines": {
     "node": ">=22",
-    "pnpm": ">=11"
+    "pnpm": ">=10"
   },
   "type": "module",
   "scripts": {
@@ -18,15 +18,6 @@
     "type-check": "tsc --noEmit",
     "build": "wrangler deploy --dry-run --outdir dist",
     "fix:md": "markdownlint-cli2 --fix ."
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@mongodb-js/zstd",
-      "core-js-pure",
-      "esbuild",
-      "node-liblzma",
-      "workerd"
-    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
