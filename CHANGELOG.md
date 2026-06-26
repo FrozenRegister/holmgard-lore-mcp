@@ -24,6 +24,8 @@
 
 ### Fixed
 
+- **`mockD1Meta` type annotation to satisfy `D1Result.meta` intersection** — Changed the `mockD1Meta` variable type from `D1Meta` to `D1Meta & Record<string, unknown>` so that `D1Meta`'s missing index signature no longer causes `TS2322` errors when assigned to `D1Result.meta` (typed as `D1Meta & Record<string, unknown>`). Fixes the `pnpm run type-check` CI failure on the integration-tests-66 branch. (PR #161)
+
 - **Per-action `inputSchema` for all consolidated MCP tools** (closes #144) — Replaced the shared `OPEN_SCHEMA` (which only declared `action`) with per-tool `oneOf` JSON Schema definitions in `src/tools/definitions.ts`. Each of the 5 consolidated tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) now exposes a discriminated union schema with one branch per action, fully declaring all parameters with types, descriptions, and required/optional status. MCP bridges that regenerate tool wrapper schemas from `inputSchema.properties` can now introspect all parameters — fixing the silent parameter stripping that caused Zod validation failures on every call through a strict MCP bridge.
 
 - **WebSocket reconnect rate limiting** — Added a dedicated per-IP rate limit for WebSocket upgrade requests (`GET /mcp` with `Upgrade: websocket`) to stop runaway MCP client reconnect loops from generating unbounded Durable Object billable requests. Limit: 10 WebSocket upgrade attempts per IP per 60 seconds (separate and much tighter than the general 12,000/min API limit). Returns `429` with a `Retry-After` header so well-behaved MCP clients know to back off. Root cause of the June 16 DO compute overage (2.12M billable requests vs. 1M included tier).
