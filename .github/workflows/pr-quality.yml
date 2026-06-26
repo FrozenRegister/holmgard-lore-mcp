@@ -8,24 +8,54 @@ permissions:
   pull-requests: read
 
 jobs:
-  check-changelog:
+  check-issue-link:
+    name: Issue Link
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/github-script@v7
         with:
           script: |
-            // Fetch fresh PR data from API
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             })
 
-            // Check skip label on fresh data
-            const skipCheck = pr.labels.some(l => l.name === 'skip-quality-checks')
-            if (skipCheck) {
-              console.log('Skipping quality checks (skip-quality-checks label present)')
+            if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
+              console.log('Skipping (skip-quality-checks label present)')
+              return
+            }
+
+            const body = pr.body || ''
+            const hasLink = /\b(closes?|fixes?|resolves?)\s+#\d+/i.test(body)
+            if (!hasLink) {
+              core.setFailed(
+                'ERROR **Issue link required**\n\n' +
+                'The PR body must contain a closing keyword referencing an issue:\n' +
+                '  - `Closes #123`\n' +
+                '  - `Fixes #456`\n\n' +
+                'Note: keywords in the PR *title* are ignored by GitHub — they must be in the body.\n\n' +
+                'If this PR has no related issue, apply the `skip-quality-checks` label.'
+              )
+            } else {
+              console.log('OK Issue link found in PR body')
+            }
+
+  check-changelog:
+    name: Changelog Fragment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+
+            if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
+              console.log('Skipping (skip-quality-checks label present)')
               return
             }
 
@@ -35,14 +65,29 @@ jobs:
               pull_number: pr.number,
             })
 
-            const hasChangelog = files.some(f => f.filename === 'CHANGELOG.md')
+            const srcChanged = files.some(f =>
+              f.filename.startsWith('src/') ||
+              f.filename.startsWith('docs/') ||
+              f.filename === 'wrangler.jsonc' ||
+              f.filename === 'CLAUDE.md'
+            )
+            if (!srcChanged) {
+              console.log('No source/docs changes — changelog fragment not required')
+              return
+            }
 
-            if (!hasChangelog) {
+            const hasFragment = files.some(f =>
+              f.filename.startsWith('.changelog/fragments/') && f.status !== 'removed'
+            )
+            if (!hasFragment) {
               core.setFailed(
-                'ERROR **CHANGELOG.md required**\n\n' +
-                'Every PR must include a CHANGELOG entry under `[Unreleased]`.\n\n' +
-                'If you are skipping this check for an emergency hotfix, apply the `skip-quality-checks` label.'
+                'ERROR **Changelog fragment required**\n\n' +
+                'PRs that modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md` must add\n' +
+                'a fragment file under `.changelog/fragments/`.\n\n' +
+                'Create a file like `.changelog/fragments/my-feature.md` with a brief description.\n' +
+                'Fragments are assembled into CHANGELOG.md at release time — no merge conflicts.\n\n' +
+                'For emergency hotfixes, apply the `skip-quality-checks` label.'
               )
             } else {
-              console.log('OK CHANGELOG.md found in PR')
+              console.log('OK Changelog fragment found')
             }
