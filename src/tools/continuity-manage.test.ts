@@ -50,7 +50,7 @@ describe('handle_continuity_manage', () => {
     const res = (await handle_continuity_manage({
       c: { json: (body: unknown) => body } as any,
       id: 'x',
-      args: { action: 'get_event_log', limit: 5 },
+      args: { action: 'list_unpaid_setups' },
       isAuthenticated: true,
     })) as any
     expect(res.error).toBeUndefined()

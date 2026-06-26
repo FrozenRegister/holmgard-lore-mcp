@@ -420,3 +420,30 @@ export async function handle_check_convergence({ c, id, args }: ToolContext): Pr
     framing
   }), 200)
 }
+
+export async function handle_get_world_state({ c, id }: ToolContext): Promise<Response> {
+  const keys = await kvList(c)
+  const raws = await Promise.all(keys.map(k => kvGet(c, k)))
+  const threads = new Set<string>()
+  const locations = new Set<string>()
+  let characterCount = 0
+  for (let i = 0; i < keys.length; i++) {
+    const raw = raws[i]
+    if (!raw) continue
+    const key = keys[i]
+    if (key.startsWith('character:')) characterCount++
+    const { text } = parseKvEntry(raw)
+    const thread = extractRawField(text, 'Thread')
+    const location = extractRawField(text, 'Location')
+    if (thread) threads.add(thread)
+    if (location) locations.add(location)
+  }
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `World state: ${keys.length} entries, ${characterCount} characters, ${threads.size} thread(s), ${locations.size} location(s).` }],
+    metadata: { retrieved: keys.length, written: 0 },
+    total_entries: keys.length,
+    character_count: characterCount,
+    active_threads: [...threads],
+    known_locations: [...locations],
+  }), 200)
+}
