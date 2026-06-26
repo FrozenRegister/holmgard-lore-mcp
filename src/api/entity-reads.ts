@@ -294,7 +294,6 @@ entityReads.get('/nations', async (c) => {
 
 entityReads.get('/nations/:id', async (c) => {
   const db = c.env.RPG_DB
-  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')
@@ -336,7 +335,6 @@ entityReads.get('/regions', async (c) => {
 
 entityReads.get('/regions/:id', async (c) => {
   const db = c.env.RPG_DB
-  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')
@@ -380,7 +378,6 @@ entityReads.get('/quests', async (c) => {
 
 entityReads.get('/quests/:id', async (c) => {
   const db = c.env.RPG_DB
-  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')
@@ -396,7 +393,6 @@ entityReads.get('/quests/:id', async (c) => {
 
 entityReads.get('/quests/:id/log', async (c) => {
   const db = c.env.RPG_DB
-  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')
@@ -442,7 +438,6 @@ entityReads.get('/items', async (c) => {
 
 entityReads.get('/items/:id', async (c) => {
   const db = c.env.RPG_DB
-  /* c8 ignore next */
   if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
   try {
     const id = c.req.param('id')

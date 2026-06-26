@@ -765,13 +765,20 @@ describe('GET /nations/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('normalises missing numeric fields to defaults', async () => {
-    const db = createMockD1({ nations: [{ id: 'n2', name: 'Unknown Realm' }] });
-    const res = await entityReads.request(makeRequest('/nations/n2'), undefined, makeEnv(db));
+  it('normalises all missing fields to defaults', async () => {
+    const db = createMockD1({ nations: [{}] });
+    const res = await entityReads.request(makeRequest('/nations/x'), undefined, makeEnv(db));
     const body = await res.json() as any;
+    expect(body.nation.id).toBe('');
+    expect(body.nation.name).toBe('Unknown');
     expect(body.nation.aggression).toBe(50);
     expect(body.nation.trust).toBe(50);
     expect(body.nation.gdp).toBe(0);
+  });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
   });
 
   it('returns 500 when query throws', async () => {
@@ -804,12 +811,20 @@ describe('GET /regions/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns null owner_nation_name when region has no owner', async () => {
-    const db = createMockD1({ regions: [{ id: 'reg2', name: 'Wilds', type: 'wilderness', owner_nation_id: null, owner_nation_name: null }] });
-    const res = await entityReads.request(makeRequest('/regions/reg2'), undefined, makeEnv(db));
+  it('normalises all missing fields to defaults and null owner', async () => {
+    const db = createMockD1({ regions: [{ owner_nation_id: null, owner_nation_name: null }] });
+    const res = await entityReads.request(makeRequest('/regions/x'), undefined, makeEnv(db));
     const body = await res.json() as any;
+    expect(body.region.id).toBe('');
+    expect(body.region.name).toBe('Unknown');
+    expect(body.region.type).toBe('');
     expect(body.region.owner_nation_id).toBeNull();
     expect(body.region.owner_nation_name).toBeNull();
+  });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
   });
 
   it('returns 500 when query throws', async () => {
@@ -843,12 +858,20 @@ describe('GET /quests/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('normalises null giver to null', async () => {
-    const db = createMockD1({ quests: [{ id: 'q2', name: 'Lost Trail', description: '', status: 'abandoned', giver: null }] });
-    const res = await entityReads.request(makeRequest('/quests/q2'), undefined, makeEnv(db));
+  it('normalises all missing fields to defaults and null giver', async () => {
+    const db = createMockD1({ quests: [{}] });
+    const res = await entityReads.request(makeRequest('/quests/x'), undefined, makeEnv(db));
     const body = await res.json() as any;
-    expect(body.quest.giver).toBeNull();
+    expect(body.quest.id).toBe('');
+    expect(body.quest.name).toBe('Unknown');
     expect(body.quest.description).toBe('');
+    expect(body.quest.status).toBe('');
+    expect(body.quest.giver).toBeNull();
+  });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
   });
 
   it('returns 500 when query throws', async () => {
@@ -885,11 +908,18 @@ describe('GET /quests/:id/log', () => {
     expect(body.entries).toHaveLength(0);
   });
 
-  it('normalises missing note to empty string', async () => {
-    const db = createMockD1({ quest_logs: [{ id: 'ql3', created_at: '2026-02-01' }] });
+  it('normalises all missing log fields to empty strings', async () => {
+    const db = createMockD1({ quest_logs: [{}] });
     const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
     const body = await res.json() as any;
+    expect(body.entries[0].id).toBe('');
     expect(body.entries[0].note).toBe('');
+    expect(body.entries[0].created_at).toBe('');
+  });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
   });
 
   it('returns 500 when query throws', async () => {
@@ -921,12 +951,20 @@ describe('GET /items/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('normalises missing value and weight to 0', async () => {
-    const db = createMockD1({ items: [{ id: 'i2', name: 'Unnamed Trinket' }] });
-    const res = await entityReads.request(makeRequest('/items/i2'), undefined, makeEnv(db));
+  it('normalises all missing fields to defaults', async () => {
+    const db = createMockD1({ items: [{}] });
+    const res = await entityReads.request(makeRequest('/items/x'), undefined, makeEnv(db));
     const body = await res.json() as any;
+    expect(body.item.id).toBe('');
+    expect(body.item.name).toBe('Unknown');
+    expect(body.item.type).toBe('');
     expect(body.item.value).toBe(0);
     expect(body.item.weight).toBe(0);
+  });
+
+  it('returns 503 when RPG_DB is unavailable', async () => {
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(null));
+    expect(res.status).toBe(503);
   });
 
   it('returns 500 when query throws', async () => {
