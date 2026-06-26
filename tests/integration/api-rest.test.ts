@@ -1,50 +1,22 @@
 // tests/integration/api-rest.test.ts
-// Integration test: REST API endpoints (entity reads from D1)
-// Covers: GET /api/entities/characters, locations, nations, regions, quests, items
+// Integration test: REST API entity-reads endpoints (GET /api/entities/...)
+// These endpoints read from D1 (RPG_DB) — tested with mock D1
 
 import { describe, it, expect, beforeAll } from 'vitest'
-
-// These tests exercise the entity-reads router directly.
-// They import the router and create a minimal Hono app to test against.
-
 import { Hono } from 'hono'
 import type { AppBindings } from '../../src/types'
-import entityReadsRouter from '../../src/api/entity-reads'
-import type { Context } from 'hono'
-
-/**
- * Minimal mock D1Database that returns empty results by default.
- */
-class MockD1Database {
-  prepare() {
-    return {
-      bind: () => this,
-      all: async () => ({ results: [], success: true }),
-      first: async () => null,
-      run: async () => ({ success: true }),
-      raw: async () => [],
-    }
-  }
-}
+import entityReads from '../../src/api/entity-reads'
+import { createMockD1 } from '../unit/mocks'
 
 function createTestApp() {
   const app = new Hono<{ Bindings: AppBindings }>()
-  // Inject a minimal env with mock D1
+  const mockDb = createMockD1()
   app.use('*', async (c, next) => {
-    const mockCtx = c as any
-    mockCtx.env = {
-      ...c.env,
-      DB: new MockD1Database() as unknown as D1Database,
-      LORE_DB: {
-        get: async () => null,
-        put: async () => {},
-        delete: async () => {},
-        list: async () => ({ keys: [] }),
-      },
-    }
+    const mc = c as any
+    mc.env = { ...c.env, RPG_DB: mockDb, ADMIN_SECRET: 'test-admin-secret' }
     await next()
   })
-  app.route('/api/entities', entityReadsRouter)
+  app.route('/api/entities', entityReads)
   return app
 }
 
@@ -66,30 +38,33 @@ describe('REST API endpoints', () => {
   })
 
   const endpoints = [
-    { path: '/api/entities/characters', label: 'characters' },
-    { path: '/api/entities/locations', label: 'locations' },
-    { path: '/api/entities/nations', label: 'nations' },
-    { path: '/api/entities/regions', label: 'regions' },
-    { path: '/api/entities/quests', label: 'quests' },
-    { path: '/api/entities/items', label: 'items' },
+    { path: '/api/entities/characters', label: 'characters', key: 'characters' },
+    { path: '/api/entities/locations', label: 'locations', key: 'locations' },
+    { path: '/api/entities/nations', label: 'nations', key: 'nations' },
+    { path: '/api/entities/regions', label: 'regions', key: 'regions' },
+    { path: '/api/entities/quests', label: 'quests', key: 'quests' },
+    { path: '/api/entities/items', label: 'items', key: 'items' },
   ]
 
   for (const { path, label } of endpoints) {
-    it(`GET ${path} returns array of ${label}`, async () => {
+    it(`GET ${path} returns ${label} list`, async () => {
       const body = await fetchJson(app, path)
       expect(body).toBeDefined()
-      // Each endpoint should return an array (possibly empty with mock DB)
-      expect(Array.isArray(body)).toBeTruthy()
+      // Each endpoint wraps results in { characters: [...], total: N } etc.
+      const resultKey = Object.keys(body).find(k => k !== 'total' && k !== 'error')
+      expect(resultKey).toBeDefined()
+      expect(Array.isArray(body[resultKey!])).toBeTruthy()
     })
   }
 
-  it('returns 404 for unknown entity type', async () => {
+  it('returns 404 for unknown entity type (not a registered route)', async () => {
     const res = await app.fetch(new Request('http://localhost/api/entities/unknown', { method: 'GET' }))
     expect(res.status).toBe(404)
   })
 
   it('returns empty array when DB has no data', async () => {
     const body = await fetchJson(app, '/api/entities/characters')
-    expect(body).toEqual([])
+    expect(body.characters).toEqual([])
+    expect(body.total).toBe(0)
   })
 })
