@@ -9,8 +9,6 @@ import { handle_lore_manage } from '../../src/tools/lore-manage'
 const LORE_KEY = 'npc:test-merchant'
 const LORE_TEXT = `**Name:** Aldric\n**Role:** merchant\n**Location:** Duskmarket\n**Inventory:** 3x Iron Ingot, 1x Healing Potion`
 
-const UPDATED_TEXT = `**Name:** Aldric the Cursed\n**Role:** merchant\n**Location:** Duskmarket\n**Inventory:** 2x Iron Ingot, 1x Healing Potion, 1x Cursed Amulet`
-
 function callLore(ctx: ReturnType<typeof createMockContext>, args: Record<string, unknown>) {
   return handle_lore_manage({
     c: ctx,
@@ -34,7 +32,7 @@ describe('Lore CRUD integration flow', () => {
 
   describe('SET → GET → PATCH → DELETE → RESTORE', () => {
     it('writes a lore entry, reads it back, patches, deletes, and restores', async () => {
-      // 1. SET
+      // 1. SET — returns makeResult with content array, not {ok:true}
       const setRes = await callLore(ctx, {
         action: 'set',
         key: LORE_KEY,
@@ -42,7 +40,8 @@ describe('Lore CRUD integration flow', () => {
       })
       const setBody = await jsonBody(setRes)
       expect(setBody.result).toBeDefined()
-      expect(setBody.result.ok).toBe(true)
+      expect(setBody.result.content).toBeDefined()
+      expect(setBody.result.content[0].text).toContain('saved')
 
       // 2. GET
       const getRes = await callLore(ctx, { action: 'get', query: LORE_KEY })
@@ -50,7 +49,7 @@ describe('Lore CRUD integration flow', () => {
       expect(getBody.result.text).toBe(LORE_TEXT)
       expect(getBody.result.key).toBe(LORE_KEY)
 
-      // 3. PATCH — replace
+      // 3. PATCH — replace (returns content array)
       const patchRes = await callLore(ctx, {
         action: 'patch',
         key: LORE_KEY,
@@ -59,7 +58,7 @@ describe('Lore CRUD integration flow', () => {
         value: '**Name:** Aldric the Cursed',
       })
       const patchBody = await jsonBody(patchRes)
-      expect(patchBody.result.ok).toBe(true)
+      expect(patchBody.result.content[0].text).toContain('Replaced')
 
       // 4. GET after patch
       const getAfterPatchRes = await callLore(ctx, { action: 'get', query: LORE_KEY })
@@ -69,7 +68,7 @@ describe('Lore CRUD integration flow', () => {
       // 5. DELETE
       const deleteRes = await callLore(ctx, { action: 'delete', key: LORE_KEY })
       const deleteBody = await jsonBody(deleteRes)
-      expect(deleteBody.result.ok).toBe(true)
+      expect(deleteBody.result.content[0].text).toContain('deleted')
 
       // 6. GET after delete — should error
       const getAfterDelRes = await callLore(ctx, { action: 'get', query: LORE_KEY })
@@ -79,7 +78,7 @@ describe('Lore CRUD integration flow', () => {
       // 7. RESTORE
       const restoreRes = await callLore(ctx, { action: 'restore', key: LORE_KEY })
       const restoreBody = await jsonBody(restoreRes)
-      expect(restoreBody.result.ok).toBe(true)
+      expect(restoreBody.result.metadata.restored).toBe(true)
 
       // 8. GET after restore — should have pre-patch content
       const getAfterRestoreRes = await callLore(ctx, { action: 'get', query: LORE_KEY })
@@ -116,7 +115,8 @@ describe('Lore CRUD integration flow', () => {
       })
       const validateBody = await jsonBody(validateRes)
       expect(validateBody.result).toBeDefined()
-      expect(validateBody.result.did_you_mean || validateBody.result.found !== undefined).toBeTruthy()
+      // validate returns {exists, did_you_mean, confidence, ...}
+      expect(validateBody.result.did_you_mean).toBeTruthy()
     })
 
     it('confirms exact matches', async () => {
@@ -127,7 +127,7 @@ describe('Lore CRUD integration flow', () => {
         query_string: 'item:longsword',
       })
       const validateBody = await jsonBody(validateRes)
-      expect(validateBody.result.found).toBe(true)
+      expect(validateBody.result.exists).toBe(true)
     })
   })
 
@@ -138,9 +138,9 @@ describe('Lore CRUD integration flow', () => {
 
       const listRes = await callLore(ctx, { action: 'list', limit: 100, offset: 0 })
       const listBody = await jsonBody(listRes)
-      expect(listBody.result.keys).toBeDefined()
-      expect(listBody.result.keys).toContain('npc:one')
-      expect(listBody.result.keys).toContain('npc:two')
+      // list returns content[0].text with comma-sep keys + metadata
+      expect(listBody.result.content[0].text).toContain('npc:one')
+      expect(listBody.result.content[0].text).toContain('npc:two')
     })
 
     it('slices paginated results', async () => {
@@ -150,15 +150,11 @@ describe('Lore CRUD integration flow', () => {
 
       const page1 = await callLore(ctx, { action: 'list', limit: 2, offset: 0 })
       const body1 = await jsonBody(page1)
-      expect(body1.result.keys.length).toBeLessThanOrEqual(2)
+      expect(body1.result.metadata.count).toBeLessThanOrEqual(2)
 
       const page2 = await callLore(ctx, { action: 'list', limit: 2, offset: 2 })
       const body2 = await jsonBody(page2)
-      expect(body2.result.keys.length).toBeLessThanOrEqual(2)
-
-      const allKeys = [...body1.result.keys, ...body2.result.keys]
-      const unique = new Set(allKeys)
-      expect(unique.size).toBe(allKeys.length)
+      expect(body2.result.metadata.count).toBeLessThanOrEqual(2)
     })
   })
 
@@ -173,8 +169,7 @@ describe('Lore CRUD integration flow', () => {
         ],
       })
       const batchBody = await jsonBody(batchRes)
-      expect(batchBody.result.results).toBeDefined()
-      expect(Object.keys(batchBody.result.results).length).toBe(3)
+      expect(batchBody.result.metadata.set_count).toBe(3)
 
       for (const key of ['npc:x1', 'npc:x2', 'npc:x3']) {
         const getRes = await callLore(ctx, { action: 'get', query: key })

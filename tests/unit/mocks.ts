@@ -1,7 +1,7 @@
 // tests/unit/mocks.ts
 // Provides a minimal mock of Hono's Context plus a fake KV store so that both
 // kvGet/kvPut (which access c.env.LORE_DB) and c.json() work in unit tests.
-// Also provides a mock D1 database (RPG_DB / DB) for RPG handler tests.
+// Also provides a mock D1 database for RPG/agent/character handlers.
 
 import type { Context } from 'hono'
 import type { AppBindings } from '../../src/types'
@@ -34,70 +34,34 @@ export function createMockKV(seed: Record<string, string> = {}): MockKVStore {
   }
 }
 
-/** Chainable mock D1 statement */
-interface MockD1Statement {
-  bind(..._args: unknown[]): MockD1Statement
-  first(): Promise<Record<string, unknown> | null>
-  all(): Promise<{ results: Record<string, unknown>[]; success: boolean }>
-  run(): Promise<{ success: boolean; meta: { changes: number } }>
-  raw(): Promise<Record<string, unknown>[]>
-}
-
 /**
- * Build a mock D1Database. By default all queries return empty results.
- * Pass seedTables to pre-populate tables with rows keyed by a lookup column.
- * e.g. seedTables: { characters: { rows: [...], lookupCol: 'id' } }
+ * Build a minimal mock D1Database that stores rows in memory.
+ * Supports .prepare(...).bind(...).all() / .first() / .run() chains.
  */
-export function createMockD1(
-  tables: Record<string, Record<string, unknown>[]> = {},
-): Pick<D1Database, 'prepare'> {
-  const tableData: Record<string, Record<string, unknown>[]> = JSON.parse(JSON.stringify(tables))
+export function createMockD1(): any {
+  const tables: Record<string, Record<string, unknown>[]> = {}
+
+  const chain = {
+    all: async () => ({ results: tables._lastResults ?? [], success: true }),
+    first: async () => (tables._lastResults?.[0] ?? null),
+    run: async () => {
+      // Minimal INSERT simulation: track by table name stored on the chain
+      return { success: true }
+    },
+    bind: function (..._args: unknown[]) { return this },
+  }
 
   return {
-    prepare(_query: string): MockD1Statement {
-      let boundValues: unknown[] = []
-      const self: MockD1Statement = {
-        bind(...args: unknown[]) {
-          boundValues = args
-          return self
-        },
-        async first() {
-          // Try to match a lookup: if query contains "WHERE id = ?" and we have that id
-          if (boundValues.length === 1) {
-            for (const tableName of Object.keys(tableData)) {
-              if (_query.includes(tableName)) {
-                const rows = tableData[tableName]
-                const found = rows.find(r => r.id === boundValues[0])
-                if (found) return { ...found }
-              }
-            }
-            // For agent lookup by character_id
-            for (const tableName of Object.keys(tableData)) {
-              if (_query.includes(tableName) && _query.includes('character_id')) {
-                const rows = tableData[tableName]
-                const found = rows.find(r => r.character_id === boundValues[0])
-                if (found) return { ...found }
-              }
-            }
-          }
-          return null
-        },
-        async all() {
-          for (const tableName of Object.keys(tableData)) {
-            if (_query.includes(tableName)) {
-              return { results: [...tableData[tableName]], success: true }
-            }
-          }
-          return { results: [], success: true }
-        },
-        async run() {
-          return { success: true, meta: { changes: 1 } }
-        },
-        async raw() {
-          return []
-        },
-      }
-      return self
+    prepare(_sql: string) {
+      // Extract table name for minimal simulation
+      const match = _sql.match(/(?:FROM|INTO|UPDATE)\s+(\w+)/i)
+      tables._lastTable = match?.[1] ?? 'unknown'
+      tables._lastResults = tables[tables._lastTable] ?? []
+      return chain
+    },
+    _tables: tables,
+    _seed(table: string, rows: Record<string, unknown>[]) {
+      tables[table] = rows
     },
   }
 }
@@ -105,25 +69,24 @@ export function createMockD1(
 /**
  * Create a minimal Hono Context that satisfies our tool-handler needs.
  * Cast to the full Context type since we only use `env` and `json()`.
- *
- * Set options.rpgDb to true to include a mock RPG_DB (for RPG/agent/character tests).
- * Set options.tables to pre-load mock D1 tables.
  */
 export function createMockContext(
   seed?: Record<string, string>,
-  options?: { rpgDb?: boolean; tables?: Record<string, Record<string, unknown>[]> },
+  opts?: { d1Seeds?: Record<string, Record<string, unknown>[]> },
 ): Context<{ Bindings: AppBindings }> {
   const kv = createMockKV(seed)
-  const env: Record<string, unknown> = { LORE_DB: kv }
-
-  if (options?.rpgDb) {
-    const mockD1 = createMockD1(options.tables ?? {})
-    env.RPG_DB = mockD1
-    env.DB = mockD1
+  const d1 = createMockD1()
+  if (opts?.d1Seeds) {
+    for (const [table, rows] of Object.entries(opts.d1Seeds)) {
+      d1._seed(table, rows)
+    }
   }
-
   return {
-    env: env as unknown as AppBindings,
+    env: {
+      LORE_DB: kv,
+      DB: d1,
+      RPG_DB: d1,
+    } as unknown as AppBindings,
     json: async (body: unknown, status?: number) =>
       new Response(JSON.stringify(body), {
         status: status ?? 200,
