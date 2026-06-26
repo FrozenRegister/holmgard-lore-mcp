@@ -532,6 +532,118 @@ admin.post('/migrate-all-characters', async (c) => {
   }
 })
 
+// ── Entity relations (CRUD) ──────────────────────────────────────────────────
+
+const VALID_ENTITY_TYPES = new Set(['characters', 'locations', 'nations', 'regions', 'quests', 'items'])
+
+admin.post('/relations', async (c) => {
+  const db = c.env?.RPG_DB
+  if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+  let body: Record<string, unknown>
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'Invalid JSON' }, 400) }
+
+  if (!(await checkSecret(c, body))) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401)
+  }
+
+  const from_type = typeof body.from_type === 'string' ? body.from_type.trim() : ''
+  const from_id   = typeof body.from_id   === 'string' ? body.from_id.trim()   : ''
+  const to_type   = typeof body.to_type   === 'string' ? body.to_type.trim()   : ''
+  const to_id     = typeof body.to_id     === 'string' ? body.to_id.trim()     : ''
+  const relation_type = typeof body.relation_type === 'string' ? body.relation_type.trim() : ''
+
+  if (!from_type || !VALID_ENTITY_TYPES.has(from_type)) {
+    return c.json({ ok: false, error: 'Invalid or missing from_type' }, 400)
+  }
+  if (!from_id) return c.json({ ok: false, error: 'Missing from_id' }, 400)
+  if (!to_type || !VALID_ENTITY_TYPES.has(to_type)) {
+    return c.json({ ok: false, error: 'Invalid or missing to_type' }, 400)
+  }
+  if (!to_id) return c.json({ ok: false, error: 'Missing to_id' }, 400)
+  if (!relation_type) return c.json({ ok: false, error: 'Missing relation_type' }, 400)
+
+  const attitude       = body.attitude !== undefined && body.attitude !== null ? Number(body.attitude) : null
+  const is_bidirectional = body.is_bidirectional === false ? 0 : 1
+  const color          = typeof body.color === 'string' ? body.color.trim() || null : null
+  const is_pinned      = body.is_pinned ? 1 : 0
+  const is_private     = body.is_private ? 1 : 0
+  const notes          = typeof body.notes === 'string' ? body.notes.trim() || null : null
+
+  try {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await db.prepare(`
+      INSERT INTO entity_relations
+        (id, from_type, from_id, to_type, to_id, relation_type,
+         attitude, is_bidirectional, color, is_pinned, is_private, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(id, from_type, from_id, to_type, to_id, relation_type,
+             attitude, is_bidirectional, color, is_pinned, is_private, notes, now).run()
+    return c.json({ ok: true, id }, 201)
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
+const RELATION_PATCHABLE = new Set([
+  'relation_type', 'attitude', 'is_bidirectional', 'color', 'is_pinned', 'is_private', 'notes',
+])
+
+admin.patch('/relations/:id', async (c) => {
+  const db = c.env?.RPG_DB
+  if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+  let body: Record<string, unknown>
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'Invalid JSON' }, 400) }
+
+  if (!(await checkSecret(c, body))) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401)
+  }
+
+  const id = c.req.param('id')
+  const entries = Object.entries(body).filter(([k]) => RELATION_PATCHABLE.has(k))
+  if (entries.length === 0) return c.json({ ok: false, error: 'No patchable fields provided' }, 400)
+
+  try {
+    const existing = await db.prepare('SELECT id FROM entity_relations WHERE id = ?').bind(id).first()
+    if (!existing) return c.json({ ok: false, error: 'Relation not found' }, 404)
+
+    const setClauses = entries.map(([k]) => `${k} = ?`).join(', ')
+    const values = entries.map(([, v]) => v)
+    await db.prepare(`UPDATE entity_relations SET ${setClauses} WHERE id = ?`)
+      .bind(...values, id).run()
+    return c.json({ ok: true })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
+admin.delete('/relations/:id', async (c) => {
+  const db = c.env?.RPG_DB
+  if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+  const headerSecret = c.req.header('X-Admin-Secret') ?? c.req.header('X-Api-Key') ?? null
+  const ADMIN_SECRET = c.env?.ADMIN_SECRET
+  if (!ADMIN_SECRET || headerSecret !== ADMIN_SECRET) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401)
+  }
+
+  try {
+    const id = c.req.param('id')
+    const existing = await db.prepare('SELECT id FROM entity_relations WHERE id = ?').bind(id).first()
+    if (!existing) return c.json({ ok: false, error: 'Relation not found' }, 404)
+
+    await db.prepare('DELETE FROM entity_relations WHERE id = ?').bind(id).run()
+    return c.json({ ok: true })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ ok: false, error: safeErrorMessage(e) }, 500)
+  }
+})
+
 // ── Map routes ──────────────────────────────────────────────────────────────
 
 // Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
