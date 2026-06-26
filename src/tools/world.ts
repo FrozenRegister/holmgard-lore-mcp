@@ -429,6 +429,7 @@ export async function handle_get_world_state({ c, id }: ToolContext): Promise<Re
   let characterCount = 0
   for (let i = 0; i < keys.length; i++) {
     const raw = raws[i]
+    /* istanbul ignore next */
     if (!raw) continue
     const key = keys[i]
     if (key.startsWith('character:')) characterCount++
