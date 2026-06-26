@@ -54,7 +54,7 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
   switch (match.matched) {
     case 'overview': {
       if (!a.worldId) return err('"worldId" is required')
-      const world = await db.prepare('SELECT id, name, theme, lore_summary FROM worlds WHERE id = ?').bind(a.worldId).first() as Record<string, unknown> | null
+      const world = await db.prepare('SELECT id, name, seed, width, height, created_at, updated_at FROM worlds WHERE id = ?').bind(a.worldId).first() as Record<string, unknown> | null
       if (!world) return err(`World not found: ${a.worldId}`)
       const { results: regions } = await db.prepare('SELECT id, name, type, owner_nation_id FROM regions WHERE world_id = ? ORDER BY name').bind(a.worldId).all()
       const { results: nations } = await db.prepare('SELECT id, name, ideology FROM nations WHERE world_id = ? ORDER BY name').bind(a.worldId).all()
