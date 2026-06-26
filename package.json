@@ -19,6 +19,15 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "fix:md": "markdownlint-cli2 --fix ."
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@mongodb-js/zstd",
+      "core-js-pure",
+      "esbuild",
+      "node-liblzma",
+      "workerd"
+    ]
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.15.0",
