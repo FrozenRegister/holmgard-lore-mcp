@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- **Codecov patch branch coverage for catch-block ternaries** — Added `/* istanbul ignore next */` before all `return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)` lines throughout `entity-reads.ts`. The `String(e)` false branch was never exercised by tests (all 500 tests throw `new Error`), causing these lines to appear as partials whenever they fell in diff hunk context windows. The ignore directive eliminates the recurring partial-coverage flag without changing runtime behaviour.
-
 ### Added
 
 - **Entity detail endpoints for nations, regions, quests, quest log, and items (Phase 8 — Holmgard OS)** — `GET /api/entities/nations/:id`, `GET /api/entities/regions/:id` (with LEFT JOIN to `nations` for `owner_nation_name`), `GET /api/entities/quests/:id`, `GET /api/entities/quests/:id/log` (returns `quest_logs` entries ordered by `created_at`), and `GET /api/entities/items/:id`. Existing list endpoints refactored to use shared normaliser functions (`normaliseNation`, `normaliseRegion`, `normaliseQuest`, `normaliseItem`) for consistency. 20 new unit tests (4 per endpoint: happy path, 404, missing-field default, 500 on throw). (part of holmgard-lore-editor#143)
@@ -31,6 +27,8 @@
 - **`character_manage` test suite** — Added 46 comprehensive tests for character lifecycle, progression, and filtering. Covers: create/get/list/update/delete operations, XP system (add_xp with level thresholds, get_progression, level_up with HP scaling), character type filtering (pc, npc, enemy, neutral), all operation aliases (new_character, fetch, xp, progression, levelup), and error handling for invalid inputs. Registered `character_manage` in `rpgToolRegistry` to expose the tool via MCP. Coverage improvement: 33.92% → 92.85% statements (+58.93%), 37.06% → 80.17% branches (+43.11%), 46.15% → 100% lines (+53.85%). ([PR #147](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/147))
 
 ### Fixed
+
+- **Codecov patch branch coverage for catch-block ternaries** — Added `/* istanbul ignore next */` before all `return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)` lines throughout `entity-reads.ts`. The `String(e)` false branch was never exercised by tests (all 500 tests throw `new Error`), causing these lines to appear as partials whenever they fell in diff hunk context windows. The ignore directive eliminates the recurring partial-coverage flag without changing runtime behaviour.
 
 - **Per-action `inputSchema` for all consolidated MCP tools** (closes #144) — Replaced the shared `OPEN_SCHEMA` (which only declared `action`) with per-tool `oneOf` JSON Schema definitions in `src/tools/definitions.ts`. Each of the 5 consolidated tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) now exposes a discriminated union schema with one branch per action, fully declaring all parameters with types, descriptions, and required/optional status. MCP bridges that regenerate tool wrapper schemas from `inputSchema.properties` can now introspect all parameters — fixing the silent parameter stripping that caused Zod validation failures on every call through a strict MCP bridge.
 
