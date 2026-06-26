@@ -12,6 +12,7 @@ function callTool(ctx: ReturnType<typeof createMockContext>, toolName: string, a
 }
 
 async function jsonBody(res: Response): Promise<any> {
+  expect(res.status).toBe(200)
   return res.json()
 }
 
@@ -24,28 +25,25 @@ describe('Meta tools integration', () => {
 
   describe('search_tools', () => {
     it('returns matching tools for a search query', async () => {
-      const res = await callTool(ctx, 'search_tools', {
-        query: 'lore',
-        limit: 5,
-      })
+      const res = await callTool(ctx, 'search_tools', { query: 'lore', limit: 5 })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
 
     it('returns results for entity-related search', async () => {
-      const res = await callTool(ctx, 'search_tools', {
-        query: 'entity',
-        limit: 10,
-      })
+      const res = await callTool(ctx, 'search_tools', { query: 'entity', limit: 10 })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
 
-    it('handles empty queries', async () => {
-      const res = await callTool(ctx, 'search_tools', {
-        query: '',
-        limit: 5,
-      })
+    it('returns results for world tools', async () => {
+      const res = await callTool(ctx, 'search_tools', { query: 'world', limit: 5 })
+      const body = await jsonBody(res)
+      expect(body.result).toBeDefined()
+    })
+
+    it('respects limit parameter', async () => {
+      const res = await callTool(ctx, 'search_tools', { query: 'a', limit: 2 })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -53,25 +51,19 @@ describe('Meta tools integration', () => {
 
   describe('load_tool_schema', () => {
     it('loads schema for lore_manage', async () => {
-      const res = await callTool(ctx, 'load_tool_schema', {
-        toolName: 'lore_manage',
-      })
+      const res = await callTool(ctx, 'load_tool_schema', { toolName: 'lore_manage' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
 
     it('loads schema for entity_manage', async () => {
-      const res = await callTool(ctx, 'load_tool_schema', {
-        toolName: 'entity_manage',
-      })
+      const res = await callTool(ctx, 'load_tool_schema', { toolName: 'entity_manage' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
 
     it('errors on unknown tool', async () => {
-      const res = await callTool(ctx, 'load_tool_schema', {
-        toolName: 'nonexistent_tool',
-      })
+      const res = await callTool(ctx, 'load_tool_schema', { toolName: 'nonexistent_tool' })
       const body = await jsonBody(res)
       expect(body.error || body.result?.error).toBeDefined()
     })

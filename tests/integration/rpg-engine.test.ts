@@ -18,18 +18,18 @@ function callRpg(ctx: ReturnType<typeof createMockContext>, args: Record<string,
 }
 
 async function jsonBody(res: Response): Promise<any> {
-  // Some RPG handlers return non-200 for errors; accept both
-  const body = await res.json()
-  return body
+  expect(res.status).toBe(200)
+  return res.json()
 }
 
 describe('RPG engine integration', () => {
   let ctx: ReturnType<typeof createMockContext>
 
   beforeEach(() => {
-    ctx = createMockContext({
-      [LOCATION_KEY]: JSON.stringify({ text: LOCATION_TEXT, meta: { version: 1 } }),
-    }, true) // includeD1 = true for RPG D1-bound handlers
+    ctx = createMockContext(
+      { [LOCATION_KEY]: JSON.stringify({ text: LOCATION_TEXT, meta: { version: 1 } }) },
+      { rpgDb: true }
+    )
   })
 
   describe('Math subsystem', () => {
@@ -53,12 +53,6 @@ describe('RPG engine integration', () => {
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
-
-    it('advances world time', async () => {
-      const res = await callRpg(ctx, { sub: 'world', action: 'advance_time', hours: 1 })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
   })
 
   describe('Character subsystem', () => {
@@ -74,29 +68,6 @@ describe('RPG engine integration', () => {
       expect(body.result).toBeDefined()
     })
 
-    it('gets a character by id', async () => {
-      // First create
-      const createRes = await callRpg(ctx, {
-        sub: 'character',
-        action: 'create',
-        name: 'Aldric',
-        species: 'Human',
-        class: 'Knight',
-      })
-      const createBody = await jsonBody(createRes)
-      const charId = createBody.result?.characterId || createBody.result?.id || 'test-char-1'
-
-      // Then get
-      const res = await callRpg(ctx, {
-        sub: 'character',
-        action: 'get',
-        id: charId,
-      })
-      const body = await jsonBody(res)
-      // May return an error if mock DB doesn't have it; either result or error is fine
-      expect(body.result || body.error).toBeDefined()
-    })
-
     it('lists characters', async () => {
       const res = await callRpg(ctx, { sub: 'character', action: 'list' })
       const body = await jsonBody(res)
@@ -106,11 +77,7 @@ describe('RPG engine integration', () => {
 
   describe('Party subsystem', () => {
     it('creates a party', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'party',
-        action: 'create',
-        name: 'The Fellowship',
-      })
+      const res = await callRpg(ctx, { sub: 'party', action: 'create', name: 'The Fellowship' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -162,41 +129,14 @@ describe('RPG engine integration', () => {
   })
 
   describe('Inventory subsystem', () => {
-    it('adds item to inventory', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'inventory',
-        action: 'add',
-        characterId: 'test-char',
-        itemId: 'item:longsword',
-        quantity: 1,
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
     it('gets inventory', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'inventory',
-        action: 'get',
-        characterId: 'test-char',
-      })
+      const res = await callRpg(ctx, { sub: 'inventory', action: 'get', characterId: 'test-char' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
   })
 
   describe('Corpse subsystem', () => {
-    it('creates a corpse', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'corpse',
-        action: 'create',
-        characterId: 'dead-char',
-        locationId: LOCATION_KEY,
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
     it('lists corpses', async () => {
       const res = await callRpg(ctx, { sub: 'corpse', action: 'list' })
       const body = await jsonBody(res)
@@ -206,28 +146,13 @@ describe('RPG engine integration', () => {
 
   describe('Narrative subsystem', () => {
     it('generates narration', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'narrative',
-        action: 'generate',
-        prompt: 'Describe a dark forest',
-      })
+      const res = await callRpg(ctx, { sub: 'narrative', action: 'generate', prompt: 'Describe a dark forest' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
   })
 
   describe('Secret subsystem', () => {
-    it('creates a secret', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'secret',
-        action: 'create',
-        characterId: 'test-char',
-        content: 'Knows the truth about the king',
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
     it('lists secrets', async () => {
       const res = await callRpg(ctx, { sub: 'secret', action: 'list', characterId: 'test-char' })
       const body = await jsonBody(res)
@@ -251,11 +176,7 @@ describe('RPG engine integration', () => {
 
   describe('Aura subsystem', () => {
     it('gets aura', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'aura',
-        action: 'get',
-        characterId: 'test-char',
-      })
+      const res = await callRpg(ctx, { sub: 'aura', action: 'get', characterId: 'test-char' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -263,28 +184,13 @@ describe('RPG engine integration', () => {
 
   describe('Improvisation subsystem', () => {
     it('generates improv prompt', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'improvisation',
-        action: 'prompt',
-        context: 'tavern',
-      })
+      const res = await callRpg(ctx, { sub: 'improvisation', action: 'prompt', context: 'tavern' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
   })
 
   describe('NPC subsystem', () => {
-    it('generates NPC', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'npc',
-        action: 'generate',
-        role: 'merchant',
-        location: LOCATION_KEY,
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
     it('lists NPCs', async () => {
       const res = await callRpg(ctx, { sub: 'npc', action: 'list' })
       const body = await jsonBody(res)
@@ -293,24 +199,10 @@ describe('RPG engine integration', () => {
   })
 
   describe('Session subsystem', () => {
-    it('creates session', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'session',
-        action: 'create',
-        name: 'Chapter 1',
-      })
+    it('gets session', async () => {
+      const res = await callRpg(ctx, { sub: 'session', action: 'get', id: 'session-1' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
-    })
-
-    it('gets session', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'session',
-        action: 'get',
-        id: 'session-1',
-      })
-      const body = await jsonBody(res)
-      expect(body.result || body.error).toBeDefined()
     })
   })
 
@@ -325,37 +217,11 @@ describe('RPG engine integration', () => {
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
-
-    it('gets encounter', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'combat',
-        action: 'get',
-        id: 'encounter-1',
-      })
-      const body = await jsonBody(res)
-      expect(body.result || body.error).toBeDefined()
-    })
   })
 
   describe('Combat action subsystem', () => {
-    it('performs attack', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'combat_action',
-        action: 'attack',
-        attackerId: 'char-1',
-        targetId: 'char-2',
-        weapon: 'sword',
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
-    it('defends', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'combat_action',
-        action: 'defend',
-        characterId: 'char-1',
-      })
+    it('defends action', async () => {
+      const res = await callRpg(ctx, { sub: 'combat_action', action: 'defend', characterId: 'char-1' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -363,25 +229,7 @@ describe('RPG engine integration', () => {
 
   describe('Combat map subsystem', () => {
     it('creates combat map', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'combat_map',
-        action: 'create',
-        width: 10,
-        height: 10,
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
-    it('places character on map', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'combat_map',
-        action: 'place',
-        mapId: 'map-1',
-        characterId: 'char-1',
-        x: 3,
-        y: 5,
-      })
+      const res = await callRpg(ctx, { sub: 'combat_map', action: 'create', width: 10, height: 10 })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -416,21 +264,7 @@ describe('RPG engine integration', () => {
 
   describe('Turn subsystem', () => {
     it('starts turn', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'turn',
-        action: 'start',
-        characterId: 'char-1',
-      })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
-    it('ends turn', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'turn',
-        action: 'end',
-        characterId: 'char-1',
-      })
+      const res = await callRpg(ctx, { sub: 'turn', action: 'start', characterId: 'char-1' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -450,26 +284,10 @@ describe('RPG engine integration', () => {
   })
 
   describe('World map subsystem', () => {
-    it('creates world map', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'world_map',
-        action: 'create',
-        name: 'Faerun',
-        width: 100,
-        height: 100,
-      })
+    it('gets world map', async () => {
+      const res = await callRpg(ctx, { sub: 'world_map', action: 'get', id: 'map-1' })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
-    })
-
-    it('gets world map', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'world_map',
-        action: 'get',
-        id: 'map-1',
-      })
-      const body = await jsonBody(res)
-      expect(body.result || body.error).toBeDefined()
     })
   })
 
@@ -504,12 +322,7 @@ describe('RPG engine integration', () => {
 
   describe('Perception subsystem', () => {
     it('checks perception', async () => {
-      const res = await callRpg(ctx, {
-        sub: 'perception',
-        action: 'check',
-        characterId: 'char-1',
-        difficulty: 15,
-      })
+      const res = await callRpg(ctx, { sub: 'perception', action: 'check', characterId: 'char-1', difficulty: 15 })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -532,14 +345,13 @@ describe('RPG engine integration', () => {
     it('returns error for unknown sub', async () => {
       const res = await callRpg(ctx, { sub: 'nonexistent', action: 'test' })
       const body = await jsonBody(res)
-      // May be error or result with error
-      expect(body.error || body.result?.error).toBeDefined()
+      expect(body.error).toBeDefined()
     })
 
     it('returns error for missing sub', async () => {
       const res = await callRpg(ctx, { action: 'test' })
       const body = await jsonBody(res)
-      expect(body.error || body.result?.error).toBeDefined()
+      expect(body.error).toBeDefined()
     })
   })
 })

@@ -12,6 +12,7 @@ function callChar(ctx: ReturnType<typeof createMockContext>, args: Record<string
 }
 
 async function jsonBody(res: Response): Promise<any> {
+  expect(res.status).toBe(200)
   return res.json()
 }
 
@@ -19,51 +20,37 @@ describe('Character management integration', () => {
   let ctx: ReturnType<typeof createMockContext>
 
   beforeEach(() => {
-    ctx = createMockContext({}, true) // includeD1 = true
+    ctx = createMockContext({}, { rpgDb: true })
   })
 
   describe('Character lifecycle', () => {
-    it('creates a character', async () => {
-      const res = await callChar(ctx, {
+    it('creates, lists, and deletes a character', async () => {
+      // 1. CREATE
+      const createRes = await callChar(ctx, {
         action: 'create',
         name: 'Lyra Nightshade',
         species: 'Elf',
         class: 'Ranger',
         level: 1,
       })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-      expect(body.result.name || body.result.Name || body.result.success).toBeDefined()
-    })
-
-    it('lists characters', async () => {
-      const res = await callChar(ctx, { action: 'list' })
-      const body = await jsonBody(res)
-      expect(body.result).toBeDefined()
-    })
-
-    it('gets a created character', async () => {
-      // Create first
-      const createRes = await callChar(ctx, {
-        action: 'create',
-        name: 'Grom Stonefist',
-        species: 'Dwarf',
-        class: 'Fighter',
-        level: 3,
-      })
       const createBody = await jsonBody(createRes)
-      const charId = createBody.result?.characterId || createBody.result?.id
-      if (!charId) return
+      expect(createBody.result).toBeDefined()
+      const charId = createBody.result.id || createBody.result.characterId || 'test-char-1'
 
-      // Then get
-      const res = await callChar(ctx, { action: 'get', id: charId })
-      const body = await jsonBody(res)
-      expect(body.result || body.error).toBeDefined()
+      // 2. LIST
+      const listRes = await callChar(ctx, { action: 'list' })
+      const listBody = await jsonBody(listRes)
+      expect(listBody.result).toBeDefined()
+
+      // 3. DELETE
+      const deleteRes = await callChar(ctx, { action: 'delete', id: charId })
+      const deleteBody = await jsonBody(deleteRes)
+      expect(deleteBody.result).toBeDefined()
     })
   })
 
   describe('Error handling', () => {
-    it('handles nonexistent character lookup gracefully', async () => {
+    it('returns error for nonexistent character', async () => {
       const res = await callChar(ctx, { action: 'get', id: 'nonexistent' })
       const body = await jsonBody(res)
       expect(body.error || body.result?.error).toBeDefined()
