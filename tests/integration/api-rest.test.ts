@@ -1,6 +1,5 @@
 // tests/integration/api-rest.test.ts
 // Integration test: REST API entity-reads endpoints (GET /api/entities/...)
-// These endpoints read from D1 (RPG_DB) — tested with mock D1
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { Hono } from 'hono'
@@ -50,14 +49,13 @@ describe('REST API endpoints', () => {
     it(`GET ${path} returns ${label} list`, async () => {
       const body = await fetchJson(app, path)
       expect(body).toBeDefined()
-      // Each endpoint wraps results in { characters: [...], total: N } etc.
       const resultKey = Object.keys(body).find(k => k !== 'total' && k !== 'error')
       expect(resultKey).toBeDefined()
       expect(Array.isArray(body[resultKey!])).toBeTruthy()
     })
   }
 
-  it('returns 404 for unknown entity type (not a registered route)', async () => {
+  it('returns 404 for unknown entity type', async () => {
     const res = await app.fetch(new Request('http://localhost/api/entities/unknown', { method: 'GET' }))
     expect(res.status).toBe(404)
   })

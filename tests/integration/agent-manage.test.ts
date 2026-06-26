@@ -1,9 +1,5 @@
 // tests/integration/agent-manage.test.ts
 // Integration test: agent_manage — NPC AI agent management
-// Covers: create, get, list, update, delete, resume, health, budget,
-//   set_slice, remove_slice, toggle_slice, list_slices, narrate, broadcast,
-//   preview_prompt, add_secret, list_secrets, remove_secret,
-//   add_journal, get_journal, invoke, replay
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../unit/mocks'
@@ -41,7 +37,7 @@ describe('Agent management integration', () => {
         status: 'active',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
       expect(body.agentId).toBeDefined()
     })
 
@@ -54,7 +50,7 @@ describe('Agent management integration', () => {
     it('lists agents', async () => {
       const res = await callAgent(ctx, { action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
       expect(body.agents).toBeDefined()
     })
   })
@@ -69,13 +65,13 @@ describe('Agent management integration', () => {
         orderIndex: 0,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists slices for an agent', async () => {
       const res = await callAgent(ctx, { action: 'list_slices', id: 'test-agent-1' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -88,7 +84,7 @@ describe('Agent management integration', () => {
         label: 'dragon-sighting',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('broadcasts to multiple agents', async () => {
@@ -111,13 +107,13 @@ describe('Agent management integration', () => {
         importance: 'high',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists secrets', async () => {
       const res = await callAgent(ctx, { action: 'list_secrets', id: 'test-agent-1' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -131,13 +127,13 @@ describe('Agent management integration', () => {
         round: 1,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('gets journal entries', async () => {
       const res = await callAgent(ctx, { action: 'get_journal', id: 'test-agent-1' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -163,7 +159,7 @@ describe('Agent management integration', () => {
         situation: 'The party enters a dark cave.',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 })

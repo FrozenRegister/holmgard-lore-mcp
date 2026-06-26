@@ -1,9 +1,5 @@
 // tests/integration/rpg-engine.test.ts
 // Integration test: rpg handler — dispatches across 27 sub-systems
-// Covers: math, world, character, party, quest, item, inventory, corpse,
-//   narrative, secret, theft, aura, improvisation, npc, session,
-//   combat, combat_action, combat_map, spawn, strategy, turn,
-//   spatial, world_map, batch, travel, perception, scene
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../unit/mocks'
@@ -19,8 +15,17 @@ function callRpg(ctx: ReturnType<typeof createMockContext>, args: Record<string,
 
 async function jsonBody(res: Response): Promise<any> {
   const body = await res.json()
-  // RPG handler wraps result in MCP envelope — result is in body.result
   return body.result ?? body
+}
+
+/** RPG handlers return { ok: true } not { success: true } */
+function expectOk(body: any) {
+  if (body.ok !== undefined) {
+    expect(body.ok).toBe(true)
+  } else {
+    // fallback for handlers that return different shapes
+    expect(body.error).toBeUndefined()
+  }
 }
 
 describe('RPG engine integration', () => {
@@ -51,7 +56,7 @@ describe('RPG engine integration', () => {
     it('gets world time', async () => {
       const res = await callRpg(ctx, { sub: 'world', action: 'get_time' })
       const body = await jsonBody(res)
-      expect(body.success !== undefined || body.time).toBeDefined()
+      expect(body.ok !== undefined || body.time).toBeDefined()
     })
 
     it('advances world time', async () => {
@@ -71,14 +76,14 @@ describe('RPG engine integration', () => {
         characterClass: 'Rogue',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
       expect(body.characterId).toBeDefined()
     })
 
     it('lists characters', async () => {
       const res = await callRpg(ctx, { sub: 'character', action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
       expect(body.characters).toBeDefined()
     })
   })
@@ -91,13 +96,13 @@ describe('RPG engine integration', () => {
         name: 'The Fellowship',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists parties', async () => {
       const res = await callRpg(ctx, { sub: 'party', action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -110,13 +115,13 @@ describe('RPG engine integration', () => {
         description: 'Retrieve the Crystal of Eternity',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists quests', async () => {
       const res = await callRpg(ctx, { sub: 'quest', action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -130,13 +135,13 @@ describe('RPG engine integration', () => {
         damage: '1d8',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists items', async () => {
       const res = await callRpg(ctx, { sub: 'item', action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -150,7 +155,7 @@ describe('RPG engine integration', () => {
         quantity: 1,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('gets inventory', async () => {
@@ -160,7 +165,7 @@ describe('RPG engine integration', () => {
         characterId: 'test-char',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -173,13 +178,13 @@ describe('RPG engine integration', () => {
         locationId: LOCATION_KEY,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists corpses', async () => {
       const res = await callRpg(ctx, { sub: 'corpse', action: 'list' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -204,13 +209,13 @@ describe('RPG engine integration', () => {
         content: 'Knows the truth about the king',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('lists secrets', async () => {
       const res = await callRpg(ctx, { sub: 'secret', action: 'list', characterId: 'test-char' })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 
@@ -302,7 +307,7 @@ describe('RPG engine integration', () => {
         difficulty: 'medium',
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('gets encounter', async () => {
@@ -311,9 +316,8 @@ describe('RPG engine integration', () => {
         action: 'get_encounter',
         id: 'encounter-1',
       })
-      // Won't find it — just check it handles gracefully
       const body = await jsonBody(res)
-      expect(body.error || body.success !== undefined).toBeTruthy()
+      expect(body.error || body.ok !== undefined).toBeTruthy()
     })
   })
 

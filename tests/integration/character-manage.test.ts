@@ -1,6 +1,5 @@
 // tests/integration/character-manage.test.ts
 // Integration test: character_manage — RPG character sheet management
-// Covers: create, get, list, update, delete, level_up, equip, unequip
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../unit/mocks'
@@ -24,7 +23,7 @@ describe('Character management integration', () => {
   })
 
   describe('Character lifecycle', () => {
-    it('creates, gets, lists, updates characters', async () => {
+    it('creates, lists, updates characters', async () => {
       // 1. CREATE
       const createRes = await callChar(ctx, {
         action: 'create',
@@ -34,14 +33,14 @@ describe('Character management integration', () => {
         level: 1,
       })
       const createBody = await jsonBody(createRes)
-      expect(createBody.success).toBe(true)
+      expect(createBody.ok).toBe(true)
       expect(createBody.characterId).toBeDefined()
       const charId = createBody.characterId
 
       // 2. LIST
       const listRes = await callChar(ctx, { action: 'list' })
       const listBody = await jsonBody(listRes)
-      expect(listBody.success).toBe(true)
+      expect(listBody.ok).toBe(true)
       expect(listBody.characters).toBeDefined()
 
       // 3. UPDATE
@@ -52,7 +51,7 @@ describe('Character management integration', () => {
         level: 2,
       })
       const updateBody = await jsonBody(updateRes)
-      expect(updateBody.success).toBe(true)
+      expect(updateBody.ok).toBe(true)
     })
   })
 
@@ -78,7 +77,7 @@ describe('Character management integration', () => {
         id: charId,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
 
     it('adds xp to a character', async () => {
@@ -88,7 +87,7 @@ describe('Character management integration', () => {
         amount: 500,
       })
       const body = await jsonBody(res)
-      expect(body.success).toBe(true)
+      expect(body.ok).toBe(true)
     })
   })
 })
