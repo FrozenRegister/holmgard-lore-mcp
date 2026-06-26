@@ -473,4 +473,56 @@ entityReads.get('/items/:id', async (c) => {
   }
 })
 
+// ── Entity relations ──────────────────────────────────────────────────────────
+
+const ENTITY_TYPE_SLUGS = new Set(['characters', 'locations', 'nations', 'regions', 'quests', 'items'])
+
+function normaliseRelation(row: Record<string, unknown>) {
+  return {
+    id:               String(row.id ?? ''),
+    from_type:        String(row.from_type ?? ''),
+    from_id:          String(row.from_id ?? ''),
+    to_type:          String(row.to_type ?? ''),
+    to_id:            String(row.to_id ?? ''),
+    relation_type:    String(row.relation_type ?? ''),
+    attitude:         row.attitude !== null && row.attitude !== undefined ? Number(row.attitude) : null,
+    is_bidirectional: Boolean(row.is_bidirectional ?? 1),
+    color:            row.color ? String(row.color) : null,
+    is_pinned:        Boolean(row.is_pinned),
+    is_private:       Boolean(row.is_private),
+    notes:            row.notes ? String(row.notes) : null,
+    created_at:       String(row.created_at ?? ''),
+  }
+}
+
+// GET /api/entities/:type/:id/relations — all relations for an entity (both directions merged)
+entityReads.get('/:type/:id/relations', async (c) => {
+  const db = c.env.RPG_DB
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+
+  const typeSlug = c.req.param('type')
+  if (!ENTITY_TYPE_SLUGS.has(typeSlug)) {
+    return c.json({ error: `Unknown entity type: ${typeSlug}` }, 400)
+  }
+
+  try {
+    const id = c.req.param('id')
+    // Merge both directions: entity is from OR to (bidirectional merge)
+    const result = await db.prepare(`
+      SELECT id, from_type, from_id, to_type, to_id, relation_type,
+             attitude, is_bidirectional, color, is_pinned, is_private, notes, created_at
+      FROM entity_relations
+      WHERE (from_type = ? AND from_id = ?) OR (to_type = ? AND to_id = ?)
+      ORDER BY is_pinned DESC, created_at ASC
+    `).bind(typeSlug, id, typeSlug, id).all()
+
+    const relations = (result.results as Array<Record<string, unknown>>).map(normaliseRelation)
+    return c.json({ relations, total: relations.length })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+export { normaliseRelation }
 export default entityReads
