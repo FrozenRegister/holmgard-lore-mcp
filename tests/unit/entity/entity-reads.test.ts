@@ -742,3 +742,196 @@ describe('GET /locations/:id/occupants', () => {
     expect(body.error).toContain('D1 occ fail');
   });
 });
+
+// ── GET /nations/:id ──────────────────────────────────────────────────────────
+
+describe('GET /nations/:id', () => {
+  it('returns nation detail by id', async () => {
+    const db = createMockD1({
+      nations: [{ id: 'n1', name: 'Holmgard', leader: 'King Aldric', ideology: 'monarchy', aggression: 40, trust: 60, paranoia: 30, gdp: 12000 }],
+    });
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.nation.name).toBe('Holmgard');
+    expect(body.nation.leader).toBe('King Aldric');
+    expect(body.nation.aggression).toBe(40);
+    expect(body.nation.gdp).toBe(12000);
+  });
+
+  it('returns 404 when nation not found', async () => {
+    const db = createMockD1({ nations: [] });
+    const res = await entityReads.request(makeRequest('/nations/missing'), undefined, makeEnv(db));
+    expect(res.status).toBe(404);
+  });
+
+  it('normalises missing numeric fields to defaults', async () => {
+    const db = createMockD1({ nations: [{ id: 'n2', name: 'Unknown Realm' }] });
+    const res = await entityReads.request(makeRequest('/nations/n2'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    expect(body.nation.aggression).toBe(50);
+    expect(body.nation.trust).toBe(50);
+    expect(body.nation.gdp).toBe(0);
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ first: async () => { throw new Error('D1 nation fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 nation fail');
+  });
+});
+
+// ── GET /regions/:id ──────────────────────────────────────────────────────────
+
+describe('GET /regions/:id', () => {
+  it('returns region detail with owner nation name', async () => {
+    const db = createMockD1({
+      regions: [{ id: 'reg1', name: 'Northern March', type: 'frontier', owner_nation_id: 'n1', owner_nation_name: 'Holmgard' }],
+    });
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.region.name).toBe('Northern March');
+    expect(body.region.type).toBe('frontier');
+    expect(body.region.owner_nation_name).toBe('Holmgard');
+  });
+
+  it('returns 404 when region not found', async () => {
+    const db = createMockD1({ regions: [] });
+    const res = await entityReads.request(makeRequest('/regions/missing'), undefined, makeEnv(db));
+    expect(res.status).toBe(404);
+  });
+
+  it('returns null owner_nation_name when region has no owner', async () => {
+    const db = createMockD1({ regions: [{ id: 'reg2', name: 'Wilds', type: 'wilderness', owner_nation_id: null, owner_nation_name: null }] });
+    const res = await entityReads.request(makeRequest('/regions/reg2'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    expect(body.region.owner_nation_id).toBeNull();
+    expect(body.region.owner_nation_name).toBeNull();
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ first: async () => { throw new Error('D1 region fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.error).toContain('D1 region fail');
+  });
+});
+
+// ── GET /quests/:id ───────────────────────────────────────────────────────────
+
+describe('GET /quests/:id', () => {
+  it('returns quest detail', async () => {
+    const db = createMockD1({
+      quests: [{ id: 'q1', name: 'Retrieve the Crown', description: 'Find the Iron Crown.', status: 'active', giver: 'Aldric' }],
+    });
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.quest.name).toBe('Retrieve the Crown');
+    expect(body.quest.description).toBe('Find the Iron Crown.');
+    expect(body.quest.status).toBe('active');
+    expect(body.quest.giver).toBe('Aldric');
+  });
+
+  it('returns 404 when quest not found', async () => {
+    const db = createMockD1({ quests: [] });
+    const res = await entityReads.request(makeRequest('/quests/missing'), undefined, makeEnv(db));
+    expect(res.status).toBe(404);
+  });
+
+  it('normalises null giver to null', async () => {
+    const db = createMockD1({ quests: [{ id: 'q2', name: 'Lost Trail', description: '', status: 'abandoned', giver: null }] });
+    const res = await entityReads.request(makeRequest('/quests/q2'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    expect(body.quest.giver).toBeNull();
+    expect(body.quest.description).toBe('');
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ first: async () => { throw new Error('D1 quest fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── GET /quests/:id/log ───────────────────────────────────────────────────────
+
+describe('GET /quests/:id/log', () => {
+  it('returns quest log entries in order', async () => {
+    const db = createMockD1({
+      quest_logs: [
+        { id: 'ql1', note: 'Quest received from Aldric.', created_at: '2026-01-01' },
+        { id: 'ql2', note: 'Crown located in the Vault.', created_at: '2026-01-05' },
+      ],
+    });
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.entries).toHaveLength(2);
+    expect(body.entries[0].note).toBe('Quest received from Aldric.');
+    expect(body.entries[1].created_at).toBe('2026-01-05');
+    expect(body.total).toBe(2);
+  });
+
+  it('returns empty entries when no log exists', async () => {
+    const db = createMockD1({ quest_logs: [] });
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.entries).toHaveLength(0);
+  });
+
+  it('normalises missing note to empty string', async () => {
+    const db = createMockD1({ quest_logs: [{ id: 'ql3', created_at: '2026-02-01' }] });
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    expect(body.entries[0].note).toBe('');
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ all: async () => { throw new Error('D1 log fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── GET /items/:id ────────────────────────────────────────────────────────────
+
+describe('GET /items/:id', () => {
+  it('returns item detail', async () => {
+    const db = createMockD1({
+      items: [{ id: 'i1', name: 'Iron Crown', type: 'relic', value: 5000, weight: 2 }],
+    });
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.item.name).toBe('Iron Crown');
+    expect(body.item.type).toBe('relic');
+    expect(body.item.value).toBe(5000);
+    expect(body.item.weight).toBe(2);
+  });
+
+  it('returns 404 when item not found', async () => {
+    const db = createMockD1({ items: [] });
+    const res = await entityReads.request(makeRequest('/items/missing'), undefined, makeEnv(db));
+    expect(res.status).toBe(404);
+  });
+
+  it('normalises missing value and weight to 0', async () => {
+    const db = createMockD1({ items: [{ id: 'i2', name: 'Unnamed Trinket' }] });
+    const res = await entityReads.request(makeRequest('/items/i2'), undefined, makeEnv(db));
+    const body = await res.json() as any;
+    expect(body.item.value).toBe(0);
+    expect(body.item.weight).toBe(0);
+  });
+
+  it('returns 500 when query throws', async () => {
+    const db = { prepare: () => ({ first: async () => { throw new Error('D1 item fail'); }, bind: function() { return this; } }) };
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db));
+    expect(res.status).toBe(500);
+  });
+});
