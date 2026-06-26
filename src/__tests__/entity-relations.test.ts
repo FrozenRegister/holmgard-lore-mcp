@@ -337,4 +337,44 @@ describe('DELETE /admin/relations/:id', () => {
     })
     expect(res.status).toBe(401)
   })
+
+  it('accepts X-Api-Key as fallback header (DELETE)', async () => {
+    const created = await (await createRelation({ from_id: 'c-del-apikey' })).json() as Record<string, any>
+    const res = await SELF.fetch(`http://example.com/admin/relations/${created.id}`, {
+      method: 'DELETE',
+      headers: { 'X-Api-Key': ADMIN_SECRET },
+    })
+    expect(res.status).toBe(200)
+  })
+})
+
+// ── Edge cases ────────────────────────────────────────────────────────────────
+
+describe('POST /admin/relations — edge cases', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  it('trims color to null when it becomes empty after trim', async () => {
+    const res = await createRelation({
+      from_id: 'c-trim-color',
+      color: '   ',
+    })
+    expect(res.status).toBe(201)
+    const body = await res.json() as Record<string, any>
+    const relations = await (await getRelations('characters', 'c-trim-color')).json() as Record<string, any>
+    const relation = relations.relations[0]
+    expect(relation.color).toBeNull()
+  })
+
+  it('trims notes to null when it becomes empty after trim', async () => {
+    const res = await createRelation({
+      from_id: 'c-trim-notes',
+      notes: '  \t\n  ',
+    })
+    expect(res.status).toBe(201)
+    const relations = await (await getRelations('characters', 'c-trim-notes')).json() as Record<string, any>
+    const relation = relations.relations[0]
+    expect(relation.notes).toBeNull()
+  })
 })
