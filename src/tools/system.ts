@@ -197,6 +197,11 @@ export async function handle_validate_topic_exists({ c, id, args }: ToolContext)
   }), 200)
 }
 
+/**
+ * @deprecated This O(n) KV full-table scan is a known performance limitation.
+ * It will be replaced by D1 SQL with FTS5 full-text search during D1 migration.
+ * See: https://github.com/FrozenRegister/holmgard-lore-mcp/issues/11
+ */
 export async function handle_search_lore({ c, id, args }: ToolContext): Promise<Response> {
   try {
     const schema = z.object({
