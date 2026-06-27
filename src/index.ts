@@ -90,44 +90,103 @@ app.post('/mcp', async (c) => {
   try {
     body = await c.req.json()
   } catch {
-    return c.json(makeError(null, -32700, 'Parse error'), 200)
+    return c.json(makeError(null, -32700, 'Parse error: invalid JSON'), 200)
   }
 
-  const { id, method, params } = body as any
-  if (!method) return c.json(makeError(null, -32600, 'Invalid Request: missing method'), 200)
-
   try {
+    try { console.log('MCP incoming:', JSON.stringify(body)) } catch { /* ignore log error */ }
+
+    const validated = validateRequest(body)
+    if (!validated.ok) return c.json(validated.error, 200)
+
+    const req = validated.req
+    const id = req.id ?? null
+    const method = req.method!
+    const params = (req.params ?? {}) as Record<string, unknown>
+
+    // ── initialize ────────────────────────────────────────────────────────────
+    if (method === 'initialize') {
+      c.header('Cache-Control', 'no-store')
+      c.header('Content-Type', 'application/json')
+      return c.json(makeResult(id, {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: { list: true, call: true } },
+        serverInfo: { name: 'holmgard-lore-mcp', version: '0.3.0', description: 'Holmgard lore MCP' }
+      }), 200)
+    }
+
+    if (method === 'ping') {
+      return c.json(makeResult(id, {}), 200)
+    }
+
     // ── tools/list ────────────────────────────────────────────────────────────
     if (method === 'tools/list') {
+      c.header('Cache-Control', 'no-store')
+      c.header('Content-Type', 'application/json')
       return c.json(makeResult(id, { tools: toolDefinitions }), 200)
     }
 
     // ── tools/call ────────────────────────────────────────────────────────────
     if (method === 'tools/call') {
-      const { name, arguments: args } = params ?? {}
-      if (!name) return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
+      const toolName = params?.name
+      const args = (params?.arguments ?? {}) as Record<string, any>
+      if (!toolName || typeof toolName !== 'string')
+        return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
-      const tool = toolRegistry.get(name)
-      if (!tool) return c.json(makeError(id, -32602, `Tool not found: ${name}`), 200)
+      const isAuthenticated = getIsAuthenticated(c)
 
-      // Validate args against schema
-      const validationResult = validateRequest(args ?? {}, tool.inputSchema)
-      if (!validationResult.success) {
-        return c.json(makeError(id, -32602, validationResult.error.message), 200)
+      if (toolName === 'lore_manage') {
+        const action = typeof args?.action === 'string' ? args.action : null
+        if (action === 'ping') {
+          return c.json(makeResult(id, { content: [{ type: 'text', text: 'pong' }], metadata: { source: 'internal' } }), 200)
+        }
+        if (action === 'auth_check') {
+          return c.json(makeResult(id, {
+            content: [{ type: 'text', text: isAuthenticated ? 'Authenticated.' : 'Not authenticated — request was made without a valid API key.' }],
+            metadata: { authenticated: isAuthenticated }
+          }), 200)
+        }
+        // fall through to auth guard + registry for all other lore_manage actions
       }
 
-      const result = await tool.execute(validationResult.data, {
-        env: c.env,
-        getKV,
-        kvGet: (key: string) => kvGet(c, key),
-        isAuthenticated: getIsAuthenticated(c),
-      })
+      if (!isAuthenticated) {
+        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+      }
 
-      return c.json(makeResult(id, result), 200)
+      const handler = toolRegistry[toolName]
+      if (handler) {
+        return handler({ c, id, args, isAuthenticated })
+      }
+
+      return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
     }
 
-    // ── legacy: get_topics ────────────────────────────────────────────────────
-    if (method === 'get_topics') {
+    // ── Legacy bare-method handlers (pre-tools/call clients) ──────────────────
+    // In production (MCP_API_KEY is set) require same auth check as tools/call.
+
+    if (method === 'list_topics') {
+      if (!getIsAuthenticated(c)) {
+        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+      }
+      const keys = await kvList(c)
+      return c.json(makeResult(id, { keys }), 200)
+    }
+
+    if (method === 'get_lore') {
+      if (!getIsAuthenticated(c)) {
+        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+      }
+      const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
+      if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
+
+      const raw = await kvGet(c, key)
+      if (!raw) return c.json(makeError(id, -32601, `No lore found for key: ${key}`), 200)
+
+      const { text, meta } = parseKvEntry(raw)
+      return c.json(makeResult(id, { key, text, meta }), 200)
+    }
+
+    if (method === 'get_lore_batch') {
       const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
       if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
         return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
