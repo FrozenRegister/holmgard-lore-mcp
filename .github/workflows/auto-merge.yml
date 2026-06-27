@@ -20,71 +20,92 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            let prNumber, headSha
+            try {
+              let prNumber, headSha
 
-            if (context.eventName === 'pull_request') {
-              // Triggered by label being applied to PR
-              if (context.payload.label.name !== 'auto-merge') return
-              if (context.payload.pull_request.draft) return
-              prNumber = context.payload.pull_request.number
-              headSha = context.payload.pull_request.head.sha
-            } else {
-              // Triggered by CI completing — find an open non-draft PR at this SHA with auto-merge label
-              const sha = context.payload.workflow_run.head_sha
-              const branch = context.payload.workflow_run.head_branch
-              const { data: prs } = await github.rest.pulls.list({
+              if (context.eventName === 'pull_request') {
+                // Triggered by label being applied to PR
+                if (context.payload.label.name !== 'auto-merge') {
+                  console.log(`Label is '${context.payload.label.name}', not 'auto-merge' — skipping`)
+                  return
+                }
+                if (context.payload.pull_request.draft) {
+                  console.log('PR is draft — skipping')
+                  return
+                }
+                prNumber = context.payload.pull_request.number
+                headSha = context.payload.pull_request.head.sha
+                console.log(`Triggered by label on PR #${prNumber} at ${headSha}`)
+              } else {
+                // Triggered by CI completing — find an open non-draft PR at this SHA with auto-merge label
+                if (!context.payload.workflow_run) {
+                  console.log('No workflow_run payload — unknown trigger')
+                  return
+                }
+                const sha = context.payload.workflow_run.head_sha
+                const branch = context.payload.workflow_run.head_branch
+                console.log(`Triggered by workflow_run on branch ${branch} at ${sha}`)
+
+                const { data: prs } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  head: `${context.repo.owner}:${branch}`,
+                })
+                console.log(`Found ${prs.length} open PRs on branch ${branch}`)
+
+                const pr = prs.find(p =>
+                  p.head.sha === sha &&
+                  !p.draft &&
+                  p.labels.some(l => l.name === 'auto-merge')
+                )
+                if (!pr) {
+                  const autoMergePRs = prs.filter(p => p.labels.some(l => l.name === 'auto-merge'))
+                  console.log(`No PR matches (SHA=${sha}, draft=false, label=auto-merge). ${autoMergePRs.length} PRs have auto-merge label.`)
+                  return
+                }
+                prNumber = pr.number
+                headSha = sha
+                console.log(`Found matching PR #${prNumber}`)
+              }
+
+              // Fetch all check runs for this commit (excludes this job itself by name)
+              const { data } = await github.rest.checks.listForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                state: 'open',
-                head: `${context.repo.owner}:${branch}`,
+                ref: headSha,
+                per_page: 100,
               })
-              const pr = prs.find(p =>
-                p.head.sha === sha &&
-                !p.draft &&
-                p.labels.some(l => l.name === 'auto-merge')
+              const checks = data.check_runs.filter(r => r.name !== 'merge')
+              console.log(`Found ${data.check_runs.length} total checks, ${checks.length} after filtering 'merge'`)
+
+              const pending = checks.filter(r => r.status !== 'completed')
+              if (pending.length > 0) {
+                console.log(`Still pending: ${pending.map(r => r.name).join(', ')}`)
+                return
+              }
+
+              const failed = checks.filter(r =>
+                !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '') &&
+                !r.name.startsWith('codecov/')
               )
-              if (!pr) return
-              prNumber = pr.number
-              headSha = sha
-            }
+              if (failed.length > 0) {
+                console.log(`Failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
+                return
+              }
 
-            // Fetch all check runs for this commit (excludes this job itself by name)
-            const { data } = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: headSha,
-              per_page: 100,
-            })
-            const checks = data.check_runs.filter(r => r.name !== 'merge')
+              // No blocking reviews
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              })
+              if (reviews.some(r => r.state === 'CHANGES_REQUESTED')) {
+                console.log('Changes requested — skipping auto-merge')
+                return
+              }
 
-            const pending = checks.filter(r => r.status !== 'completed')
-            if (pending.length > 0) {
-              console.log(`Still pending: ${pending.map(r => r.name).join(', ')}`)
-              return
-            }
-
-            const failed = checks.filter(r =>
-              !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '') &&
-              !r.name.startsWith('codecov/')
-            )
-            if (failed.length > 0) {
-              console.log(`Failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
-              return
-            }
-
-            // No blocking reviews
-            const reviews = await github.paginate(github.rest.pulls.listReviews, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            })
-            if (reviews.some(r => r.state === 'CHANGES_REQUESTED')) {
-              console.log('Changes requested — skipping auto-merge')
-              return
-            }
-
-            console.log(`All checks pass — squash-merging PR #${prNumber}`)
-            try {
+              console.log(`All checks pass — squash-merging PR #${prNumber}`)
               await github.rest.pulls.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -93,5 +114,7 @@ jobs:
               })
               console.log(`PR #${prNumber} merged successfully`)
             } catch (e) {
-              console.log(`Merge failed (PR may already be merged): ${e.message}`)
+              console.error(`Error in auto-merge: ${e.message}`)
+              console.error(e.stack)
+              core.setFailed(`Auto-merge failed: ${e.message}`)
             }
