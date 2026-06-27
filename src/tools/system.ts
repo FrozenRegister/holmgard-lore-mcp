@@ -76,50 +76,92 @@ export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Res
           const loreText = formatD1CharToLore(row as Record<string, unknown>)
           return c.json(makeResult(id, {
             content: [{ type: 'text', text: loreText }],
-            key, text: loreText, meta,
-            _redirected_from_kv: true, _d1_character_id: idMatch[1]
+            key, text: loreText, meta: { ...meta, d1_redirect: true, d1_id: idMatch[1] }
           }), 200)
         }
-      } catch (err) {
-        console.error(`D1 redirect failed for ${key}:`, err)
+      } catch {
+        // D1 unavailable or schema not ready — fall through to stale KV text
       }
+      // D1 row missing or D1 error — fall through and return stale KV text as-is
     }
   }
 
   return c.json(makeResult(id, { content: [{ type: 'text', text }], key, text, meta }), 200)
 }
 
-export async function handle_list_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const allKeys = await kvList(c)
-  const limit = Math.min(1000, (args?.limit as number) ?? 1000)
-  const offset = Math.max(0, (args?.offset as number) ?? 0)
-  const keys = allKeys.slice(offset, offset + limit)
+export async function handle_get_lore_batch({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const cleanKeys = parsed.data.keys.map(k => k.trim().toLowerCase())
+  const rawValues = await Promise.all(cleanKeys.map(k => kvGet(c, k)))
+  const results: Record<string, any> = {}
+  cleanKeys.forEach((k, i) => { results[k] = rawValues[i] ? parseKvEntry(rawValues[i]!) : null })
+
+  const text = Object.entries(results)
+    .map(([k, v]) => v ? `${k}: [retrieved]` : `${k}: [not found]`)
+    .join('\n')
+
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: keys.join(', ') }],
-    metadata: { count: keys.length, total: allKeys.length, limit, offset }
+    content: [{ type: 'text', text }],
+    metadata: { retrieved: Object.values(results).filter(v => v !== null).length, total: parsed.data.keys.length },
+    results
   }), 200)
 }
 
-// Levenshtein-like scoring: prefers prefix matches, contiguous substring matches,
-// and shorter key differences. Returns 0-1 where 1 is perfect.
-function scoreMatch(query: string, key: string): number {
-  if (query === key) return 1
-  const q = query.toLowerCase()
-  const k = key.toLowerCase()
-  if (k.startsWith(q)) return 0.95
-  if (k.includes(q)) return 0.85
-  // partial token matching
-  const tokens = q.split(/[-_\s]+/).filter(Boolean)
-  if (tokens.length > 1 && tokens.every(t => k.includes(t))) return 0.7
-  // character overlap ratio
-  let matchCount = 0
-  for (const ch of q) {
-    if (k.includes(ch)) matchCount++
+export async function handle_get_lore_section({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    key: z.string().min(1),
+    sections: z.array(z.string().min(1)),
+    mode: z.enum(['strict', 'loose']).default('loose'),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+
+  const key = parsed.data.key.trim().toLowerCase()
+  const raw = await kvGet(c, key)
+  if (!raw) {
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `Key not found: "${key}"` }],
+      error: 'key_not_found', key
+    }), 200)
   }
-  return matchCount / Math.max(q.length, k.length) * 0.5
+
+  const { text, meta } = parseKvEntry(raw)
+  const version = typeof meta.version === 'number' ? meta.version : null
+  const { sections, not_found, warnings, suggestions } = parseLoreSections(text, parsed.data.sections, parsed.data.mode)
+
+  const foundCount = Object.keys(sections).length
+  const summary = foundCount > 0
+    ? `Retrieved ${foundCount} section(s) from "${key}".${not_found.length ? ` Not found: ${not_found.join(', ')}.` : ''}`
+    : `No matching sections found in "${key}".`
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: summary }],
+    key, version, sections, not_found, warnings, suggestions
+  }), 200)
 }
 
-export async function handle_resolve_lore({ c, id, args }: ToolContext): Promise<Response> {
+function scoreMatch(query: string, candidate: string): number {
+  // 1. Exact match → 1.0
+  if (query === candidate) return 1.0
+
+  // 2. Candidate starts with query → 0.9 (e.g. "zira" matches "character:zira")
+  if (candidate.startsWith(query)) return 0.9
+
+  // 3. Query appears as contiguous substring → ratio of query length to candidate length, scaled
+  const idx = candidate.indexOf(query)
+  if (idx !== -1) return Math.min(0.85, query.length / candidate.length + 0.5)
+
+  // 4. Query appears as initials/acronym → 0.7 (e.g. "zk" matches "character:zira-khal")
+  const initials = candidate.split(/[:\\\-_]/).filter(Boolean).map(s => s[0]).join('')
+  if (initials.includes(query)) return 0.7
+
+  return 0
+}
+
+export async function handle_validate_topic_exists({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ query_string: z.string().min(1) })
   const parsed = schema.safeParse(args)
   if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
