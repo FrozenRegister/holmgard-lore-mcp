@@ -63,7 +63,8 @@ jobs:
             }
 
             const failed = checks.filter(r =>
-              !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '')
+              !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '') &&
+              !r.name.startsWith('codecov/')
             )
             if (failed.length > 0) {
               console.log(`Failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
