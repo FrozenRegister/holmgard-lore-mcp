@@ -169,6 +169,23 @@ describe('RPG engine tools', () => {
     expect(next.success).toBe(true)
   })
 
+  it('rpg combat create_encounter rejects a regionId that does not exist in the regions table', async () => {
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter', regionId: 'location:does-not-exist' })
+    expect(enc.error).toBe(true)
+    expect(enc.message).toMatch(/regionId/)
+  })
+
+  it('rpg combat create_encounter accepts a regionId that exists in the regions table', async () => {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind('world-1', 'RWorld', 'seed-1', 100, 100, now, now).run()
+    await env.RPG_DB.prepare('INSERT INTO regions (id, world_id, name, type, center_x, center_y, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind('region-1', 'world-1', 'Thornwood', 'forest', 0, 0, '#00ff00', now, now).run()
+
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter', regionId: 'region-1' })
+    expect(enc.success).toBe(true)
+  })
+
   it('rpg combat_action apply_damage updates character hp', async () => {
     const char = await callTool('rpg', {
       sub: 'character', action: 'create', name: 'Guard', characterClass: 'Fighter', hp: 20, maxHp: 20,
