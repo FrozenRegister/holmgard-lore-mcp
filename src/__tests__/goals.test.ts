@@ -41,6 +41,13 @@ describe('set_goal', () => {
     expect(res.error.code).toBe(-32602)
     expect(res.error.data.example).toBeDefined()
   })
+
+  it('accepts entity_name, goal_name, and goal_description as aliases', async () => {
+    await seedKV('character:hero', 'Hero is brave.\n**Status:** Active')
+    const res = await callTool('continuity_manage', { action: 'set_goal', entity_name: 'character:hero', goal_name: 'find-artifact', goal_description: 'Find the ancient artifact' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.goal_id).toBe('find-artifact')
+  })
 })
 
 describe('check_continuity', () => {
@@ -73,10 +80,18 @@ describe('check_continuity', () => {
     expect(findings.some(f => f.check === 'occupancy')).toBe(true)
   })
 
-  it('rejects invalid severity_floor value', async () => {
-    const res = await callTool('continuity_manage', { action: 'check_continuity', severity_floor: 'medium' })
+  it('rejects a genuinely invalid severity_floor value', async () => {
+    const res = await callTool('continuity_manage', { action: 'check_continuity', severity_floor: 'catastrophic' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
     expect(res.error.data.example).toBeDefined()
+  })
+
+  it('accepts "medium" as an alias for severity_floor=warn', async () => {
+    await seedKV('character:sev-alias-test', 'Mentions character:nonexistent-alias-xyz')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['dangling'], severity_floor: 'medium' })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as Array<{ severity: string; key: string }>
+    expect(findings.some(f => f.key === 'character:sev-alias-test' && f.severity === 'warn')).toBe(true)
   })
 })

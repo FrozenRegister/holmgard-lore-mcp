@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
+import { applyAliases } from '../lib/aliases'
 import { resolveEntityKey } from '../lib/entity-resolve'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
@@ -143,7 +144,8 @@ export async function handle_get_relationship({ c, id, args }: ToolContext): Pro
 
 export async function handle_get_faction_standing({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1), faction_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { entity_name: 'entity_key', faction_name: 'faction_key' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'get_faction_standing', entity_key: 'character:eira-holt', faction_key: 'faction:guild-of-surgeons'
@@ -196,7 +198,8 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
 
 export async function handle_get_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1), topic: z.string().min(1) })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { entity_name: 'entity_key' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'get_entity_knowledge', entity_key: 'character:eira-holt', topic: 'the-lock'
@@ -238,7 +241,8 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
 
 export async function handle_get_location_occupants({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ location_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { location_id: 'location_key' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'get_location_occupants', location_key: 'location:marsh-end'
@@ -310,7 +314,8 @@ export async function handle_get_reachable_locations({ c, id, args }: ToolContex
 
 export async function handle_sense_environment({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ location_key: z.string().min(1), entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { entity_name: 'entity_key' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'sense_environment', location_key: 'location:marsh-end', entity_key: 'character:eira-holt'

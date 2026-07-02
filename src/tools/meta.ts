@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
+import { applyAliases } from '../lib/aliases'
 import { parseKvEntry, extractFieldFromText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
@@ -19,7 +20,8 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
     detail: z.string().optional(),
     at: z.string().optional(),
   })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { date: 'at', description: 'detail' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'append_event', entity_key: 'character:eira-holt', verb: 'departed', object: 'marsh-end', detail: 'Household begins journey', at: '1264-05-01T00:00:00Z'
@@ -497,7 +499,8 @@ export async function handle_plant_setup({ c, id, args }: ToolContext): Promise<
     expected_in: z.string().optional(),
     actors: z.array(z.string()).optional(),
   })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { setup_id: 'id' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'plant_setup', id: 'church-ambush-foreshadow', description: 'Church courier spotted near Marsh-end canal', tension: 3, expected_in: 'phase-10'
@@ -649,7 +652,8 @@ export async function handle_set_goal({ c, id, args }: ToolContext): Promise<Res
     status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
     obstacle: z.string().optional(),
   })
-  const parsed = schema.safeParse(args)
+  const normalized = applyAliases(args, { entity_name: 'entity_key', goal_name: 'goal_id', goal_description: 'description' })
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'set_goal', entity_key: 'character:eira-holt', goal_id: 'survive-tribunal', description: 'Survive the Church tribunal in Novigrad on 15 Jun 1264'
@@ -688,13 +692,21 @@ export async function handle_set_goal({ c, id, args }: ToolContext): Promise<Res
   }), 200)
 }
 
+const SEVERITY_FLOOR_ALIASES: Record<string, 'info' | 'warn' | 'error'> = {
+  low: 'info', medium: 'warn', moderate: 'warn', high: 'error', critical: 'error',
+}
+
 export async function handle_check_continuity({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({
     scope: z.string().optional(),
     checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
     severity_floor: z.enum(['info', 'warn', 'error']).default('info'),
   })
-  const parsed = schema.safeParse(args)
+  const normalized = { ...args }
+  if (typeof normalized.severity_floor === 'string' && normalized.severity_floor in SEVERITY_FLOOR_ALIASES) {
+    normalized.severity_floor = SEVERITY_FLOOR_ALIASES[normalized.severity_floor]
+  }
+  const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, parsed.error, {
       action: 'check_continuity', scope: 'character', severity_floor: 'warn'

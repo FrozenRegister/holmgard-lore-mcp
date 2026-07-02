@@ -121,6 +121,14 @@ describe('get_faction_standing', () => {
     expect(res.error).toBeDefined()
     expect(res.error.data.did_you_mean).toBe('faction:order-of-flame')
   })
+
+  it('accepts entity_name and faction_name as aliases', async () => {
+    await seedKV('character:knight', '**Faction:** order')
+    await seedKV('faction:order', 'Members: knight only.')
+    const res = await callTool('world_manage', { action: 'get_faction_standing', entity_name: 'character:knight', faction_name: 'faction:order' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.standing.is_member).toBe(true)
+  })
 })
 
 describe('get_entity_knowledge', () => {
@@ -158,6 +166,13 @@ describe('get_entity_knowledge', () => {
     expect(res.error).toBeDefined()
     expect(res.error.data.did_you_mean).toBe('character:eira-holt')
   })
+
+  it('accepts entity_name as an alias for entity_key', async () => {
+    await seedKV('character:eira-holt', '**Knows:** the-lock')
+    const res = await callTool('world_manage', { action: 'get_entity_knowledge', entity_name: 'character:eira-holt', topic: 'the-lock' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.known).toBe(true)
+  })
 })
 
 describe('get_location_occupants', () => {
@@ -184,6 +199,13 @@ describe('get_location_occupants', () => {
     await seedKV('character:loose-loc-2', 'Location: location:loose-chamber\nStatus: Dormant')
     const res = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:loose-chamber' })
     expect(res.result.occupants).toHaveLength(2)
+  })
+
+  it('accepts location_id as an alias for location_key', async () => {
+    await seedKV('character:guard-3', '**Location:** location:barracks')
+    const res = await callTool('world_manage', { action: 'get_location_occupants', location_id: 'location:barracks' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.occupants.map((o: { key: string }) => o.key)).toContain('character:guard-3')
   })
 
   it('rejects invalid params (missing location_key)', async () => {

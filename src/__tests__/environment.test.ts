@@ -18,6 +18,14 @@ describe('sense_environment', () => {
     expect(res.result.hidden_count).toBeGreaterThan(0)
   })
 
+  it('accepts entity_name as an alias for entity_key and ignores radius', async () => {
+    await seedKV('location:cave', 'Stone walls surround you.')
+    await seedKV('character:eagle-eye', '**Perception:** 0.9')
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave', entity_name: 'character:eagle-eye', radius: 'medium' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.perception_score).toBe(0.9)
+  })
+
   it('rejects invalid params (missing entity_key)', async () => {
     const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave' })
     expect(res.error).toBeDefined()

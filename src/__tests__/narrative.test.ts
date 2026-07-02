@@ -32,6 +32,17 @@ describe('append_event', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('accepts date and description as aliases for at and detail', async () => {
+    const res = await callTool('continuity_manage', {
+      action: 'append_event', entity_key: 'character:alias-test', verb: 'departed',
+      date: '1264-05-01T00:00:00Z', description: 'Household begins journey', source: 'roleplay-session',
+    })
+    expect(res.error).toBeUndefined()
+    const log = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:alias-test' })
+    expect(log.result.events[0].detail).toBe('Household begins journey')
+    expect(log.result.events[0].at).toBe('1264-05-01T00:00:00Z')
+  })
 })
 
 describe('get_event_log', () => {
