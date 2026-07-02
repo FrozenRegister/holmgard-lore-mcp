@@ -17,6 +17,43 @@ describe('sense_environment', () => {
     const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave', entity_key: 'character:blind-fighter' })
     expect(res.result.hidden_count).toBeGreaterThan(0)
   })
+
+  it('rejects invalid params (missing entity_key)', async () => {
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
+
+  it('returns error when location is not found', async () => {
+    await seedKV('character:eagle-eye', '**Perception:** 0.9')
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:nonexistent-place', entity_key: 'character:eagle-eye' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('suggests a similar location key when not found', async () => {
+    await seedKV('location:cave-of-wonders', 'A glittering cave.')
+    await seedKV('character:eagle-eye', '**Perception:** 0.9')
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'cave-of-wonder', entity_key: 'character:eagle-eye' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('location:cave-of-wonders')
+  })
+
+  it('returns error when entity is not found', async () => {
+    await seedKV('location:cave', 'Stone walls surround you.')
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave', entity_key: 'character:no-such-scout' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('suggests a similar entity key when not found', async () => {
+    await seedKV('location:cave', 'Stone walls surround you.')
+    await seedKV('character:eagle-eye', '**Perception:** 0.9')
+    const res = await callTool('world_manage', { action: 'sense_environment', location_key: 'location:cave', entity_key: 'eagle-ey' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:eagle-eye')
+  })
 })
 
 describe('get_sensory_profile', () => {

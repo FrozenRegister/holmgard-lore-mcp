@@ -13,7 +13,7 @@ export function invalidParamsError(
   error: z.ZodError,
   example?: Record<string, unknown>
 ): JsonRpcResponse {
-  const issues = error.issues.map(i => `${i.path.length ? i.path.join('.') : '(root)'}: ${i.message}`)
+  const issues = error.issues.map(i => `${i.path.join('.')}: ${i.message}`)
   const message = `Invalid params — ${issues.join('; ')}`
   const data: Record<string, unknown> = { issues: error.format() }
   if (example) data.example = example

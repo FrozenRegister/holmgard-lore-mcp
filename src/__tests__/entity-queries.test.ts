@@ -29,6 +29,44 @@ describe('get_relationship', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('rejects invalid params (missing entity_b)', async () => {
+    const res = await callTool('world_manage', { action: 'get_relationship', entity_a: 'character:alice' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
+
+  it('resolves bare entity names via common prefixes', async () => {
+    await seedKV('character:alice', '**Affinity:** 0.5')
+    await seedKV('character:bob', 'text')
+    const res = await callTool('world_manage', { action: 'get_relationship', entity_a: 'alice', entity_b: 'bob' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.relationship.entity_a).toBe('character:alice')
+    expect(res.result.relationship.entity_b).toBe('character:bob')
+  })
+
+  it('suggests a similar key when a bare/partial name is not found', async () => {
+    await seedKV('character:eira-holt', 'text')
+    const res = await callTool('world_manage', { action: 'get_relationship', entity_a: 'character:eira-holt', entity_b: 'eira-hol' })
+    expect(res.error).toBeDefined()
+    expect(res.error.message).toContain('Did you mean')
+    expect(res.error.data.did_you_mean).toBe('character:eira-holt')
+  })
+
+  it('returns error when entity_a is not found, with no suggestion available', async () => {
+    await seedKV('character:exists', 'text')
+    const res = await callTool('world_manage', { action: 'get_relationship', entity_a: 'character:ghost-a', entity_b: 'character:exists' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBeNull()
+  })
+
+  it('suggests a similar key when entity_a is a bare/partial name', async () => {
+    await seedKV('character:eira-holt', 'text')
+    const res = await callTool('world_manage', { action: 'get_relationship', entity_a: 'eira-hol', entity_b: 'character:eira-holt' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:eira-holt')
+  })
 })
 
 describe('get_faction_standing', () => {
@@ -53,6 +91,36 @@ describe('get_faction_standing', () => {
     const res = await callTool('world_manage', { action: 'get_faction_standing', entity_key: 'character:x', faction_key: 'faction:missing' })
     expect(res.error).toBeDefined()
   })
+
+  it('rejects invalid params (missing faction_key)', async () => {
+    const res = await callTool('world_manage', { action: 'get_faction_standing', entity_key: 'character:x' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
+
+  it('returns error when entity_key is not found', async () => {
+    await seedKV('faction:order', 'text')
+    const res = await callTool('world_manage', { action: 'get_faction_standing', entity_key: 'character:ghost', faction_key: 'faction:order' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('suggests a similar key when entity_key is a bare/partial name', async () => {
+    await seedKV('character:eira-holt', 'text')
+    await seedKV('faction:order', 'text')
+    const res = await callTool('world_manage', { action: 'get_faction_standing', entity_key: 'eira-hol', faction_key: 'faction:order' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:eira-holt')
+  })
+
+  it('suggests a similar key when faction_key is a bare/partial name', async () => {
+    await seedKV('character:knight', 'text')
+    await seedKV('faction:order-of-flame', 'text')
+    const res = await callTool('world_manage', { action: 'get_faction_standing', entity_key: 'character:knight', faction_key: 'order-of-flam' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('faction:order-of-flame')
+  })
 })
 
 describe('get_entity_knowledge', () => {
@@ -69,6 +137,26 @@ describe('get_entity_knowledge', () => {
     const res = await callTool('world_manage', { action: 'get_entity_knowledge', entity_key: 'character:naive', topic: 'hidden-base' })
     expect(res.result.known).toBe(false)
     expect(res.result.excerpts).toHaveLength(0)
+  })
+
+  it('rejects invalid params (missing topic)', async () => {
+    const res = await callTool('world_manage', { action: 'get_entity_knowledge', entity_key: 'character:naive' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
+
+  it('returns error when entity is not found', async () => {
+    const res = await callTool('world_manage', { action: 'get_entity_knowledge', entity_key: 'character:ghost', topic: 'anything' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('suggests a similar key when entity is a bare/partial name', async () => {
+    await seedKV('character:eira-holt', 'text')
+    const res = await callTool('world_manage', { action: 'get_entity_knowledge', entity_key: 'eira-hol', topic: 'anything' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:eira-holt')
   })
 })
 
@@ -97,6 +185,13 @@ describe('get_location_occupants', () => {
     const res = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:loose-chamber' })
     expect(res.result.occupants).toHaveLength(2)
   })
+
+  it('rejects invalid params (missing location_key)', async () => {
+    const res = await callTool('world_manage', { action: 'get_location_occupants' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
 })
 
 describe('get_reachable_locations', () => {
@@ -122,6 +217,27 @@ describe('get_reachable_locations', () => {
   it('returns error for missing origin', async () => {
     const res = await callTool('world_manage', { action: 'get_reachable_locations', origin_key: 'location:nonexistent' })
     expect(res.error).toBeDefined()
+  })
+
+  it('rejects invalid params (missing origin_key)', async () => {
+    const res = await callTool('world_manage', { action: 'get_reachable_locations' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
+
+  it('resolves a bare origin name via common prefixes', async () => {
+    await seedKV('location:hub', 'text')
+    const res = await callTool('world_manage', { action: 'get_reachable_locations', origin_key: 'hub' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.origin_key).toBe('location:hub')
+  })
+
+  it('suggests a similar key when origin is not found', async () => {
+    await seedKV('location:north-road', 'text')
+    const res = await callTool('world_manage', { action: 'get_reachable_locations', origin_key: 'north-roa' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('location:north-road')
   })
 })
 

@@ -34,6 +34,13 @@ describe('set_goal', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('rejects invalid params (missing goal_id)', async () => {
+    const res = await callTool('continuity_manage', { action: 'set_goal', entity_key: 'character:hero', description: 'Find the ancient artifact' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
 })
 
 describe('check_continuity', () => {
@@ -64,5 +71,12 @@ describe('check_continuity', () => {
     const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['occupancy'] })
     const findings = res.result.findings as Array<{ check: string }>
     expect(findings.some(f => f.check === 'occupancy')).toBe(true)
+  })
+
+  it('rejects invalid severity_floor value', async () => {
+    const res = await callTool('continuity_manage', { action: 'check_continuity', severity_floor: 'medium' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
   })
 })
