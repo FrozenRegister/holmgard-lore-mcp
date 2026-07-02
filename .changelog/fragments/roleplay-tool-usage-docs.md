@@ -1,0 +1,1 @@
+Document corrected tool-usage patterns for `continuity_manage`/`world_manage` (real parameter schemas, full-key requirement, and the existing `load_tool_schema`/`search_tools` discovery tools) based on a live roleplay test run.

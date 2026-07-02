@@ -311,23 +311,28 @@ Narrator asks what the bandit leader does when alone:
    - Check character knowledge before having an NPC reveal something
    - Verify location state before describing NPCs present
 
-2. **Update After Narrative**
+2. **When Unsure of a Tool's Parameters, Ask the Server — Don't Guess**
+   - Every tool's exact parameter schema (including per-`action` variants for dispatcher tools like `continuity_manage` and `world_manage`) is available via `load_tool_schema({ toolName: "..." })`. Use `search_tools` first if you don't know the exact tool name.
+   - "Invalid params" means the action exists but your payload shape is wrong — call `load_tool_schema` rather than trial-and-error guessing. See [Roleplay Test Run — Corrected Findings](#roleplay-test-run--corrected-findings-2026-07-02) below for a case study of this.
+   - `world_manage` and `continuity_manage` actions that take an entity/key parameter (`entity_a`, `entity_b`, `entity_key`, `key`, etc.) expect the **full lore key**, e.g. `character:eira-holt`, not the bare name `eira-holt`.
+
+3. **Update After Narrative**
    - After each significant interaction, update the lore
    - Mark dialogue as having happened
    - Update relationships when trust changes
    - Add entries to NPC journals when they learn something
 
-3. **Use Secrets to Control Pacing**
+4. **Use Secrets to Control Pacing**
    - Hide information from players using `secret_manage`
    - Reveal at dramatic moments, not randomly
    - Build tension with mystery
 
-4. **Respect Character Knowledge**
+5. **Respect Character Knowledge**
    - NPCs should only know what they've experienced
    - Avoid letting NPCs know about events they weren't present for (unless rumor/hearsay is explicitly noted)
    - Use `get_entity_knowledge` to ground NPC dialogue
 
-5. **Keep Time Coherent**
+6. **Keep Time Coherent**
    - Use `thread_tick` at scene breaks or session ends
    - Check `recent_changes` to see what the world did while players were elsewhere
    - Avoid contradicting timeline facts
@@ -438,6 +443,46 @@ A full end-to-end narrative flow test was executed against the live MCP server. 
 ### Summary
 
 **The lore engine is production-ready for reading and writing narrative state.** All 20 data-access tools pass. The two failures are in procedural systems (combat init, timeline tick) that have schema-level or parser-level defects rather than logic bugs.
+
+---
+
+## Roleplay Test Run — Corrected Findings (2026-07-02)
+
+A follow-up roleplay test run reported 11 of 25 `continuity_manage`/`world_manage`/`entity_manage`/`character_manage` operations failing with "Invalid params" or "not found." Investigation of the actual handler source (`src/tools/meta.ts`, `src/tools/world.ts`, `src/tools/definitions.ts`) found **no code defects in these tools** — every failure traced back to one of three usage issues. Filed as GitHub issues [#178](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/178), [#179](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/179), [#181](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/181) and closed as not-a-bug with the corrected payloads below.
+
+### Root cause 1 — wrong parameter names
+
+The test payloads used plausible-but-incorrect field names instead of the tool's actual schema.
+
+| Action | ❌ Tested (fails) | ✅ Correct |
+|---|---|---|
+| `continuity_manage[append_event]` | `{ entity_key, date, description, source }` | `{ entity_key, verb, object?, location?, thread?, detail?, at? }` |
+| `continuity_manage[plant_setup]` | `{ setup_id, description, payoff_type }` | `{ id, description, planted_in?, tension?, expected_in?, actors? }` |
+| `continuity_manage[set_goal]` | `{ entity_name, goal_name, goal_description }` | `{ entity_key, goal_id, description, parent?, status?, obstacle? }` |
+| `world_manage[get_faction_standing]` | `{ faction_name }` | `{ entity_key, faction_key }` |
+| `world_manage[get_entity_knowledge]` | `{ entity_name, topic }` | `{ entity_key, topic }` |
+| `world_manage[get_location_occupants]` | `{ location_id }` | `{ location_key }` |
+| `world_manage[sense_environment]` | `{ entity_name, radius }` | `{ location_key, entity_key }` (no `radius` param) |
+
+### Root cause 2 — enum value mismatch
+
+`continuity_manage[check_continuity]`'s `severity_floor` only accepts `info` \| `warn` \| `error`. The test payload passed `severity_floor: "medium"`, which doesn't exist in any tool's severity vocabulary in this codebase — it fails Zod validation and returns "Invalid params."
+
+### Root cause 3 — bare names instead of full lore keys
+
+`world_manage[get_relationship]` (and every other `world_manage`/`continuity_manage` action taking an entity reference) does a direct KV lookup on the key you pass — it does **not** resolve short names. Passing `entity_a: "eira-holt"` looks up a KV key literally named `eira-holt`, which doesn't exist; the actual entry is `character:eira-holt`. Always pass the full, prefixed lore key:
+
+```json
+{ "action": "get_relationship", "entity_a": "character:eira-holt", "entity_b": "character:gerent" }
+```
+
+### Discovery tooling already exists — use it before guessing params
+
+`search_tools` and `load_tool_schema({ toolName })` are registered MCP tools that return the exact JSON Schema for any tool, including the full `oneOf` per-`action` schema for dispatcher tools like `continuity_manage` and `world_manage`. Calling `load_tool_schema({ toolName: "continuity_manage" })` before attempting an action would have surfaced all three root causes above without any trial-and-error. Any narrator/agent prompt (including "Pre-Render Gate" style shape definitions) that calls these tools should call `load_tool_schema` first for any action it hasn't used before.
+
+### Architecture note: two parallel entity systems (by design, not a bug)
+
+`character_manage` (and the rest of the `rpg { sub: "...", action: "..." }` dispatcher — `src/rpg/`) is a **separate, D1-backed system** from `lore_manage`/`world_manage`/`entity_manage`/`continuity_manage` (`src/tools/`), which all read/write the same KV-backed lore store. A character created via `lore_manage[set]` as `character:eira-holt` will never appear in `character_manage[get]`, and vice versa — these are two intentionally distinct subsystems, not a bug (tracked as [#180](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/180)). For a KV-lore-based world (like Fen-Surgeon), stick to `lore_manage`/`world_manage`/`entity_manage`/`continuity_manage` and full `character:<id>`-style keys throughout — don't mix in `character_manage` or `rpg{sub:"character",...}` calls for the same entities.
 
 ---
 
