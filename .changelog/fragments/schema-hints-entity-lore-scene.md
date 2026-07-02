@@ -1,0 +1,1 @@
+`entity_manage`, `lore_manage`, and `scene_manage` validation errors now match `world_manage`/`continuity_manage`: every "Invalid params" response includes `data.schema_hint` (pointing at `load_tool_schema`) and a worked `data.example` payload, instead of a raw Zod `.format()` dump.

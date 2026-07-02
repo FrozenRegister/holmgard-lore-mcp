@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { kvGet, kvList, kvListMaps } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
+import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, parseLoreSections } from '../lib/lore'
 import { formatD1CharToLore } from '../rpg/utils/kv-to-d1'
 import type { ToolContext } from './types'
@@ -31,7 +32,11 @@ export async function handle_list_maps({ c, id, args }: ToolContext): Promise<Re
 export async function handle_get_map({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ map_id: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'get_map', map_id: 'holmgard-overworld'
+    }), 200)
+  }
 
   const mapId = parsed.data.map_id.trim().toLowerCase()
   const key = mapId.startsWith('map:') ? mapId : `map:${mapId}`
@@ -45,7 +50,11 @@ export async function handle_get_map({ c, id, args }: ToolContext): Promise<Resp
 export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ query: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'get', query: 'character:eira-holt'
+    }), 200)
+  }
 
   const key = parsed.data.query.trim().toLowerCase()
   const raw = await kvGet(c, key)
@@ -92,7 +101,11 @@ export async function handle_get_lore({ c, id, args }: ToolContext): Promise<Res
 export async function handle_get_lore_batch({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'get_batch', keys: ['character:eira-holt', 'location:marsh-end']
+    }), 200)
+  }
 
   const cleanKeys = parsed.data.keys.map(k => k.trim().toLowerCase())
   const rawValues = await Promise.all(cleanKeys.map(k => kvGet(c, k)))
@@ -117,7 +130,11 @@ export async function handle_get_lore_section({ c, id, args }: ToolContext): Pro
     mode: z.enum(['strict', 'loose']).default('loose'),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'get_section', key: 'character:eira-holt', sections: ['Inventory']
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const raw = await kvGet(c, key)
@@ -164,7 +181,11 @@ function scoreMatch(query: string, candidate: string): number {
 export async function handle_validate_topic_exists({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ query_string: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'validate', query_string: 'eira-holt'
+    }), 200)
+  }
 
   const allKeys = await kvList(c)
   const query = parsed.data.query_string.trim().toLowerCase()
@@ -210,7 +231,11 @@ export async function handle_search_lore({ c, id, args }: ToolContext): Promise<
       scan_limit: z.number().int().min(1).max(2000).default(500),
     })
     const parsed = schema.safeParse(args)
-    if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+    if (!parsed.success) {
+      return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+        action: 'search', query: 'tribunal'
+      }), 200)
+    }
 
     const { query: queryArg, max_results, scan_limit } = parsed.data
     const searchQuery = queryArg.toLowerCase()

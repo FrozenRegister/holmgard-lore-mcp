@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, getKV, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
+import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
@@ -10,7 +11,11 @@ import type { ToolContext } from './types'
 export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ key: z.string().min(1), text: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'set', key: 'character:eira-holt', text: 'Eira Holt is a surgeon...'
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const text = parsed.data.text
@@ -46,7 +51,11 @@ export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Res
 export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'delete', key: 'character:eira-holt'
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const existingRaw = await kvGet(c, key)
@@ -77,7 +86,11 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
     value: z.string().optional()
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'patch', key: 'character:eira-holt', operation: 'append', value: 'New inventory item.'
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const operation = parsed.data.operation
@@ -170,7 +183,11 @@ export async function handle_batch_set_lore({ c, id, args }: ToolContext): Promi
     entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1)
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'batch_set', entries: [{ key: 'character:eira-holt', text: '...' }]
+    }), 200)
+  }
 
   const now = new Date().toISOString()
   const batchResults: Record<string, { ok: boolean; version?: number; error?: string }> = {}
@@ -230,7 +247,11 @@ export async function handle_batch_mutate({ c, id, args }: ToolContext): Promise
   })
   const schema = z.object({ mutations: z.array(mutationSchema).min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'batch_mutate', mutations: [{ key: 'character:eira-holt', action: 'increment', field_path: 'Reputation', increment: 1 }]
+    }), 200)
+  }
 
   const now = new Date().toISOString()
   const mutationResults: Array<{ key: string; action: string; ok: boolean; message: string; old_value?: any; new_value?: any }> = []
@@ -357,7 +378,11 @@ export async function handle_batch_mutate({ c, id, args }: ToolContext): Promise
 export async function handle_restore_lore({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'restore', key: 'character:eira-holt'
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const kv = getKV(c)
@@ -405,7 +430,11 @@ export async function handle_restore_lore({ c, id, args }: ToolContext): Promise
 export async function handle_get_topic_histories({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'history', keys: ['character:eira-holt']
+    }), 200)
+  }
 
   const keys = parsed.data.keys.map(k => k.toLowerCase())
   const kv = getKV(c)
@@ -445,7 +474,11 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
     reason: z.string().default('system-update')
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'increment', key: 'character:eira-holt', field_path: 'Reputation', increment: 1
+    }), 200)
+  }
 
   const key = parsed.data.key.trim().toLowerCase()
   const raw = await kvGet(c, key)
@@ -499,7 +532,11 @@ export async function handle_append_to_section({ c, id, args }: ToolContext): Pr
     auto_create: z.boolean().default(true),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
+      action: 'append_section', key: 'character:eira-holt', section: 'Inventory', text: 'New item added.'
+    }), 200)
+  }
 
   const { section, position, auto_create: autoCreate } = parsed.data
   const insertText = parsed.data.text
@@ -566,7 +603,11 @@ export async function handle_append_to_section({ c, id, args }: ToolContext): Pr
 export async function handle_move_entity({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
+      action: 'move', entity_key: 'character:eira-holt', new_location_key: 'location:marsh-end'
+    }), 200)
+  }
 
   const key = parsed.data.entity_key.trim().toLowerCase()
   const newLoc = parsed.data.new_location_key.trim().toLowerCase()

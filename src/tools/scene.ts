@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
+import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField, normalizeWeight } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
@@ -10,7 +11,11 @@ import type { ToolContext } from './types'
 export async function handle_activate_scene({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ scene_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'activate', scene_key: 'scene:tribunal-summons'
+    }), 200)
+  }
 
   const sceneKey = parsed.data.scene_key.trim().toLowerCase()
   const rawScene = await kvGet(c, sceneKey)
@@ -52,7 +57,11 @@ export async function handle_activate_scene({ c, id, args }: ToolContext): Promi
 export async function handle_present_choices({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ scene_key: z.string().min(1), entity_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'present_choices', scene_key: 'scene:tribunal-summons', entity_key: 'character:eira-holt'
+    }), 200)
+  }
 
   const sceneKey = parsed.data.scene_key.trim().toLowerCase()
   const entityKey = parsed.data.entity_key.trim().toLowerCase()
@@ -96,7 +105,11 @@ export async function handle_present_choices({ c, id, args }: ToolContext): Prom
 export async function handle_commit_choice({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ choice_id: z.string().min(1), entity_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'commit_choice', choice_id: 'negotiate', entity_key: 'character:eira-holt'
+    }), 200)
+  }
 
   const choiceId = parsed.data.choice_id.trim().toLowerCase()
   const entityKey = parsed.data.entity_key.trim().toLowerCase()
@@ -134,7 +147,11 @@ export async function handle_commit_choice({ c, id, args }: ToolContext): Promis
 export async function handle_get_choice_history({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'get_history', entity_key: 'character:eira-holt'
+    }), 200)
+  }
 
   const entityKey = parsed.data.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
@@ -169,7 +186,11 @@ export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<
     }).optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'brief', location_key: 'location:marsh-end', include: { events: 5, open_setups: true }
+    }), 200)
+  }
 
   const include = parsed.data.include ?? {}
   const eventsCount = include.events ?? 5
@@ -289,7 +310,11 @@ export async function handle_render_pov({ c, id, args }: ToolContext): Promise<R
     reveal_threshold: z.number().min(0).max(1).optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
+      action: 'render_pov', pov_entity_key: 'character:eira-holt', location_key: 'location:marsh-end'
+    }), 200)
+  }
 
   const povKey = parsed.data.pov_entity_key.trim().toLowerCase()
   const rawPov = await kvGet(c, povKey)
