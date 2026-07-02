@@ -23,7 +23,7 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
   const normalized = applyAliases(args, { date: 'at', description: 'detail' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
       action: 'append_event', entity_key: 'character:eira-holt', verb: 'departed', object: 'marsh-end', detail: 'Household begins journey', at: '1264-05-01T00:00:00Z'
     }), 200)
   }
@@ -74,7 +74,11 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
     limit: z.number().int().min(1).max(500).default(50),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'get_event_log', entity_key: 'character:eira-holt', limit: 20
+    }), 200)
+  }
 
   const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
   const kv = getKV(c)
@@ -133,7 +137,11 @@ export async function handle_recent_changes({ c, id, args }: ToolContext): Promi
     limit: z.number().int().min(1).max(200).default(30),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'recent_changes', key_prefix: 'character', limit: 20
+    }), 200)
+  }
 
   const kv = getKV(c)
   let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
@@ -172,7 +180,11 @@ export async function handle_tag_topic({ c, id, args }: ToolContext): Promise<Re
     remove: z.array(z.string()).optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'tag_topic', key: 'character:eira-holt', add: ['needs-review']
+    }), 200)
+  }
 
   const topicKey = parsed.data.key.trim().toLowerCase()
   const toAdd = parsed.data.add ?? []
@@ -244,7 +256,11 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
     limit: z.number().int().min(1).max(100).default(20),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'find_by_tag', tags: ['needs-review'], mode: 'any'
+    }), 200)
+  }
 
   const kv = getKV(c)
   const tagKeysets: Set<string>[] = []
@@ -301,7 +317,11 @@ export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Re
     limit: z.number().int().min(1).max(500).default(200),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'list_tags', prefix: 'needs', with_counts: true
+    }), 200)
+  }
 
   const kv = getKV(c)
   const tags: Array<{ tag: string; count: number }> = []
@@ -370,7 +390,11 @@ export async function handle_bookmark_state({ c, id, args }: ToolContext): Promi
     note: z.string().optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'bookmark_state', name: 'phase-9-complete', note: 'End of phase 9'
+    }), 200)
+  }
 
   const snapshotName = parsed.data.name.trim()
   const allKeys = await kvList(c)
@@ -410,7 +434,11 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
     key_prefix: z.string().optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'world_diff', from: 'phase-9-complete', detail: 'summary'
+    }), 200)
+  }
 
   type ManifestEntry = { version: number | null; updatedAt: string | null }
   const kv = getKV(c)
@@ -502,7 +530,7 @@ export async function handle_plant_setup({ c, id, args }: ToolContext): Promise<
   const normalized = applyAliases(args, { setup_id: 'id' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
       action: 'plant_setup', id: 'church-ambush-foreshadow', description: 'Church courier spotted near Marsh-end canal', tension: 3, expected_in: 'phase-10'
     }), 200)
   }
@@ -545,7 +573,11 @@ export async function handle_pay_off_setup({ c, id, args }: ToolContext): Promis
     status: z.enum(['paid', 'abandoned', 'deferred']).default('paid'),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'pay_off_setup', id: 'church-ambush-foreshadow', resolution: 'Ambush occurred at the canal crossing', status: 'paid'
+    }), 200)
+  }
 
   const setupKey = `setup:${parsed.data.id.trim()}`
   const raw = await kvGet(c, setupKey)
@@ -582,7 +614,11 @@ export async function handle_list_unpaid_setups({ c, id, args }: ToolContext): P
     min_tension: z.number().int().min(1).max(5).optional(),
   })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'list_unpaid_setups', min_tension: 3
+    }), 200)
+  }
 
   const setupKeys = await getIndexedKeys(c, '_idx:prefix:setup')
   const setupRaws = await Promise.all(setupKeys.map(k => kvGet(c, k)))
@@ -655,7 +691,7 @@ export async function handle_set_goal({ c, id, args }: ToolContext): Promise<Res
   const normalized = applyAliases(args, { entity_name: 'entity_key', goal_name: 'goal_id', goal_description: 'description' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
       action: 'set_goal', entity_key: 'character:eira-holt', goal_id: 'survive-tribunal', description: 'Survive the Church tribunal in Novigrad on 15 Jun 1264'
     }), 200)
   }
@@ -708,7 +744,7 @@ export async function handle_check_continuity({ c, id, args }: ToolContext): Pro
   }
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
       action: 'check_continuity', scope: 'character', severity_floor: 'warn'
     }), 200)
   }

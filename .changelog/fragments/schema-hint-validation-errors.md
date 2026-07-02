@@ -1,0 +1,1 @@
+`continuity_manage`/`world_manage` "Invalid params" responses now always include a `data.schema_hint` (and mention it in `message`) pointing at `load_tool_schema({ toolName: "..." })` for the full parameter schema, and every action that lacked a worked `data.example` payload now has one.

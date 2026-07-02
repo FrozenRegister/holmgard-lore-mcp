@@ -62,6 +62,13 @@ describe('pay_off_setup', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('rejects invalid params (missing resolution)', async () => {
+    const res = await callTool('continuity_manage', { action: 'pay_off_setup', id: 'some-setup' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
 })
 
 describe('list_unpaid_setups', () => {
@@ -90,5 +97,12 @@ describe('list_unpaid_setups', () => {
     const res = await callTool('continuity_manage', { action: 'list_unpaid_setups' })
     expect(res.result.metadata.count).toBe(0)
     expect(res.result.content[0].text).toBe('No open setups found.')
+  })
+
+  it('rejects invalid params (min_tension not a number)', async () => {
+    const res = await callTool('continuity_manage', { action: 'list_unpaid_setups', min_tension: 'high' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
   })
 })

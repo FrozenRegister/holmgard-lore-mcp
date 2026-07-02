@@ -112,6 +112,13 @@ describe('get_thread_comparison', () => {
     expect(res.result.thread_b.entity_count).toBe(0)
     expect(res.result.timeline_offset).toBeNull()
   })
+
+  it('rejects invalid params (missing thread_b)', async () => {
+    const res = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'thread-a' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+  })
 })
 
 describe('check_convergence', () => {
@@ -130,5 +137,12 @@ describe('check_convergence', () => {
     expect(res.result.can_converge).toBe(false)
     expect(res.result.shared_dates).toHaveLength(0)
     expect(res.result.shared_locations).toHaveLength(0)
+  })
+
+  it('rejects invalid params (missing thread_b)', async () => {
+    const res = await callTool('world_manage', { action: 'check_convergence', thread_a: 'tx' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
   })
 })
