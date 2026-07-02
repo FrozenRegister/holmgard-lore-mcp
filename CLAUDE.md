@@ -295,6 +295,16 @@ Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upg
 
 ### Required workflow — every change
 
+0. **Pull latest `main` from remote** before starting any work. This prevents working from stale code that causes accidental reverts:
+
+   ```bash
+   git fetch origin main && git merge origin/main --ff-only
+   ```
+
+   If the fast-forward merge fails (you have local changes on a branch), stash them first or rebase: `git rebase origin/main`. If you're on `main` itself, discard stale local changes with `git reset --hard origin/main`.
+
+   > **⚠️ Critical:** Never assume your local workspace is up-to-date. The repository may have received commits from other sessions. Pushing stale files overwrites newer code with old versions — this breaks builds and tests in CI. Always pull first.
+
 1. **Create a GitHub Issue** describing the problem or feature before writing any code. Use `gh issue create` or the GitHub UI. This gives the PR something to close and provides a paper trail.
 2. **Create a branch** using the appropriate prefix: `git checkout -b feat/my-feature`
 3. **Commit** locally with a conventional commit message

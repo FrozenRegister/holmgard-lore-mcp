@@ -3,6 +3,12 @@ import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
 describe('thread_tick', () => {
+  it('rejects missing thread_id', async () => {
+    const res = await callTool('world_manage', { action: 'thread_tick' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
   it('returns no-entities message when no entities match the thread', async () => {
     await seedKV('character:unthreaded', '**Status:** Active\n**Timeline-Value:** 5')
     const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'thread-alpha' })
