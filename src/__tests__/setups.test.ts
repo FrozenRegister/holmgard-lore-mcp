@@ -27,6 +27,12 @@ describe('plant_setup', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
+
+  it('accepts setup_id as an alias for id', async () => {
+    const res = await callTool('continuity_manage', { action: 'plant_setup', setup_id: 'church-ambush', description: 'Church courier spotted near the canal', payoff_type: 'threat' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.key).toBe('setup:church-ambush')
+  })
 })
 
 describe('pay_off_setup', () => {
