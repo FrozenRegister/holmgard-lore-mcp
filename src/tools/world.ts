@@ -2,6 +2,8 @@
 import { z } from 'zod'
 import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
+import { invalidParamsError } from '../lib/errors'
+import { resolveEntityKey } from '../lib/entity-resolve'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { resolveIndexedEntities } from '../lib/indexes'
@@ -10,7 +12,7 @@ import type { ToolContext } from './types'
 export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_id: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
 
   const threadId = parsed.data.thread_id.trim()
   const { keys: threadKeys, rawValues: threadRawValues } = await resolveIndexedEntities(c, `_idx:thread:${threadId}`, 'Thread', threadId)
@@ -89,13 +91,26 @@ export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<
 export async function handle_get_relationship({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'get_relationship', entity_a: 'character:eira-holt', entity_b: 'character:gerent'
+    }), 200)
+  }
 
-  const keyA = parsed.data.entity_a.trim().toLowerCase()
-  const keyB = parsed.data.entity_b.trim().toLowerCase()
-  const [rawA, rawB] = await Promise.all([kvGet(c, keyA), kvGet(c, keyB)])
-  if (!rawA) return c.json(makeError(id, -32602, `Entity "${keyA}" not found`, null), 200)
-  if (!rawB) return c.json(makeError(id, -32602, `Entity "${keyB}" not found`, null), 200)
+  const [resA, resB] = await Promise.all([
+    resolveEntityKey(c, parsed.data.entity_a),
+    resolveEntityKey(c, parsed.data.entity_b),
+  ])
+  if (!resA.raw) {
+    return c.json(makeError(id, -32602, `Entity "${resA.key}" not found${resA.suggestion ? `. Did you mean "${resA.suggestion}"?` : '. Pass the full lore key, e.g. "character:eira-holt".'}`, { key: resA.key, did_you_mean: resA.suggestion }), 200)
+  }
+  if (!resB.raw) {
+    return c.json(makeError(id, -32602, `Entity "${resB.key}" not found${resB.suggestion ? `. Did you mean "${resB.suggestion}"?` : '. Pass the full lore key, e.g. "character:eira-holt".'}`, { key: resB.key, did_you_mean: resB.suggestion }), 200)
+  }
+  const keyA = resA.key
+  const keyB = resB.key
+  const rawA = resA.raw
+  const rawB = resB.raw
 
   const { text: textA } = parseKvEntry(rawA)
   const { text: textB } = parseKvEntry(rawB)
@@ -129,13 +144,26 @@ export async function handle_get_relationship({ c, id, args }: ToolContext): Pro
 export async function handle_get_faction_standing({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1), faction_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'get_faction_standing', entity_key: 'character:eira-holt', faction_key: 'faction:guild-of-surgeons'
+    }), 200)
+  }
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
-  const factionKey = parsed.data.faction_key.trim().toLowerCase()
-  const [rawEntity, rawFaction] = await Promise.all([kvGet(c, entityKey), kvGet(c, factionKey)])
-  if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
-  if (!rawFaction) return c.json(makeError(id, -32602, `Faction "${factionKey}" not found`, null), 200)
+  const [resEntity, resFaction] = await Promise.all([
+    resolveEntityKey(c, parsed.data.entity_key),
+    resolveEntityKey(c, parsed.data.faction_key),
+  ])
+  if (!resEntity.raw) {
+    return c.json(makeError(id, -32602, `Entity "${resEntity.key}" not found${resEntity.suggestion ? `. Did you mean "${resEntity.suggestion}"?` : ''}`, { key: resEntity.key, did_you_mean: resEntity.suggestion }), 200)
+  }
+  if (!resFaction.raw) {
+    return c.json(makeError(id, -32602, `Faction "${resFaction.key}" not found${resFaction.suggestion ? `. Did you mean "${resFaction.suggestion}"?` : ''}`, { key: resFaction.key, did_you_mean: resFaction.suggestion }), 200)
+  }
+  const entityKey = resEntity.key
+  const factionKey = resFaction.key
+  const rawEntity = resEntity.raw
+  const rawFaction = resFaction.raw
 
   const { text: entityText } = parseKvEntry(rawEntity)
   const { text: factionText } = parseKvEntry(rawFaction)
@@ -169,12 +197,19 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
 export async function handle_get_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ entity_key: z.string().min(1), topic: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'get_entity_knowledge', entity_key: 'character:eira-holt', topic: 'the-lock'
+    }), 200)
+  }
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
   const topic = parsed.data.topic.trim().toLowerCase()
-  const raw = await kvGet(c, entityKey)
-  if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+  const res = await resolveEntityKey(c, parsed.data.entity_key)
+  if (!res.raw) {
+    return c.json(makeError(id, -32602, `Entity "${res.key}" not found${res.suggestion ? `. Did you mean "${res.suggestion}"?` : ''}`, { key: res.key, did_you_mean: res.suggestion }), 200)
+  }
+  const entityKey = res.key
+  const raw = res.raw
 
   const { text } = parseKvEntry(raw)
   const knowsField = extractRawField(text, 'Knows') ?? extractRawField(text, 'Knowledge') ?? extractRawField(text, 'Awareness')
@@ -204,7 +239,11 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
 export async function handle_get_location_occupants({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ location_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'get_location_occupants', location_key: 'location:marsh-end'
+    }), 200)
+  }
 
   const locationKey = parsed.data.location_key.trim().toLowerCase()
 
@@ -229,11 +268,18 @@ export async function handle_get_location_occupants({ c, id, args }: ToolContext
 export async function handle_get_reachable_locations({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ origin_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'get_reachable_locations', origin_key: 'location:marsh-end'
+    }), 200)
+  }
 
-  const originKey = parsed.data.origin_key.trim().toLowerCase()
-  const rawOrigin = await kvGet(c, originKey)
-  if (!rawOrigin) return c.json(makeError(id, -32602, `Location "${originKey}" not found`, null), 200)
+  const resOrigin = await resolveEntityKey(c, parsed.data.origin_key)
+  if (!resOrigin.raw) {
+    return c.json(makeError(id, -32602, `Location "${resOrigin.key}" not found${resOrigin.suggestion ? `. Did you mean "${resOrigin.suggestion}"?` : ''}`, { key: resOrigin.key, did_you_mean: resOrigin.suggestion }), 200)
+  }
+  const originKey = resOrigin.key
+  const rawOrigin = resOrigin.raw
 
   const { text } = parseKvEntry(rawOrigin)
   const exitsRaw = extractRawField(text, 'Exits') ?? extractRawField(text, 'Connections') ?? extractRawField(text, 'Routes')
@@ -265,13 +311,26 @@ export async function handle_get_reachable_locations({ c, id, args }: ToolContex
 export async function handle_sense_environment({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ location_key: z.string().min(1), entity_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, parsed.error, {
+      action: 'sense_environment', location_key: 'location:marsh-end', entity_key: 'character:eira-holt'
+    }), 200)
+  }
 
-  const locationKey = parsed.data.location_key.trim().toLowerCase()
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
-  const [rawLoc, rawEntity] = await Promise.all([kvGet(c, locationKey), kvGet(c, entityKey)])
-  if (!rawLoc) return c.json(makeError(id, -32602, `Location "${locationKey}" not found`, null), 200)
-  if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+  const [resLoc, resEntity] = await Promise.all([
+    resolveEntityKey(c, parsed.data.location_key),
+    resolveEntityKey(c, parsed.data.entity_key),
+  ])
+  if (!resLoc.raw) {
+    return c.json(makeError(id, -32602, `Location "${resLoc.key}" not found${resLoc.suggestion ? `. Did you mean "${resLoc.suggestion}"?` : ''}`, { key: resLoc.key, did_you_mean: resLoc.suggestion }), 200)
+  }
+  if (!resEntity.raw) {
+    return c.json(makeError(id, -32602, `Entity "${resEntity.key}" not found${resEntity.suggestion ? `. Did you mean "${resEntity.suggestion}"?` : ''}`, { key: resEntity.key, did_you_mean: resEntity.suggestion }), 200)
+  }
+  const locationKey = resLoc.key
+  const entityKey = resEntity.key
+  const rawLoc = resLoc.raw
+  const rawEntity = resEntity.raw
 
   const { text: locText } = parseKvEntry(rawLoc)
   const { text: entityText } = parseKvEntry(rawEntity)
@@ -309,7 +368,7 @@ export async function handle_sense_environment({ c, id, args }: ToolContext): Pr
 export async function handle_get_thread_comparison({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()
@@ -372,7 +431,7 @@ export async function handle_get_thread_comparison({ c, id, args }: ToolContext)
 export async function handle_check_convergence({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(makeError(id, -32602, 'Invalid params', parsed.error.format()), 200)
+  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()
