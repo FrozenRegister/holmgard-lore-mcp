@@ -13,7 +13,11 @@ import type { ToolContext } from './types'
 export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_id: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'thread_tick', thread_id: 'tribunal'
+    }), 200)
+  }
 
   const threadId = parsed.data.thread_id.trim()
   const { keys: threadKeys, rawValues: threadRawValues } = await resolveIndexedEntities(c, `_idx:thread:${threadId}`, 'Thread', threadId)
@@ -93,7 +97,7 @@ export async function handle_get_relationship({ c, id, args }: ToolContext): Pro
   const schema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'get_relationship', entity_a: 'character:eira-holt', entity_b: 'character:gerent'
     }), 200)
   }
@@ -147,7 +151,7 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
   const normalized = applyAliases(args, { entity_name: 'entity_key', faction_name: 'faction_key' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'get_faction_standing', entity_key: 'character:eira-holt', faction_key: 'faction:guild-of-surgeons'
     }), 200)
   }
@@ -201,7 +205,7 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
   const normalized = applyAliases(args, { entity_name: 'entity_key' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'get_entity_knowledge', entity_key: 'character:eira-holt', topic: 'the-lock'
     }), 200)
   }
@@ -244,7 +248,7 @@ export async function handle_get_location_occupants({ c, id, args }: ToolContext
   const normalized = applyAliases(args, { location_id: 'location_key' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'get_location_occupants', location_key: 'location:marsh-end'
     }), 200)
   }
@@ -273,7 +277,7 @@ export async function handle_get_reachable_locations({ c, id, args }: ToolContex
   const schema = z.object({ origin_key: z.string().min(1) })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'get_reachable_locations', origin_key: 'location:marsh-end'
     }), 200)
   }
@@ -317,7 +321,7 @@ export async function handle_sense_environment({ c, id, args }: ToolContext): Pr
   const normalized = applyAliases(args, { entity_name: 'entity_key' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
-    return c.json(invalidParamsError(id, parsed.error, {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
       action: 'sense_environment', location_key: 'location:marsh-end', entity_key: 'character:eira-holt'
     }), 200)
   }
@@ -373,7 +377,11 @@ export async function handle_sense_environment({ c, id, args }: ToolContext): Pr
 export async function handle_get_thread_comparison({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'get_thread_comparison', thread_a: 'tribunal', thread_b: 'the-lock'
+    }), 200)
+  }
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()
@@ -436,7 +444,11 @@ export async function handle_get_thread_comparison({ c, id, args }: ToolContext)
 export async function handle_check_convergence({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
   const parsed = schema.safeParse(args)
-  if (!parsed.success) return c.json(invalidParamsError(id, parsed.error), 200)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'check_convergence', thread_a: 'tribunal', thread_b: 'the-lock'
+    }), 200)
+  }
 
   const threadA = parsed.data.thread_a.trim()
   const threadB = parsed.data.thread_b.trim()

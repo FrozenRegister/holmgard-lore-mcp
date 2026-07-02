@@ -104,6 +104,14 @@ describe('recent_changes', () => {
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.count).toBe(0)
   })
+
+  it('rejects invalid params (limit not a number)', async () => {
+    const res = await callTool('continuity_manage', { action: 'recent_changes', limit: 'a-lot' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
+    expect(res.error.data.schema_hint).toContain('load_tool_schema')
+  })
 })
 
 describe('tag_topic', () => {
@@ -136,6 +144,13 @@ describe('tag_topic', () => {
     const res = await callTool('continuity_manage', { action: 'tag_topic', key: 'scene:empty-tag' })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toContain('No add or remove tags specified.')
+  })
+
+  it('rejects invalid params (missing key)', async () => {
+    const res = await callTool('continuity_manage', { action: 'tag_topic', add: ['theme:test'] })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
   })
 })
 
@@ -229,5 +244,12 @@ describe('world_diff', () => {
     const res = await callTool('continuity_manage', { action: 'world_diff', from: 'nonexistent-snapshot-xyz' })
     expect(res.error).toBeUndefined()
     expect(res.result.added.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('rejects invalid params (missing from)', async () => {
+    const res = await callTool('continuity_manage', { action: 'world_diff' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.data.example).toBeDefined()
   })
 })
