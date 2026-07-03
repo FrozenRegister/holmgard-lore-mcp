@@ -136,6 +136,35 @@ describe('check_continuity', () => {
       expect(lore.result.text).toContain('**Location:** location:unknown')
     })
 
+    it('auto-corrects an unambiguous occupancy typo against an existing location', async () => {
+      await seedKV('location:marsh-end', 'A muddy tidal flat.')
+      await seedKV('character:autofix-occupancy-typo', '**Status:** Active\n**Location:** location:marsh-emd')
+      const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['occupancy'], auto_fix: true })
+      expect(res.result.fixed).toBe(1)
+      const fixes = res.result.fixes as Array<{ key: string; action: string }>
+      expect(fixes.some(f => f.key === 'character:autofix-occupancy-typo' && f.action === 'typo_correction')).toBe(true)
+      const lore = await callTool('lore_manage', { action: 'get', query: 'character:autofix-occupancy-typo' })
+      expect(lore.result.text).toContain('**Location:** location:marsh-end')
+    })
+
+    it('skips an occupancy issue as ambiguous when multiple close-match locations exist', async () => {
+      await seedKV('location:marsh-enda', 'A muddy tidal flat, eastern bank.')
+      await seedKV('location:marsh-endb', 'A muddy tidal flat, western bank.')
+      await seedKV('character:autofix-occupancy-ambiguous', '**Status:** Active\n**Location:** location:marsh-end')
+      const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['occupancy'], auto_fix: true })
+      expect(res.result.fixed).toBe(0)
+      const skips = res.result.skips as Array<{ key: string; reason: string }>
+      expect(skips.some(s => s.key === 'character:autofix-occupancy-ambiguous' && s.reason.includes('ambiguous'))).toBe(true)
+    })
+
+    it('skips a dangling reference with no confident match as unfixable', async () => {
+      await seedKV('character:autofix-nomatch', '**Status:** Active\nMentions character:zzz-wholly-unrelated-reference-999.')
+      const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['dangling'], auto_fix: true })
+      expect(res.result.fixed).toBe(0)
+      const skips = res.result.skips as Array<{ key: string; reason: string }>
+      expect(skips.some(s => s.key === 'character:autofix-nomatch' && s.reason === 'no confident match found')).toBe(true)
+    })
+
     it('skips knowledge and inventory findings as requiring manual review', async () => {
       await seedKV('character:autofix-inv', '**Status:** Active\n**Inventory:** item:autofix-missing-item')
       const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['inventory'], auto_fix: true })
