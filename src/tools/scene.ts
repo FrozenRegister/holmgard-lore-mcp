@@ -373,11 +373,34 @@ export async function handle_render_pov({ c, id, args }: ToolContext): Promise<R
     visibleEntities.push({ key, status: extractRawField(text, 'Status'), known })
   }
 
-  const voiceHints = parsed.data.include_voice_hints ? {
-    diction: extractRawField(povText, 'Diction') ?? extractRawField(povText, 'Voice'),
-    register: extractRawField(povText, 'Register') ?? extractRawField(povText, 'Tone'),
-    fixations: extractRawField(povText, 'Fixations') ?? extractRawField(povText, 'Preoccupations'),
-  } : null
+  let voiceHints: { diction: string | null; register: string | null; fixations: string | null } | null = null
+  let voiceSource: string | null = null
+  if (parsed.data.include_voice_hints) {
+    const ownDiction = extractRawField(povText, 'Diction') ?? extractRawField(povText, 'Voice')
+    const ownRegister = extractRawField(povText, 'Register') ?? extractRawField(povText, 'Tone')
+    const ownFixations = extractRawField(povText, 'Fixations') ?? extractRawField(povText, 'Preoccupations')
+    const hasOwnVoiceData = ownDiction !== null || ownRegister !== null || ownFixations !== null
+
+    // Fall back to the entity's species profile (species:<name> lore entry) when
+    // no explicit voice fields exist — same pattern as get_sensory_profile.
+    let speciesText = ''
+    let speciesKey: string | null = null
+    if (!hasOwnVoiceData) {
+      const rawSpeciesField = (extractRawField(povText, 'Species') ?? extractRawField(povText, 'Type'))?.trim().toLowerCase() ?? null
+      speciesKey = rawSpeciesField ? (rawSpeciesField.includes(':') ? rawSpeciesField : `species:${rawSpeciesField}`) : null
+      if (speciesKey) {
+        const rawSpecies = await kvGet(c, speciesKey)
+        if (rawSpecies) speciesText = parseKvEntry(rawSpecies).text
+      }
+    }
+    const getSpecies = (f: string) => speciesText ? extractRawField(speciesText, f) : null
+    voiceHints = {
+      diction: ownDiction ?? getSpecies('Diction') ?? getSpecies('Voice'),
+      register: ownRegister ?? getSpecies('Register') ?? getSpecies('Tone'),
+      fixations: ownFixations ?? getSpecies('Fixations') ?? getSpecies('Preoccupations'),
+    }
+    voiceSource = hasOwnVoiceData ? 'entity' : (speciesText ? `species fallback (${speciesKey})` : 'none')
+  }
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `POV render for "${povKey}" at "${baseKey}": ${visibleEntities.length} visible entity/entities. Perception: ${threshold.toFixed(2)}.` }],
@@ -385,7 +408,7 @@ export async function handle_render_pov({ c, id, args }: ToolContext): Promise<R
     pov_entity: povKey,
     location: { key: baseKey, filtered_text: filteredBaseText },
     visible_entities: visibleEntities,
-    ...(voiceHints !== null && { voice_hints: voiceHints }),
+    ...(voiceHints !== null && { voice_hints: voiceHints, voice_source: voiceSource }),
     knowledge_scope: [...knownTopics]
   }), 200)
 }

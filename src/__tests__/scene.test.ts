@@ -142,6 +142,25 @@ describe('render_pov', () => {
     const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:bard', location_key: 'location:tavern', include_voice_hints: true })
     expect(res.result.voice_hints).toBeDefined()
     expect(res.result.voice_hints.diction).toBe('archaic and flowery')
+    expect(res.result.voice_source).toBe('entity')
+  })
+
+  it('falls back to species voice hints when the entity has none of its own', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('species:lamia', '**Diction:** Sibilant, measured, drawn-out consonants\n**Register:** Low, hissing undertone')
+    await seedKV('character:kavissa', '**Status:** Active\n**Species:** lamia\n**Location:** location:tavern\n**Perception:** 0.8')
+    const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:kavissa', location_key: 'location:tavern', include_voice_hints: true })
+    expect(res.result.voice_hints.diction).toBe('Sibilant, measured, drawn-out consonants')
+    expect(res.result.voice_hints.register).toBe('Low, hissing undertone')
+    expect(res.result.voice_source).toBe('species fallback (species:lamia)')
+  })
+
+  it('returns null voice hints with source "none" when neither entity nor species has data', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('character:blank-voice', '**Status:** Active\n**Location:** location:tavern\n**Perception:** 0.8')
+    const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:blank-voice', location_key: 'location:tavern', include_voice_hints: true })
+    expect(res.result.voice_hints.diction).toBeNull()
+    expect(res.result.voice_source).toBe('none')
   })
 
   it('uses entity Location field when no location_key provided', async () => {
