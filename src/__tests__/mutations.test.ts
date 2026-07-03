@@ -1,6 +1,6 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
-import { expect, it, beforeEach } from 'vitest'
+import { expect, it, beforeEach, vi } from 'vitest'
 
 describe('patch_lore — replace', () => {
   beforeEach(() => seedKV('test:patch-replace', 'Status: Alive\nDays: 14'))
@@ -38,6 +38,42 @@ describe('patch_lore — replace', () => {
       value: 'X',
     })
     expect(res.result.content[0].text).toContain('not found in')
+  })
+})
+
+describe('patch_lore — concurrent write conflict detection', () => {
+  it('detects a concurrent write instead of silently clobbering it', async () => {
+    await seedKV('test:patch-race', 'Status: Alive\nMood: Calm')
+
+    // Simulate another writer landing between this handler's initial read and
+    // its pre-write conflict check: the handler calls kvGet twice per request
+    // (once for its own base read, once inside checkForConcurrentWrite). Make
+    // the second call observe a version bump that never actually happened via
+    // this test's own writes — exactly what a real concurrent writer would
+    // produce, without depending on Promise-scheduling timing that this
+    // in-memory KV resolves too fast to reproduce reliably (see #13).
+    let callCount = 0
+    const original = env.LORE_DB.get.bind(env.LORE_DB)
+    const spy = vi.spyOn(env.LORE_DB, 'get').mockImplementation((async (...args: unknown[]) => {
+      callCount++
+      if (callCount === 2) {
+        return JSON.stringify({ text: 'Status: Alive\nMood: Calm', meta: { version: 99 } })
+      }
+      return (original as (...a: unknown[]) => unknown)(...args)
+    }) as typeof env.LORE_DB.get)
+
+    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-race', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' })
+    spy.mockRestore()
+
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32009)
+    expect(res.error.message).toContain('Concurrent modification detected')
+    expect(res.error.data.key).toBe('test:patch-race')
+    expect(res.error.data.current_version).toBe(99)
+
+    // The losing request's patch was never applied.
+    const final = await callTool('lore_manage', { action: 'get', query: 'test:patch-race' })
+    expect(final.result.text).toContain('Status: Alive')
   })
 })
 

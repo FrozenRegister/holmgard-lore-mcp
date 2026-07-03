@@ -1,0 +1,3 @@
+### Fixed
+
+- `patch_lore` and `increment_topic_field` now re-check a key's version immediately before writing and return a `-32009` conflict error (instead of silently overwriting) when another write landed in between. Cloudflare KV has no compare-and-swap, so this narrows the read-modify-write race window rather than eliminating it outright — but it turns the common case of two overlapping writers into a detected, retry-safe conflict for the loser instead of lost data. New `src/lib/concurrency.ts` helper (`checkForConcurrentWrite`). Scope: the two single-key MCP tools named in the issue — `batch_mutate`'s within-request sequential composition across multiple mutations on the same key is a different mechanism and isn't touched. (#13)
