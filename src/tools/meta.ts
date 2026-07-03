@@ -4,7 +4,7 @@ import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
 import { applyAliases } from '../lib/aliases'
-import { parseKvEntry, extractFieldFromText, extractRawField } from '../lib/lore'
+import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText, levenshteinDistance } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
 import { CHANGELOG_KEY } from '../constants'
@@ -737,6 +737,7 @@ export async function handle_check_continuity({ c, id, args }: ToolContext): Pro
     scope: z.string().optional(),
     checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
     severity_floor: z.enum(['info', 'warn', 'error']).default('info'),
+    auto_fix: z.boolean().optional(),
   })
   const normalized = { ...args }
   if (typeof normalized.severity_floor === 'string' && normalized.severity_floor in SEVERITY_FLOOR_ALIASES) {
@@ -823,13 +824,111 @@ export async function handle_check_continuity({ c, id, args }: ToolContext): Pro
   const floorLevel = severityOrder[parsed.data.severity_floor]
   const filtered = findings.filter(f => severityOrder[f.severity] >= floorLevel)
 
-  const summaryText = filtered.length > 0
-    ? `${filtered.length} continuity issue(s) found:\n` + filtered.slice(0, 20).map(f => `[${f.severity.toUpperCase()}] ${f.key}: ${f.message}`).join('\n')
-    : 'No continuity issues found.'
+  if (!parsed.data.auto_fix) {
+    const summaryText = filtered.length > 0
+      ? `${filtered.length} continuity issue(s) found:\n` + filtered.slice(0, 20).map(f => `[${f.severity.toUpperCase()}] ${f.key}: ${f.message}`).join('\n')
+      : 'No continuity issues found.'
+
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: summaryText }],
+      metadata: { scanned: scopedKeys.length, issue_count: filtered.length },
+      findings: filtered
+    }), 200)
+  }
+
+  // auto_fix: dangling and occupancy findings can be repaired unambiguously
+  // (test-key cleanup, single-candidate typo correction, location fallback).
+  // knowledge/inventory findings need entity-by-entity judgment and are always skipped.
+  type Fix = { key: string; check: string; action: string; detail: string }
+  type Skip = { key: string; check: string; reason: string }
+  const fixes: Fix[] = []
+  const skips: Skip[] = []
+
+  const rawByKey = new Map(scopedKeys.map((k, i) => [k, scopedRaws[i]]))
+  const findingsByKey = new Map<string, Finding[]>()
+  for (const f of filtered) {
+    if (!findingsByKey.has(f.key)) findingsByKey.set(f.key, [])
+    findingsByKey.get(f.key)!.push(f)
+  }
+
+  for (const [key, keyFindings] of findingsByKey) {
+    const raw = rawByKey.get(key)
+    if (!raw) continue
+    const { text: originalText, meta } = parseKvEntry(raw)
+    let text = originalText
+    let changed = false
+
+    for (const f of keyFindings) {
+      if (f.check === 'knowledge' || f.check === 'inventory') {
+        skips.push({ key, check: f.check, reason: 'requires entity-by-entity judgment' })
+        continue
+      }
+
+      if (f.check === 'dangling') {
+        const badRef = f.message.match(/References "([^"]+)"/)?.[1]
+        if (!badRef) { skips.push({ key, check: f.check, reason: 'could not parse reference' }); continue }
+        const escaped = badRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+        if (/(^|:)test[-:]/i.test(badRef)) {
+          const before = text
+          text = text.replace(new RegExp(escaped, 'gi'), '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+          if (text !== before) {
+            changed = true
+            fixes.push({ key, check: f.check, action: 'removed_test_reference', detail: `Removed test-key reference "${badRef}"` })
+          } else {
+            skips.push({ key, check: f.check, reason: 'reference not found in text' })
+          }
+          continue
+        }
+
+        const candidates = allKeys.filter(k => k !== key && levenshteinDistance(k, badRef) < 3)
+        if (candidates.length === 1) {
+          text = text.replace(new RegExp(escaped, 'gi'), candidates[0])
+          changed = true
+          fixes.push({ key, check: f.check, action: 'typo_correction', detail: `Corrected "${badRef}" → "${candidates[0]}"` })
+        } else if (candidates.length > 1) {
+          skips.push({ key, check: f.check, reason: `ambiguous: ${candidates.length} close matches` })
+        } else {
+          skips.push({ key, check: f.check, reason: 'no confident match found' })
+        }
+      } else if (f.check === 'occupancy') {
+        const badLoc = f.message.match(/Location field "([^"]+)"/)?.[1]
+        if (!badLoc) { skips.push({ key, check: f.check, reason: 'could not parse location' }); continue }
+
+        const candidates = allKeys.filter(k => k.startsWith('location:') && levenshteinDistance(k, badLoc) < 3)
+        if (candidates.length === 1) {
+          text = updateFieldInText(text, 'Location', candidates[0])
+          changed = true
+          fixes.push({ key, check: f.check, action: 'typo_correction', detail: `Corrected Location "${badLoc}" → "${candidates[0]}"` })
+        } else if (candidates.length > 1) {
+          skips.push({ key, check: f.check, reason: `ambiguous: ${candidates.length} close matches` })
+        } else {
+          text = updateFieldInText(text, 'Location', 'location:unknown')
+          changed = true
+          fixes.push({ key, check: f.check, action: 'fallback_unknown', detail: `Set Location "${badLoc}" → "location:unknown"` })
+        }
+      }
+    }
+
+    if (changed) {
+      await pushHistory(c, key, raw)
+      const now = new Date().toISOString()
+      const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+      await kvPut(c, key, JSON.stringify({ text, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+      await appendChangelog(c, key, version)
+      loreDB[key] = text
+    }
+  }
+
+  const summaryText = `Auto-fix: ${fixes.length} fixed, ${skips.length} skipped (of ${filtered.length} issue(s) found).`
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
-    metadata: { scanned: scopedKeys.length, issue_count: filtered.length },
-    findings: filtered
+    metadata: { scanned: scopedKeys.length, issue_count: filtered.length, fixed: fixes.length, skipped: skips.length },
+    findings: filtered,
+    fixed: fixes.length,
+    skipped: skips.length,
+    fixes,
+    skips
   }), 200)
 }

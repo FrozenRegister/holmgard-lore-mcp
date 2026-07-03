@@ -1,0 +1,4 @@
+### Added
+
+- `check_continuity` gains an `auto_fix: true` mode: unambiguous `dangling`/`occupancy` issues are repaired automatically (test-key reference removal, single-candidate typo correction via Levenshtein distance, and `location:unknown` fallback for orphaned `Location` fields). `knowledge`/`inventory` findings are always skipped as requiring entity-by-entity judgment. Response includes `fixed`, `skipped`, `fixes`, and `skips`. All fixes go through `pushHistory`, so they're reversible via `restore_lore`. (#53)
+- `render_pov`'s `voice_hints` now fall back to the POV entity's `species:<name>` lore entry (`Diction`/`Register`/`Fixations`, matching the fallback pattern already used by `get_sensory_profile`) when the entity has none of its own. A new `voice_source` field reports whether hints came from `entity`, a `species fallback (...)`, or `none`. (#57)
