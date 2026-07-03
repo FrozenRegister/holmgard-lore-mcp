@@ -7,12 +7,14 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
   new_character: 'create', xp: 'add_xp', gain_xp: 'add_xp',
   progression: 'get_progression', level: 'level_up', levelup: 'level_up',
+  find_character: 'search', query: 'search',
+  cast: 'cast_spell', castspell: 'cast_spell',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -45,6 +47,31 @@ const InputSchema = z.object({
   xpAmount: z.number().int().min(0).optional(),
   limit: z.number().int().min(1).max(200).optional().default(50),
   characterTypeFilter: z.enum(['pc', 'npc', 'enemy', 'neutral']).optional(),
+  query: z.string().optional(),
+  conditions: z.array(z.string()).optional(),
+  resistances: z.array(z.string()).optional(),
+  vulnerabilities: z.array(z.string()).optional(),
+  immunities: z.array(z.string()).optional(),
+  spellSlots: z.record(z.object({ max: z.number().int().min(0), current: z.number().int().min(0) })).optional(),
+  pactMagicSlots: z.object({ max: z.number().int().min(0), current: z.number().int().min(0), level: z.number().int().min(0).max(9).optional() }).optional(),
+  knownSpells: z.array(z.string()).optional(),
+  preparedSpells: z.array(z.string()).optional(),
+  cantripsKnown: z.array(z.string()).optional(),
+  maxSpellLevel: z.number().int().min(0).max(9).optional(),
+  concentratingOn: z.string().nullable().optional(),
+  legendaryActions: z.number().int().min(0).optional(),
+  legendaryActionsRemaining: z.number().int().min(0).optional(),
+  legendaryResistances: z.number().int().min(0).optional(),
+  legendaryResistancesRemaining: z.number().int().min(0).optional(),
+  hasLairActions: z.boolean().optional(),
+  resourcePools: z.record(z.unknown()).optional(),
+  currency: z.record(z.unknown()).optional(),
+  spellName: z.string().optional(),
+  slotLevel: z.number().int().min(0).max(9).optional(),
+  usePactMagic: z.boolean().optional().default(false),
+  requiresConcentration: z.boolean().optional().default(false),
+  targetIds: z.array(z.string()).optional(),
+  saveDcBase: z.number().int().optional().default(10),
 })
 
 function parseChar(row: Record<string, unknown>) {
@@ -60,6 +87,8 @@ function parseChar(row: Record<string, unknown>) {
     cantrips_known: row.cantrips_known ? JSON.parse(row.cantrips_known as string) : [],
     currency: row.currency ? JSON.parse(row.currency as string) : {},
     resource_pools: row.resource_pools ? JSON.parse(row.resource_pools as string) : {},
+    spell_slots: row.spell_slots ? JSON.parse(row.spell_slots as string) : null,
+    pact_magic_slots: row.pact_magic_slots ? JSON.parse(row.pact_magic_slots as string) : null,
   }
 }
 
@@ -114,6 +143,24 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.stats) { sets.push('stats = ?'); vals.push(JSON.stringify(a.stats)) }
       if (a.background) { sets.push('background = ?'); vals.push(a.background) }
       if (a.alignment) { sets.push('alignment = ?'); vals.push(a.alignment) }
+      if (a.conditions) { sets.push('conditions = ?'); vals.push(JSON.stringify(a.conditions)) }
+      if (a.resistances) { sets.push('resistances = ?'); vals.push(JSON.stringify(a.resistances)) }
+      if (a.vulnerabilities) { sets.push('vulnerabilities = ?'); vals.push(JSON.stringify(a.vulnerabilities)) }
+      if (a.immunities) { sets.push('immunities = ?'); vals.push(JSON.stringify(a.immunities)) }
+      if (a.spellSlots) { sets.push('spell_slots = ?'); vals.push(JSON.stringify(a.spellSlots)) }
+      if (a.pactMagicSlots) { sets.push('pact_magic_slots = ?'); vals.push(JSON.stringify(a.pactMagicSlots)) }
+      if (a.knownSpells) { sets.push('known_spells = ?'); vals.push(JSON.stringify(a.knownSpells)) }
+      if (a.preparedSpells) { sets.push('prepared_spells = ?'); vals.push(JSON.stringify(a.preparedSpells)) }
+      if (a.cantripsKnown) { sets.push('cantrips_known = ?'); vals.push(JSON.stringify(a.cantripsKnown)) }
+      if (a.maxSpellLevel !== undefined) { sets.push('max_spell_level = ?'); vals.push(a.maxSpellLevel) }
+      if (a.concentratingOn !== undefined) { sets.push('concentrating_on = ?'); vals.push(a.concentratingOn) }
+      if (a.legendaryActions !== undefined) { sets.push('legendary_actions = ?'); vals.push(a.legendaryActions) }
+      if (a.legendaryActionsRemaining !== undefined) { sets.push('legendary_actions_remaining = ?'); vals.push(a.legendaryActionsRemaining) }
+      if (a.legendaryResistances !== undefined) { sets.push('legendary_resistances = ?'); vals.push(a.legendaryResistances) }
+      if (a.legendaryResistancesRemaining !== undefined) { sets.push('legendary_resistances_remaining = ?'); vals.push(a.legendaryResistancesRemaining) }
+      if (a.hasLairActions !== undefined) { sets.push('has_lair_actions = ?'); vals.push(a.hasLairActions ? 1 : 0) }
+      if (a.resourcePools) { sets.push('resource_pools = ?'); vals.push(JSON.stringify(a.resourcePools)) }
+      if (a.currency) { sets.push('currency = ?'); vals.push(JSON.stringify(a.currency)) }
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
       return ok({ success: true, actionType: 'update', characterId: charId })
@@ -154,6 +201,60 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const newMaxHp = (row.max_hp ?? 1) + hpIncrease
       await db.prepare('UPDATE characters SET level = ?, max_hp = ?, hp = max_hp + ?, updated_at = ? WHERE id = ?').bind(newLevel, newMaxHp, hpIncrease, now, charId).run()
       return ok({ success: true, actionType: 'level_up', characterId: charId, newLevel, hpIncrease })
+    }
+    case 'search': {
+      if (!a.query) return err('"query" is required for search')
+      const pattern = `%${a.query}%`
+      const { results } = await db.prepare('SELECT id, name, character_type, character_class, race, level FROM characters WHERE name LIKE ? ORDER BY name LIMIT ?')
+        .bind(pattern, a.limit).all()
+      return ok({ success: true, actionType: 'search', query: a.query, characters: results, count: results.length })
+    }
+    case 'cast_spell': {
+      const charId = a.id ?? a.characterId
+      if (!charId || !a.spellName) return err('"id"/"characterId" and "spellName" are required')
+      const row = await db.prepare('SELECT known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, concentrating_on FROM characters WHERE id = ?').bind(charId).first() as
+        { known_spells: string; prepared_spells: string; cantrips_known: string; spell_slots: string | null; pact_magic_slots: string | null; concentrating_on: string | null } | null
+      if (!row) return err(`Character not found: ${charId}`)
+
+      const knownSpells: string[] = JSON.parse(row.known_spells ?? '[]')
+      const preparedSpells: string[] = JSON.parse(row.prepared_spells ?? '[]')
+      const cantripsKnown: string[] = JSON.parse(row.cantrips_known ?? '[]')
+      const isCantrip = cantripsKnown.includes(a.spellName)
+      if (!isCantrip && !knownSpells.includes(a.spellName) && !preparedSpells.includes(a.spellName)) {
+        return err(`"${a.spellName}" is not in this character's known/prepared spells or cantrips — cast blocked`)
+      }
+
+      let remainingSlots: unknown = null
+      if (!isCantrip) {
+        if (a.usePactMagic) {
+          const pact = row.pact_magic_slots ? JSON.parse(row.pact_magic_slots) : null
+          if (!pact || pact.current <= 0) return err('No pact magic slots remaining')
+          pact.current -= 1
+          await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(pact), now, charId).run()
+          remainingSlots = pact
+        } else {
+          if (a.slotLevel === undefined) return err('"slotLevel" is required to cast a leveled spell (use slotLevel: 0 for a cantrip)')
+          const slots = row.spell_slots ? JSON.parse(row.spell_slots) : {}
+          const slot = slots[String(a.slotLevel)]
+          if (!slot || slot.current <= 0) return err(`No level ${a.slotLevel} spell slots remaining`)
+          slot.current -= 1
+          await db.prepare('UPDATE characters SET spell_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(slots), now, charId).run()
+          remainingSlots = slots
+        }
+      }
+
+      if (a.requiresConcentration) {
+        await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
+        await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
+        await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase).run()
+        await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
+      }
+
+      return ok({
+        success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
+        slotLevel: a.slotLevel ?? null, usedPactMagic: a.usePactMagic, remainingSlots, concentrating: a.requiresConcentration,
+      })
     }
   }
 }
