@@ -551,6 +551,88 @@ describe('admin endpoints', () => {
     })
   })
 
+  describe('/admin/export', () => {
+    async function adminGetExport(secret?: string) {
+      const headers: Record<string, string> = {}
+      if (secret !== undefined) headers['X-Api-Key'] = secret
+      return SELF.fetch('http://example.com/admin/export', { headers })
+    }
+
+    it('returns every key including system/index keys, not just visible lore', async () => {
+      await seedKV('character:export-test', 'Some lore text')
+      await env.LORE_DB.put('_idx:prefix:character', JSON.stringify(['character:export-test']))
+
+      const res = await adminGetExport(ADMIN_SECRET)
+      expect(res.status).toBe(200)
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      const keyNames: string[] = body.keys.map((k: { key: string }) => k.key)
+      expect(keyNames).toContain('character:export-test')
+      expect(keyNames).toContain('_idx:prefix:character')
+      expect(body.key_count).toBe(body.keys.length)
+      expect(typeof body.exported_at).toBe('string')
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminGetExport('wrong-secret')
+      expect(res.status).toBe(401)
+    })
+
+    it('returns 401 with missing secret', async () => {
+      const res = await adminGetExport(undefined)
+      expect(res.status).toBe(401)
+    })
+  })
+
+  describe('/admin/import', () => {
+    it('restores keys exactly as exported, including system keys', async () => {
+      const res = await adminPost('/admin/import', {
+        secret: ADMIN_SECRET,
+        keys: [
+          { key: 'character:import-test', value: JSON.stringify({ text: 'Restored lore', meta: { version: 3 } }) },
+          { key: '_idx:prefix:character', value: JSON.stringify(['character:import-test']) },
+        ],
+      })
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(true)
+      expect(body.imported).toBe(2)
+      expect(body.failed).toBe(0)
+
+      const restored = await env.LORE_DB.get('character:import-test')
+      expect(restored).toContain('Restored lore')
+      const idx = await env.LORE_DB.get('_idx:prefix:character')
+      expect(idx).toContain('character:import-test')
+    })
+
+    it('reports per-key failures without aborting the whole import', async () => {
+      const res = await adminPost('/admin/import', {
+        secret: ADMIN_SECRET,
+        keys: [
+          { key: 'character:valid-import', value: 'valid value' },
+          { key: '', value: 'missing key' },
+          { key: 'character:bad-value', value: 42 },
+        ],
+      })
+      const body = await res.json() as Record<string, any>
+      expect(body.ok).toBe(false)
+      expect(body.imported).toBe(1)
+      expect(body.failed).toBe(2)
+    })
+
+    it('rejects an empty keys array', async () => {
+      const res = await adminPost('/admin/import', { secret: ADMIN_SECRET, keys: [] })
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await adminPost('/admin/import', {
+        secret: 'wrong-secret',
+        keys: [{ key: 'x', value: 'y' }],
+      })
+      expect(res.status).toBe(401)
+    })
+  })
+
   describe('/csp-report endpoint', () => {
     it('returns status:reported without writing to KV', async () => {
       const reportPayload = {

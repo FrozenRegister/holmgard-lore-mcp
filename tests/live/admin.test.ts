@@ -53,6 +53,32 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints', () => {
     expect(res.ok).toBe(true)
     expect(res.deleted).toBe(2)
   })
+
+  it('admin/export returns the full KV dump with a valid secret', async () => {
+    const res = await fetch(`${BASE_URL}/admin/export`, { headers: { 'X-Api-Key': ADMIN_SECRET } })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok: boolean; keys: unknown[]; key_count: number }
+    expect(body.ok).toBe(true)
+    expect(Array.isArray(body.keys)).toBe(true)
+    expect(body.key_count).toBe(body.keys.length)
+  })
+
+  it('admin/export rejects a missing secret', async () => {
+    const res = await fetch(`${BASE_URL}/admin/export`)
+    expect(res.status).toBe(401)
+  })
+
+  it('admin/import round-trips a disposable key', async () => {
+    const key = `test:import-roundtrip-${uid()}`
+    const value = JSON.stringify({ text: 'Imported via live smoke test', meta: { version: 1 } })
+    const res = await adminPost('/admin/import', { keys: [{ key, value }] })
+    expect(res.ok).toBe(true)
+    expect(res.imported).toBe(1)
+
+    const get = await tool('lore_manage', { action: 'get', query: key })
+    expect(get.result?.text).toBe('Imported via live smoke test')
+    await tool('lore_manage', { action: 'delete', key })
+  })
 })
 
 // Malformed-request edge cases against the deployed worker — the happy-path

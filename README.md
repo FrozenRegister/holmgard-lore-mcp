@@ -304,6 +304,27 @@ curl -X POST http://127.0.0.1:8787/admin/delete-lore \
   -d '{"key": "character:new-npc"}'
 ```
 
+### `GET /admin/export` — disaster recovery dump
+
+Returns **every** key in the KV namespace, including `_history:`, `_idx:`, `_changelog`, and other system keys `kvList()` normally hides — a restore needs to reconstruct the whole store, not just the visible lore entries.
+
+```bash
+curl http://127.0.0.1:8787/admin/export -H "X-Admin-Secret: your-admin-secret" > backup-$(date +%Y%m%d).json
+# { "ok": true, "keys": [{ "key": "...", "value": "..." }, ...], "key_count": N, "exported_at": "..." }
+```
+
+### `POST /admin/import` — disaster recovery restore
+
+Accepts the same `keys` array `/admin/export` produces and writes each one back verbatim (raw `kv.put`, no history/index side effects — those were already captured as their own exported keys). Per-key failures are reported without aborting the rest of the import.
+
+```bash
+curl -X POST http://127.0.0.1:8787/admin/import \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Secret: your-admin-secret" \
+  -d @backup-20260703.json
+# { "ok": true, "imported": N, "failed": 0, "failedKeys": [] }
+```
+
 ### `GET /health`
 
 ```bash
