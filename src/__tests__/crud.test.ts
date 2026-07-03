@@ -92,6 +92,40 @@ describe('list_maps', () => {
   })
 })
 
+describe('set_lore — dry_run', () => {
+  it('previews a new key without writing it', async () => {
+    const res = await callTool('lore_manage', { action: 'set', key: 'character:dry-run-new', text: 'Would-be text', dry_run: true })
+    expect(res.result.dry_run).toBe(true)
+    expect(res.result.would_change).toEqual({ key: 'character:dry-run-new', operation: 'set_lore', before: null, after: 'Would-be text', version: 1 })
+
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:dry-run-new' })
+    expect(get.error).toBeDefined()
+  })
+
+  it('previews an overwrite without changing the existing entry', async () => {
+    await seedKV('character:dry-run-existing', 'Original text')
+    const res = await callTool('lore_manage', { action: 'set', key: 'character:dry-run-existing', text: 'New text', dry_run: true })
+    expect(res.result.would_change.before).toBe('Original text')
+    expect(res.result.would_change.after).toBe('New text')
+    expect(res.result.would_change.version).toBe(2)
+
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:dry-run-existing' })
+    expect(get.result.text).toBe('Original text')
+  })
+})
+
+describe('delete_lore — dry_run', () => {
+  it('previews a delete without removing the entry', async () => {
+    await seedKV('character:dry-run-delete', 'Precious lore')
+    const res = await callTool('lore_manage', { action: 'delete', key: 'character:dry-run-delete', dry_run: true })
+    expect(res.result.dry_run).toBe(true)
+    expect(res.result.would_change).toEqual({ key: 'character:dry-run-delete', operation: 'delete_lore', before: 'Precious lore', after: null })
+
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:dry-run-delete' })
+    expect(get.result.text).toBe('Precious lore')
+  })
+})
+
 describe('get_lore', () => {
   it('retrieves an existing entry', async () => {
     await seedKV('character:bob', 'Bob is a warrior')

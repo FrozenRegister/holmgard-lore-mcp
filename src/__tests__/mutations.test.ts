@@ -77,6 +77,33 @@ describe('patch_lore — concurrent write conflict detection', () => {
   })
 })
 
+describe('patch_lore — dry_run', () => {
+  it('previews a replace without writing it', async () => {
+    await seedKV('test:patch-dry-run', 'Status: Alive\nDays: 14')
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-dry-run',
+      operation: 'replace',
+      target: 'Status: Alive',
+      value: 'Status: Sedated',
+      dry_run: true,
+    })
+    expect(res.result.dry_run).toBe(true)
+    expect(res.result.would_change).toEqual({
+      key: 'test:patch-dry-run',
+      operation: 'patch_lore',
+      patch_operation: 'replace',
+      target: 'Status: Alive',
+      value: 'Status: Sedated',
+      before: 'Status: Alive\nDays: 14',
+      after: 'Status: Sedated\nDays: 14',
+    })
+
+    const get = await callTool('lore_manage', { action: 'get', query: 'test:patch-dry-run' })
+    expect(get.result.text).toBe('Status: Alive\nDays: 14')
+  })
+})
+
 describe('patch_lore — replace with ambiguous target', () => {
   beforeEach(() => seedKV('test:patch-ambig', 'the cat chased the cat'))
 
