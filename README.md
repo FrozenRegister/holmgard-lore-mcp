@@ -82,6 +82,23 @@ wrangler secret put ADMIN_SECRET        # Production: set your secret. Local tes
 wrangler secret put MCP_API_KEY         # Optional: if set, all /mcp requests require X-Api-Key header
 ```
 
+### Rate limiting
+
+`src/middleware/rate-limit.ts` uses an in-memory `Map`, keyed by `CF-Connecting-IP`. This is
+**per-isolate, not shared across Workers instances** — a busy deployment can spin up multiple
+isolates (cold starts, concurrent requests, regional edge routing), each with its own counter.
+
+This is intentional, not an oversight: switching the counter to KV (read-then-write per request)
+would not actually fix the sharing problem safely, because KV enforces roughly one write per
+second per key. A client making enough requests to need rate limiting in the first place is
+exactly the client that would blow past that KV write ceiling, causing the read-modify-write
+counter update itself to fail or become stale under the very burst it's meant to catch.
+
+Treat the current limiter as **gentle per-isolate back-pressure**, not a DoS defense. For a real
+cross-instance limit, configure [Cloudflare's built-in Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
+(dashboard or `wrangler.jsonc` `unsafe.bindings` of type `ratelimit`) in front of this Worker —
+that's atomic across the edge and doesn't consume KV operation quota.
+
 ## Storage Format
 
 Entries are stored in KV as JSON with versioning and metadata:

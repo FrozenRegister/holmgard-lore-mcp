@@ -16,8 +16,13 @@ async function notifySlack(webhookUrl: string | undefined, ip: string, windowEnd
   }
 }
 
-// In-memory rate limiter (per-instance; sufficient for a single-worker
-// deployment. For multi-instance scale, use Cloudflare Rate Limiting rules.)
+// In-memory rate limiter — per-isolate, not shared across Workers instances.
+// Deliberately NOT backed by KV: KV enforces ~1 write/sec/key, and a client
+// making enough requests to need rate limiting is exactly the client that
+// would break that write ceiling, making a KV-backed counter unreliable
+// under the very burst it's meant to catch. Treat this as gentle per-isolate
+// back-pressure, not a DoS defense — see README.md "Rate limiting" for the
+// full rationale and for configuring real Cloudflare Rate Limiting rules.
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 export default async function rateLimitMiddleware(c: any, next: any): Promise<any> {
