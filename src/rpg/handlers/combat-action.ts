@@ -6,7 +6,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['attack', 'apply_damage', 'heal', 'apply_condition', 'remove_condition', 'use_ability', 'get_log', 'get_turn_summary'] as const
+const ACTIONS = ['attack', 'apply_damage', 'heal', 'apply_condition', 'remove_condition', 'use_ability', 'get_log', 'get_turn_summary', 'dash', 'dodge', 'disengage', 'help', 'ready'] as const
 type CombatActionType = typeof ACTIONS[number]
 const ALIASES: Record<string, CombatActionType> = {
   hit: 'attack', strike: 'attack', swing: 'attack',
@@ -17,6 +17,19 @@ const ALIASES: Record<string, CombatActionType> = {
   ability: 'use_ability', special: 'use_ability', skill: 'use_ability',
   log: 'get_log', history: 'get_log',
   summary: 'get_turn_summary', turn_summary: 'get_turn_summary',
+  sprint: 'dash', move_action: 'dash',
+  evade: 'dodge',
+  retreat: 'disengage', withdraw: 'disengage',
+  assist: 'help',
+  prepare: 'ready', hold_action: 'ready', delay: 'ready',
+}
+
+async function toggleCondition(db: D1Database, characterId: string, tag: string, add: boolean): Promise<void> {
+  const row = await db.prepare('SELECT conditions FROM characters WHERE id = ?').bind(characterId).first() as { conditions: string } | null
+  if (!row) return
+  const conditions: string[] = JSON.parse(row.conditions ?? '[]')
+  const next = add ? Array.from(new Set([...conditions, tag])) : conditions.filter(c => c !== tag)
+  await db.prepare('UPDATE characters SET conditions = ? WHERE id = ?').bind(JSON.stringify(next), characterId).run()
 }
 
 const InputSchema = z.object({
@@ -63,17 +76,28 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
     case 'apply_damage': {
       if (!a.targetIds?.length || a.damage === undefined) return err('"targetIds" and "damage" are required')
       const hpChanges: Record<string, number> = {}
+      const concentrationChecks: Record<string, number> = {}
       for (const targetId of a.targetIds) {
-        const char = await db.prepare('SELECT hp FROM characters WHERE id = ?').bind(targetId).first() as { hp: number } | null
+        const char = await db.prepare('SELECT hp, resistances, vulnerabilities, immunities, concentrating_on FROM characters WHERE id = ?').bind(targetId).first() as
+          { hp: number; resistances: string | null; vulnerabilities: string | null; immunities: string | null; concentrating_on: string | null } | null
         if (char) {
-          const newHp = Math.max(0, char.hp - a.damage)
+          const immunities: string[] = char.immunities ? JSON.parse(char.immunities) : []
+          const resistances: string[] = char.resistances ? JSON.parse(char.resistances) : []
+          const vulnerabilities: string[] = char.vulnerabilities ? JSON.parse(char.vulnerabilities) : []
+          let effectiveDamage = a.damage
+          if (a.damageType && immunities.includes(a.damageType)) effectiveDamage = 0
+          else if (a.damageType && resistances.includes(a.damageType)) effectiveDamage = Math.floor(effectiveDamage / 2)
+          else if (a.damageType && vulnerabilities.includes(a.damageType)) effectiveDamage = effectiveDamage * 2
+
+          const newHp = Math.max(0, char.hp - effectiveDamage)
           await db.prepare('UPDATE characters SET hp = ? WHERE id = ?').bind(newHp, targetId).run()
           hpChanges[targetId] = newHp - char.hp
+          if (char.concentrating_on && effectiveDamage > 0) concentrationChecks[targetId] = Math.max(10, Math.floor(effectiveDamage / 2))
         }
       }
       const summary = `Applied ${a.damage} ${a.damageType ?? ''} damage to ${a.targetIds.length} target(s)`
       await logAction('damage', summary, null, a.damage, null, hpChanges)
-      return ok({ success: true, actionType: 'apply_damage', damage: a.damage, targetIds: a.targetIds, hpChanges })
+      return ok({ success: true, actionType: 'apply_damage', damage: a.damage, targetIds: a.targetIds, hpChanges, concentrationChecks })
     }
     case 'heal': {
       if (!a.targetIds?.length || a.healAmount === undefined) return err('"targetIds" and "healAmount" are required')
@@ -129,6 +153,40 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
       if (!a.encounterId) return err('"encounterId" is required')
       const { results } = await db.prepare('SELECT * FROM combat_action_log WHERE encounter_id = ? AND round = ? ORDER BY turn_index').bind(a.encounterId, a.round).all()
       return ok({ success: true, actionType: 'get_turn_summary', encounterId: a.encounterId, round: a.round, actions: results })
+    }
+    case 'dash': {
+      if (!a.actorId) return err('"actorId" is required')
+      const summary = `${a.actorName ?? a.actorId} takes the Dash action`
+      await logAction('dash', summary)
+      return ok({ success: true, actionType: 'dash', summary })
+    }
+    case 'dodge': {
+      if (!a.actorId) return err('"actorId" is required')
+      await toggleCondition(db, a.actorId, 'dodging', true)
+      const summary = `${a.actorName ?? a.actorId} takes the Dodge action`
+      await logAction('dodge', summary)
+      return ok({ success: true, actionType: 'dodge', actorId: a.actorId, summary })
+    }
+    case 'disengage': {
+      if (!a.actorId) return err('"actorId" is required')
+      await toggleCondition(db, a.actorId, 'disengaged', true)
+      const summary = `${a.actorName ?? a.actorId} takes the Disengage action`
+      await logAction('disengage', summary)
+      return ok({ success: true, actionType: 'disengage', actorId: a.actorId, summary })
+    }
+    case 'help': {
+      if (!a.actorId || !a.targetIds?.length) return err('"actorId" and "targetIds" are required')
+      for (const targetId of a.targetIds) await toggleCondition(db, targetId, 'helped', true)
+      const summary = `${a.actorName ?? a.actorId} helps ${a.targetIds.join(', ')}`
+      await logAction('help', summary)
+      return ok({ success: true, actionType: 'help', actorId: a.actorId, targetIds: a.targetIds, summary })
+    }
+    case 'ready': {
+      if (!a.actorId || !a.description) return err('"actorId" and "description" (the trigger + held action) are required')
+      await toggleCondition(db, a.actorId, 'readying', true)
+      const summary = `${a.actorName ?? a.actorId} readies an action: ${a.description}`
+      await logAction('ready', summary, { trigger: a.description })
+      return ok({ success: true, actionType: 'ready', actorId: a.actorId, trigger: a.description, summary })
     }
   }
 }
