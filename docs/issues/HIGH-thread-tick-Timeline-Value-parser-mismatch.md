@@ -2,7 +2,7 @@
 
 **Severity:** HIGH
 **Reported:** 2026-06-11
-**Status:** Open
+**Status:** Resolved — `extractFieldFromText` (`src/lib/lore.ts`) parses `**Timeline-Value:**` via a markdown regex, not YAML frontmatter, so `thread_tick` correctly finds these fields. Verified 2026-07-02.
 
 ## Symptom
 

@@ -68,6 +68,10 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
 
   switch (match.matched) {
     case 'create_encounter': {
+      if (a.regionId) {
+        const region = await db.prepare('SELECT id FROM regions WHERE id = ?').bind(a.regionId).first()
+        if (!region) return err(`"regionId" "${a.regionId}" does not exist in the regions table. Omit "regionId" to create an unattached encounter, or create the region first.`)
+      }
       const id = crypto.randomUUID()
       const tokens = a.tokens ?? []
       await db.prepare('INSERT INTO encounters (id, region_id, tokens, round, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
