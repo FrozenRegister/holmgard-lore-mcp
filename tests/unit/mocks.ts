@@ -4,6 +4,7 @@
 
 import type { Context } from 'hono'
 import type { AppBindings } from '../../src/types'
+import type { RequestIdVariables } from '../../src/middleware/request-id'
 
 /** Minimal KVNamespace-compatible interface for mocks. */
 export interface MockKVStore {
@@ -116,7 +117,7 @@ export function createMockD1Database(): D1Database {
 export function createMockContext(
   seed?: Record<string, string>,
   includeD1: boolean = false,
-): Context<{ Bindings: AppBindings }> {
+): Context<{ Bindings: AppBindings; Variables: RequestIdVariables }> {
   const kv = createMockKV(seed)
   const d1 = includeD1 ? createMockD1Database() : undefined
 
@@ -143,5 +144,5 @@ export function createMockContext(
         status: status ?? 200,
         headers: { 'content-type': 'application/json' },
       }),
-  } as unknown as Context<{ Bindings: AppBindings }>
+  } as unknown as Context<{ Bindings: AppBindings; Variables: RequestIdVariables }>
 }

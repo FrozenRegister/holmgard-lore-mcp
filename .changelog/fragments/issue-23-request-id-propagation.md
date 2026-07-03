@@ -1,0 +1,4 @@
+### Added
+
+- Every request now gets a correlation ID (`crypto.randomUUID()`, or echoed back if the client sends `X-Request-Id`), returned on the response as `X-Request-Id`. `ToolContext.c` and the `admin`/`internal` sub-routers carry it through Hono's `Variables`. The top-level unhandled-exception handler in `src/index.ts` and the shared `errorResponse()` helper in `src/admin/routes.ts` now tag both their `console.error` log line and the JSON error body with `request_id`, so a user-reported failure can be traced to a specific log line without guessing by timestamp. (#23)
+- Scope note: this covers the legacy JSON-RPC `/mcp` handler and the `/admin`/`/internal` REST routes — the Streamable HTTP path via the `HolmgardMCP` Durable Object uses a synthetic context that bypasses the Hono middleware chain and isn't covered yet.

@@ -7,6 +7,7 @@ import { makeResult, makeError, validateRequest } from './lib/rpc'
 import { kvGet, kvList, getKV } from './lib/kv'
 import { parseKvEntry } from './lib/lore'
 import rateLimitMiddleware, { wsReconnectRateLimit } from './middleware/rate-limit'
+import { requestIdMiddleware, type RequestIdVariables } from './middleware/request-id'
 import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
@@ -34,8 +35,9 @@ const getIsAuthenticated = (c: any): boolean => {
 // the HolmgardMCP DO via the agents SDK session management.
 const mcpServeHandler = HolmgardMCP.serve('/mcp', { binding: 'MCP_OBJECT', transport: 'streamable-http' })
 
-const app = new Hono<{ Bindings: AppBindings }>()
+const app = new Hono<{ Bindings: AppBindings; Variables: RequestIdVariables }>()
 
+app.use('*', requestIdMiddleware)
 app.use('*', rateLimitMiddleware)
 
 app.use('*', cors({
@@ -93,8 +95,10 @@ app.post('/mcp', async (c) => {
     return c.json(makeError(null, -32700, 'Parse error: invalid JSON'), 200)
   }
 
+  const requestId = c.get('requestId')
+
   try {
-    try { console.log('MCP incoming:', JSON.stringify(body)) } catch { /* ignore log error */ }
+    try { console.log('MCP incoming:', JSON.stringify({ request_id: requestId, body })) } catch { /* ignore log error */ }
 
     const validated = validateRequest(body)
     if (!validated.ok) return c.json(validated.error, 200)
@@ -237,8 +241,8 @@ app.post('/mcp', async (c) => {
     return c.json(makeError(id, -32601, `Method not found: ${method}`), 200)
 
   } catch (e: unknown) {
-    console.error('Unhandled exception in MCP handler', e)
-    return c.json(makeError(null, -32603, 'Internal error', { message: e instanceof Error ? e.message : String(e) }), 200)
+    console.error(JSON.stringify({ request_id: requestId, error: 'Unhandled exception in MCP handler', message: e instanceof Error ? e.message : String(e) }))
+    return c.json(makeError(null, -32603, 'Internal error', { message: e instanceof Error ? e.message : String(e), request_id: requestId }), 200)
   }
 })
 
