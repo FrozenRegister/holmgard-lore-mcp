@@ -300,6 +300,47 @@ Narrator asks what the bandit leader does when alone:
 | `load_tool_schema` | Narrator | Get detailed documentation of a tool (parameters, examples) |
 | `math_manage` (dice rolls, etc.) | Narrator | Roll dice, generate random numbers, handle probability |
 
+#### Dice Notation Reference
+
+`math_manage` isn't directly callable — invoke it via `rpg({ sub: "math", action: "roll", expression: "..." })`. Full parameter docs are available via `load_tool_schema({ toolName: "math_manage" })`.
+
+**Grammar:** `[count]d(sides|%|F)[r1][dl|dh|kl|kh N][!][+/-N][>N]`
+
+| Piece | Meaning |
+|---|---|
+| `count` | Number of dice (default 1) |
+| `d100` / `d6` / etc. | Normal die with that many faces |
+| `d%` | Percentile die (equivalent to `d100`) |
+| `dF` | Fudge/Fate die — each die shows `-1`, `0`, or `+1` |
+| `r1` | Reroll any natural 1 once (the new value is kept even if it's also a 1) |
+| `dlN` / `dhN` | Drop the lowest/highest `N` dice |
+| `klN` / `khN` | Keep only the lowest/highest `N` dice — **this is also how advantage/disadvantage are expressed**, e.g. `2d20kh1` (advantage) / `2d20kl1` (disadvantage). There's no separate `adv`/`dis` keyword. Only one of `dl`/`dh`/`kl`/`kh` may appear per expression. |
+| `!` | Exploding dice — a natural max face rerolls and adds, chaining while max keeps coming up |
+| `+N` / `-N` | Flat modifier |
+| `>N` | Count successes instead of summing — kept dice rolling greater than `N` become the result (response has `successes` instead of a plain total). Cannot combine with a flat modifier (ambiguous), and isn't meaningful on percentile/Fudge dice. |
+
+**Worked examples:**
+
+| Expression | Meaning |
+|---|---|
+| `2d6+3` | Two d6 plus 3 |
+| `4d6dl1` | Classic ability-score roll: 4d6, drop the lowest |
+| `2d20kh1+5` | Attack roll with advantage, +5 to hit |
+| `2d20kl1` | Disadvantage |
+| `d%` | Percentile roll, 1-100 |
+| `4dF` | Four Fudge dice, total -4 to +4 |
+| `2d6r1` | Reroll any 1s once |
+| `5d10>7` | Dice-pool success count (World of Darkness/Shadowrun style) |
+| `1d20!` | Exploding d20 |
+
+**Critical hit/fumble:** `roll`'s response includes a `critical: "success" | "failure" | null` field, but **only** when the expression is a single d20 check (`1d20`, with or without `!`/modifier) or an advantage/disadvantage pair (`2d20kh1` / `2d20kl1`). The field is **omitted entirely** (not even `null`) for anything else — dice pools (`8d20`), non-d20 dice, percentile/Fudge dice, and success-counting rolls — so a caller can safely check `"critical" in result` to know whether the roll was crit-eligible at all. `"success"` = natural 20, `"failure"` = natural 1, `null` = neither.
+
+**Roll history:** every `roll` and `probability` call is persisted. Pass a `sessionId` when rolling to tag it, then retrieve past calculations with `rpg({ sub: "math", action: "get_history", sessionId, kind: "roll" | "probability", limit, calculationId })`.
+
+**A note on `seed`:** the `roll`/`probability` actions accept an optional `seed` string, but it is currently **cosmetic only** — it's stored alongside the calculation for record-keeping but does not make the roll reproducible. Randomness is otherwise cryptographically backed (`crypto.getRandomValues`) rather than `Math.random()`.
+
+**Known Behavior:** this dice engine is not yet used by the ad-hoc rolls in `combat_action`, `combat_manage`, `perception_manage`, `aura_manage`, `travel_manage`, or `entity_manage`'s `resolve_interaction`/`roll_encounter` — those subsystems still call `Math.random()` directly (e.g. `combat_action`'s `attack` falls back to a flat 50% coin-flip when no `attackRoll` is supplied, not an actual d20 check). Consolidating them onto this engine is tracked separately since it would be a real behavior change, not just a refactor.
+
 ---
 
 ## For the AI Narrator (Shapes.inc Chatbot)
