@@ -10,7 +10,7 @@ import { checkForConcurrentWrite } from '../lib/concurrency'
 import type { ToolContext } from './types'
 
 export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ key: z.string().min(1), text: z.string().min(1) })
+  const schema = z.object({ key: z.string().min(1), text: z.string().min(1), dry_run: z.boolean().optional().default(false) })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
@@ -24,11 +24,19 @@ export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Res
   const existingRaw = await kvGet(c, key)
   const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
   const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
+  const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+
+  if (parsed.data.dry_run) {
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `[DRY RUN] Would save lore for "${key}" (v${version}). No changes were written.` }],
+      dry_run: true,
+      would_change: { key, operation: 'set_lore', before: existingText, after: text, version }
+    }), 200)
+  }
 
   if (existingRaw) await pushHistory(c, key, existingRaw)
 
   const now = new Date().toISOString()
-  const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
   const payload = JSON.stringify({
     text,
@@ -50,7 +58,7 @@ export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Res
 }
 
 export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ key: z.string().min(1) })
+  const schema = z.object({ key: z.string().min(1), dry_run: z.boolean().optional().default(false) })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
     return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
@@ -61,6 +69,15 @@ export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<
   const key = parsed.data.key.trim().toLowerCase()
   const existingRaw = await kvGet(c, key)
   const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
+
+  if (parsed.data.dry_run) {
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `[DRY RUN] Would delete lore for "${key}". No changes were written.` }],
+      dry_run: true,
+      would_change: { key, operation: 'delete_lore', before: existingText, after: null }
+    }), 200)
+  }
+
   const deleted = await kvDelete(c, key)
   if (deleted) {
     await updateIndexes(c, key, '', existingText)
@@ -84,7 +101,8 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
     key: z.string().min(1),
     operation: z.string().min(1),
     target: z.string().optional(),
-    value: z.string().optional()
+    value: z.string().optional(),
+    dry_run: z.boolean().optional().default(false),
   })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
@@ -155,6 +173,14 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
     successMessage = value !== undefined
       ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
       : `Deleted 1 occurrence of "${target}" from "${key}".`
+  }
+
+  if (parsed.data.dry_run) {
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `[DRY RUN] ${successMessage} No changes were written.` }],
+      dry_run: true,
+      would_change: { key, operation: 'patch_lore', patch_operation: operation, target: target ?? null, value: value ?? null, before: text, after: updatedText }
+    }), 200)
   }
 
   const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
@@ -478,7 +504,8 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
     key: z.string().min(1),
     field_path: z.string().min(1),
     increment: z.number().default(1),
-    reason: z.string().default('system-update')
+    reason: z.string().default('system-update'),
+    dry_run: z.boolean().optional().default(false),
   })
   const parsed = schema.safeParse(args)
   if (!parsed.success) {
@@ -500,6 +527,14 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
 
   const newValue = parseFloat((currentValue + parsed.data.increment).toPrecision(10))
   const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
+
+  if (parsed.data.dry_run) {
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `[DRY RUN] Would increment ${parsed.data.field_path} from ${currentValue} to ${newValue}. No changes were written.` }],
+      dry_run: true,
+      would_change: { key, operation: 'increment_topic_field', field_path: parsed.data.field_path, before: currentValue, after: newValue }
+    }), 200)
+  }
 
   const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
   const conflictCheck = await checkForConcurrentWrite(c, key, baseVersion)

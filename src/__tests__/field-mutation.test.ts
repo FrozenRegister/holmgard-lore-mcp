@@ -108,6 +108,30 @@ describe('increment_topic_field — concurrent write conflict detection', () => 
   })
 })
 
+describe('increment_topic_field — dry_run', () => {
+  it('previews the increment without writing it', async () => {
+    await seedKV('character:dry-run-counter', '**days_remaining:** 10')
+    const res = await callTool('lore_manage', {
+      action: 'increment',
+      key: 'character:dry-run-counter',
+      field_path: 'days_remaining',
+      increment: -1,
+      dry_run: true,
+    })
+    expect(res.result.dry_run).toBe(true)
+    expect(res.result.would_change).toEqual({
+      key: 'character:dry-run-counter',
+      operation: 'increment_topic_field',
+      field_path: 'days_remaining',
+      before: 10,
+      after: 9,
+    })
+
+    const get = await callTool('lore_manage', { action: 'get', query: 'character:dry-run-counter' })
+    expect(get.result.text).toContain('**days_remaining:** 10')
+  })
+})
+
 describe('increment_topic_field — field not present in text', () => {
   it('returns error when field_path does not exist in lore text', async () => {
     await seedKV('character:no-field', '**Status:** Active\n**character:** test-subject')
