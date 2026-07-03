@@ -33,6 +33,9 @@ import { handleBatchManage } from './handlers/batch-manage'
 import { handleTravelManage } from './handlers/travel-manage'
 import { handlePerceptionManage } from './handlers/perception-manage'
 import { handleSceneManage } from './handlers/scene-manage'
+import { handleRestManage } from './handlers/rest-manage'
+import { handleScrollManage } from './handlers/scroll-manage'
+import { handleEventManage } from './handlers/event-manage'
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
@@ -64,6 +67,9 @@ const SUB_MAP: Record<string, RpgFn> = {
   travel:        handleTravelManage,
   perception:    handlePerceptionManage,
   scene:         handleSceneManage,
+  rest:          handleRestManage,
+  scroll:        handleScrollManage,
+  event:         handleEventManage,
 }
 
 export const handle_rpg: ToolHandler = async ({ c, id, args }) => {

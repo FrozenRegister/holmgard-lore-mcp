@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'list', 'remove', 'expire', 'get_affecting', 'concentrate', 'break_concentration'] as const
+const ACTIONS = ['create', 'get', 'list', 'remove', 'expire', 'get_affecting', 'concentrate', 'break_concentration', 'check_save', 'check_duration'] as const
 type AuraAction = typeof ACTIONS[number]
 const ALIASES: Record<string, AuraAction> = {
   add_aura: 'create', cast_aura: 'create',
@@ -18,6 +18,8 @@ const ALIASES: Record<string, AuraAction> = {
   affecting: 'get_affecting', on: 'get_affecting',
   start_concentrate: 'concentrate', focus: 'concentrate',
   break: 'break_concentration', lose_concentration: 'break_concentration',
+  concentration_check: 'check_save', save_check: 'check_save', constitution_save: 'check_save',
+  duration_check: 'check_duration',
 }
 
 const InputSchema = z.object({
@@ -37,7 +39,14 @@ const InputSchema = z.object({
   characterId: z.string().optional(),
   saveDcBase: z.number().int().optional().default(10),
   targetIds: z.array(z.string()).optional(),
+  damage: z.number().int().min(0).optional(),
+  saveRoll: z.number().int().min(1).max(20).optional(),
 })
+
+async function breakConcentration(db: D1Database, characterId: string): Promise<void> {
+  await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(characterId).run()
+  await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(characterId).run()
+}
 
 export async function handleAuraManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
@@ -94,9 +103,34 @@ export async function handleAuraManage(env: AppBindings, args: Record<string, un
       if (!a.characterId) return err('"characterId" is required')
       const conc = await db.prepare('SELECT active_spell FROM concentration WHERE character_id = ?').bind(a.characterId).first()
       if (!conc) return ok({ success: true, actionType: 'break_concentration', characterId: a.characterId, hadConcentration: false })
-      await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(a.characterId).run()
-      await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(a.characterId).run()
+      await breakConcentration(db, a.characterId)
       return ok({ success: true, actionType: 'break_concentration', characterId: a.characterId, hadConcentration: true, spellEnded: (conc as any).active_spell })
+    }
+    case 'check_save': {
+      if (!a.characterId) return err('"characterId" is required')
+      const conc = await db.prepare('SELECT active_spell FROM concentration WHERE character_id = ?').bind(a.characterId).first() as { active_spell: string } | null
+      if (!conc) return ok({ success: true, actionType: 'check_save', characterId: a.characterId, wasConcentrating: false })
+      if (a.damage === undefined) return err('"damage" is required to compute the concentration save DC')
+      const dc = Math.max(10, Math.floor(a.damage / 2))
+      const roll = a.saveRoll ?? Math.floor(Math.random() * 20) + 1
+      const maintained = roll >= dc
+      if (!maintained) await breakConcentration(db, a.characterId)
+      return ok({ success: true, actionType: 'check_save', characterId: a.characterId, wasConcentrating: true, spellName: conc.active_spell, dc, roll, maintained })
+    }
+    case 'check_duration': {
+      if (!a.characterId) return err('"characterId" is required')
+      const conc = await db.prepare('SELECT active_spell, started_at, max_duration FROM concentration WHERE character_id = ?').bind(a.characterId).first() as
+        { active_spell: string; started_at: number; max_duration: number | null } | null
+      if (!conc) return ok({ success: true, actionType: 'check_duration', characterId: a.characterId, concentrating: false })
+      const expired = conc.max_duration !== null && (conc.started_at + conc.max_duration) < now
+      if (expired) {
+        await breakConcentration(db, a.characterId)
+        return ok({ success: true, actionType: 'check_duration', characterId: a.characterId, concentrating: false, expired: true, spellEnded: conc.active_spell })
+      }
+      return ok({
+        success: true, actionType: 'check_duration', characterId: a.characterId, concentrating: true, spellName: conc.active_spell,
+        remainingMs: conc.max_duration !== null ? (conc.started_at + conc.max_duration) - now : null,
+      })
     }
   }
 }

@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'move_token', 'render', 'delete'] as const
+const ACTIONS = ['create', 'get', 'update', 'move_token', 'render', 'delete', 'get_terrain', 'set_terrain', 'calculate_aoe'] as const
 type CombatMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CombatMapAction> = {
   new_map: 'create', setup_map: 'create', init_battlefield: 'create',
@@ -16,6 +16,9 @@ const ALIASES: Record<string, CombatMapAction> = {
   move: 'move_token', reposition: 'move_token',
   display: 'render', ascii: 'render', view: 'render',
   remove: 'delete', destroy: 'delete', clear: 'delete',
+  terrain: 'get_terrain', read_terrain: 'get_terrain',
+  update_terrain: 'set_terrain', paint_terrain: 'set_terrain',
+  aoe: 'calculate_aoe', area_of_effect: 'calculate_aoe', blast_radius: 'calculate_aoe',
 }
 
 const InputSchema = z.object({
@@ -28,7 +31,44 @@ const InputSchema = z.object({
   tokenId: z.string().optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
+  origin: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
+  target: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
+  shape: z.enum(['circle', 'square', 'line']).optional().default('circle'),
+  size: z.number().int().min(1).max(30).optional().default(1),
 })
+
+function bresenhamLine(x0: number, y0: number, x1: number, y1: number): Array<{ x: number; y: number }> {
+  const points: Array<{ x: number; y: number }> = []
+  const dx = Math.abs(x1 - x0)
+  const dy = -Math.abs(y1 - y0)
+  const sx = x0 < x1 ? 1 : -1
+  const sy = y0 < y1 ? 1 : -1
+  let error = dx + dy
+  let x = x0
+  let y = y0
+  for (;;) {
+    points.push({ x, y })
+    if (x === x1 && y === y1) break
+    const e2 = 2 * error
+    if (e2 >= dy) { error += dy; x += sx }
+    if (e2 <= dx) { error += dx; y += sy }
+  }
+  return points
+}
+
+function calculateAoe(origin: { x: number; y: number }, shape: 'circle' | 'square' | 'line', size: number, target?: { x: number; y: number }): Array<{ x: number; y: number }> {
+  if (shape === 'line') {
+    if (!target) return []
+    return bresenhamLine(origin.x, origin.y, target.x, target.y)
+  }
+  const cells: Array<{ x: number; y: number }> = []
+  for (let dx = -size; dx <= size; dx++) {
+    for (let dy = -size; dy <= size; dy++) {
+      if (shape === 'square' || Math.sqrt(dx * dx + dy * dy) <= size) cells.push({ x: origin.x + dx, y: origin.y + dy })
+    }
+  }
+  return cells
+}
 
 function renderGrid(gridData: { width: number; height: number; terrain?: Array<{ x: number; y: number; type: string }>; tokens?: Array<{ id: string; x: number; y: number; symbol?: string }> }): string {
   const { width, height } = gridData
@@ -105,6 +145,32 @@ export async function handleCombatMap(env: AppBindings, args: Record<string, unk
       if (!a.id) return err('"id" is required')
       await db.prepare('DELETE FROM battlefield WHERE id = ?').bind(a.id).run()
       return ok({ success: true, actionType: 'delete', id: a.id })
+    }
+    case 'get_terrain': {
+      const id = a.id ?? a.encounterId
+      if (!id) return err('"id" or "encounterId" is required')
+      const row = a.id
+        ? await db.prepare('SELECT grid_data FROM battlefield WHERE id = ?').bind(id).first() as { grid_data: string } | null
+        : await db.prepare('SELECT grid_data FROM battlefield WHERE encounter_id = ? LIMIT 1').bind(id).first() as { grid_data: string } | null
+      if (!row) return err('Battlefield not found')
+      const gridData = JSON.parse(row.grid_data)
+      return ok({ success: true, actionType: 'get_terrain', terrain: gridData.terrain ?? [], width: gridData.width, height: gridData.height })
+    }
+    case 'set_terrain': {
+      if (!a.id) return err('"id" is required')
+      if (!a.terrain) return err('"terrain" is required')
+      const row = await db.prepare('SELECT grid_data FROM battlefield WHERE id = ?').bind(a.id).first() as { grid_data: string } | null
+      if (!row) return err(`Battlefield not found: ${a.id}`)
+      const gridData = JSON.parse(row.grid_data)
+      gridData.terrain = a.terrain
+      await db.prepare('UPDATE battlefield SET grid_data = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(gridData), now, a.id).run()
+      return ok({ success: true, actionType: 'set_terrain', id: a.id, terrainCount: a.terrain.length })
+    }
+    case 'calculate_aoe': {
+      if (!a.origin) return err('"origin" ({x, y}) is required')
+      if (a.shape === 'line' && !a.target) return err('"target" ({x, y}) is required for a line AoE')
+      const cells = calculateAoe(a.origin, a.shape, a.size, a.target)
+      return ok({ success: true, actionType: 'calculate_aoe', shape: a.shape, size: a.size, origin: a.origin, cells, count: cells.length })
     }
   }
 }
