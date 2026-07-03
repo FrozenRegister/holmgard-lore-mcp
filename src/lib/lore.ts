@@ -251,7 +251,7 @@ export function extractConsumptionInfo(characterText: string): any {
 }
 
 // Levenshtein distance: edit distance between two strings (lower = more similar).
-function levenshteinDistance(a: string, b: string): number {
+export function levenshteinDistance(a: string, b: string): number {
   const lenA = a.length
   const lenB = b.length
   const matrix: number[][] = Array(lenA + 1).fill(null).map(() => Array(lenB + 1).fill(0))
