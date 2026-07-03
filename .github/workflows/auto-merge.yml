@@ -6,6 +6,13 @@ on:
   workflow_run:
     workflows: ["CI", "PR Quality Checks", "Auto-fix Markdown"]
     types: [completed]
+  schedule:
+    # Fallback poller — workflow_run only reliably fires for CI runs triggered by a
+    # `push` (i.e. after merge to main), not for the `pull_request`-triggered runs
+    # that produce check results on feature branches. Without this, a PR labeled
+    # `auto-merge` before its checks finish never gets re-checked once they do.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 permissions:
   pull-requests: write
@@ -20,7 +27,76 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
+            async function tryMerge(prNumber, headSha) {
+              // Fetch all check runs for this commit (excludes this job itself by name)
+              const { data } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: headSha,
+                per_page: 100,
+              })
+              const checks = data.check_runs.filter(r => r.name !== 'merge')
+              console.log(`PR #${prNumber}: found ${data.check_runs.length} total checks, ${checks.length} after filtering 'merge'`)
+
+              const pending = checks.filter(r => r.status !== 'completed')
+              if (pending.length > 0) {
+                console.log(`PR #${prNumber}: still pending: ${pending.map(r => r.name).join(', ')}`)
+                return false
+              }
+
+              const failed = checks.filter(r =>
+                !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '') &&
+                !r.name.startsWith('codecov/')
+              )
+              if (failed.length > 0) {
+                console.log(`PR #${prNumber}: failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
+                return false
+              }
+
+              // No blocking reviews
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              })
+              if (reviews.some(r => r.state === 'CHANGES_REQUESTED')) {
+                console.log(`PR #${prNumber}: changes requested — skipping auto-merge`)
+                return false
+              }
+
+              console.log(`PR #${prNumber}: all checks pass — squash-merging`)
+              try {
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  merge_method: 'squash',
+                })
+                console.log(`PR #${prNumber}: merged successfully`)
+                return true
+              } catch (e) {
+                console.log(`PR #${prNumber}: merge failed (may already be merged): ${e.message}`)
+                return false
+              }
+            }
+
             try {
+              if (context.eventName === 'schedule' || context.eventName === 'workflow_dispatch') {
+                // Fallback poller — check every open, non-draft PR carrying the auto-merge label
+                const prs = await github.paginate(github.rest.pulls.list, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  per_page: 100,
+                })
+                const candidates = prs.filter(p => !p.draft && p.labels.some(l => l.name === 'auto-merge'))
+                console.log(`Scheduled sweep: ${candidates.length} open PR(s) with the auto-merge label`)
+                for (const pr of candidates) {
+                  await tryMerge(pr.number, pr.head.sha)
+                }
+                return
+              }
+
               let prNumber, headSha
 
               if (context.eventName === 'pull_request') {
@@ -69,50 +145,7 @@ jobs:
                 console.log(`Found matching PR #${prNumber}`)
               }
 
-              // Fetch all check runs for this commit (excludes this job itself by name)
-              const { data } = await github.rest.checks.listForRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: headSha,
-                per_page: 100,
-              })
-              const checks = data.check_runs.filter(r => r.name !== 'merge')
-              console.log(`Found ${data.check_runs.length} total checks, ${checks.length} after filtering 'merge'`)
-
-              const pending = checks.filter(r => r.status !== 'completed')
-              if (pending.length > 0) {
-                console.log(`Still pending: ${pending.map(r => r.name).join(', ')}`)
-                return
-              }
-
-              const failed = checks.filter(r =>
-                !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '') &&
-                !r.name.startsWith('codecov/')
-              )
-              if (failed.length > 0) {
-                console.log(`Failed checks: ${failed.map(r => `${r.name}=${r.conclusion}`).join(', ')}`)
-                return
-              }
-
-              // No blocking reviews
-              const reviews = await github.paginate(github.rest.pulls.listReviews, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber,
-              })
-              if (reviews.some(r => r.state === 'CHANGES_REQUESTED')) {
-                console.log('Changes requested — skipping auto-merge')
-                return
-              }
-
-              console.log(`All checks pass — squash-merging PR #${prNumber}`)
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber,
-                merge_method: 'squash',
-              })
-              console.log(`PR #${prNumber} merged successfully`)
+              await tryMerge(prNumber, headSha)
             } catch (e) {
               console.error(`Error in auto-merge: ${e.message}`)
               console.error(e.stack)
