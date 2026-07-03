@@ -1,6 +1,6 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
-import { expect, it, beforeEach } from 'vitest'
+import { expect, it, beforeEach, vi } from 'vitest'
 
 describe('increment_topic_field', () => {
   beforeEach(() => seedKV('character:counter-test', '**days_remaining:** 10\n**status:** active'))
@@ -69,6 +69,42 @@ describe('increment_topic_field', () => {
     })
     expect(res.error).toBeDefined()
     expect(res.error.message).toContain('not found')
+  })
+})
+
+describe('increment_topic_field — concurrent write conflict detection', () => {
+  it('detects a concurrent write instead of silently clobbering it', async () => {
+    await seedKV('character:race-condition', '**score:** 100')
+
+    // Simulate another writer landing between this handler's initial read and
+    // its pre-write conflict check: the handler calls kvGet twice per request
+    // (once for its own base read, once inside checkForConcurrentWrite). Make
+    // the second call observe a version bump that never actually happened via
+    // this test's own writes — exactly what a real concurrent writer would
+    // produce, without depending on Promise-scheduling timing that this
+    // in-memory KV resolves too fast to reproduce reliably (see #13).
+    let callCount = 0
+    const original = env.LORE_DB.get.bind(env.LORE_DB)
+    const spy = vi.spyOn(env.LORE_DB, 'get').mockImplementation((async (...args: unknown[]) => {
+      callCount++
+      if (callCount === 2) {
+        return JSON.stringify({ text: '**score:** 100', meta: { version: 99 } })
+      }
+      return (original as (...a: unknown[]) => unknown)(...args)
+    }) as typeof env.LORE_DB.get)
+
+    const res = await callTool('lore_manage', { action: 'increment', key: 'character:race-condition', field_path: 'score', increment: 1 })
+    spy.mockRestore()
+
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32009)
+    expect(res.error.message).toContain('Concurrent modification detected')
+    expect(res.error.data.key).toBe('character:race-condition')
+    expect(res.error.data.current_version).toBe(99)
+
+    // The score was never touched by the losing request.
+    const final = await callTool('lore_manage', { action: 'get', query: 'character:race-condition' })
+    expect(final.result.text).toContain('**score:** 100')
   })
 })
 

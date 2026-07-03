@@ -6,6 +6,7 @@ import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
+import { checkForConcurrentWrite } from '../lib/concurrency'
 import type { ToolContext } from './types'
 
 export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Response> {
@@ -154,6 +155,12 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
     successMessage = value !== undefined
       ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
       : `Deleted 1 occurrence of "${target}" from "${key}".`
+  }
+
+  const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
+  const conflictCheck = await checkForConcurrentWrite(c, key, baseVersion)
+  if (conflictCheck.conflict) {
+    return c.json(makeError(id, -32009, `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`, { key, current_version: conflictCheck.currentVersion }), 200)
   }
 
   await pushHistory(c, key, raw)
@@ -493,6 +500,12 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
 
   const newValue = parseFloat((currentValue + parsed.data.increment).toPrecision(10))
   const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
+
+  const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
+  const conflictCheck = await checkForConcurrentWrite(c, key, baseVersion)
+  if (conflictCheck.conflict) {
+    return c.json(makeError(id, -32009, `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`, { key, current_version: conflictCheck.currentVersion }), 200)
+  }
 
   await pushHistory(c, key, raw)
 
