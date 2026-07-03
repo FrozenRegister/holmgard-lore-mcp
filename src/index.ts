@@ -14,6 +14,7 @@ import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
 import { setToolIndex, setSchemaIndex } from './rpg/registry'
+import { mathManageSchemaDoc } from './rpg/definitions'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 
@@ -22,7 +23,11 @@ export { HolmgardMCP }
 
 // Initialize meta-tool indexes once at module load time
 setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
-setSchemaIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })))
+// mathManageSchemaDoc is schema-index-only — it documents rpg({sub:'math',...})'s
+// dice-notation grammar for load_tool_schema, but "math_manage" has no registry
+// handler of its own, so it must not be added to the tool index (that would
+// advertise a callable tool that 404s on tools/call).
+setSchemaIndex([...toolDefinitions, mathManageSchemaDoc].map((t: any) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })))
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
