@@ -227,6 +227,7 @@ Indexes are **read-through**, not write-through: `getIndexedKeys(c, indexKey)` r
 
 ### Tools Using Indexes (optimized, not full-scan)
 
+- `list_topics` (`lore_manage` action `list`) — reads `_idx:prefix:<prefix>` when a `prefix` arg is given (any prefix — indexes are built generically for every key's `key.split(':')[0]`, not just `character`)
 - `list_consumption_timelines` — reads `_idx:prefix:character`
 - `list_unpaid_setups` — reads `_idx:prefix:setup`
 - `get_location_occupants` — reads `_idx:location:<key>`

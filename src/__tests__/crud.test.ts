@@ -25,6 +25,29 @@ describe('list_topics', () => {
     expect(text).not.toContain('map:region:north')
     expect(res.result.metadata.count).toBe(1)
   })
+
+  it('filters by prefix using the maintained _idx:prefix index', async () => {
+    await callTool('lore_manage', { action: 'set', key: 'location:marsh-end', text: 'A muddy tidal flat.' })
+    await callTool('lore_manage', { action: 'set', key: 'character:eira-holt', text: '**Status:** Active' })
+    const res = await callTool('lore_manage', { action: 'list', prefix: 'location' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('location:marsh-end')
+    expect(text).not.toContain('character:eira-holt')
+    expect(res.result.metadata.count).toBe(1)
+    expect(res.result.metadata.prefix).toBe('location')
+  })
+
+  it('falls back to a full scan when no prefix index exists yet', async () => {
+    await seedKV('faction:crows', 'The Crowmark faction.')
+    await seedKV('faction:hollow-court', 'The Hollow Court.')
+    await seedKV('item:rusty-key', 'An old rusty key.')
+    const res = await callTool('lore_manage', { action: 'list', prefix: 'faction' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('faction:crows')
+    expect(text).toContain('faction:hollow-court')
+    expect(text).not.toContain('item:rusty-key')
+    expect(res.result.metadata.count).toBe(2)
+  })
 })
 
 describe('list_maps', () => {
