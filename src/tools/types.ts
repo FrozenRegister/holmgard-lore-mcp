@@ -5,7 +5,7 @@ import type { AppBindings } from '../types'
 export interface ToolContext {
   c: Context<{ Bindings: AppBindings }>
   id: string | number | null
-  args: Record<string, any>
+  args: Record<string, unknown>
   isAuthenticated: boolean
 }
 
