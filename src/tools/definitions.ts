@@ -49,6 +49,7 @@ const LORE_MANAGE_SCHEMA = {
       required: ['action'],
       properties: {
         action: { type: 'string', const: 'list', description: 'List all lore topic keys' },
+        prefix: { type: 'string', minLength: 1, description: 'Only return keys starting with this prefix (e.g. "location", "item") — uses the prefix index when available instead of a full scan' },
         limit: { type: 'number', minimum: 1, maximum: 1000, description: 'Max number of keys to return (default: 1000)' },
         offset: { type: 'number', minimum: 0, description: 'Offset for pagination (default: 0)' },
       },

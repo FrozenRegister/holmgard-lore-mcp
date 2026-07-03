@@ -41,6 +41,12 @@ describe.skipIf(!MCP_API_KEY)('Basic Tools', () => {
     expect(res.error).toBeUndefined()
   })
 
+  it('list_topics with prefix filter', async () => {
+    const res = await tool('lore_manage', { action: 'list', prefix: 'character' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.prefix).toBe('character')
+  })
+
   it('list_maps', async () => {
     const res = await tool('lore_manage', { action: 'list_maps' })
     expect(res.error).toBeUndefined()

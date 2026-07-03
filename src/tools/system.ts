@@ -1,6 +1,7 @@
 // src/tools/system.ts
 import { z } from 'zod'
 import { kvGet, kvList, kvListMaps } from '../lib/kv'
+import { getIndexedKeys } from '../lib/indexes'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, parseLoreSections } from '../lib/lore'
@@ -8,13 +9,17 @@ import { formatD1CharToLore } from '../rpg/utils/kv-to-d1'
 import type { ToolContext } from './types'
 
 export async function handle_list_topics({ c, id, args }: ToolContext): Promise<Response> {
-  const allKeys = await kvList(c)
+  const prefix = typeof args?.prefix === 'string' ? args.prefix.trim().toLowerCase() : ''
+  // Prefix queries use the maintained _idx:prefix:<ns> index (O(1) lookup) instead
+  // of a full kvList() scan — getIndexedKeys() falls back to scan+filter itself
+  // if the index doesn't exist yet, so this is safe for any prefix.
+  const allKeys = prefix ? await getIndexedKeys(c, `_idx:prefix:${prefix}`) : await kvList(c)
   const limit = Math.min(1000, (args?.limit as number) ?? 1000)
   const offset = Math.max(0, (args?.offset as number) ?? 0)
   const keys = allKeys.slice(offset, offset + limit)
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: keys.join(', ') }],
-    metadata: { count: keys.length, total: allKeys.length, limit, offset }
+    metadata: { count: keys.length, total: allKeys.length, limit, offset, prefix: prefix || null }
   }), 200)
 }
 
