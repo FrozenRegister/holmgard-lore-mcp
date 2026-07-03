@@ -45,6 +45,8 @@ pnpm test:live                      # Run smoke tests against production (requir
 
 See [CLAUDE.md](CLAUDE.md) for complete testing & validation procedures, including the mandatory pre-commit hook setup.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how a request flows through the system, the KV/D1 storage split, and the index-fallback and history-snapshot patterns.
+
 ## Build & Deploy
 
 ```bash
