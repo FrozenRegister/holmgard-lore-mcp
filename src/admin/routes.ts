@@ -777,4 +777,84 @@ admin.post('/map/push-landmarks', async (c) => {
   }
 })
 
+// ── Disaster recovery: full KV dump + restore ───────────────────────────────
+// Exports/imports the *entire* KV namespace (including _history:, _idx:,
+// _changelog, etc.) — a real restore needs to reconstruct the whole store,
+// not just the "visible" lore keys kvList() filters down to. Admin-only
+// (ADMIN_SECRET-gated): this is bulk/privileged, not an agent-facing read, so
+// it stays off the MCP surface per the API surface convention in CLAUDE.md.
+
+admin.get('/export', async (c) => {
+  try {
+    const headerSecret = c.req.header('X-Api-Key') ?? c.req.header('X-Admin-Secret') ?? null
+    const ADMIN_SECRET = c.env?.ADMIN_SECRET
+    if (!ADMIN_SECRET || headerSecret !== ADMIN_SECRET) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const kv = getKV(c)
+    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
+
+    const keys: Array<{ key: string; value: string }> = []
+    let cursor: string | undefined
+    do {
+      const listed: { keys: Array<{ name: string }>; list_complete: boolean; cursor?: string } =
+        await kv.list(cursor ? { cursor } : undefined)
+      const rawValues = await Promise.all(listed.keys.map(k => kv.get(k.name)))
+      for (let i = 0; i < listed.keys.length; i++) {
+        const raw = rawValues[i]
+        if (raw !== null) keys.push({ key: listed.keys[i].name, value: raw })
+      }
+      cursor = listed.list_complete ? undefined : listed.cursor
+    } while (cursor)
+
+    return c.json({ ok: true, keys, exported_at: new Date().toISOString(), key_count: keys.length }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return errorResponse(c, e)
+  }
+})
+
+admin.post('/import', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const items: unknown[] = Array.isArray((body as Record<string, unknown>)?.keys) ? (body as Record<string, unknown>).keys as unknown[] : []
+    if (!items.length) {
+      return c.json({ ok: false, error: 'keys must be a non-empty array' }, 400)
+    }
+
+    const kv = getKV(c)
+    if (!kv) return c.json({ ok: false, error: 'kv unavailable' }, 503)
+
+    const failedKeys: string[] = []
+    let imported = 0
+
+    await Promise.all(items.map(async (item) => {
+      if (!item || typeof item !== 'object') { failedKeys.push('?'); return }
+      const key = (item as Record<string, unknown>).key
+      const value = (item as Record<string, unknown>).value
+      if (typeof key !== 'string' || !key.trim() || typeof value !== 'string') {
+        failedKeys.push(typeof key === 'string' && key ? key : '?')
+        return
+      }
+      try {
+        await kv.put(key, value)
+        imported++
+      } catch {
+        failedKeys.push(key)
+      }
+    }))
+
+    return c.json({ ok: failedKeys.length === 0, imported, failed: failedKeys.length, failedKeys }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return errorResponse(c, e)
+  }
+})
+
 export default admin
