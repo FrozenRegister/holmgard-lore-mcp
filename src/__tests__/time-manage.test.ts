@@ -280,4 +280,24 @@ describe('handleTimeManage', () => {
     const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-singular', by: '1 day' })).content[0].text)
     expect(body.new_date).toBe('2184-07-16')
   })
+
+  it('advance by days rolls over year boundary (Dec 25 + 10 days = Jan 4)', async () => {
+    await seedWorld('w-yearboundary', '2184-12-25')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-yearboundary', by: '10 days' })).content[0].text)
+    expect(body.new_date).toBe('2185-01-04')
+  })
+
+  it('advance by months rolls over year boundary (Nov + 3 months = Feb next year)', async () => {
+    await seedWorld('w-monthyear', '2184-11-15')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-monthyear', by: '3 months' })).content[0].text)
+    expect(body.new_date).toBe('2185-02-15')
+  })
+
+  it('advance triggers birthday spanning year boundary', async () => {
+    await seedWorld('w-yearbday', '2184-12-20')
+    await seedChar('c-yearbday', '2166-01-05') // birthday Jan 5, falls in range Dec 20 → Jan 20
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-yearbday', by: '30 days' })).content[0].text)
+    expect(body.birthdays_triggered).toHaveLength(1)
+    expect(body.birthdays_triggered[0].id).toBe('c-yearbday')
+  })
 })
