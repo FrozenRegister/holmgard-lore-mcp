@@ -80,6 +80,75 @@ describe('character_manage tool', () => {
     expect(char.character.stats).toEqual(stats)
   })
 
+  it('create accepts custom values for every character field', async () => {
+    const payload = {
+      action: 'create',
+      name: 'Ancient Wyrm',
+      characterType: 'enemy',
+      characterClass: 'Dragon',
+      race: 'Wyrm',
+      level: 20,
+      hp: 300,
+      maxHp: 300,
+      ac: 22,
+      stats: { str: 27, dex: 10, con: 25, int: 16, wis: 15, cha: 19 },
+      factionId: 'faction:dragons',
+      behavior: 'territorial',
+      background: 'Ancient hoarder',
+      alignment: 'Chaotic Evil',
+      origin: 'The Sundered Peaks',
+      conditions: ['frightened'],
+      resistances: ['fire'],
+      vulnerabilities: ['cold'],
+      immunities: ['poison'],
+      knownSpells: ['fireball'],
+      preparedSpells: ['fireball'],
+      cantripsKnown: ['fire-bolt'],
+      spellSlots: { '3': { max: 3, current: 3 } },
+      pactMagicSlots: { max: 2, current: 2, level: 3 },
+      maxSpellLevel: 5,
+      concentratingOn: 'mage-armor',
+      legendaryActions: 3,
+      legendaryActionsRemaining: 3,
+      legendaryResistances: 3,
+      legendaryResistancesRemaining: 3,
+      hasLairActions: true,
+      currency: { gold: 5000, silver: 0, copper: 0 },
+      currentRoomId: null,
+      perceptionBonus: 8,
+      stealthBonus: 2,
+      resourcePools: { breathWeapon: { max: 1, current: 1 } },
+    }
+    const r = await callTool('character_manage', payload)
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: r.characterId })
+    expect(char.character.stats).toEqual(payload.stats)
+    expect(char.character.faction_id).toBe('faction:dragons')
+    expect(char.character.behavior).toBe('territorial')
+    expect(char.character.origin).toBe('The Sundered Peaks')
+    expect(char.character.conditions).toEqual(['frightened'])
+    expect(char.character.resistances).toEqual(['fire'])
+    expect(char.character.vulnerabilities).toEqual(['cold'])
+    expect(char.character.immunities).toEqual(['poison'])
+    expect(char.character.known_spells).toEqual(['fireball'])
+    expect(char.character.prepared_spells).toEqual(['fireball'])
+    expect(char.character.cantrips_known).toEqual(['fire-bolt'])
+    expect(char.character.spell_slots).toEqual({ '3': { max: 3, current: 3 } })
+    expect(char.character.pact_magic_slots).toEqual({ max: 2, current: 2, level: 3 })
+    expect(char.character.max_spell_level).toBe(5)
+    expect(char.character.concentrating_on).toBe('mage-armor')
+    expect(char.character.legendary_actions).toBe(3)
+    expect(char.character.legendary_actions_remaining).toBe(3)
+    expect(char.character.legendary_resistances).toBe(3)
+    expect(char.character.legendary_resistances_remaining).toBe(3)
+    expect(char.character.has_lair_actions).toBe(1)
+    expect(char.character.currency).toEqual({ gold: 5000, silver: 0, copper: 0 })
+    expect(char.character.perception_bonus).toBe(8)
+    expect(char.character.stealth_bonus).toBe(2)
+    expect(char.character.resource_pools).toEqual({ breathWeapon: { max: 1, current: 1 } })
+  })
+
   it('create without name returns error', async () => {
     const r = await callTool('character_manage', { action: 'create' })
     expect(r.error).toBe(true)
@@ -295,6 +364,31 @@ describe('character_manage tool', () => {
 
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.alignment).toBe('Lawful Good')
+  })
+
+  it('update accepts factionId, behavior, origin, currentRoomId, and bonus fields', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Sentinel'
+    })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      factionId: 'faction:watchers',
+      behavior: 'guard',
+      origin: 'The Old Keep',
+      currentRoomId: null,
+      perceptionBonus: 5,
+      stealthBonus: 1,
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.faction_id).toBe('faction:watchers')
+    expect(char.character.behavior).toBe('guard')
+    expect(char.character.origin).toBe('The Old Keep')
+    expect(char.character.perception_bonus).toBe(5)
+    expect(char.character.stealth_bonus).toBe(1)
   })
 
   it('update with characterId parameter', async () => {

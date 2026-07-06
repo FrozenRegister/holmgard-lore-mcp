@@ -38,6 +38,75 @@ describe('handleBatchManage', () => {
     expect(body.errorCount).toBe(0)
   })
 
+  it('batch_create_characters accepts custom values for every character field', async () => {
+    const spec = {
+      name: 'Custom Bandit',
+      level: 3,
+      characterClass: 'Rogue',
+      race: 'Human',
+      characterType: 'enemy',
+      stats: { str: 12, dex: 18, con: 10, int: 9, wis: 11, cha: 8 },
+      hp: 20,
+      maxHp: 20,
+      ac: 15,
+      factionId: 'faction:bandits',
+      behavior: 'ambush',
+      background: 'Outlaw',
+      alignment: 'Chaotic Neutral',
+      origin: 'Old Mill',
+      conditions: ['prone'],
+      resistances: ['poison'],
+      vulnerabilities: ['fire'],
+      immunities: ['disease'],
+      knownSpells: ['minor-illusion'],
+      preparedSpells: ['minor-illusion'],
+      cantripsKnown: ['prestidigitation'],
+      spellSlots: { '1': { max: 2, current: 2 } },
+      pactMagicSlots: { max: 1, current: 1, level: 1 },
+      maxSpellLevel: 1,
+      concentratingOn: 'minor-illusion',
+      legendaryActions: 1,
+      legendaryActionsRemaining: 1,
+      legendaryResistances: 1,
+      legendaryResistancesRemaining: 1,
+      hasLairActions: false,
+      currency: { gold: 15, silver: 3, copper: 0 },
+      perceptionBonus: 2,
+      stealthBonus: 4,
+      resourcePools: { sneakAttack: { max: 1, current: 1 } },
+    }
+    const r = await handleBatchManage(db(), { action: 'batch_create_characters', characters: [spec] })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.successCount).toBe(1)
+
+    const row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?').bind(body.created[0].id).first() as Record<string, unknown>
+    expect(JSON.parse(row.stats as string)).toEqual(spec.stats)
+    expect(row.faction_id).toBe('faction:bandits')
+    expect(row.behavior).toBe('ambush')
+    expect(row.origin).toBe('Old Mill')
+    expect(JSON.parse(row.conditions as string)).toEqual(['prone'])
+    expect(JSON.parse(row.resistances as string)).toEqual(['poison'])
+    expect(JSON.parse(row.vulnerabilities as string)).toEqual(['fire'])
+    expect(JSON.parse(row.immunities as string)).toEqual(['disease'])
+    expect(JSON.parse(row.known_spells as string)).toEqual(['minor-illusion'])
+    expect(JSON.parse(row.prepared_spells as string)).toEqual(['minor-illusion'])
+    expect(JSON.parse(row.cantrips_known as string)).toEqual(['prestidigitation'])
+    expect(JSON.parse(row.spell_slots as string)).toEqual(spec.spellSlots)
+    expect(JSON.parse(row.pact_magic_slots as string)).toEqual(spec.pactMagicSlots)
+    expect(row.max_spell_level).toBe(1)
+    expect(row.concentrating_on).toBe('minor-illusion')
+    expect(row.legendary_actions).toBe(1)
+    expect(row.legendary_actions_remaining).toBe(1)
+    expect(row.legendary_resistances).toBe(1)
+    expect(row.legendary_resistances_remaining).toBe(1)
+    expect(row.has_lair_actions).toBe(0)
+    expect(JSON.parse(row.currency as string)).toEqual(spec.currency)
+    expect(row.perception_bonus).toBe(2)
+    expect(row.stealth_bonus).toBe(4)
+    expect(JSON.parse(row.resource_pools as string)).toEqual(spec.resourcePools)
+  })
+
   it('batch_create_npcs creates NPC characters', async () => {
     const r = await handleBatchManage(db(), {
       action: 'batch_create_npcs',
