@@ -18,12 +18,45 @@ const ALIASES: Record<string, BatchAction> = {
   template: 'get_template', fetch_template: 'get_template',
 }
 
+const StatsSchema = z.object({ str: z.number().default(10), dex: z.number().default(10), con: z.number().default(10), int: z.number().default(10), wis: z.number().default(10), cha: z.number().default(10) })
+const CurrencySchema = z.object({ gold: z.number().default(0), silver: z.number().default(0), copper: z.number().default(0) })
+
 const CharacterSpec = z.object({
   name: z.string(),
   level: z.number().int().min(1).max(20).optional().default(1),
   characterClass: z.string().optional().default('Fighter'),
   race: z.string().optional().default('Human'),
   characterType: z.enum(['pc', 'npc', 'enemy', 'neutral']).optional().default('npc'),
+  stats: StatsSchema.optional(),
+  hp: z.number().int().min(0).optional(),
+  maxHp: z.number().int().min(1).optional(),
+  ac: z.number().int().optional().default(10),
+  factionId: z.string().optional(),
+  behavior: z.string().optional(),
+  background: z.string().optional(),
+  alignment: z.string().optional(),
+  origin: z.string().optional(),
+  conditions: z.array(z.string()).optional(),
+  resistances: z.array(z.string()).optional(),
+  vulnerabilities: z.array(z.string()).optional(),
+  immunities: z.array(z.string()).optional(),
+  knownSpells: z.array(z.string()).optional(),
+  preparedSpells: z.array(z.string()).optional(),
+  cantripsKnown: z.array(z.string()).optional(),
+  spellSlots: z.record(z.unknown()).optional(),
+  pactMagicSlots: z.record(z.unknown()).optional(),
+  maxSpellLevel: z.number().int().min(0).max(9).optional(),
+  concentratingOn: z.string().optional(),
+  legendaryActions: z.number().int().min(0).optional(),
+  legendaryActionsRemaining: z.number().int().min(0).optional(),
+  legendaryResistances: z.number().int().min(0).optional(),
+  legendaryResistancesRemaining: z.number().int().min(0).optional(),
+  hasLairActions: z.boolean().optional(),
+  currency: CurrencySchema.optional(),
+  currentRoomId: z.string().optional(),
+  perceptionBonus: z.number().int().optional(),
+  stealthBonus: z.number().int().optional(),
+  resourcePools: z.record(z.unknown()).optional(),
 })
 
 const ItemDistribution = z.object({
@@ -72,9 +105,28 @@ export async function handleBatchManage(env: AppBindings, args: Record<string, u
       for (const spec of a.characters) {
         try {
           const id = crypto.randomUUID()
-          const maxHp = spec.level * 8
-          await db.prepare('INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .bind(id, spec.name, '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}', maxHp, maxHp, 10, spec.level, spec.characterType, spec.characterClass, spec.race, '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":0,"silver":0,"copper":0}', '{}', 0, now, now).run()
+          const stats = spec.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+          const maxHp = spec.maxHp ?? Math.max(1, spec.level * 8)
+          const hp = spec.hp ?? maxHp
+          const currency = spec.currency ?? { gold: 0, silver: 0, copper: 0 }
+          await db.prepare(`
+            INSERT INTO characters (
+              id, name, stats, hp, max_hp, ac, level, faction_id, behavior, character_type, character_class, race,
+              background, alignment, origin, conditions, resistances, vulnerabilities, immunities,
+              known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, max_spell_level, concentrating_on,
+              legendary_actions, legendary_actions_remaining, legendary_resistances, legendary_resistances_remaining, has_lair_actions,
+              currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            id, spec.name, JSON.stringify(stats), hp, maxHp, spec.ac, spec.level, spec.factionId ?? null, spec.behavior ?? null, spec.characterType, spec.characterClass, spec.race,
+            spec.background ?? null, spec.alignment ?? null, spec.origin ?? null,
+            JSON.stringify(spec.conditions ?? []), JSON.stringify(spec.resistances ?? []), JSON.stringify(spec.vulnerabilities ?? []), JSON.stringify(spec.immunities ?? []),
+            JSON.stringify(spec.knownSpells ?? []), JSON.stringify(spec.preparedSpells ?? []), JSON.stringify(spec.cantripsKnown ?? []),
+            spec.spellSlots ? JSON.stringify(spec.spellSlots) : null, spec.pactMagicSlots ? JSON.stringify(spec.pactMagicSlots) : null, spec.maxSpellLevel ?? 0, spec.concentratingOn ?? null,
+            spec.legendaryActions ?? null, spec.legendaryActionsRemaining ?? null, spec.legendaryResistances ?? null, spec.legendaryResistancesRemaining ?? null, spec.hasLairActions ? 1 : 0,
+            JSON.stringify(currency), spec.currentRoomId ?? null, spec.perceptionBonus ?? 0, spec.stealthBonus ?? 0, JSON.stringify(spec.resourcePools ?? {}), 0, now, now
+          ).run()
           created.push({ id, name: spec.name })
         } catch (e) {
           errors.push(`Failed to create "${spec.name}": ${e instanceof Error ? e.message : 'unknown error'}`)

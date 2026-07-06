@@ -40,8 +40,13 @@ const InputSchema = z.object({
   ac: z.number().int().optional().default(10),
   stats: StatsSchema.optional(),
   factionId: z.string().optional(),
+  behavior: z.string().optional(),
   background: z.string().optional(),
   alignment: z.string().optional(),
+  origin: z.string().optional(),
+  currentRoomId: z.string().optional(),
+  perceptionBonus: z.number().int().optional(),
+  stealthBonus: z.number().int().optional(),
   xp: z.number().int().min(0).optional(),
   amount: z.number().int().min(0).optional(),
   xpAmount: z.number().int().min(0).optional(),
@@ -108,10 +113,25 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const stats = a.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
       const maxHp = a.maxHp ?? Math.max(1, (a.level ?? 1) * 8)
       const hp = a.hp ?? maxHp
+      const currency = a.currency ?? { gold: 0, silver: 0, copper: 0 }
       await db.prepare(`
-        INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, faction_id, character_type, character_class, race, background, alignment, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(id, a.name, JSON.stringify(stats), hp, maxHp, a.ac, a.level, a.factionId ?? null, a.characterType, a.characterClass, a.race, a.background ?? null, a.alignment ?? null, '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":0,"silver":0,"copper":0}', '{}', 0, now, now).run()
+        INSERT INTO characters (
+          id, name, stats, hp, max_hp, ac, level, faction_id, behavior, character_type, character_class, race,
+          background, alignment, origin, conditions, resistances, vulnerabilities, immunities,
+          known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, max_spell_level, concentrating_on,
+          legendary_actions, legendary_actions_remaining, legendary_resistances, legendary_resistances_remaining, has_lair_actions,
+          currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id, a.name, JSON.stringify(stats), hp, maxHp, a.ac, a.level, a.factionId ?? null, a.behavior ?? null, a.characterType, a.characterClass, a.race,
+        a.background ?? null, a.alignment ?? null, a.origin ?? null,
+        JSON.stringify(a.conditions ?? []), JSON.stringify(a.resistances ?? []), JSON.stringify(a.vulnerabilities ?? []), JSON.stringify(a.immunities ?? []),
+        JSON.stringify(a.knownSpells ?? []), JSON.stringify(a.preparedSpells ?? []), JSON.stringify(a.cantripsKnown ?? []),
+        a.spellSlots ? JSON.stringify(a.spellSlots) : null, a.pactMagicSlots ? JSON.stringify(a.pactMagicSlots) : null, a.maxSpellLevel ?? 0, a.concentratingOn ?? null,
+        a.legendaryActions ?? null, a.legendaryActionsRemaining ?? null, a.legendaryResistances ?? null, a.legendaryResistancesRemaining ?? null, a.hasLairActions ? 1 : 0,
+        JSON.stringify(currency), a.currentRoomId ?? null, a.perceptionBonus ?? 0, a.stealthBonus ?? 0, JSON.stringify(a.resourcePools ?? {}), 0, now, now
+      ).run()
       return ok({ success: true, actionType: 'create', characterId: id, name: a.name, characterType: a.characterType })
     }
     case 'get': {
@@ -161,6 +181,12 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.hasLairActions !== undefined) { sets.push('has_lair_actions = ?'); vals.push(a.hasLairActions ? 1 : 0) }
       if (a.resourcePools) { sets.push('resource_pools = ?'); vals.push(JSON.stringify(a.resourcePools)) }
       if (a.currency) { sets.push('currency = ?'); vals.push(JSON.stringify(a.currency)) }
+      if (a.factionId !== undefined) { sets.push('faction_id = ?'); vals.push(a.factionId) }
+      if (a.behavior !== undefined) { sets.push('behavior = ?'); vals.push(a.behavior) }
+      if (a.origin !== undefined) { sets.push('origin = ?'); vals.push(a.origin) }
+      if (a.currentRoomId !== undefined) { sets.push('current_room_id = ?'); vals.push(a.currentRoomId) }
+      if (a.perceptionBonus !== undefined) { sets.push('perception_bonus = ?'); vals.push(a.perceptionBonus) }
+      if (a.stealthBonus !== undefined) { sets.push('stealth_bonus = ?'); vals.push(a.stealthBonus) }
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
       return ok({ success: true, actionType: 'update', characterId: charId })
