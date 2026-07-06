@@ -36,6 +36,7 @@ import { handleSceneManage } from './handlers/scene-manage'
 import { handleRestManage } from './handlers/rest-manage'
 import { handleScrollManage } from './handlers/scroll-manage'
 import { handleEventManage } from './handlers/event-manage'
+import { handleDramaManage } from './handlers/drama-manage'
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
@@ -70,6 +71,7 @@ const SUB_MAP: Record<string, RpgFn> = {
   rest:          handleRestManage,
   scroll:        handleScrollManage,
   event:         handleEventManage,
+  drama:         handleDramaManage,
 }
 
 export const handle_rpg: ToolHandler = async ({ c, id, args }) => {
