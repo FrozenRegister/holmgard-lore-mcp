@@ -53,7 +53,7 @@ const CharacterSpec = z.object({
   legendaryResistancesRemaining: z.number().int().min(0).optional(),
   hasLairActions: z.boolean().optional(),
   currency: CurrencySchema.optional(),
-  currentRoomId: z.string().optional(),
+  currentRoomId: z.string().nullable().optional(),
   perceptionBonus: z.number().int().optional(),
   stealthBonus: z.number().int().optional(),
   resourcePools: z.record(z.unknown()).optional(),

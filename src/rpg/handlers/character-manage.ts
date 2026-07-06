@@ -44,7 +44,7 @@ const InputSchema = z.object({
   background: z.string().optional(),
   alignment: z.string().optional(),
   origin: z.string().optional(),
-  currentRoomId: z.string().optional(),
+  currentRoomId: z.string().nullable().optional(),
   perceptionBonus: z.number().int().optional(),
   stealthBonus: z.number().int().optional(),
   xp: z.number().int().min(0).optional(),
