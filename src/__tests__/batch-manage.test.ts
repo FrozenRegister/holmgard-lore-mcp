@@ -107,6 +107,18 @@ describe('handleBatchManage', () => {
     expect(JSON.parse(row.resource_pools as string)).toEqual(spec.resourcePools)
   })
 
+  it('batch_create_characters records per-character errors on DB failure', async () => {
+    const brokenDb = { RPG_DB: { prepare: () => { throw new Error('simulated DB error') } } } as any
+    const r = await handleBatchManage(brokenDb, {
+      action: 'batch_create_characters',
+      characters: [{ name: 'Broken', characterType: 'pc', characterClass: 'Fighter', race: 'Human', level: 1 }]
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.errorCount).toBe(1)
+    expect(body.errors[0]).toContain('Broken')
+  })
+
   it('batch_create_npcs creates NPC characters', async () => {
     const r = await handleBatchManage(db(), {
       action: 'batch_create_npcs',
