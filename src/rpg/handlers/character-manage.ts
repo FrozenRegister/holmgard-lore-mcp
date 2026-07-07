@@ -303,11 +303,19 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
 
       const requiresConcentration = a.requiresConcentration ?? false
       if (requiresConcentration) {
-        await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
-        await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
-        await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? null).run()
-        await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
+        try {
+          await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
+          await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
+          await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? null).run()
+          await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
+        } catch (dbErr) {
+          const msg = String(dbErr)
+          if (msg.includes('FOREIGN KEY')) {
+            return err(`Foreign key constraint violation: ${msg}`)
+          }
+          return err(`Failed to set up concentration: ${msg}`)
+        }
       }
 
       return ok({
