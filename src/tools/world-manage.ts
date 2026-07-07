@@ -1,12 +1,15 @@
 import type { ToolHandler } from './types'
 import { makeError } from '../lib/rpc'
-import { handle_thread_tick, handle_get_relationship, handle_get_faction_standing, handle_get_entity_knowledge, handle_get_location_occupants, handle_get_reachable_locations, handle_sense_environment, handle_get_thread_comparison, handle_check_convergence, handle_get_world_state } from './world'
+import { handle_thread_tick, handle_get_relationship, handle_get_faction_standing, handle_get_entity_knowledge, handle_set_entity_knowledge, handle_learn_from_event, handle_migrate_knowledge, handle_get_location_occupants, handle_get_reachable_locations, handle_sense_environment, handle_get_thread_comparison, handle_check_convergence, handle_get_world_state } from './world'
 
 const ACTION_MAP: Record<string, ToolHandler> = {
   thread_tick:             handle_thread_tick,
   get_relationship:        handle_get_relationship,
   get_faction_standing:    handle_get_faction_standing,
   get_entity_knowledge:    handle_get_entity_knowledge,
+  set_entity_knowledge:    handle_set_entity_knowledge,
+  learn_from_event:        handle_learn_from_event,
+  migrate_knowledge:       handle_migrate_knowledge,
   get_location_occupants:  handle_get_location_occupants,
   get_reachable_locations: handle_get_reachable_locations,
   sense_environment:       handle_sense_environment,

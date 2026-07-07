@@ -1,5 +1,6 @@
 // src/tools/world.ts
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
@@ -201,7 +202,11 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
 }
 
 export async function handle_get_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1), topic: z.string().min(1) })
+  const schema = z.object({
+    entity_key:  z.string().optional(),
+    entity_id:   z.string().optional(),
+    topic:       z.string().min(1),
+  })
   const normalized = applyAliases(args, { entity_name: 'entity_key' })
   const parsed = schema.safeParse(normalized)
   if (!parsed.success) {
@@ -209,9 +214,34 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
       action: 'get_entity_knowledge', entity_key: 'character:eira-holt', topic: 'the-lock'
     }), 200)
   }
+  if (!parsed.data.entity_key && !parsed.data.entity_id) {
+    return c.json(makeError(id, -32602, '"entity_key" or "entity_id" is required', null), 200)
+  }
 
   const topic = parsed.data.topic.trim().toLowerCase()
-  const res = await resolveEntityKey(c, parsed.data.entity_key)
+
+  // D1 path when entity_id is provided
+  if (parsed.data.entity_id && c.env.RPG_DB) {
+    const rows = await c.env.RPG_DB.prepare(
+      'SELECT * FROM entity_knowledge WHERE entity_id = ? AND topic LIKE ? AND is_current = 1 ORDER BY confidence DESC'
+    ).bind(parsed.data.entity_id, `%${topic}%`).all() as { results: Array<Record<string, unknown>> }
+    if (rows.results.length > 0) {
+      return c.json(makeResult(id, {
+        content: [{ type: 'text', text: `"${parsed.data.entity_id}" has ${rows.results.length} knowledge record(s) matching "${topic}".` }],
+        metadata: { retrieved: rows.results.length, written: 0, source: 'd1' },
+        known: true, topic, records: rows.results,
+      }), 200)
+    }
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: `"${parsed.data.entity_id}" has no D1 knowledge of "${topic}".` }],
+      metadata: { retrieved: 0, written: 0, source: 'd1' },
+      known: false, topic, records: [],
+    }), 200)
+  }
+
+  // KV/markdown fallback path
+  const entityKeyRaw = parsed.data.entity_key!
+  const res = await resolveEntityKey(c, entityKeyRaw)
   if (!res.raw) {
     return c.json(makeError(id, -32602, `Entity "${res.key}" not found${res.suggestion ? `. Did you mean "${res.suggestion}"?` : ''}`, { key: res.key, did_you_mean: res.suggestion }), 200)
   }
@@ -238,8 +268,133 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: knownInText ? `"${entityKey}" has knowledge of "${topic}".` : `"${entityKey}" has no knowledge of "${topic}".` }],
-    metadata: { retrieved: 1, written: 0 },
+    metadata: { retrieved: 1, written: 0, source: 'kv' },
     known: knownInText, known_via_field: knownViaField, topic, excerpts
+  }), 200)
+}
+
+export async function handle_set_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    entity_id:      z.string().min(1),
+    topic:          z.string().min(1),
+    knowledge_type: z.string().default('fact'),
+    acquired_at:    z.string().min(1),
+    detail:         z.string().optional(),
+    source:         z.string().optional(),
+    confidence:     z.number().int().min(0).max(100).default(100),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'set_entity_knowledge', entity_id: 'char-uuid', topic: 'the-lock', knowledge_type: 'fact', acquired_at: '2184-07-15'
+    }), 200)
+  }
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+
+  const knowledgeId = randomUUID()
+  await c.env.RPG_DB.prepare(
+    `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+  ).bind(
+    knowledgeId,
+    parsed.data.entity_id,
+    parsed.data.topic,
+    parsed.data.knowledge_type,
+    parsed.data.source ?? null,
+    parsed.data.acquired_at,
+    parsed.data.detail ?? null,
+    parsed.data.confidence,
+  ).run()
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Knowledge "${parsed.data.topic}" set for entity "${parsed.data.entity_id}".` }],
+    metadata: { knowledge_id: knowledgeId, entity_id: parsed.data.entity_id, topic: parsed.data.topic }
+  }), 200)
+}
+
+export async function handle_learn_from_event({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({
+    entity_id: z.string().min(1),
+    event_id:  z.string().min(1),
+  })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'learn_from_event', entity_id: 'char-uuid', event_id: 'event-uuid'
+    }), 200)
+  }
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+
+  const event = await c.env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(parsed.data.event_id).first() as Record<string, unknown> | null
+  if (!event) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
+
+  const topic = `${event.verb}${event.object_entity ? `:${event.object_entity}` : ''}`
+  const knowledgeId = randomUUID()
+  await c.env.RPG_DB.prepare(
+    `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+     VALUES (?, ?, ?, 'fact', ?, ?, ?, 100, 1)`
+  ).bind(knowledgeId, parsed.data.entity_id, topic, parsed.data.event_id, event.event_at as string, event.detail ?? null).run()
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Entity "${parsed.data.entity_id}" learned "${topic}" from event "${parsed.data.event_id}".` }],
+    metadata: { knowledge_id: knowledgeId, entity_id: parsed.data.entity_id, topic, source: parsed.data.event_id }
+  }), 200)
+}
+
+export async function handle_migrate_knowledge({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ world_id: z.string().min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
+      action: 'migrate_knowledge', world_id: 'world-main'
+    }), 200)
+  }
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+
+  // Fetch world current_date for acquired_at default
+  const ws = await c.env.RPG_DB.prepare('SELECT "current_date" FROM world_state WHERE world_id = ?').bind(parsed.data.world_id).first() as { current_date: string } | null
+  const acquiredAt = ws?.current_date ?? new Date().toISOString().slice(0, 10)
+
+  // Find all character KV keys and scan for Knows/Knowledge fields
+  const allKeys = await kvList(c)
+  const charKeys = allKeys.filter(k => k.startsWith('character:'))
+  const raws = await Promise.all(charKeys.map(k => kvGet(c, k)))
+
+  let migratedEntities = 0
+  let totalFacts = 0
+
+  for (let i = 0; i < charKeys.length; i++) {
+    const raw = raws[i]
+    if (!raw) continue
+    const { text } = parseKvEntry(raw)
+    const knowsRaw = extractRawField(text, 'Knows') ?? extractRawField(text, 'Knowledge')
+    if (!knowsRaw) continue
+
+    const topics = knowsRaw.split(',').map((t: string) => t.trim()).filter(Boolean)
+    if (topics.length === 0) continue
+
+    // Find matching character by kv_origin or name match — best effort, skip if no D1 row
+    const charKey = charKeys[i]
+    const charName = charKey.replace(/^character:/, '')
+    const dbChar = await c.env.RPG_DB!.prepare(
+      'SELECT id FROM characters WHERE id = ? OR name LIKE ? LIMIT 1'
+    ).bind(charName, `%${charName}%`).first() as { id: string } | null
+    if (!dbChar) continue
+
+    migratedEntities++
+    for (const topic of topics) {
+      const knowledgeId = randomUUID()
+      await c.env.RPG_DB!.prepare(
+        `INSERT OR IGNORE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, confidence, is_current)
+         VALUES (?, ?, ?, 'fact', 'kv_migration', ?, 80, 1)`
+      ).bind(knowledgeId, dbChar.id, topic, acquiredAt).run()
+      totalFacts++
+    }
+  }
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Migrated knowledge for ${migratedEntities} entities (${totalFacts} facts total).` }],
+    metadata: { migrated_entities: migratedEntities, total_facts: totalFacts }
   }), 200)
 }
 
