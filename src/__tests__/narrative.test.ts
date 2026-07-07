@@ -43,6 +43,31 @@ describe('append_event', () => {
     expect(log.result.events[0].detail).toBe('Household begins journey')
     expect(log.result.events[0].at).toBe('1264-05-01T00:00:00Z')
   })
+
+  it('returns -32602 when world_id does not exist (FK validation)', async () => {
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:test',
+      verb: 'arrived',
+      world_id: 'nonexistent-world'
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('World not found')
+  })
+
+  it('returns -32602 when entity_id does not exist (FK validation)', async () => {
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:test',
+      verb: 'arrived',
+      world_id: 'test-world',
+      entity_id: 'nonexistent-char'
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
 })
 
 describe('get_event_log', () => {
@@ -251,5 +276,44 @@ describe('world_diff', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
     expect(res.error.data.example).toBeDefined()
+  })
+})
+
+describe('set_entity_knowledge', () => {
+  it('returns -32602 when entity_id does not exist (FK validation)', async () => {
+    const res = await callTool('world_manage', {
+      action: 'set_entity_knowledge',
+      entity_id: 'nonexistent-char',
+      topic: 'the-lock',
+      knowledge_type: 'fact',
+      acquired_at: '2184-07-15'
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
+})
+
+describe('learn_from_event', () => {
+  it('returns -32602 when entity_id does not exist (FK validation)', async () => {
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      entity_id: 'nonexistent-char',
+      event_id: 'some-event'
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
+
+  it('returns -32602 when event_id does not exist', async () => {
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      entity_id: 'char-test',
+      event_id: 'nonexistent-event'
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Event not found')
   })
 })
