@@ -1,7 +1,7 @@
 -- migration 0005: world clock and character birthdates
 -- Adds born column to characters and creates the world_state table.
 
-ALTER TABLE characters ADD COLUMN IF NOT EXISTS born TEXT;
+ALTER TABLE characters ADD COLUMN born TEXT;
 
 CREATE TABLE IF NOT EXISTS world_state (
   world_id         TEXT PRIMARY KEY,
