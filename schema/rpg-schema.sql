@@ -16,6 +16,17 @@ CREATE TABLE IF NOT EXISTS worlds (
   updated_at  TEXT NOT NULL
 );
 
+-- ── World State (time_manage) ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS world_state (
+  world_id         TEXT PRIMARY KEY,
+  current_date     TEXT NOT NULL DEFAULT '2184-07-15',
+  era              TEXT,
+  tick_speed       TEXT NOT NULL DEFAULT 'realtime',
+  last_advanced_at TEXT,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS node_networks (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 100),
@@ -148,7 +159,9 @@ CREATE TABLE IF NOT EXISTS characters (
   thread_id                      TEXT,
   state_stage                    INTEGER DEFAULT 1,
   state_stage_timer              INTEGER DEFAULT 0,
-  kv_origin                      TEXT
+  kv_origin                      TEXT,
+  -- time_manage fields (migration 0005):
+  born                           TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_characters_type ON characters(character_type);
