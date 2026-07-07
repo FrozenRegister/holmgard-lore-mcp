@@ -269,51 +269,56 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
     case 'cast_spell': {
       const charId = a.id ?? a.characterId
       if (!charId || !a.spellName) return err('"id"/"characterId" and "spellName" are required')
-      const row = await db.prepare('SELECT known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, concentrating_on FROM characters WHERE id = ?').bind(charId).first() as
-        { known_spells: string; prepared_spells: string; cantrips_known: string; spell_slots: string | null; pact_magic_slots: string | null; concentrating_on: string | null } | null
-      if (!row) return err(`Character not found: ${charId}`)
+      try {
+        const row = await db.prepare('SELECT known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, concentrating_on FROM characters WHERE id = ?').bind(charId).first() as
+          { known_spells: string; prepared_spells: string; cantrips_known: string; spell_slots: string | null; pact_magic_slots: string | null; concentrating_on: string | null } | null
+        if (!row) return err(`Character not found: ${charId}`)
 
-      const knownSpells: string[] = JSON.parse(row.known_spells ?? '[]')
-      const preparedSpells: string[] = JSON.parse(row.prepared_spells ?? '[]')
-      const cantripsKnown: string[] = JSON.parse(row.cantrips_known ?? '[]')
-      const isCantrip = cantripsKnown.includes(a.spellName)
-      if (!isCantrip && !knownSpells.includes(a.spellName) && !preparedSpells.includes(a.spellName)) {
-        return err(`"${a.spellName}" is not in this character's known/prepared spells or cantrips — cast blocked`)
-      }
-
-      let remainingSlots: unknown = null
-      if (!isCantrip) {
-        const usePactMagic = a.usePactMagic ?? false
-        if (usePactMagic) {
-          const pact = row.pact_magic_slots ? JSON.parse(row.pact_magic_slots) : null
-          if (!pact || pact.current <= 0) return err('No pact magic slots remaining')
-          pact.current -= 1
-          await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(pact), now, charId).run()
-          remainingSlots = pact
-        } else {
-          if (a.slotLevel === undefined) return err('"slotLevel" is required to cast a leveled spell (use slotLevel: 0 for a cantrip)')
-          const slots = row.spell_slots ? JSON.parse(row.spell_slots) : {}
-          const slot = slots[String(a.slotLevel)]
-          if (!slot || slot.current <= 0) return err(`No level ${a.slotLevel} spell slots remaining`)
-          slot.current -= 1
-          await db.prepare('UPDATE characters SET spell_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(slots), now, charId).run()
-          remainingSlots = slots
+        const knownSpells: string[] = JSON.parse(row.known_spells ?? '[]')
+        const preparedSpells: string[] = JSON.parse(row.prepared_spells ?? '[]')
+        const cantripsKnown: string[] = JSON.parse(row.cantrips_known ?? '[]')
+        const isCantrip = cantripsKnown.includes(a.spellName)
+        if (!isCantrip && !knownSpells.includes(a.spellName) && !preparedSpells.includes(a.spellName)) {
+          return err(`"${a.spellName}" is not in this character's known/prepared spells or cantrips — cast blocked`)
         }
-      }
 
-      const requiresConcentration = a.requiresConcentration ?? false
-      if (requiresConcentration) {
-        await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
-        await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
-        await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? null).run()
-        await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
-      }
+        let remainingSlots: unknown = null
+        if (!isCantrip) {
+          const usePactMagic = a.usePactMagic ?? false
+          if (usePactMagic) {
+            const pact = row.pact_magic_slots ? JSON.parse(row.pact_magic_slots) : null
+            if (!pact || pact.current <= 0) return err('No pact magic slots remaining')
+            pact.current -= 1
+            await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(pact), now, charId).run()
+            remainingSlots = pact
+          } else {
+            if (a.slotLevel === undefined) return err('"slotLevel" is required to cast a leveled spell (use slotLevel: 0 for a cantrip)')
+            const slots = row.spell_slots ? JSON.parse(row.spell_slots) : {}
+            const slot = slots[String(a.slotLevel)]
+            if (!slot || slot.current <= 0) return err(`No level ${a.slotLevel} spell slots remaining`)
+            slot.current -= 1
+            await db.prepare('UPDATE characters SET spell_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(slots), now, charId).run()
+            remainingSlots = slots
+          }
+        }
 
-      return ok({
-        success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
-        slotLevel: a.slotLevel ?? null, usedPactMagic: a.usePactMagic ?? false, remainingSlots, concentrating: requiresConcentration,
-      })
+        const requiresConcentration = a.requiresConcentration ?? false
+        if (requiresConcentration) {
+          await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
+          await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
+          await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? null).run()
+          await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
+        }
+
+        return ok({
+          success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
+          slotLevel: a.slotLevel ?? null, usedPactMagic: a.usePactMagic ?? false, remainingSlots, concentrating: requiresConcentration,
+        })
+      } catch (e) {
+        const msg = String(e)
+        return err(`Database error in cast_spell: ${msg}`)
+      }
     }
   }
 }
