@@ -45,24 +45,46 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
   let d1EventId: string | null = null
   if (parsed.data.world_id && c.env.RPG_DB) {
     const db = c.env.RPG_DB
+
+    // Validate FK constraints before INSERT
+    const worldExists = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(parsed.data.world_id).first() as { id: string } | null
+    if (!worldExists) {
+      return c.json(makeError(id, -32602, `World not found: ${parsed.data.world_id}`, null), 200)
+    }
+
+    if (parsed.data.entity_id) {
+      const entityExists = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+      if (!entityExists) {
+        return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+      }
+    }
+
     const eventId = randomUUID()
     const createdAt = new Date().toISOString()
-    await db.prepare(
-      `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      eventId,
-      parsed.data.world_id,
-      parsed.data.thread ?? 'main',
-      now,
-      parsed.data.verb,
-      parsed.data.entity_id ?? null,
-      parsed.data.object ?? null,
-      parsed.data.location ?? null,
-      parsed.data.detail ?? null,
-      createdAt,
-    ).run()
-    d1EventId = eventId
+    try {
+      await db.prepare(
+        `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        eventId,
+        parsed.data.world_id,
+        parsed.data.thread ?? 'main',
+        now,
+        parsed.data.verb,
+        parsed.data.entity_id ?? null,
+        parsed.data.object ?? null,
+        parsed.data.location ?? null,
+        parsed.data.detail ?? null,
+        createdAt,
+      ).run()
+      d1EventId = eventId
+    } catch (err) {
+      const msg = String(err)
+      if (msg.includes('FOREIGN KEY')) {
+        return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+      }
+      throw err
+    }
   }
 
   const kv = getKV(c)
