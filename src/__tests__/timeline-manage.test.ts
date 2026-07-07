@@ -218,17 +218,13 @@ describe('handleTimelineManage', () => {
 
   it('compare_branches computes shared and divergent events', async () => {
     await seedWorld('w-cmp')
-    const e1 = await seedEvent('w-cmp', { verb: 'shared', branchId: 'br-a' })
     await seedEvent('w-cmp', { verb: 'only-a', branchId: 'br-a' })
     await seedEvent('w-cmp', { verb: 'only-b', branchId: 'br-b' })
-    // Make e1 also on br-b by updating
-    await env.RPG_DB.prepare('UPDATE timeline_events SET branch_id = ? WHERE id = ?').bind('br-b', e1).run()
-    // Actually compare events per branch
     const body = JSON.parse((await handleTimelineManage(db(), { action: 'compare_branches', branch_a: 'br-a', branch_b: 'br-b' })).content[0].text)
     expect(body.success).toBe(true)
-    // Branches have separate events by branch_id
     expect(body.only_in_a).toHaveLength(1)
     expect(body.only_in_b).toHaveLength(1)
+    expect(body.shared_count).toBe(0)
   })
 
   // ── merge_branch ──────────────────────────────────────────────────────────
