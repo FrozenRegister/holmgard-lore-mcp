@@ -8,15 +8,19 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
 
-const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance'] as const
+const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to'] as const
 type TimeAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TimeAction> = {
-  set:     'set_date',
-  date:    'get_date',
-  age:     'get_age',
-  tick:    'advance',
-  forward: 'advance',
-  clock:   'get_date',
+  set:      'set_date',
+  date:     'get_date',
+  age:      'get_age',
+  tick:     'advance',
+  forward:  'advance',
+  clock:    'get_date',
+  timeline: 'get_timeline',
+  events:   'get_timeline',
+  jump:     'jump_to',
+  goto:     'jump_to',
 }
 
 const InputSchema = z.object({
@@ -26,6 +30,11 @@ const InputSchema = z.object({
   era:          z.string().optional(),
   character_id: z.string().optional(),
   by:           z.string().optional(),
+  from:         z.string().optional(),
+  to:           z.string().optional(),
+  thread:       z.string().optional(),
+  mode:         z.enum(['observe', 'play']).optional(),
+  limit:        z.number().int().min(1).max(500).optional(),
 })
 
 // ── Date arithmetic helpers ───────────────────────────────────────────────────
@@ -260,6 +269,49 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         days_elapsed: dateDiff(oldDate, newDate),
         birthdays_triggered: birthdaysTriggered,
       })
+    }
+
+    case 'get_timeline': {
+      if (!a.world_id) return err('"world_id" is required')
+      const limit = a.limit ?? 100
+      const parts: string[] = ['SELECT * FROM timeline_events WHERE world_id = ?']
+      const binds: unknown[] = [a.world_id]
+      if (a.thread) { parts.push('AND thread_id = ?'); binds.push(a.thread) }
+      if (a.from)   { parts.push('AND event_at >= ?'); binds.push(a.from) }
+      if (a.to)     { parts.push('AND event_at <= ?'); binds.push(a.to) }
+      parts.push('ORDER BY event_at ASC LIMIT ?'); binds.push(limit)
+      const rows = await db.prepare(parts.join(' ')).bind(...binds).all() as { results: unknown[] }
+      return ok({ success: true, actionType: 'get_timeline', world_id: a.world_id, count: rows.results.length, events: rows.results })
+    }
+
+    case 'jump_to': {
+      if (!a.world_id) return err('"world_id" is required')
+      if (!a.date)     return err('"date" is required')
+      const mode = a.mode ?? 'observe'
+      const [beforeRow, afterRow] = await Promise.all([
+        db.prepare(
+          'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at <= ? ORDER BY event_at DESC LIMIT 1'
+        ).bind(a.world_id, a.date).first() as Promise<unknown>,
+        db.prepare(
+          'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at > ? ORDER BY event_at ASC LIMIT 1'
+        ).bind(a.world_id, a.date).first() as Promise<unknown>,
+      ])
+      const presentChars = await db
+        .prepare('SELECT DISTINCT entity_id FROM timeline_events WHERE world_id = ? AND event_at <= ? AND entity_id IS NOT NULL')
+        .bind(a.world_id, a.date)
+        .all() as { results: Array<{ entity_id: string }> }
+      const result: Record<string, unknown> = {
+        success: true, actionType: 'jump_to',
+        world_id: a.world_id,
+        date: a.date,
+        mode,
+        gap: { before_event: beforeRow ?? null, after_event: afterRow ?? null },
+        present_characters: presentChars.results.map(r => r.entity_id),
+      }
+      if (mode === 'play' && afterRow) {
+        result.constraint = `Must be consistent with the event that follows at ${(afterRow as Record<string, unknown>).event_at}`
+      }
+      return ok(result)
     }
   }
 }

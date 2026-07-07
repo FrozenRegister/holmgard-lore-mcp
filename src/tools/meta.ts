@@ -1,5 +1,6 @@
 // src/tools/meta.ts
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
@@ -19,6 +20,8 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
     thread: z.string().optional(),
     detail: z.string().optional(),
     at: z.string().optional(),
+    world_id: z.string().optional(),
+    entity_id: z.string().optional(),
   })
   const normalized = applyAliases(args, { date: 'at', description: 'detail' })
   const parsed = schema.safeParse(normalized)
@@ -37,6 +40,30 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
   if (parsed.data.location !== undefined) newEvent.location = parsed.data.location
   if (parsed.data.thread !== undefined) newEvent.thread = parsed.data.thread
   if (parsed.data.detail !== undefined) newEvent.detail = parsed.data.detail
+
+  // D1 primary path when world_id is supplied
+  let d1EventId: string | null = null
+  if (parsed.data.world_id && c.env.RPG_DB) {
+    const db = c.env.RPG_DB
+    const eventId = randomUUID()
+    const createdAt = new Date().toISOString()
+    await db.prepare(
+      `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      eventId,
+      parsed.data.world_id,
+      parsed.data.thread ?? 'main',
+      now,
+      parsed.data.verb,
+      parsed.data.entity_id ?? null,
+      parsed.data.object ?? null,
+      parsed.data.location ?? null,
+      parsed.data.detail ?? null,
+      createdAt,
+    ).run()
+    d1EventId = eventId
+  }
 
   const kv = getKV(c)
   let events: typeof newEvent[] = []
@@ -60,13 +87,95 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Event "${newEvent.verb}" appended to "${entityKey}"${duplicate ? ' (duplicate skipped)' : ''}.` }],
-    metadata: { entity_key: entityKey, event_count: events.length, duplicate }
+    metadata: { entity_key: entityKey, event_count: events.length, duplicate, d1_event_id: d1EventId }
+  }), 200)
+}
+
+export async function handle_canonize({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ event_id: z.string().min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'canonize', event_id: 'some-uuid'
+    }), 200)
+  }
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+  const row = await c.env.RPG_DB.prepare('SELECT id FROM timeline_events WHERE id = ?').bind(parsed.data.event_id).first() as { id: string } | null
+  if (!row) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
+  await c.env.RPG_DB.prepare('UPDATE timeline_events SET is_canonical = 1 WHERE id = ?').bind(parsed.data.event_id).run()
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Event "${parsed.data.event_id}" canonized.` }],
+    metadata: { event_id: parsed.data.event_id, is_canonical: true }
+  }), 200)
+}
+
+export async function handle_migrate_events({ c, id, args }: ToolContext): Promise<Response> {
+  const schema = z.object({ world_id: z.string().min(1) })
+  const parsed = schema.safeParse(args)
+  if (!parsed.success) {
+    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
+      action: 'migrate_events', world_id: 'world-main'
+    }), 200)
+  }
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+
+  const kv = getKV(c)
+  if (!kv) return c.json(makeError(id, -32603, 'KV unavailable', null), 200)
+
+  let cursor: string | undefined
+  let migrated = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  do {
+    const opts: KVNamespaceListOptions = { prefix: 'events:' }
+    if (cursor) opts.cursor = cursor
+    const list = await kv.list(opts)
+    for (const key of list.keys) {
+      try {
+        const raw = await kv.get(key.name)
+        if (!raw) { skipped++; continue }
+        const evts = JSON.parse(raw) as Array<Record<string, string>>
+        for (const e of evts) {
+          const eventId = randomUUID()
+          const createdAt = new Date().toISOString()
+          await c.env.RPG_DB.prepare(
+            `INSERT OR IGNORE INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            eventId,
+            parsed.data.world_id,
+            e.thread ?? 'main',
+            e.at ?? createdAt,
+            e.verb ?? 'unknown',
+            null,
+            e.object ?? null,
+            e.location ?? null,
+            e.detail ?? null,
+            createdAt,
+          ).run()
+          migrated++
+        }
+      } catch (ex) {
+        errors.push(`${key.name}: ${ex instanceof Error ? ex.message : String(ex)}`)
+        skipped++
+      }
+    }
+    cursor = list.list_complete ? undefined : (list as any).cursor
+  } while (cursor)
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Migrated ${migrated} events from KV to D1 (${skipped} keys skipped, ${errors.length} errors).` }],
+    metadata: { migrated, skipped, error_count: errors.length, errors: errors.slice(0, 10) }
   }), 200)
 }
 
 export async function handle_get_event_log({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({
-    entity_key: z.union([z.string().min(1), z.array(z.string().min(1))]),
+    entity_key: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
+    entity_id:  z.string().optional(),
+    world_id:   z.string().optional(),
+    thread_id:  z.string().optional(),
     since: z.string().optional(),
     until: z.string().optional(),
     thread: z.string().optional(),
@@ -80,34 +189,69 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
     }), 200)
   }
 
-  const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
-  const kv = getKV(c)
+  if (!parsed.data.entity_key && !parsed.data.entity_id && !parsed.data.world_id) {
+    return c.json(makeError(id, -32602, 'Missing required param: entity_key, entity_id, or world_id'), 200)
+  }
 
-  const eventArrays = await Promise.all(keys.map(async (ek) => {
-    const cleanKey = ek.trim().toLowerCase()
-    if (!kv) return []
-    try {
-      const raw = await kv.get(`events:${cleanKey}`)
-      if (raw) {
-        const evts = JSON.parse(raw) as Array<any>
-        return evts.map((e: any) => ({ ...e, entity_key: cleanKey }))
-      }
-    } catch {
-      // silently ignore if events don't exist
+  type EventRow = { id?: string; at: string; verb: string; entity_key?: string; entity_id?: string | null; object?: string | null; location?: string | null; thread?: string | null; detail?: string | null; source?: string }
+  let allEvents: EventRow[] = []
+
+  // D1 path when world_id or entity_id provided
+  if ((parsed.data.world_id || parsed.data.entity_id) && c.env.RPG_DB) {
+    const db = c.env.RPG_DB
+    const parts: string[] = ['SELECT * FROM timeline_events WHERE 1=1']
+    const binds: unknown[] = []
+    if (parsed.data.world_id)  { parts.push('AND world_id = ?');   binds.push(parsed.data.world_id) }
+    if (parsed.data.entity_id) { parts.push('AND entity_id = ?');  binds.push(parsed.data.entity_id) }
+    if (parsed.data.thread_id ?? parsed.data.thread) { parts.push('AND thread_id = ?'); binds.push(parsed.data.thread_id ?? parsed.data.thread) }
+    if (parsed.data.since)     { parts.push('AND event_at >= ?'); binds.push(parsed.data.since) }
+    if (parsed.data.until)     { parts.push('AND event_at <= ?'); binds.push(parsed.data.until) }
+    parts.push('ORDER BY event_at DESC LIMIT ?'); binds.push(parsed.data.limit)
+    const rows = await db.prepare(parts.join(' ')).bind(...binds).all() as { results: Array<Record<string, unknown>> }
+    for (const r of rows.results) {
+      allEvents.push({ id: r.id as string, at: r.event_at as string, verb: r.verb as string, entity_id: r.entity_id as string | null, object: r.object_entity as string | null, location: r.location_id as string | null, thread: r.thread_id as string | null, detail: r.detail as string | null, source: 'd1' })
     }
-    return []
-  }))
-  let allEvents: Array<any> = eventArrays.flat()
+  }
 
-  if (parsed.data.since) {
+  // KV path (entity_key-based, for backward compat and when D1 not used)
+  if (parsed.data.entity_key !== undefined) {
+    const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
+    const kv = getKV(c)
+    const kvArrays = await Promise.all(keys.map(async (ek) => {
+      const cleanKey = ek.trim().toLowerCase()
+      if (!kv) return []
+      try {
+        const raw = await kv.get(`events:${cleanKey}`)
+        if (raw) {
+          const evts = JSON.parse(raw) as Array<Record<string, string>>
+          return evts.map(e => ({ ...e, entity_key: cleanKey, source: 'kv' } as EventRow))
+        }
+      } catch {
+        // silently ignore
+      }
+      return []
+    }))
+    allEvents = [...allEvents, ...kvArrays.flat()]
+  }
+
+  // Deduplicate by at+verb when both sources are present
+  const seen = new Set<string>()
+  allEvents = allEvents.filter(e => {
+    const key = `${e.at}|${e.verb}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  if (parsed.data.since && !parsed.data.world_id) {
     const sinceMs = new Date(parsed.data.since).getTime()
     if (!isNaN(sinceMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() >= sinceMs)
   }
-  if (parsed.data.until) {
+  if (parsed.data.until && !parsed.data.world_id) {
     const untilMs = new Date(parsed.data.until).getTime()
     if (!isNaN(untilMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() <= untilMs)
   }
-  if (parsed.data.thread) {
+  if (parsed.data.thread && !parsed.data.world_id) {
     const t = parsed.data.thread.toLowerCase()
     allEvents = allEvents.filter(e => e.thread?.toLowerCase() === t)
   }
@@ -120,7 +264,7 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
   const limited = allEvents.slice(0, parsed.data.limit)
 
   const summaryText = limited.length > 0
-    ? limited.map(e => `[${e.at}] ${e.entity_key}: ${e.verb}${e.object ? ` → ${e.object}` : ''}${e.detail ? ` (${e.detail})` : ''}`).join('\n')
+    ? limited.map(e => `[${e.at}] ${e.entity_key ?? e.entity_id ?? '?'}: ${e.verb}${e.object ? ` → ${e.object}` : ''}${e.detail ? ` (${e.detail})` : ''}`).join('\n')
     : 'No events found.'
 
   return c.json(makeResult(id, {
