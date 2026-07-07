@@ -291,20 +291,34 @@ export async function handle_set_entity_knowledge({ c, id, args }: ToolContext):
   }
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
+  // Validate FK constraint: entity_id must exist in characters table
+  const entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  if (!entityExists) {
+    return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+  }
+
   const knowledgeId = randomUUID()
-  await c.env.RPG_DB.prepare(
-    `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
-  ).bind(
-    knowledgeId,
-    parsed.data.entity_id,
-    parsed.data.topic,
-    parsed.data.knowledge_type,
-    parsed.data.source ?? null,
-    parsed.data.acquired_at,
-    parsed.data.detail ?? null,
-    parsed.data.confidence,
-  ).run()
+  try {
+    await c.env.RPG_DB.prepare(
+      `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+    ).bind(
+      knowledgeId,
+      parsed.data.entity_id,
+      parsed.data.topic,
+      parsed.data.knowledge_type,
+      parsed.data.source ?? null,
+      parsed.data.acquired_at,
+      parsed.data.detail ?? null,
+      parsed.data.confidence,
+    ).run()
+  } catch (err) {
+    const msg = String(err)
+    if (msg.includes('FOREIGN KEY')) {
+      return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+    }
+    throw err
+  }
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Knowledge "${parsed.data.topic}" set for entity "${parsed.data.entity_id}".` }],
@@ -328,12 +342,26 @@ export async function handle_learn_from_event({ c, id, args }: ToolContext): Pro
   const event = await c.env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(parsed.data.event_id).first() as Record<string, unknown> | null
   if (!event) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
 
+  // Validate FK constraint: entity_id must exist in characters table
+  const entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  if (!entityExists) {
+    return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+  }
+
   const topic = `${event.verb}${event.object_entity ? `:${event.object_entity}` : ''}`
   const knowledgeId = randomUUID()
-  await c.env.RPG_DB.prepare(
-    `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
-     VALUES (?, ?, ?, 'fact', ?, ?, ?, 100, 1)`
-  ).bind(knowledgeId, parsed.data.entity_id, topic, parsed.data.event_id, event.event_at as string, event.detail ?? null).run()
+  try {
+    await c.env.RPG_DB.prepare(
+      `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+       VALUES (?, ?, ?, 'fact', ?, ?, ?, 100, 1)`
+    ).bind(knowledgeId, parsed.data.entity_id, topic, parsed.data.event_id, event.event_at as string, event.detail ?? null).run()
+  } catch (err) {
+    const msg = String(err)
+    if (msg.includes('FOREIGN KEY')) {
+      return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+    }
+    throw err
+  }
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Entity "${parsed.data.entity_id}" learned "${topic}" from event "${parsed.data.event_id}".` }],
