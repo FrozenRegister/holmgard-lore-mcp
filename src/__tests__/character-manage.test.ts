@@ -718,4 +718,182 @@ describe('character_manage tool', () => {
     expect(r.success).toBe(true)
     expect(r.newLevel).toBe(4)
   })
+
+  // ── Ability Modifiers and Computed Fields ─────────────────────────────────
+
+  it('get returns ability_modifiers computed from stats', async () => {
+    const stats = { str: 16, dex: 14, con: 15, int: 12, wis: 13, cha: 8 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Calculator',
+      stats
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.ability_modifiers).toEqual({
+      str: 3,   // (16-10)/2 = 3
+      dex: 2,   // (14-10)/2 = 2
+      con: 2,   // (15-10)/2 = 2
+      int: 1,   // (12-10)/2 = 1
+      wis: 1,   // (13-10)/2 = 1
+      cha: -1   // (8-10)/2 = -1
+    })
+  })
+
+  it('create auto-computes AC from DEX modifier when not provided', async () => {
+    const stats = { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Dexterous',
+      stats
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.ac).toBe(13) // 10 + (16-10)/2 = 10 + 3 = 13
+  })
+
+  it('create respects explicit AC value over auto-compute', async () => {
+    const stats = { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Armored',
+      stats,
+      ac: 18
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.ac).toBe(18)
+  })
+
+  it('get auto-computes perception_bonus from WIS modifier when not explicitly set', async () => {
+    const stats = { str: 10, dex: 10, con: 10, int: 10, wis: 16, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Perceptive',
+      stats
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.perception_bonus).toBe(3) // (16-10)/2 = 3
+  })
+
+  it('get respects explicit perception_bonus over auto-compute', async () => {
+    const stats = { str: 10, dex: 10, con: 10, int: 10, wis: 16, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Expert',
+      stats,
+      perceptionBonus: 7
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.perception_bonus).toBe(7)
+  })
+
+  it('get auto-computes stealth_bonus from DEX modifier when not explicitly set', async () => {
+    const stats = { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Sneaky',
+      stats
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.stealth_bonus).toBe(2) // (14-10)/2 = 2
+  })
+
+  it('get respects explicit stealth_bonus over auto-compute', async () => {
+    const stats = { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Master',
+      stats,
+      stealthBonus: 5
+    })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.stealth_bonus).toBe(5)
+  })
+
+  // ── PATCH Semantics (Preserve Existing Fields) ────────────────────────────
+
+  it('update with only stats preserves level and other fields', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Hero',
+      level: 20,
+      hp: 150
+    })
+    const updateStats = { str: 18, dex: 16, con: 16, int: 12, wis: 14, cha: 13 }
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      stats: updateStats
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.level).toBe(20) // Must not reset to 1
+    expect(char.character.hp).toBe(150) // Must not reset
+    expect(char.character.stats).toEqual(updateStats)
+  })
+
+  it('update with characterClass field', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Fighter',
+      characterClass: 'Barbarian'
+    })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      characterClass: 'Rogue'
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.character_class).toBe('Rogue')
+  })
+
+  it('update with born field', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Timeless'
+    })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      born: '2150-03-15'
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.born).toBe('2150-03-15')
+  })
+
+  it('create accepts born field', async () => {
+    const r = await callTool('character_manage', {
+      action: 'create',
+      name: 'Elf',
+      born: '2100-06-20'
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: r.characterId })
+    expect(char.character.born).toBe('2100-06-20')
+  })
+
+  it('update multiple stats and level independently', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Ascending',
+      level: 5,
+      stats: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+    })
+    const newStats = { str: 18, dex: 18, con: 18, int: 18, wis: 18, cha: 18 }
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      stats: newStats,
+      level: 15
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.level).toBe(15)
+    expect(char.character.stats).toEqual(newStats)
+  })
 })

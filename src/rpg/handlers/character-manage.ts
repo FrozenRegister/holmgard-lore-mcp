@@ -24,6 +24,8 @@ const XP_TABLE: Record<number, number> = {
 }
 const levelFromXp = (xp: number) => Object.entries(XP_TABLE).reverse().find(([, req]) => xp >= req)?.[0] ?? '1'
 
+const abilityModifier = (score: number): number => Math.floor((score - 10) / 2)
+
 const StatsSchema = z.object({ str: z.number().default(10), dex: z.number().default(10), con: z.number().default(10), int: z.number().default(10), wis: z.number().default(10), cha: z.number().default(10) })
 
 const InputSchema = z.object({
@@ -31,14 +33,15 @@ const InputSchema = z.object({
   id: z.string().optional(),
   characterId: z.string().optional(),
   name: z.string().optional(),
-  characterType: z.enum(['pc', 'npc', 'enemy', 'neutral']).optional().default('pc'),
-  characterClass: z.string().optional().default('Fighter'),
-  race: z.string().optional().default('Human'),
-  level: z.number().int().min(1).max(20).optional().default(1),
+  characterType: z.enum(['pc', 'npc', 'enemy', 'neutral']).optional(),
+  characterClass: z.string().optional(),
+  race: z.string().optional(),
+  level: z.number().int().min(1).max(20).optional(),
   hp: z.number().int().min(0).optional(),
   maxHp: z.number().int().min(1).optional(),
-  ac: z.number().int().optional().default(10),
+  ac: z.number().int().optional(),
   stats: StatsSchema.optional(),
+  born: z.string().optional(),
   factionId: z.string().optional(),
   behavior: z.string().optional(),
   background: z.string().optional(),
@@ -50,7 +53,7 @@ const InputSchema = z.object({
   xp: z.number().int().min(0).optional(),
   amount: z.number().int().min(0).optional(),
   xpAmount: z.number().int().min(0).optional(),
-  limit: z.number().int().min(1).max(200).optional().default(50),
+  limit: z.number().int().min(1).max(200).optional(),
   characterTypeFilter: z.enum(['pc', 'npc', 'enemy', 'neutral']).optional(),
   query: z.string().optional(),
   conditions: z.array(z.string()).optional(),
@@ -73,16 +76,32 @@ const InputSchema = z.object({
   currency: z.record(z.unknown()).optional(),
   spellName: z.string().optional(),
   slotLevel: z.number().int().min(0).max(9).optional(),
-  usePactMagic: z.boolean().optional().default(false),
-  requiresConcentration: z.boolean().optional().default(false),
+  usePactMagic: z.boolean().optional(),
+  requiresConcentration: z.boolean().optional(),
   targetIds: z.array(z.string()).optional(),
-  saveDcBase: z.number().int().optional().default(10),
+  saveDcBase: z.number().int().optional(),
 })
 
 function parseChar(row: Record<string, unknown>) {
+  const stats = row.stats ? JSON.parse(row.stats as string) : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+  const acSet = row.ac as number | undefined
+  const dexMod = abilityModifier(stats.dex)
+  const wisMod = abilityModifier(stats.wis)
+
   return {
     ...row,
-    stats: row.stats ? JSON.parse(row.stats as string) : {},
+    stats,
+    ability_modifiers: {
+      str: abilityModifier(stats.str),
+      dex: dexMod,
+      con: abilityModifier(stats.con),
+      int: abilityModifier(stats.int),
+      wis: wisMod,
+      cha: abilityModifier(stats.cha),
+    },
+    ac: acSet ?? (10 + dexMod),
+    perception_bonus: (row.perception_bonus as number | undefined) ?? wisMod,
+    stealth_bonus: (row.stealth_bonus as number | undefined) ?? dexMod,
     conditions: row.conditions ? JSON.parse(row.conditions as string) : [],
     resistances: row.resistances ? JSON.parse(row.resistances as string) : [],
     vulnerabilities: row.vulnerabilities ? JSON.parse(row.vulnerabilities as string) : [],
@@ -111,28 +130,37 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (!a.name) return err('"name" is required')
       const id = crypto.randomUUID()
       const stats = a.stats ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
-      const maxHp = a.maxHp ?? Math.max(1, (a.level ?? 1) * 8)
+      const level = a.level ?? 1
+      const characterClass = a.characterClass ?? 'Fighter'
+      const race = a.race ?? 'Human'
+      const characterType = a.characterType ?? 'pc'
+      const ac = a.ac ?? (10 + abilityModifier(stats.dex))
+      const maxHp = a.maxHp ?? Math.max(1, level * 8)
       const hp = a.hp ?? maxHp
       const currency = a.currency ?? { gold: 0, silver: 0, copper: 0 }
+      const dexMod = abilityModifier(stats.dex)
+      const wisMod = abilityModifier(stats.wis)
+      const perceptionBonus = a.perceptionBonus ?? wisMod
+      const stealthBonus = a.stealthBonus ?? dexMod
       await db.prepare(`
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, faction_id, behavior, character_type, character_class, race,
-          background, alignment, origin, conditions, resistances, vulnerabilities, immunities,
+          background, alignment, origin, born, conditions, resistances, vulnerabilities, immunities,
           known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, max_spell_level, concentrating_on,
           legendary_actions, legendary_actions_remaining, legendary_resistances, legendary_resistances_remaining, has_lair_actions,
           currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        id, a.name, JSON.stringify(stats), hp, maxHp, a.ac, a.level, a.factionId ?? null, a.behavior ?? null, a.characterType, a.characterClass, a.race,
-        a.background ?? null, a.alignment ?? null, a.origin ?? null,
+        id, a.name, JSON.stringify(stats), hp, maxHp, ac, level, a.factionId ?? null, a.behavior ?? null, characterType, characterClass, race,
+        a.background ?? null, a.alignment ?? null, a.origin ?? null, a.born ?? null,
         JSON.stringify(a.conditions ?? []), JSON.stringify(a.resistances ?? []), JSON.stringify(a.vulnerabilities ?? []), JSON.stringify(a.immunities ?? []),
         JSON.stringify(a.knownSpells ?? []), JSON.stringify(a.preparedSpells ?? []), JSON.stringify(a.cantripsKnown ?? []),
         a.spellSlots ? JSON.stringify(a.spellSlots) : null, a.pactMagicSlots ? JSON.stringify(a.pactMagicSlots) : null, a.maxSpellLevel ?? 0, a.concentratingOn ?? null,
         a.legendaryActions ?? null, a.legendaryActionsRemaining ?? null, a.legendaryResistances ?? null, a.legendaryResistancesRemaining ?? null, a.hasLairActions ? 1 : 0,
-        JSON.stringify(currency), a.currentRoomId ?? null, a.perceptionBonus ?? 0, a.stealthBonus ?? 0, JSON.stringify(a.resourcePools ?? {}), 0, now, now
+        JSON.stringify(currency), a.currentRoomId ?? null, perceptionBonus, stealthBonus, JSON.stringify(a.resourcePools ?? {}), 0, now, now
       ).run()
-      return ok({ success: true, actionType: 'create', characterId: id, name: a.name, characterType: a.characterType })
+      return ok({ success: true, actionType: 'create', characterId: id, name: a.name, characterType })
     }
     case 'get': {
       const charId = a.id ?? a.characterId
@@ -146,7 +174,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const binds: unknown[] = []
       if (a.characterTypeFilter) { query += ' WHERE character_type = ?'; binds.push(a.characterTypeFilter) }
       query += ' ORDER BY name LIMIT ?'
-      binds.push(a.limit)
+      binds.push(a.limit ?? 50)
       const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'list', characters: results, count: results.length })
     }
@@ -161,6 +189,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.ac !== undefined) { sets.push('ac = ?'); vals.push(a.ac) }
       if (a.level !== undefined) { sets.push('level = ?'); vals.push(a.level) }
       if (a.stats) { sets.push('stats = ?'); vals.push(JSON.stringify(a.stats)) }
+      if (a.born !== undefined) { sets.push('born = ?'); vals.push(a.born) }
+      if (a.characterClass !== undefined) { sets.push('character_class = ?'); vals.push(a.characterClass) }
+      if (a.race !== undefined) { sets.push('race = ?'); vals.push(a.race) }
       if (a.background) { sets.push('background = ?'); vals.push(a.background) }
       if (a.alignment) { sets.push('alignment = ?'); vals.push(a.alignment) }
       if (a.conditions) { sets.push('conditions = ?'); vals.push(JSON.stringify(a.conditions)) }
@@ -232,55 +263,62 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (!a.query) return err('"query" is required for search')
       const pattern = `%${a.query}%`
       const { results } = await db.prepare('SELECT id, name, character_type, character_class, race, level FROM characters WHERE name LIKE ? ORDER BY name LIMIT ?')
-        .bind(pattern, a.limit).all()
+        .bind(pattern, a.limit ?? 50).all()
       return ok({ success: true, actionType: 'search', query: a.query, characters: results, count: results.length })
     }
     case 'cast_spell': {
-      const charId = a.id ?? a.characterId
-      if (!charId || !a.spellName) return err('"id"/"characterId" and "spellName" are required')
-      const row = await db.prepare('SELECT known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, concentrating_on FROM characters WHERE id = ?').bind(charId).first() as
-        { known_spells: string; prepared_spells: string; cantrips_known: string; spell_slots: string | null; pact_magic_slots: string | null; concentrating_on: string | null } | null
-      if (!row) return err(`Character not found: ${charId}`)
+      try {
+        const charId = a.id ?? a.characterId
+        if (!charId || !a.spellName) return err('"id"/"characterId" and "spellName" are required')
+        const row = await db.prepare('SELECT known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, concentrating_on FROM characters WHERE id = ?').bind(charId).first() as
+          { known_spells: string; prepared_spells: string; cantrips_known: string; spell_slots: string | null; pact_magic_slots: string | null; concentrating_on: string | null } | null
+        if (!row) return err(`Character not found: ${charId}`)
 
-      const knownSpells: string[] = JSON.parse(row.known_spells ?? '[]')
-      const preparedSpells: string[] = JSON.parse(row.prepared_spells ?? '[]')
-      const cantripsKnown: string[] = JSON.parse(row.cantrips_known ?? '[]')
-      const isCantrip = cantripsKnown.includes(a.spellName)
-      if (!isCantrip && !knownSpells.includes(a.spellName) && !preparedSpells.includes(a.spellName)) {
-        return err(`"${a.spellName}" is not in this character's known/prepared spells or cantrips — cast blocked`)
-      }
-
-      let remainingSlots: unknown = null
-      if (!isCantrip) {
-        if (a.usePactMagic) {
-          const pact = row.pact_magic_slots ? JSON.parse(row.pact_magic_slots) : null
-          if (!pact || pact.current <= 0) return err('No pact magic slots remaining')
-          pact.current -= 1
-          await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(pact), now, charId).run()
-          remainingSlots = pact
-        } else {
-          if (a.slotLevel === undefined) return err('"slotLevel" is required to cast a leveled spell (use slotLevel: 0 for a cantrip)')
-          const slots = row.spell_slots ? JSON.parse(row.spell_slots) : {}
-          const slot = slots[String(a.slotLevel)]
-          if (!slot || slot.current <= 0) return err(`No level ${a.slotLevel} spell slots remaining`)
-          slot.current -= 1
-          await db.prepare('UPDATE characters SET spell_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(slots), now, charId).run()
-          remainingSlots = slots
+        const knownSpells: string[] = JSON.parse(row.known_spells ?? '[]')
+        const preparedSpells: string[] = JSON.parse(row.prepared_spells ?? '[]')
+        const cantripsKnown: string[] = JSON.parse(row.cantrips_known ?? '[]')
+        const isCantrip = cantripsKnown.includes(a.spellName)
+        if (!isCantrip && !knownSpells.includes(a.spellName) && !preparedSpells.includes(a.spellName)) {
+          return err(`"${a.spellName}" is not in this character's known/prepared spells or cantrips — cast blocked`)
         }
-      }
 
-      if (a.requiresConcentration) {
-        await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
-        await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
-        await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase).run()
-        await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
-      }
+        let remainingSlots: unknown = null
+        if (!isCantrip) {
+          const usePactMagic = a.usePactMagic ?? false
+          if (usePactMagic) {
+            const pact = row.pact_magic_slots ? JSON.parse(row.pact_magic_slots) : null
+            if (!pact || pact.current <= 0) return err('No pact magic slots remaining')
+            pact.current -= 1
+            await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(pact), now, charId).run()
+            remainingSlots = pact
+          } else {
+            if (a.slotLevel === undefined) return err('"slotLevel" is required to cast a leveled spell (use slotLevel: 0 for a cantrip)')
+            const slots = row.spell_slots ? JSON.parse(row.spell_slots) : {}
+            const slot = slots[String(a.slotLevel)]
+            if (!slot || slot.current <= 0) return err(`No level ${a.slotLevel} spell slots remaining`)
+            slot.current -= 1
+            await db.prepare('UPDATE characters SET spell_slots = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(slots), now, charId).run()
+            remainingSlots = slots
+          }
+        }
 
-      return ok({
-        success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
-        slotLevel: a.slotLevel ?? null, usedPactMagic: a.usePactMagic, remainingSlots, concentrating: a.requiresConcentration,
-      })
+        const requiresConcentration = a.requiresConcentration ?? false
+        if (requiresConcentration) {
+          await db.prepare('DELETE FROM concentration WHERE character_id = ?').bind(charId).run()
+          await db.prepare('DELETE FROM auras WHERE owner_id = ? AND requires_concentration = 1').bind(charId).run()
+          await db.prepare('INSERT INTO concentration (character_id, active_spell, spell_level, target_ids, started_at, max_duration, save_dc_base) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? 10).run()
+          await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
+        }
+
+        return ok({
+          success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
+          slotLevel: a.slotLevel ?? null, usedPactMagic: a.usePactMagic ?? false, remainingSlots, concentrating: requiresConcentration,
+        })
+      } catch (e) {
+        const msg = String(e)
+        return err(`cast_spell failed: ${msg}`)
+      }
     }
   }
 }

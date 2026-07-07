@@ -292,7 +292,16 @@ export async function handle_set_entity_knowledge({ c, id, args }: ToolContext):
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
   // Validate FK constraint: entity_id must exist in characters table
-  const entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  let entityExists: { id: string } | null
+  try {
+    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  } catch (err) {
+    const msg = String(err)
+    if (msg.includes('FOREIGN KEY')) {
+      return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+    }
+    throw err
+  }
   if (!entityExists) {
     return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
   }
@@ -343,7 +352,16 @@ export async function handle_learn_from_event({ c, id, args }: ToolContext): Pro
   if (!event) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
 
   // Validate FK constraint: entity_id must exist in characters table
-  const entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  let entityExists: { id: string } | null
+  try {
+    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+  } catch (err) {
+    const msg = String(err)
+    if (msg.includes('FOREIGN KEY')) {
+      return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+    }
+    throw err
+  }
   if (!entityExists) {
     return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
   }
