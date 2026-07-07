@@ -1,6 +1,7 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
+import { setupRpgDb } from './setup-d1'
 
 describe('append_event', () => {
   it('appends an event to an entity chronicle', async () => {
@@ -9,6 +10,62 @@ describe('append_event', () => {
     expect(res.result.metadata.entity_key).toBe('character:zira')
     expect(res.result.metadata.event_count).toBe(1)
     expect(res.result.metadata.duplicate).toBe(false)
+  })
+
+  it('rejects invalid world_id with FK validation error', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:test',
+      verb: 'moved',
+      world_id: 'nonexistent-world-xyz',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('World not found')
+  })
+
+  it('rejects invalid entity_id with FK validation error', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up a world first
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-1', 'Test World', 'seed123', 100, 100, now, now).run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:test',
+      verb: 'moved',
+      world_id: 'test-world-1',
+      entity_id: 'nonexistent-char-xyz',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
+
+  it('successfully inserts event to D1 with valid world_id and entity_id', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up a world and character
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-2', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-test-1', 'Test Character', '{}', 10, 10, 15, 1, now, now).run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:test',
+      verb: 'moved',
+      world_id: 'test-world-2',
+      entity_id: 'char-test-1',
+      detail: 'Moved to the marketplace',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entity_key).toBe('character:test')
   })
 
   it('is idempotent within 1s for identical verb+object', async () => {
@@ -251,5 +308,134 @@ describe('world_diff', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
     expect(res.error.data.example).toBeDefined()
+  })
+})
+
+describe('set_entity_knowledge', () => {
+  it('rejects invalid entity_id with FK validation error', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const res = await callTool('world_manage', {
+      action: 'set_entity_knowledge',
+      entity_id: 'nonexistent-char-xyz',
+      topic: 'test-topic',
+      knowledge_type: 'fact',
+      acquired_at: '2184-07-15T00:00:00Z',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
+
+  it('successfully inserts knowledge with valid entity_id', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up a character
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-test-2', 'Test Character', '{}', 10, 10, 15, 1, now, now).run()
+
+    const res = await callTool('world_manage', {
+      action: 'set_entity_knowledge',
+      entity_id: 'char-test-2',
+      topic: 'the-lock',
+      knowledge_type: 'fact',
+      acquired_at: '2184-07-15T00:00:00Z',
+      detail: 'A mysterious lock',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entity_id).toBe('char-test-2')
+    expect(res.result.metadata.topic).toBe('the-lock')
+  })
+
+  it('rejects missing entity_id param', async () => {
+    const res = await callTool('world_manage', {
+      action: 'set_entity_knowledge',
+      topic: 'test-topic',
+      knowledge_type: 'fact',
+      acquired_at: '2184-07-15T00:00:00Z',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
+describe('learn_from_event', () => {
+  it('rejects invalid entity_id with FK validation error', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up a world and event
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-3', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('event-source-char', 'Event Source', '{}', 10, 10, 15, 1, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('event-1', 'test-world-3', 'main', '2184-07-15T00:00:00Z', 'moved', 'event-source-char', now).run()
+
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      entity_id: 'nonexistent-char-xyz',
+      event_id: 'event-1',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Character not found')
+  })
+
+  it('rejects invalid event_id', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up a character
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-test-3', 'Test Character', '{}', 10, 10, 15, 1, now, now).run()
+
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      entity_id: 'char-test-3',
+      event_id: 'nonexistent-event-xyz',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+    expect(res.error.message).toContain('Event not found')
+  })
+
+  it('successfully creates knowledge from event with valid IDs', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Set up world, characters, and event
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-4', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('event-source-char-2', 'Event Source', '{}', 10, 10, 15, 1, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-test-4', 'Learning Character', '{}', 10, 10, 15, 1, now, now).run()
+
+    await env.RPG_DB.prepare(
+      'INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('event-2', 'test-world-4', 'main', '2184-07-15T00:00:00Z', 'betrayed', 'event-source-char-2', 'A great betrayal occurred', now).run()
+
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      entity_id: 'char-test-4',
+      event_id: 'event-2',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entity_id).toBe('char-test-4')
+    expect(res.result.metadata.topic).toBe('betrayed')
+  })
+
+  it('rejects missing entity_id param', async () => {
+    const res = await callTool('world_manage', {
+      action: 'learn_from_event',
+      event_id: 'some-event-id',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
   })
 })
