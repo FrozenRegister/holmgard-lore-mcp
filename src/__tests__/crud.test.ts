@@ -92,6 +92,29 @@ describe('list_maps', () => {
   })
 })
 
+describe('get_map', () => {
+  it('returns a map by id, normalizing the map: prefix', async () => {
+    await seedKV('map:holmgard-overworld', '{"type":"FeatureCollection"}')
+    const res = await callTool('lore_manage', { action: 'get_map', map_id: 'holmgard-overworld' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.key).toBe('map:holmgard-overworld')
+    expect(res.result.text).toContain('FeatureCollection')
+  })
+
+  it('accepts a map_id already prefixed with map:', async () => {
+    await seedKV('map:region:north', '{"type":"FeatureCollection"}')
+    const res = await callTool('lore_manage', { action: 'get_map', map_id: 'map:region:north' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.key).toBe('map:region:north')
+  })
+
+  it('returns error for nonexistent map', async () => {
+    const res = await callTool('lore_manage', { action: 'get_map', map_id: 'no-such-map' })
+    expect(res.error).toBeDefined()
+    expect(res.error.message).toContain('No map found')
+  })
+})
+
 describe('set_lore — dry_run', () => {
   it('previews a new key without writing it', async () => {
     const res = await callTool('lore_manage', { action: 'set', key: 'character:dry-run-new', text: 'Would-be text', dry_run: true })

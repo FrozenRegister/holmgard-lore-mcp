@@ -67,25 +67,32 @@ export function defineAction<S extends z.ZodTypeAny>(
 
 /**
  * Builds a `ToolHandler` that dispatches on `args.action` to one of `actionMap`'s
- * typed handlers, parsing each action's args against its own schema exactly once
- * before the handler ever sees them.
+ * handlers. Map values may be either a typed `ActionSpec` — parsed once against its
+ * own schema before the handler ever sees `args` — or a legacy raw `ToolHandler`
+ * that still parses `args` itself. The mixed form lets an ACTION_MAP migrate to the
+ * typed pattern one action at a time instead of requiring a whole file to convert
+ * atomically (e.g. lore-manage.ts pairs a converted system.ts read-side with a
+ * not-yet-converted lore.ts write-side).
  */
-export function makeActionDispatcher(toolName: string, actionMap: Record<string, ActionSpec>): ToolHandler {
+export function makeActionDispatcher(toolName: string, actionMap: Record<string, ActionSpec | ToolHandler>): ToolHandler {
   return ({ c, id, args, isAuthenticated }) => {
     const { action, ...rest } = args
     if (!action || typeof action !== 'string')
       return Promise.resolve(c.json(makeError(id, -32602, 'Missing required param: action'), 200))
 
-    const spec = actionMap[action]
-    if (!spec)
+    const entry = actionMap[action]
+    if (!entry)
       return Promise.resolve(c.json(makeError(id, -32602, `Unknown action "${action}"`), 200))
 
-    const parsed = spec.schema.safeParse(rest)
+    if (typeof entry === 'function')
+      return entry({ c, id, args: rest, isAuthenticated })
+
+    const parsed = entry.schema.safeParse(rest)
     if (!parsed.success) {
-      const example = spec.example ? { action, ...spec.example } : undefined
+      const example = entry.example ? { action, ...entry.example } : undefined
       return Promise.resolve(c.json(invalidParamsError(id, toolName, parsed.error, example), 200))
     }
 
-    return spec.handler({ c, id, args: parsed.data, isAuthenticated })
+    return entry.handler({ c, id, args: parsed.data, isAuthenticated })
   }
 }
