@@ -3,13 +3,12 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { invalidParamsError } from '../lib/errors'
 import { applyAliases } from '../lib/aliases'
 import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText, levenshteinDistance } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
 import { CHANGELOG_KEY } from '../constants'
-import type { ToolContext, TypedToolContext } from './types'
+import type { TypedToolContext } from './types'
 
 // Event/changelog handler schemas (PR 1)
 export const appendEventSchema = z.object({
