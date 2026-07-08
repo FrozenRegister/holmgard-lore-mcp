@@ -2,31 +2,24 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, getKV, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
 import { checkForConcurrentWrite } from '../lib/concurrency'
-import type { ToolContext } from './types'
+import type { TypedToolContext } from './types'
 
-export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ key: z.string().min(1), text: z.string().min(1), dry_run: z.boolean().optional().default(false) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'set', key: 'character:eira-holt', text: 'Eira Holt is a surgeon...'
-    }), 200)
-  }
+export const setLoreSchema = z.object({ key: z.string().min(1), text: z.string().min(1), dry_run: z.boolean().optional().default(false) })
 
-  const key = parsed.data.key.trim().toLowerCase()
-  const text = parsed.data.text
+export async function handle_set_lore({ c, id, args }: TypedToolContext<typeof setLoreSchema>): Promise<Response> {
+  const key = args.key.trim().toLowerCase()
+  const text = args.text
 
   const existingRaw = await kvGet(c, key)
   const existingMeta = existingRaw ? parseKvEntry(existingRaw).meta : {}
   const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
   const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
-  if (parsed.data.dry_run) {
+  if (args.dry_run) {
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: `[DRY RUN] Would save lore for "${key}" (v${version}). No changes were written.` }],
       dry_run: true,
@@ -57,20 +50,14 @@ export async function handle_set_lore({ c, id, args }: ToolContext): Promise<Res
   }), 200)
 }
 
-export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ key: z.string().min(1), dry_run: z.boolean().optional().default(false) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'delete', key: 'character:eira-holt'
-    }), 200)
-  }
+export const deleteLoreSchema = z.object({ key: z.string().min(1), dry_run: z.boolean().optional().default(false) })
 
-  const key = parsed.data.key.trim().toLowerCase()
+export async function handle_delete_lore({ c, id, args }: TypedToolContext<typeof deleteLoreSchema>): Promise<Response> {
+  const key = args.key.trim().toLowerCase()
   const existingRaw = await kvGet(c, key)
   const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
 
-  if (parsed.data.dry_run) {
+  if (args.dry_run) {
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: `[DRY RUN] Would delete lore for "${key}". No changes were written.` }],
       dry_run: true,
@@ -96,25 +83,19 @@ export async function handle_delete_lore({ c, id, args }: ToolContext): Promise<
     200)
 }
 
-export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    key: z.string().min(1),
-    operation: z.string().min(1),
-    target: z.string().optional(),
-    value: z.string().optional(),
-    dry_run: z.boolean().optional().default(false),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'patch', key: 'character:eira-holt', operation: 'append', value: 'New inventory item.'
-    }), 200)
-  }
+export const patchLoreSchema = z.object({
+  key: z.string().min(1),
+  operation: z.string().min(1),
+  target: z.string().optional(),
+  value: z.string().optional(),
+  dry_run: z.boolean().optional().default(false),
+})
 
-  const key = parsed.data.key.trim().toLowerCase()
-  const operation = parsed.data.operation
-  const target = parsed.data.target
-  const value = parsed.data.value
+export async function handle_patch_lore({ c, id, args }: TypedToolContext<typeof patchLoreSchema>): Promise<Response> {
+  const key = args.key.trim().toLowerCase()
+  const operation = args.operation
+  const target = args.target
+  const value = args.value
 
   if (!['replace', 'append', 'delete_field'].includes(operation)) {
     return c.json(makeResult(id, {
@@ -175,7 +156,7 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
       : `Deleted 1 occurrence of "${target}" from "${key}".`
   }
 
-  if (parsed.data.dry_run) {
+  if (args.dry_run) {
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: `[DRY RUN] ${successMessage} No changes were written.` }],
       dry_run: true,
@@ -211,21 +192,15 @@ export async function handle_patch_lore({ c, id, args }: ToolContext): Promise<R
     200)
 }
 
-export async function handle_batch_set_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1)
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'batch_set', entries: [{ key: 'character:eira-holt', text: '...' }]
-    }), 200)
-  }
+export const batchSetLoreSchema = z.object({
+  entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1)
+})
 
+export async function handle_batch_set_lore({ c, id, args }: TypedToolContext<typeof batchSetLoreSchema>): Promise<Response> {
   const now = new Date().toISOString()
   const batchResults: Record<string, { ok: boolean; version?: number; error?: string }> = {}
 
-  const cleanedEntries = parsed.data.entries.map(e => ({ ...e, key: e.key.trim().toLowerCase() }))
+  const cleanedEntries = args.entries.map(e => ({ ...e, key: e.key.trim().toLowerCase() }))
 
   const rawValues = await Promise.all(cleanedEntries.map(e => kvGet(c, e.key)))
 
@@ -267,29 +242,23 @@ export async function handle_batch_set_lore({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_batch_mutate({ c, id, args }: ToolContext): Promise<Response> {
-  const mutationSchema = z.object({
-    key: z.string().min(1),
-    action: z.enum(['increment', 'patch']),
-    field_path: z.string().optional(),
-    increment: z.number().int().optional(),
-    reason: z.string().optional(),
-    operation: z.enum(['replace', 'append', 'delete_field']).optional(),
-    target: z.string().optional(),
-    value: z.string().optional(),
-  })
-  const schema = z.object({ mutations: z.array(mutationSchema).min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'batch_mutate', mutations: [{ key: 'character:eira-holt', action: 'increment', field_path: 'Reputation', increment: 1 }]
-    }), 200)
-  }
+const mutationSchema = z.object({
+  key: z.string().min(1),
+  action: z.enum(['increment', 'patch']),
+  field_path: z.string().optional(),
+  increment: z.number().int().optional(),
+  reason: z.string().optional(),
+  operation: z.enum(['replace', 'append', 'delete_field']).optional(),
+  target: z.string().optional(),
+  value: z.string().optional(),
+})
+export const batchMutateSchema = z.object({ mutations: z.array(mutationSchema).min(1) })
 
+export async function handle_batch_mutate({ c, id, args }: TypedToolContext<typeof batchMutateSchema>): Promise<Response> {
   const now = new Date().toISOString()
   const mutationResults: Array<{ key: string; action: string; ok: boolean; message: string; old_value?: any; new_value?: any }> = []
 
-  const muts = parsed.data.mutations
+  const muts = args.mutations
   const mutKeys = muts.map(m => m.key.trim().toLowerCase())
   const mutRaws = await Promise.all(mutKeys.map(k => kvGet(c, k)))
   // Track live text so multiple mutations to the same key compose sequentially
@@ -408,16 +377,10 @@ export async function handle_batch_mutate({ c, id, args }: ToolContext): Promise
   }), 200)
 }
 
-export async function handle_restore_lore({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'restore', key: 'character:eira-holt'
-    }), 200)
-  }
+export const restoreLoreSchema = z.object({ key: z.string().min(1) })
 
-  const key = parsed.data.key.trim().toLowerCase()
+export async function handle_restore_lore({ c, id, args }: TypedToolContext<typeof restoreLoreSchema>): Promise<Response> {
+  const key = args.key.trim().toLowerCase()
   const kv = getKV(c)
   if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
 
@@ -460,16 +423,10 @@ export async function handle_restore_lore({ c, id, args }: ToolContext): Promise
   }), 200)
 }
 
-export async function handle_get_topic_histories({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ keys: z.array(z.string().min(1)).min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'history', keys: ['character:eira-holt']
-    }), 200)
-  }
+export const getTopicHistoriesSchema = z.object({ keys: z.array(z.string().min(1)).min(1) })
 
-  const keys = parsed.data.keys.map(k => k.toLowerCase())
+export async function handle_get_topic_histories({ c, id, args }: TypedToolContext<typeof getTopicHistoriesSchema>): Promise<Response> {
+  const keys = args.keys.map(k => k.toLowerCase())
   const kv = getKV(c)
   if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
 
@@ -499,40 +456,34 @@ export async function handle_get_topic_histories({ c, id, args }: ToolContext): 
   return c.json(makeResult(id, histories), 200)
 }
 
-export async function handle_increment_topic_field({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    key: z.string().min(1),
-    field_path: z.string().min(1),
-    increment: z.number().default(1),
-    reason: z.string().default('system-update'),
-    dry_run: z.boolean().optional().default(false),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'increment', key: 'character:eira-holt', field_path: 'Reputation', increment: 1
-    }), 200)
-  }
+export const incrementTopicFieldSchema = z.object({
+  key: z.string().min(1),
+  field_path: z.string().min(1),
+  increment: z.number().default(1),
+  reason: z.string().default('system-update'),
+  dry_run: z.boolean().optional().default(false),
+})
 
-  const key = parsed.data.key.trim().toLowerCase()
+export async function handle_increment_topic_field({ c, id, args }: TypedToolContext<typeof incrementTopicFieldSchema>): Promise<Response> {
+  const key = args.key.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Topic "${key}" not found`, null), 200)
 
   const { text, meta } = parseKvEntry(raw)
-  const currentValue = extractFieldFromText(text, parsed.data.field_path)
+  const currentValue = extractFieldFromText(text, args.field_path)
 
   if (typeof currentValue !== 'number') {
-    return c.json(makeError(id, -32602, `Field "${parsed.data.field_path}" is not numeric`, { current: currentValue }), 200)
+    return c.json(makeError(id, -32602, `Field "${args.field_path}" is not numeric`, { current: currentValue }), 200)
   }
 
-  const newValue = parseFloat((currentValue + parsed.data.increment).toPrecision(10))
-  const updatedText = updateFieldInText(text, parsed.data.field_path, newValue)
+  const newValue = parseFloat((currentValue + args.increment).toPrecision(10))
+  const updatedText = updateFieldInText(text, args.field_path, newValue)
 
-  if (parsed.data.dry_run) {
+  if (args.dry_run) {
     return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `[DRY RUN] Would increment ${parsed.data.field_path} from ${currentValue} to ${newValue}. No changes were written.` }],
+      content: [{ type: 'text', text: `[DRY RUN] Would increment ${args.field_path} from ${currentValue} to ${newValue}. No changes were written.` }],
       dry_run: true,
-      would_change: { key, operation: 'increment_topic_field', field_path: parsed.data.field_path, before: currentValue, after: newValue }
+      would_change: { key, operation: 'increment_topic_field', field_path: args.field_path, before: currentValue, after: newValue }
     }), 200)
   }
 
@@ -553,8 +504,8 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
       version,
       updatedAt: now,
       createdAt: meta.createdAt ?? now,
-      lastIncrementReason: parsed.data.reason,
-      lastIncrementValue: parsed.data.increment
+      lastIncrementReason: args.reason,
+      lastIncrementValue: args.increment
     }
   })
 
@@ -566,29 +517,23 @@ export async function handle_increment_topic_field({ c, id, args }: ToolContext)
     {
       content: [{
         type: 'text',
-        text: `Incremented ${parsed.data.field_path} from ${currentValue} to ${newValue} (reason: ${parsed.data.reason})`
-      }], metadata: { key, version, field_path: parsed.data.field_path, old_value: currentValue, new_value: newValue }
+        text: `Incremented ${args.field_path} from ${currentValue} to ${newValue} (reason: ${args.reason})`
+      }], metadata: { key, version, field_path: args.field_path, old_value: currentValue, new_value: newValue }
     }), 200)
 }
 
-export async function handle_append_to_section({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    key: z.string().min(1),
-    section: z.string().min(1),
-    text: z.string(),
-    position: z.enum(['end', 'start']).default('end'),
-    auto_create: z.boolean().default(true),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'lore_manage', parsed.error, {
-      action: 'append_section', key: 'character:eira-holt', section: 'Inventory', text: 'New item added.'
-    }), 200)
-  }
+export const appendToSectionSchema = z.object({
+  key: z.string().min(1),
+  section: z.string().min(1),
+  text: z.string(),
+  position: z.enum(['end', 'start']).default('end'),
+  auto_create: z.boolean().default(true),
+})
 
-  const { section, position, auto_create: autoCreate } = parsed.data
-  const insertText = parsed.data.text
-  const key = parsed.data.key.trim().toLowerCase()
+export async function handle_append_to_section({ c, id, args }: TypedToolContext<typeof appendToSectionSchema>): Promise<Response> {
+  const { section, position, auto_create: autoCreate } = args
+  const insertText = args.text
+  const key = args.key.trim().toLowerCase()
 
   if (!insertText.trim()) {
     return c.json(makeResult(id, {
@@ -648,17 +593,11 @@ export async function handle_append_to_section({ c, id, args }: ToolContext): Pr
   }), 200)
 }
 
-export async function handle_move_entity({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'move', entity_key: 'character:eira-holt', new_location_key: 'location:marsh-end'
-    }), 200)
-  }
+export const moveEntitySchema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
 
-  const key = parsed.data.entity_key.trim().toLowerCase()
-  const newLoc = parsed.data.new_location_key.trim().toLowerCase()
+export async function handle_move_entity({ c, id, args }: TypedToolContext<typeof moveEntitySchema>): Promise<Response> {
+  const key = args.entity_key.trim().toLowerCase()
+  const newLoc = args.new_location_key.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
 
