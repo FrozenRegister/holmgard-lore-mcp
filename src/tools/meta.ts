@@ -57,6 +57,111 @@ export const recentChangesSchema = z.object({
   limit: z.number().int().min(1).max(200).default(30),
 })
 
+// Setup/continuity handler schemas (PR 2)
+export const tagTopicSchema = z.object({
+  key: z.string().min(1),
+  add: z.array(z.string()).optional(),
+  remove: z.array(z.string()).optional(),
+})
+
+export const findByTagSchema = z.object({
+  tags: z.array(z.string().min(1)).min(1),
+  mode: z.enum(['any', 'all']).default('any'),
+  with_excerpt: z.boolean().optional(),
+  limit: z.number().int().min(1).max(100).default(20),
+})
+
+export const listTagsSchema = z.object({
+  prefix: z.string().optional(),
+  with_counts: z.boolean().default(true),
+  limit: z.number().int().min(1).max(500).default(200),
+})
+
+export const bookmarkStateSchema = z.object({
+  name: z.string().min(1),
+  key_prefix: z.string().optional(),
+  note: z.string().optional(),
+})
+
+export const worldDiffSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().optional(),
+  detail: z.enum(['summary', 'fields', 'text']).default('summary'),
+  key_prefix: z.string().optional(),
+})
+
+export const plantSetupSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().min(1),
+  planted_in: z.string().optional(),
+  tension: z.number().int().min(1).max(5).optional(),
+  expected_in: z.string().optional(),
+  actors: z.array(z.string()).optional(),
+  // Alias fields must be included here for validation to accept them
+  setup_id: z.string().optional(),
+}).transform(args => applyAliases(args, { setup_id: 'id' }))
+  .pipe(z.object({
+    id: z.string().min(1),
+    description: z.string().min(1),
+    planted_in: z.string().optional(),
+    tension: z.number().int().min(1).max(5).optional(),
+    expected_in: z.string().optional(),
+    actors: z.array(z.string()).optional(),
+  }))
+
+export const payOffSetupSchema = z.object({
+  id: z.string().min(1),
+  resolution: z.string().min(1),
+  paid_in: z.string().optional(),
+  status: z.enum(['paid', 'abandoned', 'deferred']).default('paid'),
+})
+
+export const listUnpaidSetupsSchema = z.object({
+  actor: z.string().optional(),
+  scope: z.enum(['scene', 'chapter', 'story']).optional(),
+  min_tension: z.number().int().min(1).max(5).optional(),
+})
+
+export const setGoalSchema = z.object({
+  entity_key: z.string().min(1),
+  goal_id: z.string().min(1),
+  description: z.string().min(1),
+  parent: z.string().optional(),
+  status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
+  obstacle: z.string().optional(),
+  // Alias fields must be included here for validation to accept them
+  entity_name: z.string().optional(),
+  goal_name: z.string().optional(),
+  goal_description: z.string().optional(),
+}).transform(args => applyAliases(args, { entity_name: 'entity_key', goal_name: 'goal_id', goal_description: 'description' }))
+  .pipe(z.object({
+    entity_key: z.string().min(1),
+    goal_id: z.string().min(1),
+    description: z.string().min(1),
+    parent: z.string().optional(),
+    status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
+    obstacle: z.string().optional(),
+  }))
+
+const SEVERITY_FLOOR_ALIASES: Record<string, 'info' | 'warn' | 'error'> = {
+  low: 'info', medium: 'warn', moderate: 'warn', high: 'error', critical: 'error',
+}
+
+export const checkContinuitySchema = z.object({
+  scope: z.string().optional(),
+  checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
+  severity_floor: z.string().default('info'),
+  auto_fix: z.boolean().optional(),
+}).transform(args => ({
+  ...args,
+  severity_floor: (SEVERITY_FLOOR_ALIASES[args.severity_floor] ?? args.severity_floor) as 'info' | 'warn' | 'error'
+})).pipe(z.object({
+  scope: z.string().optional(),
+  checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
+  severity_floor: z.enum(['info', 'warn', 'error']),
+  auto_fix: z.boolean().optional(),
+}))
+
 export async function handle_append_event({ c, id, args }: TypedToolContext<typeof appendEventSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const eventsKey = `events:${entityKey}`
@@ -324,22 +429,10 @@ export async function handle_recent_changes({ c, id, args }: TypedToolContext<ty
 }
 
 
-export async function handle_tag_topic({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    key: z.string().min(1),
-    add: z.array(z.string()).optional(),
-    remove: z.array(z.string()).optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'tag_topic', key: 'character:eira-holt', add: ['needs-review']
-    }), 200)
-  }
-
-  const topicKey = parsed.data.key.trim().toLowerCase()
-  const toAdd = parsed.data.add ?? []
-  const toRemove = parsed.data.remove ?? []
+export async function handle_tag_topic({ c, id, args }: TypedToolContext<typeof tagTopicSchema>): Promise<Response> {
+  const topicKey = args.key.trim().toLowerCase()
+  const toAdd = args.add ?? []
+  const toRemove = args.remove ?? []
   if (toAdd.length === 0 && toRemove.length === 0) {
     return c.json(makeResult(id, { content: [{ type: 'text', text: 'No add or remove tags specified.' }], metadata: { key: topicKey, tags: [] } }), 200)
   }
@@ -399,23 +492,10 @@ export async function handle_tag_topic({ c, id, args }: ToolContext): Promise<Re
   }), 200)
 }
 
-export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    tags: z.array(z.string().min(1)).min(1),
-    mode: z.enum(['any', 'all']).default('any'),
-    with_excerpt: z.boolean().optional(),
-    limit: z.number().int().min(1).max(100).default(20),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'find_by_tag', tags: ['needs-review'], mode: 'any'
-    }), 200)
-  }
-
+export async function handle_find_by_tag({ c, id, args }: TypedToolContext<typeof findByTagSchema>): Promise<Response> {
   const kv = getKV(c)
   const tagKeysets: Set<string>[] = []
-  for (const tag of parsed.data.tags) {
+  for (const tag of args.tags) {
     let keys: string[] = []
     if (kv) {
       try { const r = await kv.get(`_tags:${tag.trim()}`); if (r) keys = JSON.parse(r) } catch {
@@ -426,7 +506,7 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
   }
 
   let resultKeys: string[]
-  if (parsed.data.mode === 'all') {
+  if (args.mode === 'all') {
     resultKeys = tagKeysets.length > 0
       ? [...tagKeysets[0]].filter(k => tagKeysets.every(s => s.has(k)))
       : []
@@ -436,11 +516,11 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
     resultKeys = [...union]
   }
 
-  resultKeys = resultKeys.slice(0, parsed.data.limit)
+  resultKeys = resultKeys.slice(0, args.limit)
 
   const results = await Promise.all(resultKeys.map(async (key) => {
     const entry: { key: string; excerpt?: string } = { key }
-    if (parsed.data.with_excerpt) {
+    if (args.with_excerpt) {
       const r = await kvGet(c, key)
       if (r) {
         const { text } = parseKvEntry(r)
@@ -452,28 +532,16 @@ export async function handle_find_by_tag({ c, id, args }: ToolContext): Promise<
 
   const summaryText = results.length > 0
     ? results.map(r => r.key + (r.excerpt ? `: "${r.excerpt}"` : '')).join('\n')
-    : `No topics found with tag${parsed.data.tags.length > 1 ? 's' : ''} [${parsed.data.tags.join(', ')}].`
+    : `No topics found with tag${args.tags.length > 1 ? 's' : ''} [${args.tags.join(', ')}].`
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
-    metadata: { tags: parsed.data.tags, mode: parsed.data.mode, count: results.length },
+    metadata: { tags: args.tags, mode: args.mode, count: results.length },
     results
   }), 200)
 }
 
-export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    prefix: z.string().optional(),
-    with_counts: z.boolean().default(true),
-    limit: z.number().int().min(1).max(500).default(200),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'list_tags', prefix: 'needs', with_counts: true
-    }), 200)
-  }
-
+export async function handle_list_tags({ c, id, args }: TypedToolContext<typeof listTagsSchema>): Promise<Response> {
   const kv = getKV(c)
   const tags: Array<{ tag: string; count: number }> = []
 
@@ -491,11 +559,11 @@ export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Re
       const result: any = await kv.list(listOptions)
 
       for (const key of result.keys) {
-        if (collected >= parsed.data.limit) break
+        if (collected >= args.limit) break
         const tagName = key.name.slice('_tags:'.length)
-        if (parsed.data.prefix && !tagName.startsWith(parsed.data.prefix)) continue
+        if (args.prefix && !tagName.startsWith(args.prefix)) continue
 
-        if (parsed.data.with_counts) {
+        if (args.with_counts) {
           try {
             const raw = await kv.get(key.name)
             const count = raw ? JSON.parse(raw).length : 0
@@ -509,7 +577,7 @@ export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Re
         collected++
       }
 
-      if (collected >= parsed.data.limit) break
+      if (collected >= args.limit) break
       cursor = result.list_complete ? undefined : result.cursor
     } while (cursor)
   } catch (e) {
@@ -517,40 +585,28 @@ export async function handle_list_tags({ c, id, args }: ToolContext): Promise<Re
     return c.json(makeError(id, -32603, 'Error listing tags', { error: e instanceof Error ? e.message : String(e) }), 200)
   }
 
-  if (parsed.data.with_counts) {
+  if (args.with_counts) {
     tags.sort((a, b) => b.count - a.count)
   } else {
     tags.sort((a, b) => a.tag.localeCompare(b.tag))
   }
 
   const summaryText = tags.length > 0
-    ? tags.map(t => `${t.tag}${parsed.data.with_counts ? ` (${t.count})` : ''}`).join(', ')
+    ? tags.map(t => `${t.tag}${args.with_counts ? ` (${t.count})` : ''}`).join(', ')
     : 'No tags found.'
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
-    metadata: { count: tags.length, with_counts: parsed.data.with_counts, prefix: parsed.data.prefix || null },
+    metadata: { count: tags.length, with_counts: args.with_counts, prefix: args.prefix || null },
     tags
   }), 200)
 }
 
-export async function handle_bookmark_state({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    name: z.string().min(1),
-    key_prefix: z.string().optional(),
-    note: z.string().optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'bookmark_state', name: 'phase-9-complete', note: 'End of phase 9'
-    }), 200)
-  }
-
-  const snapshotName = parsed.data.name.trim()
+export async function handle_bookmark_state({ c, id, args }: TypedToolContext<typeof bookmarkStateSchema>): Promise<Response> {
+  const snapshotName = args.name.trim()
   const allKeys = await kvList(c)
-  const scopedKeys = parsed.data.key_prefix
-    ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!))
+  const scopedKeys = args.key_prefix
+    ? allKeys.filter(k => k.startsWith(args.key_prefix!))
     : allKeys
 
   const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
@@ -567,7 +623,7 @@ export async function handle_bookmark_state({ c, id, args }: ToolContext): Promi
     }
   }
 
-  const snapshot = { name: snapshotName, note: parsed.data.note ?? null, created_at: new Date().toISOString(), key_count: scopedKeys.length, manifest }
+  const snapshot = { name: snapshotName, note: args.note ?? null, created_at: new Date().toISOString(), key_count: scopedKeys.length, manifest }
   const kv = getKV(c)
   if (kv) await kv.put(`_snapshot:${snapshotName}`, JSON.stringify(snapshot))
 
@@ -577,29 +633,16 @@ export async function handle_bookmark_state({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_world_diff({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    from: z.string().min(1),
-    to: z.string().optional(),
-    detail: z.enum(['summary', 'fields', 'text']).default('summary'),
-    key_prefix: z.string().optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'world_diff', from: 'phase-9-complete', detail: 'summary'
-    }), 200)
-  }
-
+export async function handle_world_diff({ c, id, args }: TypedToolContext<typeof worldDiffSchema>): Promise<Response> {
   type ManifestEntry = { version: number | null; updatedAt: string | null }
   const kv = getKV(c)
   let fromManifest: Record<string, ManifestEntry> = {}
-  let fromLabel = parsed.data.from
+  let fromLabel = args.from
 
   if (kv) {
     try {
-      const rawSnap = await kv.get(`_snapshot:${parsed.data.from}`)
-      if (rawSnap) { const snap = JSON.parse(rawSnap); fromManifest = snap.manifest ?? {}; fromLabel = `snapshot:${parsed.data.from} (${snap.created_at})` }
+      const rawSnap = await kv.get(`_snapshot:${args.from}`)
+      if (rawSnap) { const snap = JSON.parse(rawSnap); fromManifest = snap.manifest ?? {}; fromLabel = `snapshot:${args.from} (${snap.created_at})` }
     } catch {
       // silently ignore if snapshot doesn't exist
     }
@@ -608,16 +651,16 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
   let toManifest: Record<string, ManifestEntry> = {}
   let toLabel = 'now'
 
-  if (parsed.data.to && kv) {
+  if (args.to && kv) {
     try {
-      const rawSnap = await kv.get(`_snapshot:${parsed.data.to}`)
-      if (rawSnap) { const snap = JSON.parse(rawSnap); toManifest = snap.manifest ?? {}; toLabel = `snapshot:${parsed.data.to} (${snap.created_at})` }
+      const rawSnap = await kv.get(`_snapshot:${args.to}`)
+      if (rawSnap) { const snap = JSON.parse(rawSnap); toManifest = snap.manifest ?? {}; toLabel = `snapshot:${args.to} (${snap.created_at})` }
     } catch {
       // silently ignore if snapshot doesn't exist
     }
-  } else if (!parsed.data.to) {
+  } else if (!args.to) {
     const allKeys = await kvList(c)
-    const scopedKeys = parsed.data.key_prefix ? allKeys.filter(k => k.startsWith(parsed.data.key_prefix!)) : allKeys
+    const scopedKeys = args.key_prefix ? allKeys.filter(k => k.startsWith(args.key_prefix!)) : allKeys
     const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
     for (let i = 0; i < scopedKeys.length; i++) {
       const r = scopedRaws[i]
@@ -628,8 +671,8 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
     }
   }
 
-  if (parsed.data.key_prefix) {
-    const prefix = parsed.data.key_prefix
+  if (args.key_prefix) {
+    const prefix = args.key_prefix
     for (const k of Object.keys(fromManifest)) if (!k.startsWith(prefix)) delete fromManifest[k]
     for (const k of Object.keys(toManifest)) if (!k.startsWith(prefix)) delete toManifest[k]
   }
@@ -646,7 +689,7 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
     return f.version !== t.version || f.updatedAt !== t.updatedAt
   })
 
-  if (parsed.data.detail !== 'summary') {
+  if (args.detail !== 'summary') {
     const detailRaws = await Promise.all(changedKeys.map(k => kvGet(c, k)))
     changedKeys.forEach((k, i) => {
       const f = fromManifest[k], t = toManifest[k]
@@ -669,36 +712,20 @@ export async function handle_world_diff({ c, id, args }: ToolContext): Promise<R
   }), 200)
 }
 
-export async function handle_plant_setup({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    id: z.string().min(1),
-    description: z.string().min(1),
-    planted_in: z.string().optional(),
-    tension: z.number().int().min(1).max(5).optional(),
-    expected_in: z.string().optional(),
-    actors: z.array(z.string()).optional(),
-  })
-  const normalized = applyAliases(args, { setup_id: 'id' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'plant_setup', id: 'church-ambush-foreshadow', description: 'Church courier spotted near Marsh-end canal', tension: 3, expected_in: 'phase-10'
-    }), 200)
-  }
-
-  const setupKey = `setup:${parsed.data.id.trim()}`
+export async function handle_plant_setup({ c, id, args }: TypedToolContext<typeof plantSetupSchema>): Promise<Response> {
+  const setupKey = `setup:${args.id.trim()}`
   const now = new Date().toISOString()
-  const tension = parsed.data.tension ?? 3
+  const tension = args.tension ?? 3
 
   const lines = [
-    `**Description:** ${parsed.data.description}`,
+    `**Description:** ${args.description}`,
     `**Status:** open`,
     `**Tension:** ${tension}`,
     `**Created-At:** ${now}`,
   ]
-  if (parsed.data.planted_in) lines.push(`**Planted-In:** ${parsed.data.planted_in}`)
-  if (parsed.data.expected_in) lines.push(`**Expected-In:** ${parsed.data.expected_in}`)
-  if (parsed.data.actors && parsed.data.actors.length > 0) lines.push(`**Actors:** ${parsed.data.actors.join(', ')}`)
+  if (args.planted_in) lines.push(`**Planted-In:** ${args.planted_in}`)
+  if (args.expected_in) lines.push(`**Expected-In:** ${args.expected_in}`)
+  if (args.actors && args.actors.length > 0) lines.push(`**Actors:** ${args.actors.join(', ')}`)
   const text = lines.join('\n')
 
   const existingRaw = await kvGet(c, setupKey)
@@ -711,39 +738,26 @@ export async function handle_plant_setup({ c, id, args }: ToolContext): Promise<
   loreDB[setupKey] = text
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Setup "${parsed.data.id}" planted (tension: ${tension}).` }],
+    content: [{ type: 'text', text: `Setup "${args.id}" planted (tension: ${tension}).` }],
     metadata: { key: setupKey, version, tension }
   }), 200)
 }
 
-export async function handle_pay_off_setup({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    id: z.string().min(1),
-    resolution: z.string().min(1),
-    paid_in: z.string().optional(),
-    status: z.enum(['paid', 'abandoned', 'deferred']).default('paid'),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'pay_off_setup', id: 'church-ambush-foreshadow', resolution: 'Ambush occurred at the canal crossing', status: 'paid'
-    }), 200)
-  }
-
-  const setupKey = `setup:${parsed.data.id.trim()}`
+export async function handle_pay_off_setup({ c, id, args }: TypedToolContext<typeof payOffSetupSchema>): Promise<Response> {
+  const setupKey = `setup:${args.id.trim()}`
   const raw = await kvGet(c, setupKey)
-  if (!raw) return c.json(makeError(id, -32602, `Setup "${parsed.data.id}" not found`, null), 200)
+  if (!raw) return c.json(makeError(id, -32602, `Setup "${args.id}" not found`, null), 200)
 
   const { text, meta } = parseKvEntry(raw)
-  let updatedText = text.replace(/(\*\*Status:\*\*\s*)(\w+)/i, `$1${parsed.data.status}`)
+  let updatedText = text.replace(/(\*\*Status:\*\*\s*)(\w+)/i, `$1${args.status}`)
 
   const now = new Date().toISOString()
   if (!updatedText.includes('**Resolution:**')) {
-    updatedText += `\n**Resolution:** ${parsed.data.resolution}`
-    if (parsed.data.paid_in) updatedText += `\n**Paid-In:** ${parsed.data.paid_in}`
+    updatedText += `\n**Resolution:** ${args.resolution}`
+    if (args.paid_in) updatedText += `\n**Paid-In:** ${args.paid_in}`
     updatedText += `\n**Closed-At:** ${now}`
   } else {
-    updatedText = updatedText.replace(/(\*\*Resolution:\*\*\s*)([^\n]+)/i, `$1${parsed.data.resolution}`)
+    updatedText = updatedText.replace(/(\*\*Resolution:\*\*\s*)([^\n]+)/i, `$1${args.resolution}`)
   }
 
   await pushHistory(c, setupKey, raw)
@@ -753,24 +767,12 @@ export async function handle_pay_off_setup({ c, id, args }: ToolContext): Promis
   loreDB[setupKey] = updatedText
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Setup "${parsed.data.id}" marked as ${parsed.data.status}.` }],
-    metadata: { key: setupKey, status: parsed.data.status, version }
+    content: [{ type: 'text', text: `Setup "${args.id}" marked as ${args.status}.` }],
+    metadata: { key: setupKey, status: args.status, version }
   }), 200)
 }
 
-export async function handle_list_unpaid_setups({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    actor: z.string().optional(),
-    scope: z.enum(['scene', 'chapter', 'story']).optional(),
-    min_tension: z.number().int().min(1).max(5).optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'list_unpaid_setups', min_tension: 3
-    }), 200)
-  }
-
+export async function handle_list_unpaid_setups({ c, id, args }: TypedToolContext<typeof listUnpaidSetupsSchema>): Promise<Response> {
   const setupKeys = await getIndexedKeys(c, '_idx:prefix:setup')
   const setupRaws = await Promise.all(setupKeys.map(k => kvGet(c, k)))
   type SetupEntry = { id: string; key: string; description: string; tension: number; planted_in: string | null; expected_in: string | null; actors: string[]; created_at: string | null }
@@ -786,18 +788,18 @@ export async function handle_list_unpaid_setups({ c, id, args }: ToolContext): P
     if (status !== 'open') continue
 
     const tension = (() => { const v = extractFieldFromText(text, 'Tension'); return typeof v === 'number' ? Math.round(v) : 3 })()
-    if (parsed.data.min_tension !== undefined && tension < parsed.data.min_tension) continue
+    if (args.min_tension !== undefined && tension < args.min_tension) continue
 
     const actorsRaw = extractRawField(text, 'Actors') ?? ''
     const actors = actorsRaw ? actorsRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : []
 
-    if (parsed.data.actor) {
-      if (!actors.some((a: string) => a.toLowerCase().includes(parsed.data.actor!.toLowerCase()))) continue
+    if (args.actor) {
+      if (!actors.some((a: string) => a.toLowerCase().includes(args.actor!.toLowerCase()))) continue
     }
 
     const expectedIn = extractRawField(text, 'Expected-In')
-    if (parsed.data.scope && expectedIn) {
-      if (!expectedIn.toLowerCase().includes(parsed.data.scope.toLowerCase())) continue
+    if (args.scope && expectedIn) {
+      if (!expectedIn.toLowerCase().includes(args.scope.toLowerCase())) continue
     }
 
     openSetups.push({
@@ -830,33 +832,17 @@ export async function handle_list_unpaid_setups({ c, id, args }: ToolContext): P
   }), 200)
 }
 
-export async function handle_set_goal({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_key: z.string().min(1),
-    goal_id: z.string().min(1),
-    description: z.string().min(1),
-    parent: z.string().optional(),
-    status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
-    obstacle: z.string().optional(),
-  })
-  const normalized = applyAliases(args, { entity_name: 'entity_key', goal_name: 'goal_id', goal_description: 'description' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'set_goal', entity_key: 'character:eira-holt', goal_id: 'survive-tribunal', description: 'Survive the Church tribunal in Novigrad on 15 Jun 1264'
-    }), 200)
-  }
-
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_set_goal({ c, id, args }: TypedToolContext<typeof setGoalSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
   const { text, meta } = parseKvEntry(raw)
-  const goalId = parsed.data.goal_id.trim()
+  const goalId = args.goal_id.trim()
 
-  const parts = [parsed.data.status, parsed.data.description]
-  if (parsed.data.obstacle) parts.push(`obstacle: ${parsed.data.obstacle}`)
-  if (parsed.data.parent) parts.push(`parent: ${parsed.data.parent}`)
+  const parts = [args.status, args.description]
+  if (args.obstacle) parts.push(`obstacle: ${args.obstacle}`)
+  if (args.parent) parts.push(`parent: ${args.parent}`)
   const goalLine = `**Goal:${goalId}:** ${parts.join(' | ')}`
 
   const escapedField = `Goal:${goalId}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -874,37 +860,16 @@ export async function handle_set_goal({ c, id, args }: ToolContext): Promise<Res
   loreDB[entityKey] = updatedText
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Goal "${goalId}" set on "${entityKey}" (${parsed.data.status}).` }],
-    metadata: { entity_key: entityKey, goal_id: goalId, status: parsed.data.status, version }
+    content: [{ type: 'text', text: `Goal "${goalId}" set on "${entityKey}" (${args.status}).` }],
+    metadata: { entity_key: entityKey, goal_id: goalId, status: args.status, version }
   }), 200)
 }
 
-const SEVERITY_FLOOR_ALIASES: Record<string, 'info' | 'warn' | 'error'> = {
-  low: 'info', medium: 'warn', moderate: 'warn', high: 'error', critical: 'error',
-}
-
-export async function handle_check_continuity({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    scope: z.string().optional(),
-    checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
-    severity_floor: z.enum(['info', 'warn', 'error']).default('info'),
-    auto_fix: z.boolean().optional(),
-  })
-  const normalized = { ...args }
-  if (typeof normalized.severity_floor === 'string' && normalized.severity_floor in SEVERITY_FLOOR_ALIASES) {
-    normalized.severity_floor = SEVERITY_FLOOR_ALIASES[normalized.severity_floor]
-  }
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'check_continuity', scope: 'character', severity_floor: 'warn'
-    }), 200)
-  }
-
-  const activeChecks = parsed.data.checks ?? ['dangling', 'occupancy', 'knowledge', 'inventory']
+export async function handle_check_continuity({ c, id, args }: TypedToolContext<typeof checkContinuitySchema>): Promise<Response> {
+  const activeChecks = args.checks ?? ['dangling', 'occupancy', 'knowledge', 'inventory']
   const allKeys = await kvList(c)
-  const scopedKeys = parsed.data.scope
-    ? allKeys.filter(k => k.startsWith(parsed.data.scope!) || k.includes(parsed.data.scope!))
+  const scopedKeys = args.scope
+    ? allKeys.filter(k => k.startsWith(args.scope!) || k.includes(args.scope!))
     : allKeys
   const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
   const allKeySet = new Set(allKeys)
@@ -972,10 +937,10 @@ export async function handle_check_continuity({ c, id, args }: ToolContext): Pro
   }
 
   const severityOrder: Record<string, number> = { info: 0, warn: 1, error: 2 }
-  const floorLevel = severityOrder[parsed.data.severity_floor]
+  const floorLevel = severityOrder[args.severity_floor]
   const filtered = findings.filter(f => severityOrder[f.severity] >= floorLevel)
 
-  if (!parsed.data.auto_fix) {
+  if (!args.auto_fix) {
     const summaryText = filtered.length > 0
       ? `${filtered.length} continuity issue(s) found:\n` + filtered.slice(0, 20).map(f => `[${f.severity.toUpperCase()}] ${f.key}: ${f.message}`).join('\n')
       : 'No continuity issues found.'

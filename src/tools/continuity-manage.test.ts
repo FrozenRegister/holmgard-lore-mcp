@@ -37,7 +37,7 @@ describe('handle_continuity_manage', () => {
 
   it('delegates to mapped handler on valid action', async () => {
     const res = (await handle_continuity_manage({
-      c: { json: (body: unknown) => body } as any,
+      c: { json: (body: unknown) => body, env: { LORE_DB: { get: () => Promise.resolve(null) } } } as any,
       id: 'req-1',
       args: { action: 'recent_changes' },
       isAuthenticated: false,
@@ -47,7 +47,7 @@ describe('handle_continuity_manage', () => {
 
   it('strips action from args before delegating', async () => {
     const res = (await handle_continuity_manage({
-      c: { json: (body: unknown) => body } as any,
+      c: { json: (body: unknown) => body, env: { LORE_DB: { get: () => Promise.resolve(null) } } } as any,
       id: 'x',
       args: { action: 'recent_changes' },
       isAuthenticated: true,
