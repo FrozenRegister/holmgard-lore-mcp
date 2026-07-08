@@ -1,0 +1,4 @@
+### Typed Handler Dispatch Foundation
+- Added `TypedToolContext<S>`, `TypedToolHandler<S>`, `ActionSpec<S>`, `defineAction`, and `makeActionDispatcher` to `src/tools/types.ts` — a generic parse-once-at-dispatch pattern for `ACTION_MAP` dispatchers, closing the compile-time gap between a tool action's declared Zod schema and what its handler function actually reads off `args`.
+- Converted `scene_manage` (`src/tools/scene.ts`, `src/tools/scene-manage.ts`) to the new pattern as the pilot: each action now exports its schema, handlers receive fully-typed `args`, and per-handler `schema.safeParse(args)` boilerplate is gone — the dispatcher parses once and the compiler enforces the schema/handler pairing.
+- Pure refactor, no behavior change — existing error messages, examples, and response shapes are unchanged.

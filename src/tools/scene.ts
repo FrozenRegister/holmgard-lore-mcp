@@ -2,22 +2,15 @@
 import { z } from 'zod'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField, normalizeWeight } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
-import type { ToolContext } from './types'
+import type { TypedToolContext } from './types'
 
-export async function handle_activate_scene({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ scene_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'activate', scene_key: 'scene:tribunal-summons'
-    }), 200)
-  }
+export const activateSceneSchema = z.object({ scene_key: z.string().min(1) })
 
-  const sceneKey = parsed.data.scene_key.trim().toLowerCase()
+export async function handle_activate_scene({ c, id, args }: TypedToolContext<typeof activateSceneSchema>): Promise<Response> {
+  const sceneKey = args.scene_key.trim().toLowerCase()
   const rawScene = await kvGet(c, sceneKey)
   if (!rawScene) return c.json(makeError(id, -32602, `Scene "${sceneKey}" not found`, null), 200)
 
@@ -54,17 +47,11 @@ export async function handle_activate_scene({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_present_choices({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ scene_key: z.string().min(1), entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'present_choices', scene_key: 'scene:tribunal-summons', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const presentChoicesSchema = z.object({ scene_key: z.string().min(1), entity_key: z.string().min(1) })
 
-  const sceneKey = parsed.data.scene_key.trim().toLowerCase()
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_present_choices({ c, id, args }: TypedToolContext<typeof presentChoicesSchema>): Promise<Response> {
+  const sceneKey = args.scene_key.trim().toLowerCase()
+  const entityKey = args.entity_key.trim().toLowerCase()
   const [rawScene, rawEntity] = await Promise.all([kvGet(c, sceneKey), kvGet(c, entityKey)])
   if (!rawScene) return c.json(makeError(id, -32602, `Scene "${sceneKey}" not found`, null), 200)
   if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -102,17 +89,11 @@ export async function handle_present_choices({ c, id, args }: ToolContext): Prom
   }), 200)
 }
 
-export async function handle_commit_choice({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ choice_id: z.string().min(1), entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'commit_choice', choice_id: 'negotiate', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const commitChoiceSchema = z.object({ choice_id: z.string().min(1), entity_key: z.string().min(1) })
 
-  const choiceId = parsed.data.choice_id.trim().toLowerCase()
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_commit_choice({ c, id, args }: TypedToolContext<typeof commitChoiceSchema>): Promise<Response> {
+  const choiceId = args.choice_id.trim().toLowerCase()
+  const entityKey = args.entity_key.trim().toLowerCase()
   const [rawChoice, rawEntity] = await Promise.all([kvGet(c, choiceId), kvGet(c, entityKey)])
   if (!rawChoice) return c.json(makeError(id, -32602, `Choice "${choiceId}" not found`, null), 200)
   if (!rawEntity) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -144,16 +125,10 @@ export async function handle_commit_choice({ c, id, args }: ToolContext): Promis
   }), 200)
 }
 
-export async function handle_get_choice_history({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'get_history', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const getChoiceHistorySchema = z.object({ entity_key: z.string().min(1) })
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_get_choice_history({ c, id, args }: TypedToolContext<typeof getChoiceHistorySchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
@@ -174,30 +149,24 @@ export async function handle_get_choice_history({ c, id, args }: ToolContext): P
   }), 200)
 }
 
-export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    location_key: z.string().optional(),
-    scene_key: z.string().optional(),
-    include: z.object({
-      events: z.number().int().min(0).optional(),
-      open_setups: z.boolean().optional(),
-      relationships: z.boolean().optional(),
-      sensory: z.boolean().optional(),
-    }).optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'brief', location_key: 'location:marsh-end', include: { events: 5, open_setups: true }
-    }), 200)
-  }
+export const sceneBriefSchema = z.object({
+  location_key: z.string().optional(),
+  scene_key: z.string().optional(),
+  include: z.object({
+    events: z.number().int().min(0).optional(),
+    open_setups: z.boolean().optional(),
+    relationships: z.boolean().optional(),
+    sensory: z.boolean().optional(),
+  }).optional(),
+})
 
-  const include = parsed.data.include ?? {}
+export async function handle_scene_brief({ c, id, args }: TypedToolContext<typeof sceneBriefSchema>): Promise<Response> {
+  const include = args.include ?? {}
   const eventsCount = include.events ?? 5
   const includeSetups = include.open_setups !== false
   const includeRelationships = include.relationships !== false
 
-  const baseKey = (parsed.data.location_key ?? parsed.data.scene_key ?? '').trim().toLowerCase()
+  const baseKey = (args.location_key ?? args.scene_key ?? '').trim().toLowerCase()
   if (!baseKey) return c.json(makeError(id, -32602, 'Either location_key or scene_key is required', null), 200)
 
   const rawBase = await kvGet(c, baseKey)
@@ -301,33 +270,27 @@ export async function handle_scene_brief({ c, id, args }: ToolContext): Promise<
   }), 200)
 }
 
-export async function handle_render_pov({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    pov_entity_key: z.string().min(1),
-    scene_key: z.string().optional(),
-    location_key: z.string().optional(),
-    include_voice_hints: z.boolean().optional(),
-    reveal_threshold: z.number().min(0).max(1).optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'scene_manage', parsed.error, {
-      action: 'render_pov', pov_entity_key: 'character:eira-holt', location_key: 'location:marsh-end'
-    }), 200)
-  }
+export const renderPovSchema = z.object({
+  pov_entity_key: z.string().min(1),
+  scene_key: z.string().optional(),
+  location_key: z.string().optional(),
+  include_voice_hints: z.boolean().optional(),
+  reveal_threshold: z.number().min(0).max(1).optional(),
+})
 
-  const povKey = parsed.data.pov_entity_key.trim().toLowerCase()
+export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof renderPovSchema>): Promise<Response> {
+  const povKey = args.pov_entity_key.trim().toLowerCase()
   const rawPov = await kvGet(c, povKey)
   if (!rawPov) return c.json(makeError(id, -32602, `POV entity "${povKey}" not found`, null), 200)
 
   const { text: povText } = parseKvEntry(rawPov)
   const perception = (() => { const v = extractFieldFromText(povText, 'Perception'); return typeof v === 'number' ? normalizeWeight(v) : 0.5 })()
-  const threshold = parsed.data.reveal_threshold ?? perception
+  const threshold = args.reveal_threshold ?? perception
 
   const knowsRaw = extractRawField(povText, 'Knows') ?? extractRawField(povText, 'Knowledge') ?? ''
   const knownTopics = new Set(knowsRaw.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean))
 
-  const baseKey = (parsed.data.location_key ?? parsed.data.scene_key ?? extractRawField(povText, 'Location') ?? '').trim().toLowerCase()
+  const baseKey = (args.location_key ?? args.scene_key ?? extractRawField(povText, 'Location') ?? '').trim().toLowerCase()
   if (!baseKey) return c.json(makeError(id, -32602, 'scene_key or location_key required, or entity must have a Location field', null), 200)
 
   const rawBase = await kvGet(c, baseKey)
@@ -375,7 +338,7 @@ export async function handle_render_pov({ c, id, args }: ToolContext): Promise<R
 
   let voiceHints: { diction: string | null; register: string | null; fixations: string | null } | null = null
   let voiceSource: string | null = null
-  if (parsed.data.include_voice_hints) {
+  if (args.include_voice_hints) {
     const ownDiction = extractRawField(povText, 'Diction') ?? extractRawField(povText, 'Voice')
     const ownRegister = extractRawField(povText, 'Register') ?? extractRawField(povText, 'Tone')
     const ownFixations = extractRawField(povText, 'Fixations') ?? extractRawField(povText, 'Preoccupations')
