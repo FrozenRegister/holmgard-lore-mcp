@@ -38,6 +38,11 @@ jobs:
               const checks = data.check_runs.filter(r => r.name !== 'merge')
               console.log(`PR #${prNumber}: found ${data.check_runs.length} total checks, ${checks.length} after filtering 'merge'`)
 
+              if (checks.length === 0) {
+                console.log(`PR #${prNumber}: no checks found — CI may not have run yet`)
+                return false
+              }
+
               const pending = checks.filter(r => r.status !== 'completed')
               if (pending.length > 0) {
                 console.log(`PR #${prNumber}: still pending: ${pending.map(r => r.name).join(', ')}`)
