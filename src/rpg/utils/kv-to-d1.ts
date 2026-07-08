@@ -331,3 +331,95 @@ function parseJsonArray(val: unknown): string[] {
   }
   return []
 }
+
+// ── D1 → KV Projection with Migration Markers ──────────────────────────────
+
+export function formatD1CharToKv(row: Record<string, unknown>): string {
+  const lines: string[] = []
+  const id = row.id as string | undefined
+
+  // D1 migration markers (for get_lore auto-redirect)
+  lines.push('## D1-Migrated: true')
+  if (id) lines.push(`## D1-Character-ID: ${id}`)
+  lines.push('')
+
+  // Standard character metadata
+  const name = row.name ?? 'Unknown'
+  lines.push(`# Character: ${name}`)
+
+  if (row.alias) lines.push(`**Alias:** ${row.alias}`)
+  if (row.age) lines.push(`**Age:** ${row.age}`)
+  if (row.gender) lines.push(`**Gender:** ${row.gender}`)
+  if (row.orientation) lines.push(`**Orientation:** ${row.orientation}`)
+  if (row.behavior) lines.push(`**Status:** ${row.behavior}`)
+  if (row.faction_id) lines.push(`**Faction:** ${row.faction_id}`)
+  if (row.alignment) lines.push(`**Alignment:** ${row.alignment}`)
+  if (row.race) lines.push(`**Race:** ${row.race}`)
+  if (row.character_class) lines.push(`**Class:** ${row.character_class}`)
+  if (row.current_room_id) lines.push(`**Location:** ${row.current_room_id}`)
+
+  lines.push('')
+  lines.push('## Stats')
+  try {
+    const stats = typeof row.stats === 'string' ? JSON.parse(row.stats) : (row.stats ?? {})
+    for (const [k, v] of Object.entries(stats as Record<string, unknown>)) {
+      lines.push(`**${k.toUpperCase()}:** ${v}`)
+    }
+  } catch { /* skip malformed stats */ }
+
+  lines.push('')
+  lines.push('## Health')
+  lines.push(`**HP:** ${row.hp} / ${row.max_hp}`)
+  lines.push(`**AC:** ${row.ac}`)
+  lines.push(`**Level:** ${row.level}`)
+  lines.push(`**XP:** ${row.xp ?? 0}`)
+
+  if (row.weight_1 || row.weight_2) {
+    lines.push('')
+    lines.push('## Interaction Weights')
+    if (row.weight_1) lines.push(`**Weight-1:** ${row.weight_1}`)
+    if (row.weight_2) lines.push(`**Weight-2:** ${row.weight_2}`)
+    if (row.perception_float) lines.push(`**Perception:** ${row.perception_float}`)
+  }
+
+  if (row.thread_id || row.state_stage) {
+    lines.push('')
+    lines.push('## Mechanical Scaffolding')
+    if (row.thread_id) lines.push(`**Thread:** ${row.thread_id}`)
+    if (row.state_stage !== undefined) lines.push(`**State-Stage:** ${row.state_stage}`)
+    if (row.state_stage_timer !== undefined) lines.push(`**Stage-Timer:** ${row.state_stage_timer}`)
+  }
+
+  const conditions = parseJsonArray(row.conditions)
+  if (conditions.length > 0) {
+    lines.push('')
+    lines.push('## Conditions')
+    for (const c of conditions) lines.push(`- ${c}`)
+  }
+
+  if (row.background) {
+    lines.push('')
+    lines.push('## Background')
+    lines.push(String(row.background))
+  }
+
+  try {
+    const pools = typeof row.resource_pools === 'string'
+      ? JSON.parse(row.resource_pools)
+      : (row.resource_pools ?? {})
+    const keys = Object.keys(pools as object)
+    if (keys.length > 0) {
+      lines.push('')
+      lines.push('## Resource Pools')
+      for (const [k, v] of Object.entries(pools as Record<string, unknown>)) {
+        lines.push(`**${k}:** ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      }
+    }
+  } catch { /* skip malformed pools */ }
+
+  lines.push('')
+  lines.push('---')
+  lines.push(`*Projection: generated from D1 character record on ${new Date().toISOString()}*`)
+
+  return lines.join('\n')
+}

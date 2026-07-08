@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
 
 import { ok, err, type McpResponse } from '../utils/response'
+import { syncCharacterToKv } from '../utils/character-sync'
 import type { AppBindings } from '../../types'
 
 const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell'] as const
@@ -160,6 +161,8 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         a.legendaryActions ?? null, a.legendaryActionsRemaining ?? null, a.legendaryResistances ?? null, a.legendaryResistancesRemaining ?? null, a.hasLairActions ? 1 : 0,
         JSON.stringify(currency), a.currentRoomId ?? null, perceptionBonus, stealthBonus, JSON.stringify(a.resourcePools ?? {}), 0, now, now
       ).run()
+      // Sync D1 character to KV as markdown projection
+      await syncCharacterToKv(env, id)
       return ok({ success: true, actionType: 'create', characterId: id, name: a.name, characterType })
     }
     case 'get': {
@@ -220,6 +223,8 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.stealthBonus !== undefined) { sets.push('stealth_bonus = ?'); vals.push(a.stealthBonus) }
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+      // Sync D1 character to KV as markdown projection
+      await syncCharacterToKv(env, charId)
       return ok({ success: true, actionType: 'update', characterId: charId })
     }
     case 'delete': {
@@ -237,6 +242,8 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const newXp = (row.xp ?? 0) + xpToAdd
       const newLevel = parseInt(levelFromXp(newXp))
       await db.prepare('UPDATE characters SET xp = ?, level = ?, updated_at = ? WHERE id = ?').bind(newXp, newLevel, now, charId).run()
+      // Sync D1 character to KV as markdown projection
+      await syncCharacterToKv(env, charId)
       return ok({ success: true, actionType: 'add_xp', characterId: charId, xpAdded: xpToAdd, totalXp: newXp, level: newLevel, leveledUp: newLevel > row.level })
     }
     case 'get_progression': {
@@ -257,6 +264,8 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const hpIncrease = 8
       const newMaxHp = (row.max_hp ?? 1) + hpIncrease
       await db.prepare('UPDATE characters SET level = ?, max_hp = ?, hp = max_hp + ?, updated_at = ? WHERE id = ?').bind(newLevel, newMaxHp, hpIncrease, now, charId).run()
+      // Sync D1 character to KV as markdown projection
+      await syncCharacterToKv(env, charId)
       return ok({ success: true, actionType: 'level_up', characterId: charId, newLevel, hpIncrease })
     }
     case 'search': {
@@ -310,6 +319,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
             .bind(charId, a.spellName, a.slotLevel ?? 0, JSON.stringify(a.targetIds ?? []), Date.now(), null, a.saveDcBase ?? 10).run()
           await db.prepare('UPDATE characters SET concentrating_on = ?, updated_at = ? WHERE id = ?').bind(a.spellName, now, charId).run()
         }
+
+        // Sync D1 character to KV as markdown projection
+        await syncCharacterToKv(env, charId)
 
         return ok({
           success: true, actionType: 'cast_spell', characterId: charId, spellName: a.spellName, isCantrip,
