@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { defineAction, makeActionDispatcher } from './types'
-import type { ActionSpec } from './types'
+import type { ActionSpec, ToolHandler } from './types'
 
 const anyCtx = (body: unknown) => body as any
 
@@ -51,6 +51,17 @@ describe('makeActionDispatcher', () => {
     const res = (await dispatch({ c: { json: anyCtx } as any, id: 'x', args: { action: 'echo', value: 'hi' }, isAuthenticated: true })) as any
     expect(res.result.value).toBe('hi')
     expect(res.result.id).toBe('x')
+  })
+
+  it('supports legacy raw ToolHandler entries alongside typed ActionSpec entries', async () => {
+    const legacyHandler: ToolHandler = async ({ c, id, args }) => c.json({ result: { legacy: true, args, id } })
+    const mixedMap: Record<string, ActionSpec | ToolHandler> = { legacy: legacyHandler }
+    const mixedDispatch = makeActionDispatcher('test_tool', mixedMap)
+    const res = (await mixedDispatch({
+      c: { json: anyCtx } as any, id: 'y', args: { action: 'legacy', foo: 'bar' }, isAuthenticated: true,
+    })) as any
+    expect(res.result.legacy).toBe(true)
+    expect(res.result.args).toEqual({ foo: 'bar' })
   })
 })
 
