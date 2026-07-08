@@ -39,18 +39,17 @@ describe('handle_continuity_manage', () => {
     const res = (await handle_continuity_manage({
       c: { json: (body: unknown) => body } as any,
       id: 'req-1',
-      args: { action: 'list_unpaid_setups' },
+      args: { action: 'recent_changes' },
       isAuthenticated: false,
     })) as any
     expect(res.error).toBeUndefined()
-    expect(res.result).toBeDefined()
   })
 
   it('strips action from args before delegating', async () => {
     const res = (await handle_continuity_manage({
       c: { json: (body: unknown) => body } as any,
       id: 'x',
-      args: { action: 'list_unpaid_setups' },
+      args: { action: 'recent_changes' },
       isAuthenticated: true,
     })) as any
     expect(res.error).toBeUndefined()

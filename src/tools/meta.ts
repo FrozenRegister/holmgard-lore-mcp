@@ -9,10 +9,21 @@ import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText,
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
 import { CHANGELOG_KEY } from '../constants'
-import type { ToolContext } from './types'
+import type { ToolContext, TypedToolContext } from './types'
 
-export async function handle_append_event({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
+// Event/changelog handler schemas (PR 1)
+export const appendEventSchema = z.object({
+  entity_key: z.string().min(1),
+  verb: z.string().min(1),
+  object: z.string().optional(),
+  location: z.string().optional(),
+  thread: z.string().optional(),
+  detail: z.string().optional(),
+  at: z.string().optional(),
+  world_id: z.string().optional(),
+  entity_id: z.string().optional(),
+}).transform(args => applyAliases(args, { date: 'at', description: 'detail' }))
+  .pipe(z.object({
     entity_key: z.string().min(1),
     verb: z.string().min(1),
     object: z.string().optional(),
@@ -22,40 +33,56 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
     at: z.string().optional(),
     world_id: z.string().optional(),
     entity_id: z.string().optional(),
-  })
-  const normalized = applyAliases(args, { date: 'at', description: 'detail' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'append_event', entity_key: 'character:eira-holt', verb: 'departed', object: 'marsh-end', detail: 'Household begins journey', at: '1264-05-01T00:00:00Z'
-    }), 200)
-  }
+  }))
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export const canonizeSchema = z.object({ event_id: z.string().min(1) })
+
+export const migrateEventsSchema = z.object({ world_id: z.string().min(1) })
+
+export const getEventLogSchema = z.object({
+  entity_key: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
+  entity_id:  z.string().optional(),
+  world_id:   z.string().optional(),
+  thread_id:  z.string().optional(),
+  since: z.string().optional(),
+  until: z.string().optional(),
+  thread: z.string().optional(),
+  verbs: z.array(z.string()).optional(),
+  limit: z.number().int().min(1).max(500).default(50),
+})
+
+export const recentChangesSchema = z.object({
+  since: z.string().optional(),
+  key_prefix: z.string().optional(),
+  limit: z.number().int().min(1).max(200).default(30),
+})
+
+export async function handle_append_event({ c, id, args }: TypedToolContext<typeof appendEventSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const eventsKey = `events:${entityKey}`
-  const now = parsed.data.at ?? new Date().toISOString()
+  const now = args.at ?? new Date().toISOString()
 
-  const newEvent: Record<string, string> = { at: now, verb: parsed.data.verb }
-  if (parsed.data.object !== undefined) newEvent.object = parsed.data.object
-  if (parsed.data.location !== undefined) newEvent.location = parsed.data.location
-  if (parsed.data.thread !== undefined) newEvent.thread = parsed.data.thread
-  if (parsed.data.detail !== undefined) newEvent.detail = parsed.data.detail
+  const newEvent: Record<string, string> = { at: now, verb: args.verb }
+  if (args.object !== undefined) newEvent.object = args.object
+  if (args.location !== undefined) newEvent.location = args.location
+  if (args.thread !== undefined) newEvent.thread = args.thread
+  if (args.detail !== undefined) newEvent.detail = args.detail
 
   // D1 primary path when world_id is supplied
   let d1EventId: string | null = null
-  if (parsed.data.world_id && c.env.RPG_DB) {
+  if (args.world_id && c.env.RPG_DB) {
     const db = c.env.RPG_DB
 
     // Validate FK constraints before INSERT
-    const worldExists = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(parsed.data.world_id).first() as { id: string } | null
+    const worldExists = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(args.world_id).first() as { id: string } | null
     if (!worldExists) {
-      return c.json(makeError(id, -32602, `World not found: ${parsed.data.world_id}`, null), 200)
+      return c.json(makeError(id, -32602, `World not found: ${args.world_id}`, null), 200)
     }
 
-    if (parsed.data.entity_id) {
-      const entityExists = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+    if (args.entity_id) {
+      const entityExists = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(args.entity_id).first() as { id: string } | null
       if (!entityExists) {
-        return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+        return c.json(makeError(id, -32602, `Character not found: ${args.entity_id}`, null), 200)
       }
     }
 
@@ -67,14 +94,14 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         eventId,
-        parsed.data.world_id,
-        parsed.data.thread ?? 'main',
+        args.world_id,
+        args.thread ?? 'main',
         now,
-        parsed.data.verb,
-        parsed.data.entity_id ?? null,
-        parsed.data.object ?? null,
-        parsed.data.location ?? null,
-        parsed.data.detail ?? null,
+        args.verb,
+        args.entity_id ?? null,
+        args.object ?? null,
+        args.location ?? null,
+        args.detail ?? null,
         createdAt,
       ).run()
       d1EventId = eventId
@@ -113,32 +140,19 @@ export async function handle_append_event({ c, id, args }: ToolContext): Promise
   }), 200)
 }
 
-export async function handle_canonize({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ event_id: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'canonize', event_id: 'some-uuid'
-    }), 200)
-  }
+
+export async function handle_canonize({ c, id, args }: TypedToolContext<typeof canonizeSchema>): Promise<Response> {
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
-  const row = await c.env.RPG_DB.prepare('SELECT id FROM timeline_events WHERE id = ?').bind(parsed.data.event_id).first() as { id: string } | null
-  if (!row) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
-  await c.env.RPG_DB.prepare('UPDATE timeline_events SET is_canonical = 1 WHERE id = ?').bind(parsed.data.event_id).run()
+  const row = await c.env.RPG_DB.prepare('SELECT id FROM timeline_events WHERE id = ?').bind(args.event_id).first() as { id: string } | null
+  if (!row) return c.json(makeError(id, -32602, `Event not found: ${args.event_id}`, null), 200)
+  await c.env.RPG_DB.prepare('UPDATE timeline_events SET is_canonical = 1 WHERE id = ?').bind(args.event_id).run()
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Event "${parsed.data.event_id}" canonized.` }],
-    metadata: { event_id: parsed.data.event_id, is_canonical: true }
+    content: [{ type: 'text', text: `Event "${args.event_id}" canonized.` }],
+    metadata: { event_id: args.event_id, is_canonical: true }
   }), 200)
 }
 
-export async function handle_migrate_events({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ world_id: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'migrate_events', world_id: 'world-main'
-    }), 200)
-  }
+export async function handle_migrate_events({ c, id, args }: TypedToolContext<typeof migrateEventsSchema>): Promise<Response> {
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
   const kv = getKV(c)
@@ -166,7 +180,7 @@ export async function handle_migrate_events({ c, id, args }: ToolContext): Promi
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             eventId,
-            parsed.data.world_id,
+            args.world_id,
             e.thread ?? 'main',
             e.at ?? createdAt,
             e.verb ?? 'unknown',
@@ -192,26 +206,8 @@ export async function handle_migrate_events({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_get_event_log({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_key: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
-    entity_id:  z.string().optional(),
-    world_id:   z.string().optional(),
-    thread_id:  z.string().optional(),
-    since: z.string().optional(),
-    until: z.string().optional(),
-    thread: z.string().optional(),
-    verbs: z.array(z.string()).optional(),
-    limit: z.number().int().min(1).max(500).default(50),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'get_event_log', entity_key: 'character:eira-holt', limit: 20
-    }), 200)
-  }
-
-  if (!parsed.data.entity_key && !parsed.data.entity_id && !parsed.data.world_id) {
+export async function handle_get_event_log({ c, id, args }: TypedToolContext<typeof getEventLogSchema>): Promise<Response> {
+  if (!args.entity_key && !args.entity_id && !args.world_id) {
     return c.json(makeError(id, -32602, 'Missing required param: entity_key, entity_id, or world_id'), 200)
   }
 
@@ -219,16 +215,16 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
   let allEvents: EventRow[] = []
 
   // D1 path when world_id or entity_id provided
-  if ((parsed.data.world_id || parsed.data.entity_id) && c.env.RPG_DB) {
+  if ((args.world_id || args.entity_id) && c.env.RPG_DB) {
     const db = c.env.RPG_DB
     const parts: string[] = ['SELECT * FROM timeline_events WHERE 1=1']
     const binds: unknown[] = []
-    if (parsed.data.world_id)  { parts.push('AND world_id = ?');   binds.push(parsed.data.world_id) }
-    if (parsed.data.entity_id) { parts.push('AND entity_id = ?');  binds.push(parsed.data.entity_id) }
-    if (parsed.data.thread_id ?? parsed.data.thread) { parts.push('AND thread_id = ?'); binds.push(parsed.data.thread_id ?? parsed.data.thread) }
-    if (parsed.data.since)     { parts.push('AND event_at >= ?'); binds.push(parsed.data.since) }
-    if (parsed.data.until)     { parts.push('AND event_at <= ?'); binds.push(parsed.data.until) }
-    parts.push('ORDER BY event_at DESC LIMIT ?'); binds.push(parsed.data.limit)
+    if (args.world_id)  { parts.push('AND world_id = ?');   binds.push(args.world_id) }
+    if (args.entity_id) { parts.push('AND entity_id = ?');  binds.push(args.entity_id) }
+    if (args.thread_id ?? args.thread) { parts.push('AND thread_id = ?'); binds.push(args.thread_id ?? args.thread) }
+    if (args.since)     { parts.push('AND event_at >= ?'); binds.push(args.since) }
+    if (args.until)     { parts.push('AND event_at <= ?'); binds.push(args.until) }
+    parts.push('ORDER BY event_at DESC LIMIT ?'); binds.push(args.limit)
     const rows = await db.prepare(parts.join(' ')).bind(...binds).all() as { results: Array<Record<string, unknown>> }
     for (const r of rows.results) {
       allEvents.push({ id: r.id as string, at: r.event_at as string, verb: r.verb as string, entity_id: r.entity_id as string | null, object: r.object_entity as string | null, location: r.location_id as string | null, thread: r.thread_id as string | null, detail: r.detail as string | null, source: 'd1' })
@@ -236,8 +232,8 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
   }
 
   // KV path (entity_key-based, for backward compat and when D1 not used)
-  if (parsed.data.entity_key !== undefined) {
-    const keys = Array.isArray(parsed.data.entity_key) ? parsed.data.entity_key : [parsed.data.entity_key]
+  if (args.entity_key !== undefined) {
+    const keys = Array.isArray(args.entity_key) ? args.entity_key : [args.entity_key]
     const kv = getKV(c)
     const kvArrays = await Promise.all(keys.map(async (ek) => {
       const cleanKey = ek.trim().toLowerCase()
@@ -265,25 +261,25 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
     return true
   })
 
-  if (parsed.data.since && !parsed.data.world_id) {
-    const sinceMs = new Date(parsed.data.since).getTime()
+  if (args.since && !args.world_id) {
+    const sinceMs = new Date(args.since).getTime()
     if (!isNaN(sinceMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() >= sinceMs)
   }
-  if (parsed.data.until && !parsed.data.world_id) {
-    const untilMs = new Date(parsed.data.until).getTime()
+  if (args.until && !args.world_id) {
+    const untilMs = new Date(args.until).getTime()
     if (!isNaN(untilMs)) allEvents = allEvents.filter(e => new Date(e.at).getTime() <= untilMs)
   }
-  if (parsed.data.thread && !parsed.data.world_id) {
-    const t = parsed.data.thread.toLowerCase()
+  if (args.thread && !args.world_id) {
+    const t = args.thread.toLowerCase()
     allEvents = allEvents.filter(e => e.thread?.toLowerCase() === t)
   }
-  if (parsed.data.verbs && parsed.data.verbs.length > 0) {
-    const verbSet = new Set(parsed.data.verbs.map((v: string) => v.toLowerCase()))
+  if (args.verbs && args.verbs.length > 0) {
+    const verbSet = new Set(args.verbs.map((v: string) => v.toLowerCase()))
     allEvents = allEvents.filter(e => verbSet.has(e.verb.toLowerCase()))
   }
 
   allEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-  const limited = allEvents.slice(0, parsed.data.limit)
+  const limited = allEvents.slice(0, args.limit)
 
   const summaryText = limited.length > 0
     ? limited.map(e => `[${e.at}] ${e.entity_key ?? e.entity_id ?? '?'}: ${e.verb}${e.object ? ` → ${e.object}` : ''}${e.detail ? ` (${e.detail})` : ''}`).join('\n')
@@ -296,19 +292,7 @@ export async function handle_get_event_log({ c, id, args }: ToolContext): Promis
   }), 200)
 }
 
-export async function handle_recent_changes({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    since: z.string().optional(),
-    key_prefix: z.string().optional(),
-    limit: z.number().int().min(1).max(200).default(30),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'continuity_manage', parsed.error, {
-      action: 'recent_changes', key_prefix: 'character', limit: 20
-    }), 200)
-  }
-
+export async function handle_recent_changes({ c, id, args }: TypedToolContext<typeof recentChangesSchema>): Promise<Response> {
   const kv = getKV(c)
   let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []
   if (kv) {
@@ -317,16 +301,16 @@ export async function handle_recent_changes({ c, id, args }: ToolContext): Promi
     }
   }
 
-  if (parsed.data.since) {
-    const sinceMs = new Date(parsed.data.since).getTime()
+  if (args.since) {
+    const sinceMs = new Date(args.since).getTime()
     if (!isNaN(sinceMs)) entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
   }
-  if (parsed.data.key_prefix) {
-    const prefix = parsed.data.key_prefix.toLowerCase()
+  if (args.key_prefix) {
+    const prefix = args.key_prefix.toLowerCase()
     entries = entries.filter(e => e.key.startsWith(prefix))
   }
 
-  entries = [...entries].reverse().slice(0, parsed.data.limit)
+  entries = [...entries].reverse().slice(0, args.limit)
 
   const summaryText = entries.length > 0
     ? entries.map(e => `[${e.updatedAt}] ${e.op} ${e.key} v${e.version}`).join('\n')
@@ -338,6 +322,7 @@ export async function handle_recent_changes({ c, id, args }: ToolContext): Promi
     changes: entries
   }), 200)
 }
+
 
 export async function handle_tag_topic({ c, id, args }: ToolContext): Promise<Response> {
   const schema = z.object({
