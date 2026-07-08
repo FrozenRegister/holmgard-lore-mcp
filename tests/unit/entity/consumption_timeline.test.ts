@@ -388,22 +388,13 @@ describe('coverage gaps — edge paths', () => {
 
   /* ── handle_create_consumption_timeline ── */
 
-  it('create: returns error on invalid Zod params (branch: !parsed.success)', async () => {
-    const mockCtx = createMockContext({});
-    const result = await handle_create_consumption_timeline({
-      c: mockCtx,
-      id: 'test-id',
-      isAuthenticated: true,
-      args: {
-        // Missing required fields entity_key, predator_key, stages, stage_timer, terminal_state
-        entity_key: 'character:prey',
-      } as any,
-    });
-    expect(result.status).toBe(200);
-    const body: any = await result.json();
-    expect(body.error).toBeDefined();
-    expect(body.error.message).toContain('Invalid params');
-  });
+  // Invalid-params validation now happens once at the dispatcher's schema.safeParse
+  // (see makeActionDispatcher in src/tools/types.ts and its tests in types.test.ts),
+  // not inside the handler — calling the handler directly with malformed args is no
+  // longer a case the handler itself needs to guard against. The equivalent end-to-end
+  // behavior is covered by src/__tests__/invalid-params-entity.test.ts, which exercises
+  // this through the real entity_manage dispatch (e.g. 'create_consumption_timeline:
+  // missing stages', 'set_consumption_timeline: missing entity_key').
 
   it('create: uses fallback version=1 when meta.version is not numeric (ternary false branch)', async () => {
     const ENTITY_STR_VERSION = JSON.stringify({
@@ -469,22 +460,6 @@ describe('coverage gaps — edge paths', () => {
   });
 
   /* ── handle_set_consumption_timeline ── */
-
-  it('set: returns error on invalid Zod params (branch: !parsed.success)', async () => {
-    const mockCtx = createMockContext({});
-    const result = await handle_set_consumption_timeline({
-      c: mockCtx,
-      id: 'test-id',
-      isAuthenticated: true,
-      args: {
-        entity_key: '',
-      } as any,
-    });
-    expect(result.status).toBe(200);
-    const body: any = await result.json();
-    expect(body.error).toBeDefined();
-    expect(body.error.message).toContain('Invalid params');
-  });
 
   it('set: handles empty predator_key in existing timeline (short-circuit on && first operand)', async () => {
     const ENTITY = JSON.stringify({
