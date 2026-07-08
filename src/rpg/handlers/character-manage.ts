@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import { syncCharacterToKv } from '../utils/character-sync'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
@@ -16,6 +16,7 @@ const ALIASES: Record<string, CharAction> = {
   progression: 'get_progression', level: 'level_up', levelup: 'level_up',
   find_character: 'search', query: 'search',
   cast: 'cast_spell', castspell: 'cast_spell',
+  snap: 'snapshot', save_state: 'snapshot',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -81,6 +82,10 @@ const InputSchema = z.object({
   requiresConcentration: z.boolean().optional(),
   targetIds: z.array(z.string()).optional(),
   saveDcBase: z.number().int().optional(),
+  narrativeNote: z.string().optional(),
+  capturedBy: z.enum(['system', 'timeline_event', 'manual']).optional(),
+  eventId: z.string().optional(),
+  stateJson: z.record(z.unknown()).optional(),
 })
 
 function parseChar(row: Record<string, unknown>) {
@@ -331,6 +336,33 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         const msg = String(e)
         return err(`cast_spell failed: ${msg}`)
       }
+    }
+    case 'snapshot': {
+      const charId = a.id ?? a.characterId
+      if (!charId) return err('"id" or "characterId" is required')
+      const row = await db.prepare('SELECT * FROM characters WHERE id = ?').bind(charId).first()
+      if (!row) return err(`Character not found: ${charId}`)
+
+      const snapshotId = crypto.randomUUID()
+      const capturedAt = a.born ? new Date(a.born).toISOString() : now
+      const capturedBy = a.capturedBy ?? 'manual'
+      const statJson = row.stats as string
+
+      await db.prepare(`
+        INSERT INTO character_snapshots (
+          id, character_id, captured_at, captured_by, event_id, stats_json, hp, max_hp, level, ac, state_json, narrative_note, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        snapshotId, charId, capturedAt, capturedBy, a.eventId ?? null, statJson,
+        row.hp as number, row.max_hp as number, row.level as number, row.ac as number,
+        a.stateJson ? JSON.stringify(a.stateJson) : null, a.narrativeNote ?? null, now
+      ).run()
+
+      return ok({
+        success: true, actionType: 'snapshot', snapshotId, characterId: charId,
+        capturedAt, narrativeNote: a.narrativeNote ?? null,
+      })
     }
   }
 }
