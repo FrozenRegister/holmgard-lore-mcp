@@ -1,17 +1,33 @@
-import type { ToolHandler } from './types'
-import { makeError } from '../lib/rpc'
-import { handle_list_topics, handle_list_maps, handle_get_lore, handle_get_lore_batch, handle_get_lore_section, handle_validate_topic_exists, handle_search_lore, handle_get_map } from './system'
+import type { ActionSpec, ToolHandler } from './types'
+import { makeActionDispatcher, defineAction } from './types'
+import {
+  handle_get_lore, getLoreSchema,
+  handle_get_lore_batch, getLoreBatchSchema,
+  handle_get_lore_section, getLoreSectionSchema,
+  handle_list_topics, listTopicsSchema,
+  handle_list_maps, listMapsSchema,
+  handle_get_map, getMapSchema,
+  handle_search_lore, searchLoreSchema,
+  handle_validate_topic_exists, validateTopicExistsSchema,
+} from './system'
 import { handle_set_lore, handle_delete_lore, handle_patch_lore, handle_batch_set_lore, handle_batch_mutate, handle_restore_lore, handle_get_topic_histories, handle_increment_topic_field, handle_append_to_section } from './lore'
 
-const ACTION_MAP: Record<string, ToolHandler> = {
-  get:            handle_get_lore,
-  get_batch:      handle_get_lore_batch,
-  get_section:    handle_get_lore_section,
-  list:           handle_list_topics,
-  list_maps:      handle_list_maps,
-  get_map:        handle_get_map,
-  search:         handle_search_lore,
-  validate:       handle_validate_topic_exists,
+// Read-side actions (system.ts) are converted to the typed ActionSpec pattern (#237/#238).
+// Write-side actions (lore.ts) are still legacy raw ToolHandlers pending a follow-up PR —
+// makeActionDispatcher supports both forms in the same map so the file migrates incrementally.
+const ACTION_MAP: Record<string, ActionSpec | ToolHandler> = {
+  get: defineAction(getLoreSchema, handle_get_lore, { query: 'character:eira-holt' }),
+  get_batch: defineAction(getLoreBatchSchema, handle_get_lore_batch, {
+    keys: ['character:eira-holt', 'location:marsh-end'],
+  }),
+  get_section: defineAction(getLoreSectionSchema, handle_get_lore_section, {
+    key: 'character:eira-holt', sections: ['Inventory'],
+  }),
+  list: defineAction(listTopicsSchema, handle_list_topics),
+  list_maps: defineAction(listMapsSchema, handle_list_maps),
+  get_map: defineAction(getMapSchema, handle_get_map, { map_id: 'holmgard-overworld' }),
+  search: defineAction(searchLoreSchema, handle_search_lore, { query: 'tribunal' }),
+  validate: defineAction(validateTopicExistsSchema, handle_validate_topic_exists, { query_string: 'eira-holt' }),
   set:            handle_set_lore,
   delete:         handle_delete_lore,
   patch:          handle_patch_lore,
@@ -23,12 +39,4 @@ const ACTION_MAP: Record<string, ToolHandler> = {
   append_section: handle_append_to_section,
 }
 
-export const handle_lore_manage: ToolHandler = ({ c, id, args, isAuthenticated }) => {
-  const { action, ...rest } = args
-  if (!action || typeof action !== 'string')
-    return Promise.resolve(c.json(makeError(id, -32602, 'Missing required param: action'), 200))
-  const handler = ACTION_MAP[action]
-  if (!handler)
-    return Promise.resolve(c.json(makeError(id, -32602, `Unknown action "${action}"`), 200))
-  return handler({ c, id, args: rest, isAuthenticated })
-}
+export const handle_lore_manage: ToolHandler = makeActionDispatcher('lore_manage', ACTION_MAP)
