@@ -171,6 +171,14 @@ describe('render_pov', () => {
     expect(res.result.metadata.location).toBe('location:cabin')
   })
 
+  it('falls back to scene_key when location_key is omitted', async () => {
+    await seedKV('scene:campfire', 'A dying campfire.')
+    await seedKV('character:wanderer', '**Perception:** 0.5')
+    const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:wanderer', scene_key: 'scene:campfire' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.location).toBe('scene:campfire')
+  })
+
   it('returns error for nonexistent POV entity', async () => {
     const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:ghost-9999', location_key: 'location:market' })
     expect(res.error).toBeDefined()
