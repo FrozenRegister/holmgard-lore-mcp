@@ -3,24 +3,80 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { invalidParamsError } from '../lib/errors'
 import { applyAliases } from '../lib/aliases'
 import { resolveEntityKey } from '../lib/entity-resolve'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { resolveIndexedEntities } from '../lib/indexes'
-import type { ToolContext } from './types'
+import type { ToolContext, TypedToolContext, TypedToolHandler } from './types'
 
-export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ thread_id: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'thread_tick', thread_id: 'tribunal'
-    }), 200)
-  }
+// --- Schemas ---
 
-  const threadId = parsed.data.thread_id.trim()
+export const threadTickSchema = z.object({ thread_id: z.string().min(1) })
+export const getRelationshipSchema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1) })
+export const getFactionStandingSchema = z.object({
+  entity_key: z.string().min(1).optional(),
+  entity_name: z.string().min(1).optional(),
+  faction_key: z.string().min(1).optional(),
+  faction_name: z.string().min(1).optional(),
+}).transform(args =>
+  applyAliases(args, { entity_name: 'entity_key', faction_name: 'faction_key' })
+).pipe(z.object({
+  entity_key: z.string().min(1),
+  faction_key: z.string().min(1),
+}))
+export const getEntityKnowledgeSchema = z.object({
+  entity_key:  z.string().optional(),
+  entity_name: z.string().optional(),
+  entity_id:   z.string().optional(),
+  topic:       z.string().min(1),
+}).transform(args =>
+  applyAliases(args, { entity_name: 'entity_key' })
+).pipe(z.object({
+  entity_key:  z.string().optional(),
+  entity_id:   z.string().optional(),
+  topic:       z.string().min(1),
+}))
+export const setEntityKnowledgeSchema = z.object({
+  entity_id:      z.string().min(1),
+  topic:          z.string().min(1),
+  knowledge_type: z.string().default('fact'),
+  acquired_at:    z.string().min(1),
+  detail:         z.string().optional(),
+  source:         z.string().optional(),
+  confidence:     z.number().int().min(0).max(100).default(100),
+})
+export const learnFromEventSchema = z.object({
+  entity_id: z.string().min(1),
+  event_id:  z.string().min(1),
+})
+export const migrateKnowledgeSchema = z.object({ world_id: z.string().min(1) })
+export const getLocationOccupantsSchema = z.object({
+  location_key: z.string().min(1).optional(),
+  location_id: z.string().min(1).optional(),
+}).transform(args =>
+  applyAliases(args, { location_id: 'location_key' })
+).pipe(z.object({
+  location_key: z.string().min(1),
+}))
+export const getReachableLocationsSchema = z.object({ origin_key: z.string().min(1) })
+export const senseEnvironmentSchema = z.object({
+  location_key: z.string().min(1),
+  entity_key: z.string().min(1).optional(),
+  entity_name: z.string().min(1).optional(),
+}).transform(args =>
+  applyAliases(args, { entity_name: 'entity_key' })
+).pipe(z.object({
+  location_key: z.string().min(1),
+  entity_key: z.string().min(1),
+}))
+export const getThreadComparisonSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
+export const checkConvergenceSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
+
+// --- Handlers ---
+
+export const handle_thread_tick: TypedToolHandler<typeof threadTickSchema> = async ({ c, id, args }: TypedToolContext<typeof threadTickSchema>): Promise<Response> => {
+  const threadId = args.thread_id.trim()
   const { keys: threadKeys, rawValues: threadRawValues } = await resolveIndexedEntities(c, `_idx:thread:${threadId}`, 'Thread', threadId)
 
   // Fetch all entities for global snapshot comparison
@@ -94,18 +150,10 @@ export async function handle_thread_tick({ c, id, args }: ToolContext): Promise<
   }), 200)
 }
 
-export async function handle_get_relationship({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_relationship', entity_a: 'character:eira-holt', entity_b: 'character:gerent'
-    }), 200)
-  }
-
+export const handle_get_relationship: TypedToolHandler<typeof getRelationshipSchema> = async ({ c, id, args }: TypedToolContext<typeof getRelationshipSchema>): Promise<Response> => {
   const [resA, resB] = await Promise.all([
-    resolveEntityKey(c, parsed.data.entity_a),
-    resolveEntityKey(c, parsed.data.entity_b),
+    resolveEntityKey(c, args.entity_a),
+    resolveEntityKey(c, args.entity_b),
   ])
   if (!resA.raw) {
     return c.json(makeError(id, -32602, `Entity "${resA.key}" not found${resA.suggestion ? `. Did you mean "${resA.suggestion}"?` : '. Pass the full lore key, e.g. "character:eira-holt".'}`, { key: resA.key, did_you_mean: resA.suggestion }), 200)
@@ -147,19 +195,10 @@ export async function handle_get_relationship({ c, id, args }: ToolContext): Pro
   }), 200)
 }
 
-export async function handle_get_faction_standing({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1), faction_key: z.string().min(1) })
-  const normalized = applyAliases(args, { entity_name: 'entity_key', faction_name: 'faction_key' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_faction_standing', entity_key: 'character:eira-holt', faction_key: 'faction:guild-of-surgeons'
-    }), 200)
-  }
-
+export const handle_get_faction_standing: TypedToolHandler<typeof getFactionStandingSchema> = async ({ c, id, args }: TypedToolContext<typeof getFactionStandingSchema>): Promise<Response> => {
   const [resEntity, resFaction] = await Promise.all([
-    resolveEntityKey(c, parsed.data.entity_key),
-    resolveEntityKey(c, parsed.data.faction_key),
+    resolveEntityKey(c, args.entity_key),
+    resolveEntityKey(c, args.faction_key),
   ])
   if (!resEntity.raw) {
     return c.json(makeError(id, -32602, `Entity "${resEntity.key}" not found${resEntity.suggestion ? `. Did you mean "${resEntity.suggestion}"?` : ''}`, { key: resEntity.key, did_you_mean: resEntity.suggestion }), 200)
@@ -201,46 +240,34 @@ export async function handle_get_faction_standing({ c, id, args }: ToolContext):
   }), 200)
 }
 
-export async function handle_get_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_key:  z.string().optional(),
-    entity_id:   z.string().optional(),
-    topic:       z.string().min(1),
-  })
-  const normalized = applyAliases(args, { entity_name: 'entity_key' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_entity_knowledge', entity_key: 'character:eira-holt', topic: 'the-lock'
-    }), 200)
-  }
-  if (!parsed.data.entity_key && !parsed.data.entity_id) {
+export const handle_get_entity_knowledge: TypedToolHandler<typeof getEntityKnowledgeSchema> = async ({ c, id, args }: TypedToolContext<typeof getEntityKnowledgeSchema>): Promise<Response> => {
+  if (!args.entity_key && !args.entity_id) {
     return c.json(makeError(id, -32602, '"entity_key" or "entity_id" is required', null), 200)
   }
 
-  const topic = parsed.data.topic.trim().toLowerCase()
+  const topic = args.topic.trim().toLowerCase()
 
   // D1 path when entity_id is provided
-  if (parsed.data.entity_id && c.env.RPG_DB) {
+  if (args.entity_id && c.env.RPG_DB) {
     const rows = await c.env.RPG_DB.prepare(
       'SELECT * FROM entity_knowledge WHERE entity_id = ? AND topic LIKE ? AND is_current = 1 ORDER BY confidence DESC'
-    ).bind(parsed.data.entity_id, `%${topic}%`).all() as { results: Array<Record<string, unknown>> }
+    ).bind(args.entity_id, `%${topic}%`).all() as { results: Array<Record<string, unknown>> }
     if (rows.results.length > 0) {
       return c.json(makeResult(id, {
-        content: [{ type: 'text', text: `"${parsed.data.entity_id}" has ${rows.results.length} knowledge record(s) matching "${topic}".` }],
+        content: [{ type: 'text', text: `"${args.entity_id}" has ${rows.results.length} knowledge record(s) matching "${topic}".` }],
         metadata: { retrieved: rows.results.length, written: 0, source: 'd1' },
         known: true, topic, records: rows.results,
       }), 200)
     }
     return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `"${parsed.data.entity_id}" has no D1 knowledge of "${topic}".` }],
+      content: [{ type: 'text', text: `"${args.entity_id}" has no D1 knowledge of "${topic}".` }],
       metadata: { retrieved: 0, written: 0, source: 'd1' },
       known: false, topic, records: [],
     }), 200)
   }
 
   // KV/markdown fallback path
-  const entityKeyRaw = parsed.data.entity_key!
+  const entityKeyRaw = args.entity_key!
   const res = await resolveEntityKey(c, entityKeyRaw)
   if (!res.raw) {
     return c.json(makeError(id, -32602, `Entity "${res.key}" not found${res.suggestion ? `. Did you mean "${res.suggestion}"?` : ''}`, { key: res.key, did_you_mean: res.suggestion }), 200)
@@ -273,28 +300,13 @@ export async function handle_get_entity_knowledge({ c, id, args }: ToolContext):
   }), 200)
 }
 
-export async function handle_set_entity_knowledge({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_id:      z.string().min(1),
-    topic:          z.string().min(1),
-    knowledge_type: z.string().default('fact'),
-    acquired_at:    z.string().min(1),
-    detail:         z.string().optional(),
-    source:         z.string().optional(),
-    confidence:     z.number().int().min(0).max(100).default(100),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'set_entity_knowledge', entity_id: 'char-uuid', topic: 'the-lock', knowledge_type: 'fact', acquired_at: '2184-07-15'
-    }), 200)
-  }
+export const handle_set_entity_knowledge: TypedToolHandler<typeof setEntityKnowledgeSchema> = async ({ c, id, args }: TypedToolContext<typeof setEntityKnowledgeSchema>): Promise<Response> => {
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
   // Validate FK constraint: entity_id must exist in characters table
   let entityExists: { id: string } | null
   try {
-    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(args.entity_id).first() as { id: string } | null
   } catch (err) {
     const msg = String(err)
     if (msg.includes('FOREIGN KEY')) {
@@ -303,7 +315,7 @@ export async function handle_set_entity_knowledge({ c, id, args }: ToolContext):
     throw err
   }
   if (!entityExists) {
-    return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+    return c.json(makeError(id, -32602, `Character not found: ${args.entity_id}`, null), 200)
   }
 
   const knowledgeId = randomUUID()
@@ -313,13 +325,13 @@ export async function handle_set_entity_knowledge({ c, id, args }: ToolContext):
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
     ).bind(
       knowledgeId,
-      parsed.data.entity_id,
-      parsed.data.topic,
-      parsed.data.knowledge_type,
-      parsed.data.source ?? null,
-      parsed.data.acquired_at,
-      parsed.data.detail ?? null,
-      parsed.data.confidence,
+      args.entity_id,
+      args.topic,
+      args.knowledge_type,
+      args.source ?? null,
+      args.acquired_at,
+      args.detail ?? null,
+      args.confidence,
     ).run()
   } catch (err) {
     const msg = String(err)
@@ -330,31 +342,21 @@ export async function handle_set_entity_knowledge({ c, id, args }: ToolContext):
   }
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Knowledge "${parsed.data.topic}" set for entity "${parsed.data.entity_id}".` }],
-    metadata: { knowledge_id: knowledgeId, entity_id: parsed.data.entity_id, topic: parsed.data.topic }
+    content: [{ type: 'text', text: `Knowledge "${args.topic}" set for entity "${args.entity_id}".` }],
+    metadata: { knowledge_id: knowledgeId, entity_id: args.entity_id, topic: args.topic }
   }), 200)
 }
 
-export async function handle_learn_from_event({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_id: z.string().min(1),
-    event_id:  z.string().min(1),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'learn_from_event', entity_id: 'char-uuid', event_id: 'event-uuid'
-    }), 200)
-  }
+export const handle_learn_from_event: TypedToolHandler<typeof learnFromEventSchema> = async ({ c, id, args }: TypedToolContext<typeof learnFromEventSchema>): Promise<Response> => {
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
-  const event = await c.env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(parsed.data.event_id).first() as Record<string, unknown> | null
-  if (!event) return c.json(makeError(id, -32602, `Event not found: ${parsed.data.event_id}`, null), 200)
+  const event = await c.env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(args.event_id).first() as Record<string, unknown> | null
+  if (!event) return c.json(makeError(id, -32602, `Event not found: ${args.event_id}`, null), 200)
 
   // Validate FK constraint: entity_id must exist in characters table
   let entityExists: { id: string } | null
   try {
-    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(parsed.data.entity_id).first() as { id: string } | null
+    entityExists = await c.env.RPG_DB.prepare('SELECT id FROM characters WHERE id = ?').bind(args.entity_id).first() as { id: string } | null
   } catch (err) {
     const msg = String(err)
     if (msg.includes('FOREIGN KEY')) {
@@ -363,7 +365,7 @@ export async function handle_learn_from_event({ c, id, args }: ToolContext): Pro
     throw err
   }
   if (!entityExists) {
-    return c.json(makeError(id, -32602, `Character not found: ${parsed.data.entity_id}`, null), 200)
+    return c.json(makeError(id, -32602, `Character not found: ${args.entity_id}`, null), 200)
   }
 
   const topic = `${event.verb}${event.object_entity ? `:${event.object_entity}` : ''}`
@@ -372,7 +374,7 @@ export async function handle_learn_from_event({ c, id, args }: ToolContext): Pro
     await c.env.RPG_DB.prepare(
       `INSERT OR REPLACE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
        VALUES (?, ?, ?, 'fact', ?, ?, ?, 100, 1)`
-    ).bind(knowledgeId, parsed.data.entity_id, topic, parsed.data.event_id, event.event_at as string, event.detail ?? null).run()
+    ).bind(knowledgeId, args.entity_id, topic, args.event_id, event.event_at as string, event.detail ?? null).run()
   } catch (err) {
     const msg = String(err)
     if (msg.includes('FOREIGN KEY')) {
@@ -382,23 +384,16 @@ export async function handle_learn_from_event({ c, id, args }: ToolContext): Pro
   }
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Entity "${parsed.data.entity_id}" learned "${topic}" from event "${parsed.data.event_id}".` }],
-    metadata: { knowledge_id: knowledgeId, entity_id: parsed.data.entity_id, topic, source: parsed.data.event_id }
+    content: [{ type: 'text', text: `Entity "${args.entity_id}" learned "${topic}" from event "${args.event_id}".` }],
+    metadata: { knowledge_id: knowledgeId, entity_id: args.entity_id, topic, source: args.event_id }
   }), 200)
 }
 
-export async function handle_migrate_knowledge({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ world_id: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'migrate_knowledge', world_id: 'world-main'
-    }), 200)
-  }
+export const handle_migrate_knowledge: TypedToolHandler<typeof migrateKnowledgeSchema> = async ({ c, id, args }: TypedToolContext<typeof migrateKnowledgeSchema>): Promise<Response> => {
   if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
 
   // Fetch world current_date for acquired_at default
-  const ws = await c.env.RPG_DB.prepare('SELECT "current_date" FROM world_state WHERE world_id = ?').bind(parsed.data.world_id).first() as { current_date: string } | null
+  const ws = await c.env.RPG_DB.prepare('SELECT "current_date" FROM world_state WHERE world_id = ?').bind(args.world_id).first() as { current_date: string } | null
   const acquiredAt = ws?.current_date ?? new Date().toISOString().slice(0, 10)
 
   // Find all character KV keys and scan for Knows/Knowledge fields
@@ -444,17 +439,8 @@ export async function handle_migrate_knowledge({ c, id, args }: ToolContext): Pr
   }), 200)
 }
 
-export async function handle_get_location_occupants({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ location_key: z.string().min(1) })
-  const normalized = applyAliases(args, { location_id: 'location_key' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_location_occupants', location_key: 'location:marsh-end'
-    }), 200)
-  }
-
-  const locationKey = parsed.data.location_key.trim().toLowerCase()
+export const handle_get_location_occupants: TypedToolHandler<typeof getLocationOccupantsSchema> = async ({ c, id, args }: TypedToolContext<typeof getLocationOccupantsSchema>): Promise<Response> => {
+  const locationKey = args.location_key.trim().toLowerCase()
 
   const { keys: entityKeys, rawValues } = await resolveIndexedEntities(c, `_idx:location:${locationKey}`, 'Location', locationKey)
 
@@ -474,16 +460,8 @@ export async function handle_get_location_occupants({ c, id, args }: ToolContext
   }), 200)
 }
 
-export async function handle_get_reachable_locations({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ origin_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_reachable_locations', origin_key: 'location:marsh-end'
-    }), 200)
-  }
-
-  const resOrigin = await resolveEntityKey(c, parsed.data.origin_key)
+export const handle_get_reachable_locations: TypedToolHandler<typeof getReachableLocationsSchema> = async ({ c, id, args }: TypedToolContext<typeof getReachableLocationsSchema>): Promise<Response> => {
+  const resOrigin = await resolveEntityKey(c, args.origin_key)
   if (!resOrigin.raw) {
     return c.json(makeError(id, -32602, `Location "${resOrigin.key}" not found${resOrigin.suggestion ? `. Did you mean "${resOrigin.suggestion}"?` : ''}`, { key: resOrigin.key, did_you_mean: resOrigin.suggestion }), 200)
   }
@@ -517,19 +495,10 @@ export async function handle_get_reachable_locations({ c, id, args }: ToolContex
   }), 200)
 }
 
-export async function handle_sense_environment({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ location_key: z.string().min(1), entity_key: z.string().min(1) })
-  const normalized = applyAliases(args, { entity_name: 'entity_key' })
-  const parsed = schema.safeParse(normalized)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'sense_environment', location_key: 'location:marsh-end', entity_key: 'character:eira-holt'
-    }), 200)
-  }
-
+export const handle_sense_environment: TypedToolHandler<typeof senseEnvironmentSchema> = async ({ c, id, args }: TypedToolContext<typeof senseEnvironmentSchema>): Promise<Response> => {
   const [resLoc, resEntity] = await Promise.all([
-    resolveEntityKey(c, parsed.data.location_key),
-    resolveEntityKey(c, parsed.data.entity_key),
+    resolveEntityKey(c, args.location_key),
+    resolveEntityKey(c, args.entity_key),
   ])
   if (!resLoc.raw) {
     return c.json(makeError(id, -32602, `Location "${resLoc.key}" not found${resLoc.suggestion ? `. Did you mean "${resLoc.suggestion}"?` : ''}`, { key: resLoc.key, did_you_mean: resLoc.suggestion }), 200)
@@ -575,17 +544,9 @@ export async function handle_sense_environment({ c, id, args }: ToolContext): Pr
   }), 200)
 }
 
-export async function handle_get_thread_comparison({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'get_thread_comparison', thread_a: 'tribunal', thread_b: 'the-lock'
-    }), 200)
-  }
-
-  const threadA = parsed.data.thread_a.trim()
-  const threadB = parsed.data.thread_b.trim()
+export const handle_get_thread_comparison: TypedToolHandler<typeof getThreadComparisonSchema> = async ({ c, id, args }: TypedToolContext<typeof getThreadComparisonSchema>): Promise<Response> => {
+  const threadA = args.thread_a.trim()
+  const threadB = args.thread_b.trim()
   const { keys: keysA, rawValues: rawValuesA } = await resolveIndexedEntities(c, `_idx:thread:${threadA}`, 'Thread', threadA)
   const { keys: keysB, rawValues: rawValuesB } = await resolveIndexedEntities(c, `_idx:thread:${threadB}`, 'Thread', threadB)
   type TInfo = { key: string; timeline_value: number | null; current_date: string | null; location: string | null }
@@ -642,17 +603,9 @@ export async function handle_get_thread_comparison({ c, id, args }: ToolContext)
   }), 200)
 }
 
-export async function handle_check_convergence({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'world_manage', parsed.error, {
-      action: 'check_convergence', thread_a: 'tribunal', thread_b: 'the-lock'
-    }), 200)
-  }
-
-  const threadA = parsed.data.thread_a.trim()
-  const threadB = parsed.data.thread_b.trim()
+export const handle_check_convergence: TypedToolHandler<typeof checkConvergenceSchema> = async ({ c, id, args }: TypedToolContext<typeof checkConvergenceSchema>): Promise<Response> => {
+  const threadA = args.thread_a.trim()
+  const threadB = args.thread_b.trim()
   const { keys: keysA, rawValues: rawValuesA } = await resolveIndexedEntities(c, `_idx:thread:${threadA}`, 'Thread', threadA)
   const { keys: keysB, rawValues: rawValuesB } = await resolveIndexedEntities(c, `_idx:thread:${threadB}`, 'Thread', threadB)
   type TInfo = { key: string; current_date: string | null; location: string | null }
