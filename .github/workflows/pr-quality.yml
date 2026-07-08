@@ -91,3 +91,63 @@ jobs:
             } else {
               console.log('OK Changelog fragment found')
             }
+
+  check-docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+
+            if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
+              console.log('Skipping (skip-quality-checks label present)')
+              return
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            })
+
+            // Check if docs files were modified
+            const docsModified = files.some(f => f.filename.startsWith('docs/'))
+
+            // Check if PR body has ## Documentation section
+            const body = pr.body || ''
+            const hasDocs = /##\s+Documentation/i.test(body)
+
+            // Skip check for certain conditions
+            const isDepsOnly = files.every(f =>
+              f.filename.includes('package') ||
+              f.filename.includes('pnpm-lock') ||
+              f.filename.includes('.lock')
+            )
+
+            if (isDepsOnly) {
+              console.log('Dependencies-only PR — documentation not required')
+              return
+            }
+
+            if (!docsModified && !hasDocs) {
+              core.setFailed(
+                'ERROR **Documentation update suggested**\n\n' +
+                'PRs that modify code should consider:\n\n' +
+                '1. **Add docs if you changed user-facing features**: modify files in `docs/` or\n' +
+                '2. **Add a ## Documentation section to the PR body** describing the change, or\n' +
+                '3. **Apply `skip-quality-checks` label** if documentation truly isn\'t needed (e.g., internal refactors, fixes to unreleased code)\n\n' +
+                'Examples of PRs that can skip:\n' +
+                '  - Refactoring with no behavior change\n' +
+                '  - Bug fixes to unreleased features\n' +
+                '  - Internal code cleanup\n' +
+                '  - Dependencies-only updates'
+              )
+            } else {
+              console.log('OK Documentation section or docs/ files found')
+            }
