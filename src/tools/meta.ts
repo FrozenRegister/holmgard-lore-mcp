@@ -22,6 +22,8 @@ export const appendEventSchema = z.object({
   at: z.string().optional(),
   world_id: z.string().optional(),
   entity_id: z.string().optional(),
+  date: z.string().optional(),
+  description: z.string().optional(),
 }).transform(args => applyAliases(args, { date: 'at', description: 'detail' }))
   .pipe(z.object({
     entity_key: z.string().min(1),
