@@ -69,6 +69,7 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 | **Touched test file(s)** | Local | `pnpm test -- src/__tests__/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | `coverage` CI job is the enforced gate — fails if patch coverage drops below 100%. Codecov upload is advisory only. |
+| **Documentation** | CI | PRs must either modify `docs/` files OR include a `## Documentation` section in PR body. Dependencies-only and internal refactors can use `skip-quality-checks` label. |
 
 ### Pre-Commit Checklist (Before Pushing)
 
@@ -92,6 +93,7 @@ Then push and let CI run the full matrix + coverage (~2 min). Treat green CI as 
 - **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
 - **Coverage below 100% on new code (CI)** — Open the failing `coverage` job or the Codecov report to see uncovered lines, add tests, push again. To reproduce locally if needed: `pnpm test:coverage`, then inspect `coverage/lcov.info`.
 - **Changelog fragment missing** — Create a `.md` file under `.changelog/fragments/` describing your changes (e.g. `.changelog/fragments/my-feature.md`)
+- **Documentation update suggested** — Either (1) modify files under `docs/`, or (2) add a `## Documentation` section to your PR body describing the change, or (3) apply the `skip-quality-checks` label if documentation truly isn't needed (e.g., internal refactors, fixes to unreleased code, dependencies-only updates)
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
 - **Tests failing in CI** — Reproduce locally by running just that file (`pnpm test -- <file>`), fix, push again
 
