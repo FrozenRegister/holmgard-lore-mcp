@@ -347,7 +347,6 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       const capturedAt = a.born ? new Date(a.born).toISOString() : now
       const capturedBy = a.capturedBy ?? 'manual'
       const statJson = row.stats as string
-      const statsObj = statJson ? JSON.parse(statJson) : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
 
       await db.prepare(`
         INSERT INTO character_snapshots (
