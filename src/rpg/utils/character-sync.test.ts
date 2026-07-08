@@ -37,6 +37,7 @@ vDesc('Character Sync Utilities', () => {
       expect(kvKey).toBeDefined()
 
       // Verify KV entry was created
+      if (!kvKey) throw new Error('kvKey should not be null')
       const kvEntry = await testEnv.LORE_DB!.get(kvKey)
       expect(kvEntry).toBeDefined()
 

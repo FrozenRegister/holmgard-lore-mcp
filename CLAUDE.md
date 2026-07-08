@@ -380,34 +380,41 @@ This separation is critical: **never allow these IDs to be identical**, or `wran
 1. **Write tests alongside code** — don't add code first then tests later. Tests guide design and catch edge cases early.
 2. **Test error paths explicitly** — every `try/catch`, every `if (!thing) return`, every `.bind(value)` that could fail
 3. **Before pushing, run coverage locally:**
+
    ```bash
    pnpm test:coverage
    # Verify all lines added in this session are marked as covered:
    # Lines marked with X (red) = NOT covered — add tests
    # Lines marked with . (green) = covered — good to go
    ```
+
 4. **Use Codecov diff view** — when CI runs, codecov shows exactly which lines in your diff lack coverage. Review those lines and add the missing test cases.
 
 ### Common Coverage Gaps (and How to Fix)
 
-**Gap: Error paths not tested**
+#### Gap: Error paths not tested
+
 ```typescript
 // ❌ Untested error case
 const row = await db.prepare('...').bind(id).first()
 if (!row) return null  // This line has 0 coverage if tests never pass an invalid id
 ```
+
 **Fix:** Add a test that passes a non-existent ID and verifies the null return.
 
-**Gap: Optional parameters**
+#### Gap: Optional parameters
+
 ```typescript
 // ❌ Untested when 'slug' is omitted
 export async function syncToKv(env, charId, slug?: string) {
   const kvSlug = slug || charId.toLowerCase() // Second branch uncovered
 }
 ```
+
 **Fix:** Test both with and without the optional parameter.
 
-**Gap: Fallback/catch blocks**
+#### Gap: Fallback/catch blocks
+
 ```typescript
 // ❌ Exception path never triggered in tests
 try {
@@ -416,14 +423,17 @@ try {
   return 0  // Untested
 }
 ```
+
 **Fix:** Mock the db to throw an error and verify the catch returns 0.
 
 ### Coverage is Checked at
 
 1. **Local pre-push** (optional but recommended):
+
    ```bash
    pnpm test:coverage && grep -E "^(src/|tests/).* (\d+\.\d+%|0%)" coverage/lcov.info
    ```
+
    Red flags: any file below 90% should be reviewed.
 
 2. **CI (enforced gate)**: The `coverage` job runs on every PR, fails if any new line is uncovered. This blocks merge.
