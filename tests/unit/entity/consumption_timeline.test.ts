@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll, vi } from 'vitest';
 import {
   handle_create_consumption_timeline,
   handle_set_consumption_timeline,
+  createConsumptionTimelineSchema,
 } from '../../../src/tools/entity';
 import { createMockContext } from '../mocks';
 
@@ -44,6 +45,7 @@ describe('handle_create_consumption_timeline', () => {
         stages: 5,
         stage_timer: 3,
         terminal_state: 'consumed-nutrient',
+        current_stage: 0,
       },
     });
     expect(result.status).toBe(200);
@@ -66,6 +68,7 @@ describe('handle_create_consumption_timeline', () => {
         stages: 5,
         stage_timer: 3,
         terminal_state: 'consumed-nutrient',
+        current_stage: 0,
       },
     });
     expect(result.status).toBe(200);
@@ -97,6 +100,7 @@ describe('handle_create_consumption_timeline', () => {
         stages: 5,
         stage_timer: 3,
         terminal_state: 'consumed-nutrient',
+        current_stage: 0,
       },
     });
     expect(result.status).toBe(200);
@@ -110,17 +114,20 @@ describe('handle_create_consumption_timeline', () => {
       'character:prey': PREY_ENTITY,
       'entity:stalker': PREDATOR_ENTITY,
     });
+    // current_stage is optional at the schema/dispatcher boundary (defaults to 0)
+    // — parse through the real schema here so this test still exercises that default,
+    // since calling the handler directly bypasses the dispatcher's schema.safeParse.
     const result = await handle_create_consumption_timeline({
       c: mockCtx,
       id: 'test-id',
       isAuthenticated: true,
-      args: {
+      args: createConsumptionTimelineSchema.parse({
         entity_key: 'character:prey',
         predator_key: 'entity:stalker',
         stages: 5,
         stage_timer: 3,
         terminal_state: 'consumed-nutrient',
-      },
+      }),
     });
     expect(result.status).toBe(200);
     const body: any = await result.json();
@@ -420,6 +427,7 @@ describe('coverage gaps — edge paths', () => {
         stages: 3,
         stage_timer: 2,
         terminal_state: 'consumed-nutrient',
+        current_stage: 0,
       },
     });
     expect(result.status).toBe(200);
@@ -452,6 +460,7 @@ describe('coverage gaps — edge paths', () => {
         stages: 3,
         stage_timer: 2,
         terminal_state: 'consumed-nutrient',
+        current_stage: 0,
       },
     });
     expect(result.status).toBe(200);

@@ -1,0 +1,6 @@
+### Typed Handlers — Entity (closes #239)
+- Converted all 15 schema-bearing `entity_manage` actions in `src/tools/entity.ts` (`resolve_interaction`, `destroy`, `analyze_utility`, `map_integration`, `generate`, `roll_encounter`, `advance_stage`, `batch_stage`, `get_sensory_profile`, `get_compatibility`, `get_inventory`, `transfer_item`, `list_consumption_timelines`, `create_consumption_timeline`, `set_consumption_timeline`) to the typed `ActionSpec`/`TypedToolContext` pattern from #237.
+- `list_active_threads` takes no arguments at all, so it stays a legacy raw `ToolHandler` — there's no schema to enforce.
+- `entity-manage.ts`'s `ACTION_MAP` is now fully typed (aside from `list_active_threads`).
+- Updated `tests/unit/entity/consumption_timeline.test.ts`, which calls handlers directly (bypassing the dispatcher): since default-value application (`current_stage` defaulting to 0) now happens at the dispatcher's `schema.safeParse`, not inside the handler, direct-handler tests now supply the post-parse shape explicitly — one test parses through the real schema to keep exercising the default-value behavior it's named for.
+- Pure refactor otherwise — no behavior change, error messages and example payloads unchanged.

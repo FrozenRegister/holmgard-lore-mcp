@@ -2,28 +2,21 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { invalidParamsError } from '../lib/errors'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
-import type { ToolContext } from './types'
+import type { ToolContext, TypedToolContext } from './types'
 
-export async function handle_resolve_interaction({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_a_id: z.string().min(1),
-    entity_b_id: z.string().min(1),
-    action_type: z.string().min(1),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'resolve_interaction', entity_a_id: 'character:eira-holt', entity_b_id: 'character:gerent', action_type: 'confront'
-    }), 200)
-  }
+export const resolveInteractionSchema = z.object({
+  entity_a_id: z.string().min(1),
+  entity_b_id: z.string().min(1),
+  action_type: z.string().min(1),
+})
 
-  const keyA = parsed.data.entity_a_id.trim().toLowerCase()
-  const keyB = parsed.data.entity_b_id.trim().toLowerCase()
-  const actionType = parsed.data.action_type
+export async function handle_resolve_interaction({ c, id, args }: TypedToolContext<typeof resolveInteractionSchema>): Promise<Response> {
+  const keyA = args.entity_a_id.trim().toLowerCase()
+  const keyB = args.entity_b_id.trim().toLowerCase()
+  const actionType = args.action_type
 
   const [rawA, rawB] = await Promise.all([kvGet(c, keyA), kvGet(c, keyB)])
   if (!rawA) return c.json(makeError(id, -32602, `Entity "${keyA}" not found`, null), 200)
@@ -68,16 +61,10 @@ export async function handle_resolve_interaction({ c, id, args }: ToolContext): 
   }), 200)
 }
 
-export async function handle_destroy_entity({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'destroy', entity_key: 'entity:temp-encounter-12345'
-    }), 200)
-  }
+export const destroyEntitySchema = z.object({ entity_key: z.string().min(1) })
 
-  const key = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_destroy_entity({ c, id, args }: TypedToolContext<typeof destroyEntitySchema>): Promise<Response> {
+  const key = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
 
@@ -99,22 +86,16 @@ export async function handle_destroy_entity({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_analyze_utility({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_id: z.string().min(1),
-    utility_vector: z.enum(['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']),
-    entity_role: z.enum(['subject', 'actor']).default('subject'),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'analyze_utility', entity_id: 'character:eira-holt', utility_vector: 'GASTRIC', entity_role: 'subject'
-    }), 200)
-  }
+export const analyzeUtilitySchema = z.object({
+  entity_id: z.string().min(1),
+  utility_vector: z.enum(['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']),
+  entity_role: z.enum(['subject', 'actor']).default('subject'),
+})
 
-  const key = parsed.data.entity_id.trim().toLowerCase()
-  const vector = parsed.data.utility_vector
-  const entityRole = parsed.data.entity_role
+export async function handle_analyze_utility({ c, id, args }: TypedToolContext<typeof analyzeUtilitySchema>): Promise<Response> {
+  const key = args.entity_id.trim().toLowerCase()
+  const vector = args.utility_vector
+  const entityRole = args.entity_role
 
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
@@ -373,22 +354,16 @@ export async function handle_analyze_utility({ c, id, args }: ToolContext): Prom
   }), 200)
 }
 
-export async function handle_map_integration({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    source_id: z.string().min(1),
-    target_id: z.string().min(1),
-    integration_depth: z.number().min(0).max(1)
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'map_integration', source_id: 'character:eira-holt', target_id: 'character:gerent', integration_depth: 0.5
-    }), 200)
-  }
+export const mapIntegrationSchema = z.object({
+  source_id: z.string().min(1),
+  target_id: z.string().min(1),
+  integration_depth: z.number().min(0).max(1)
+})
 
-  const sourceKey = parsed.data.source_id.trim().toLowerCase()
-  const targetKey = parsed.data.target_id.trim().toLowerCase()
-  const depth = parsed.data.integration_depth
+export async function handle_map_integration({ c, id, args }: TypedToolContext<typeof mapIntegrationSchema>): Promise<Response> {
+  const sourceKey = args.source_id.trim().toLowerCase()
+  const targetKey = args.target_id.trim().toLowerCase()
+  const depth = args.integration_depth
 
   const [rawSource, rawTarget] = await Promise.all([kvGet(c, sourceKey), kvGet(c, targetKey)])
   if (!rawSource) return c.json(makeError(id, -32602, `Source entity "${sourceKey}" not found`, null), 200)
@@ -447,17 +422,11 @@ export async function handle_map_integration({ c, id, args }: ToolContext): Prom
   }), 200)
 }
 
-export async function handle_generate_entity({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ archetype_key: z.string().min(1), location_key: z.string().optional() })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'generate', archetype_key: 'archetype:deer', location_key: 'location:marsh-end'
-    }), 200)
-  }
+export const generateEntitySchema = z.object({ archetype_key: z.string().min(1), location_key: z.string().optional() })
 
-  const archetypeKey = parsed.data.archetype_key.trim().toLowerCase()
-  const locationKey = parsed.data.location_key?.trim().toLowerCase()
+export async function handle_generate_entity({ c, id, args }: TypedToolContext<typeof generateEntitySchema>): Promise<Response> {
+  const archetypeKey = args.archetype_key.trim().toLowerCase()
+  const locationKey = args.location_key?.trim().toLowerCase()
   const rawArchetype = await kvGet(c, archetypeKey)
   if (!rawArchetype) return c.json(makeError(id, -32602, `Archetype "${archetypeKey}" not found`, null), 200)
 
@@ -494,20 +463,14 @@ export async function handle_generate_entity({ c, id, args }: ToolContext): Prom
   }), 200)
 }
 
-export async function handle_roll_encounter({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    location_key: z.string().min(1),
-    threat_level: z.number().int().min(1).max(10).default(5),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'roll_encounter', location_key: 'location:marsh-end', threat_level: 5
-    }), 200)
-  }
+export const rollEncounterSchema = z.object({
+  location_key: z.string().min(1),
+  threat_level: z.number().int().min(1).max(10).default(5),
+})
 
-  const locationKey = parsed.data.location_key.trim().toLowerCase()
-  const threatLevel = parsed.data.threat_level
+export async function handle_roll_encounter({ c, id, args }: TypedToolContext<typeof rollEncounterSchema>): Promise<Response> {
+  const locationKey = args.location_key.trim().toLowerCase()
+  const threatLevel = args.threat_level
   const rawLoc = await kvGet(c, locationKey)
   if (!rawLoc) return c.json(makeError(id, -32602, `Location "${locationKey}" not found`, null), 200)
 
@@ -571,16 +534,10 @@ export async function handle_roll_encounter({ c, id, args }: ToolContext): Promi
   }), 200)
 }
 
-export async function handle_advance_state_stage({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'advance_stage', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const advanceStateStageSchema = z.object({ entity_key: z.string().min(1) })
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_advance_state_stage({ c, id, args }: TypedToolContext<typeof advanceStateStageSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
@@ -619,16 +576,10 @@ export async function handle_advance_state_stage({ c, id, args }: ToolContext): 
   }), 200)
 }
 
-export async function handle_process_stage_batch({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ location_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'batch_stage', location_key: 'location:marsh-end'
-    }), 200)
-  }
+export const processStageBatchSchema = z.object({ location_key: z.string().min(1) })
 
-  const locationKey = parsed.data.location_key.trim().toLowerCase()
+export async function handle_process_stage_batch({ c, id, args }: TypedToolContext<typeof processStageBatchSchema>): Promise<Response> {
+  const locationKey = args.location_key.trim().toLowerCase()
   const { keys: entityKeys, rawValues } = await resolveIndexedEntities(c, `_idx:location:${locationKey}`, 'Location', locationKey)
   const now = new Date().toISOString()
 
@@ -683,16 +634,10 @@ export async function handle_process_stage_batch({ c, id, args }: ToolContext): 
   }), 200)
 }
 
-export async function handle_get_sensory_profile({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'get_sensory_profile', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const getSensoryProfileSchema = z.object({ entity_key: z.string().min(1) })
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_get_sensory_profile({ c, id, args }: TypedToolContext<typeof getSensoryProfileSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
@@ -729,18 +674,12 @@ export async function handle_get_sensory_profile({ c, id, args }: ToolContext): 
   }), 200)
 }
 
-export async function handle_get_compatibility({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1), interaction_type: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'get_compatibility', entity_a: 'character:eira-holt', entity_b: 'character:gerent', interaction_type: 'hunt'
-    }), 200)
-  }
+export const getCompatibilitySchema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1), interaction_type: z.string().min(1) })
 
-  const keyA = parsed.data.entity_a.trim().toLowerCase()
-  const keyB = parsed.data.entity_b.trim().toLowerCase()
-  const interactionType = parsed.data.interaction_type
+export async function handle_get_compatibility({ c, id, args }: TypedToolContext<typeof getCompatibilitySchema>): Promise<Response> {
+  const keyA = args.entity_a.trim().toLowerCase()
+  const keyB = args.entity_b.trim().toLowerCase()
+  const interactionType = args.interaction_type
   const [rawA, rawB] = await Promise.all([kvGet(c, keyA), kvGet(c, keyB)])
   if (!rawA) return c.json(makeError(id, -32602, `Entity "${keyA}" not found`, null), 200)
   if (!rawB) return c.json(makeError(id, -32602, `Entity "${keyB}" not found`, null), 200)
@@ -784,16 +723,10 @@ export async function handle_get_compatibility({ c, id, args }: ToolContext): Pr
   }), 200)
 }
 
-export async function handle_get_inventory({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({ entity_key: z.string().min(1) })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'get_inventory', entity_key: 'character:eira-holt'
-    }), 200)
-  }
+export const getInventorySchema = z.object({ entity_key: z.string().min(1) })
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_get_inventory({ c, id, args }: TypedToolContext<typeof getInventorySchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
@@ -834,22 +767,16 @@ export async function handle_get_inventory({ c, id, args }: ToolContext): Promis
   }), 200)
 }
 
-export async function handle_transfer_item({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    from_entity: z.string().min(1), to_entity: z.string().min(1),
-    item_key: z.string().min(1), quantity: z.number().int().min(1).default(1),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'transfer_item', from_entity: 'character:eira-holt', to_entity: 'character:gerent', item_key: 'sword', quantity: 1
-    }), 200)
-  }
+export const transferItemSchema = z.object({
+  from_entity: z.string().min(1), to_entity: z.string().min(1),
+  item_key: z.string().min(1), quantity: z.number().int().min(1).default(1),
+})
 
-  const fromKey = parsed.data.from_entity.trim().toLowerCase()
-  const toKey = parsed.data.to_entity.trim().toLowerCase()
-  const itemKey = parsed.data.item_key.trim()
-  const qty = parsed.data.quantity
+export async function handle_transfer_item({ c, id, args }: TypedToolContext<typeof transferItemSchema>): Promise<Response> {
+  const fromKey = args.from_entity.trim().toLowerCase()
+  const toKey = args.to_entity.trim().toLowerCase()
+  const itemKey = args.item_key.trim()
+  const qty = args.quantity
   const [rawFrom, rawTo] = await Promise.all([kvGet(c, fromKey), kvGet(c, toKey)])
   if (!rawFrom) return c.json(makeError(id, -32602, `Entity "${fromKey}" not found`, null), 200)
   if (!rawTo) return c.json(makeError(id, -32602, `Entity "${toKey}" not found`, null), 200)
@@ -931,20 +858,14 @@ export async function handle_transfer_item({ c, id, args }: ToolContext): Promis
   }), 200)
 }
 
-export async function handle_list_consumption_timelines({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all'),
-    limit: z.number().int().min(1).max(100).default(50),
-    offset: z.number().int().min(0).default(0),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'list_consumption_timelines', status_filter: 'all', limit: 50
-    }), 200)
-  }
+export const listConsumptionTimelinesSchema = z.object({
+  status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all'),
+  limit: z.number().int().min(1).max(100).default(50),
+  offset: z.number().int().min(0).default(0),
+})
 
-  const { status_filter, limit, offset } = parsed.data
+export async function handle_list_consumption_timelines({ c, id, args }: TypedToolContext<typeof listConsumptionTimelinesSchema>): Promise<Response> {
+  const { status_filter, limit, offset } = args
 
   // v0.2.0: scan ALL character:* keys via index, not just livestock/prisoner
   const characterKeys = await getIndexedKeys(c, '_idx:prefix:character')
@@ -1014,25 +935,19 @@ export async function handle_list_active_threads({ c, id }: ToolContext): Promis
   }), 200)
 }
 
-export async function handle_create_consumption_timeline({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_key: z.string().min(1),
-    predator_key: z.string().min(1),
-    stages: z.number().int().min(1).max(20),
-    stage_timer: z.number().int().min(1),
-    terminal_state: z.string().min(1),
-    current_stage: z.number().int().min(0).default(0),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'create_consumption_timeline', entity_key: 'character:eira-holt', predator_key: 'character:gerent', stages: 5, stage_timer: 10, terminal_state: 'consumed'
-    }), 200)
-  }
+export const createConsumptionTimelineSchema = z.object({
+  entity_key: z.string().min(1),
+  predator_key: z.string().min(1),
+  stages: z.number().int().min(1).max(20),
+  stage_timer: z.number().int().min(1),
+  terminal_state: z.string().min(1),
+  current_stage: z.number().int().min(0).default(0),
+})
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
-  const predatorKey = parsed.data.predator_key.trim().toLowerCase()
-  const { stages, stage_timer, terminal_state, current_stage } = parsed.data
+export async function handle_create_consumption_timeline({ c, id, args }: TypedToolContext<typeof createConsumptionTimelineSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
+  const predatorKey = args.predator_key.trim().toLowerCase()
+  const { stages, stage_timer, terminal_state, current_stage } = args
 
   // Validate entity exists
   const rawEntity = await kvGet(c, entityKey)
@@ -1085,23 +1000,17 @@ export async function handle_create_consumption_timeline({ c, id, args }: ToolCo
   }), 200)
 }
 
-export async function handle_set_consumption_timeline({ c, id, args }: ToolContext): Promise<Response> {
-  const schema = z.object({
-    entity_key: z.string().min(1),
-    predator_key: z.string().min(1).optional(),
-    stages: z.number().int().min(1).max(20).optional(),
-    stage_timer: z.number().int().min(0).optional(),
-    current_stage: z.number().int().min(0).optional(),
-    terminal_state: z.string().min(1).optional(),
-  })
-  const parsed = schema.safeParse(args)
-  if (!parsed.success) {
-    return c.json(invalidParamsError(id, 'entity_manage', parsed.error, {
-      action: 'set_consumption_timeline', entity_key: 'character:eira-holt', current_stage: 2
-    }), 200)
-  }
+export const setConsumptionTimelineSchema = z.object({
+  entity_key: z.string().min(1),
+  predator_key: z.string().min(1).optional(),
+  stages: z.number().int().min(1).max(20).optional(),
+  stage_timer: z.number().int().min(0).optional(),
+  current_stage: z.number().int().min(0).optional(),
+  terminal_state: z.string().min(1).optional(),
+})
 
-  const entityKey = parsed.data.entity_key.trim().toLowerCase()
+export async function handle_set_consumption_timeline({ c, id, args }: TypedToolContext<typeof setConsumptionTimelineSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
 
   // Validate entity exists
   const rawEntity = await kvGet(c, entityKey)
@@ -1119,11 +1028,11 @@ export async function handle_set_consumption_timeline({ c, id, args }: ToolConte
 
   // Merge updates
   const updates: Record<string, unknown> = {}
-  if (parsed.data.predator_key !== undefined) updates.predator_key = parsed.data.predator_key.trim().toLowerCase()
-  if (parsed.data.stages !== undefined) updates.stages = parsed.data.stages
-  if (parsed.data.stage_timer !== undefined) updates.stage_timer = parsed.data.stage_timer
-  if (parsed.data.current_stage !== undefined) updates.current_stage = parsed.data.current_stage
-  if (parsed.data.terminal_state !== undefined) updates.terminal_state = parsed.data.terminal_state
+  if (args.predator_key !== undefined) updates.predator_key = args.predator_key.trim().toLowerCase()
+  if (args.stages !== undefined) updates.stages = args.stages
+  if (args.stage_timer !== undefined) updates.stage_timer = args.stage_timer
+  if (args.current_stage !== undefined) updates.current_stage = args.current_stage
+  if (args.terminal_state !== undefined) updates.terminal_state = args.terminal_state
 
   const updatedTimeline = { ...existing, ...updates, updated_at: now }
 
