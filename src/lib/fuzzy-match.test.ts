@@ -23,6 +23,14 @@ describe('fuzzy-match', () => {
       expect(scoreMatch('list-topics', 'list_topics')).toBeGreaterThanOrEqual(0.85)
     })
 
+    it('normalized prefix match scores 0.85', () => {
+      // Query "list_top" normalized is "listtop", candidate "list-topics" normalized is "listtopics"
+      // Non-normalized: "list_top" doesn't start with "list-topics"
+      // Normalized: "listtop" DOES start with "listtopics" prefix
+      expect(scoreMatch('list_top', 'list-topics')).toBe(0.85)
+      expect(scoreMatch('get_lo', 'get-lore')).toBe(0.85)
+    })
+
     it('substring match scores lower', () => {
       const score = scoreMatch('topic', 'list_topics')
       expect(score).toBeGreaterThan(0.5)
