@@ -219,6 +219,26 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     expect((listRes as any).passengers.map((p: any) => p.id)).toEqual([passengerId])
   })
 
+  it('list_passengers reports a null active consciousness when nobody in the group is active', async () => {
+    const testEnv = env as unknown as AppBindings
+
+    // Deactivating the last active member via `update` (not `activate`) is a
+    // real, reachable state — every row sharing a host_body_id can end up with
+    // active=0, since `update` deliberately doesn't enforce "at least one active".
+    const hostRes = parseResponse(await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 5b' }))
+    const hostId = (hostRes as any).characterId
+    const oneRes = parseResponse(await handleCharacterManage(testEnv, {
+      action: 'create', name: 'Dormant One', hostBodyId: hostId, active: true,
+    }))
+    const oneId = (oneRes as any).characterId
+    await handleCharacterManage(testEnv, { action: 'update', characterId: oneId, active: false })
+
+    const listRes = parseResponse(await handleCharacterManage(testEnv, { action: 'list_passengers', hostBodyId: hostId }))
+    expect((listRes as any).activeCharacterId).toBeNull()
+    expect((listRes as any).active).toBeNull()
+    expect((listRes as any).passengers.map((p: any) => p.id)).toEqual([oneId])
+  })
+
   it('list_passengers resolves hostBodyId from a character id when not passed directly', async () => {
     const testEnv = env as unknown as AppBindings
 
