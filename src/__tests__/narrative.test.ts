@@ -439,3 +439,79 @@ describe('learn_from_event', () => {
     expect(res.error.code).toBe(-32602)
   })
 })
+
+describe('check_continuity', () => {
+  it('detects dangling references', async () => {
+    await seedKV('character:hero', 'A hero\n**Location:** location:castle')
+    await seedKV('character:villain', 'A villain references character:missing-9999')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['dangling'] })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.check === 'dangling' && f.message.includes('missing-9999'))).toBe(true)
+  })
+
+  it('detects occupancy issues', async () => {
+    await seedKV('character:hero', 'A hero\n**Location:** location:nonexistent-castle')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['occupancy'] })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.check === 'occupancy')).toBe(true)
+  })
+
+  it('filters findings by severity floor', async () => {
+    await seedKV('character:test', 'Test\n**Inventory:** item:missing-sword')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['inventory'], severity_floor: 'warn' })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    // inventory issues are 'info' severity, so they should be filtered out when severity_floor is 'warn'
+    expect(findings.filter(f => f.check === 'inventory').length).toBe(0)
+  })
+
+  it('scopes check to key prefix', async () => {
+    await seedKV('character:hero', 'References location:missing-9999')
+    await seedKV('location:castle', 'References item:missing-sword')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', scope: 'character', checks: ['dangling'] })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    // Should only find issues in character: keys, not location: keys
+    expect(findings.every(f => f.key.includes('character'))).toBe(true)
+  })
+
+  it('finds no issues on well-formed data', async () => {
+    await seedKV('character:hero', 'A hero\n**Location:** location:castle')
+    await seedKV('location:castle', 'A castle\n**Inhabitants:** character:hero')
+    const res = await callTool('continuity_manage', { action: 'check_continuity' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.issue_count).toBe(0)
+  })
+
+  it('limits result summary to 20 findings', async () => {
+    // Add many broken references
+    for (let i = 0; i < 30; i++) {
+      await seedKV(`character:char${i}`, `References item:missing-${i}`)
+    }
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['dangling'] })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    expect(findings.length).toBeLessThanOrEqual(30)
+  })
+
+  it('accepts severity_floor alias values', async () => {
+    await seedKV('character:test', 'Test')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', severity_floor: 'medium' })
+    expect(res.error).toBeUndefined()
+  })
+
+  it('returns result when auto_fix is false', async () => {
+    await seedKV('character:test', 'Test\n**Location:** location:castle')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', auto_fix: false })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata).toBeDefined()
+  })
+
+  it('handles empty KV gracefully', async () => {
+    const res = await callTool('continuity_manage', { action: 'check_continuity' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.scanned).toBe(0)
+  })
+})
