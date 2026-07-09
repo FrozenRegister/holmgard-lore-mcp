@@ -12,8 +12,8 @@ import type { TypedToolContext } from './types'
 
 // Event/changelog handler schemas (PR 1)
 export const appendEventSchema = z.object({
-  entity_key: z.string().min(1),
-  verb: z.string().min(1),
+  entity_key: z.string().min(1).optional(),
+  verb: z.string().min(1).optional(),
   object: z.string().optional(),
   location: z.string().optional(),
   thread: z.string().optional(),
@@ -21,7 +21,15 @@ export const appendEventSchema = z.object({
   at: z.string().optional(),
   world_id: z.string().optional(),
   entity_id: z.string().optional(),
-}).transform(args => applyAliases(args, { date: 'at', description: 'detail' }))
+  date: z.string().optional(),
+  description: z.string().optional(),
+}).transform(args => ({
+  ...args,
+  entity_key: args.entity_key,
+  verb: args.verb,
+  at: args.at || args.date,
+  detail: args.detail || args.description,
+}))
   .pipe(z.object({
     entity_key: z.string().min(1),
     verb: z.string().min(1),
@@ -90,15 +98,17 @@ export const worldDiffSchema = z.object({
 })
 
 export const plantSetupSchema = z.object({
-  id: z.string().min(1),
-  description: z.string().min(1),
+  id: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
   planted_in: z.string().optional(),
   tension: z.number().int().min(1).max(5).optional(),
   expected_in: z.string().optional(),
   actors: z.array(z.string()).optional(),
-  // Alias fields must be included here for validation to accept them
   setup_id: z.string().optional(),
-}).transform(args => applyAliases(args, { setup_id: 'id' }))
+}).transform(args => ({
+  ...args,
+  id: args.id || args.setup_id,
+}))
   .pipe(z.object({
     id: z.string().min(1),
     description: z.string().min(1),
@@ -122,17 +132,21 @@ export const listUnpaidSetupsSchema = z.object({
 })
 
 export const setGoalSchema = z.object({
-  entity_key: z.string().min(1),
-  goal_id: z.string().min(1),
-  description: z.string().min(1),
+  entity_key: z.string().min(1).optional(),
+  goal_id: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
   parent: z.string().optional(),
   status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
   obstacle: z.string().optional(),
-  // Alias fields must be included here for validation to accept them
   entity_name: z.string().optional(),
   goal_name: z.string().optional(),
   goal_description: z.string().optional(),
-}).transform(args => applyAliases(args, { entity_name: 'entity_key', goal_name: 'goal_id', goal_description: 'description' }))
+}).transform(args => ({
+  ...args,
+  entity_key: args.entity_key || args.entity_name,
+  goal_id: args.goal_id || args.goal_name,
+  description: args.description || args.goal_description,
+}))
   .pipe(z.object({
     entity_key: z.string().min(1),
     goal_id: z.string().min(1),
