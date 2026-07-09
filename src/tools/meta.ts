@@ -5,7 +5,7 @@ import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText, levenshteinDistance } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
-import { getIndexedKeys } from '../lib/indexes'
+import { getIndexedKeys, updateIndexes } from '../lib/indexes'
 import { CHANGELOG_KEY } from '../constants'
 import type { TypedToolContext } from './types'
 
@@ -746,6 +746,7 @@ export async function handle_plant_setup({ c, id, args }: TypedToolContext<typeo
   const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
   await kvPut(c, setupKey, JSON.stringify({ text, meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now } }))
+  await updateIndexes(c, setupKey, text, existingRaw ? parseKvEntry(existingRaw).text : null)
   await appendChangelog(c, setupKey, version)
   loreDB[setupKey] = text
 
@@ -775,6 +776,7 @@ export async function handle_pay_off_setup({ c, id, args }: TypedToolContext<typ
   await pushHistory(c, setupKey, raw)
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
   await kvPut(c, setupKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+  await updateIndexes(c, setupKey, updatedText, text)
   await appendChangelog(c, setupKey, version)
   loreDB[setupKey] = updatedText
 
@@ -877,6 +879,10 @@ export async function handle_set_goal({ c, id, args }: TypedToolContext<typeof s
   }), 200)
 }
 
+function normalizeLocation(locStr: string): string {
+  return locStr.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+}
+
 export async function handle_check_continuity({ c, id, args }: TypedToolContext<typeof checkContinuitySchema>): Promise<Response> {
   const activeChecks = args.checks ?? ['dangling', 'occupancy', 'knowledge', 'inventory']
   const allKeys = await kvList(c)
@@ -890,23 +896,27 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
   const findings: Finding[] = []
 
   // Pre-fetch all unique location keys for the occupancy check
-  const locationKeysToFetch = new Set<string>()
+  const locationNamesToFetch = new Set<string>()
   if (activeChecks.includes('occupancy')) {
     for (let i = 0; i < scopedKeys.length; i++) {
       const r = scopedRaws[i]
       if (!r || !scopedKeys[i].startsWith('character:')) continue
       const { text } = parseKvEntry(r)
       const loc = extractRawField(text, 'Location')
-      if (loc) locationKeysToFetch.add(loc.trim().toLowerCase())
+      if (loc) {
+        const locName = loc.replace(/^location:\s*/i, '')
+        const normalized = normalizeLocation(locName)
+        locationNamesToFetch.add(normalized)
+      }
     }
   }
-  const locationResults = await Promise.all(
-    Array.from(locationKeysToFetch).map(async locKey => ({
-      key: locKey,
-      exists: !!(await kvGet(c, locKey))
-    }))
-  )
-  const locationExistsMap = new Map(locationResults.map(r => [r.key, r.exists]))
+  const allLocationKeys = allKeys.filter(k => k.startsWith('location:'))
+  const locationNormalizedMap = new Map<string, boolean>()
+  for (const locKey of allLocationKeys) {
+    const locName = locKey.replace(/^location:\s*/i, '')
+    const normalized = normalizeLocation(locName)
+    locationNormalizedMap.set(normalized, true)
+  }
 
   for (let i = 0; i < scopedKeys.length; i++) {
     const r = scopedRaws[i]
@@ -927,9 +937,10 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
     if (activeChecks.includes('occupancy') && key.startsWith('character:')) {
       const locationField = extractRawField(text, 'Location')
       if (locationField) {
-        const locationKey = locationField.trim().toLowerCase()
-        if (!locationExistsMap.get(locationKey)) {
-          findings.push({ key, check: 'occupancy', severity: 'warn', message: `Location field "${locationKey}" does not exist.` })
+        const locName = locationField.replace(/^location:\s*/i, '')
+        const normalized = normalizeLocation(locName)
+        if (!locationNormalizedMap.get(normalized)) {
+          findings.push({ key, check: 'occupancy', severity: 'warn', message: `Location field "${locationField}" does not exist.` })
         }
       }
     }
@@ -1023,7 +1034,13 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
         const badLoc = f.message.match(/Location field "([^"]+)"/)?.[1]
         if (!badLoc) { skips.push({ key, check: f.check, reason: 'could not parse location' }); continue }
 
-        const candidates = allKeys.filter(k => k.startsWith('location:') && levenshteinDistance(k, badLoc) < 3)
+        const badLocName = badLoc.replace(/^location:\s*/i, '')
+        const badLocNorm = normalizeLocation(badLocName)
+        const candidates = allLocationKeys.filter(k => {
+          const locName = k.replace(/^location:\s*/i, '')
+          const locNorm = normalizeLocation(locName)
+          return levenshteinDistance(locNorm, badLocNorm) < 3
+        })
         if (candidates.length === 1) {
           text = updateFieldInText(text, 'Location', candidates[0])
           changed = true
