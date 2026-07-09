@@ -120,6 +120,18 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **KV value format**: entries are stored as `JSON.stringify({ text: string, meta: { version, updatedAt, createdAt } })`. The `parseKvEntry()` helper handles both this format and legacy plain-string values.
 
+### Storage selection convention — KV vs. D1 is a data-kind decision, not an "old vs. new" one
+
+**Read `docs/storage-selection-kv-vs-d1.md` before proposing a new table, column, or KV write path, or before migrating an existing KV content type to D1.** The repo is mid-migration toward a hybrid KV/D1 model (#154, #216, #217, #228, #231, #232), and it is tempting to treat every new storage decision as "D1 because that's the direction we're going." That default is wrong more often than it's right here, and getting it wrong breaks the thing that makes this MCP usable: an AI narrator improvising freeform content through tool calls, not a form-filling human.
+
+The short version:
+
+- **D1 owns mechanical/queryable state** — FK-checked relationships, numeric aggregation, transactional consistency, a stable well-known field set (character stats, timeline events, snapshots).
+- **KV owns freeform/emergent content** — anything the AI narrator needs to invent mid-session without a schema migration (narrative fields, ad-hoc tags like `co-habitating:kat-sloane` from #226, prose). `patch_lore`'s exact-substring model depends on content staying text-shaped.
+- **KV is not legacy and will not be fully removed.** A D1 migration for one entity type (e.g., characters) does not imply the same treatment for others (locations, setups, threads) unless the same field-level justification applies.
+- If an issue is actually about **performance/batching/transport** of existing lore content (see #138 — batch admin endpoints for the editor sync path), that does not imply the storage target should move to D1. Batch KV writes, following the existing `batch_set_lore` pattern.
+- When genuinely unsure which layer a new field belongs in, bias toward KV/freeform — the cost of guessing wrong toward "too structured" is a broken narrative session; the cost of guessing wrong toward "too freeform" is a missed query optimization, which is fixable later without narrative damage.
+
 **Routes**:
 
 - `POST /mcp` — JSON-RPC 2.0 endpoint. Handles MCP protocol methods (`initialize`, `ping`, `tools/list`, `tools/call`) plus legacy bare methods (`list_topics`, `get_lore`).
