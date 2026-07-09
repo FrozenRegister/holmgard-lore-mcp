@@ -3,12 +3,15 @@ import { z } from 'zod'
 import { kvGet, kvList, kvListMaps } from '../lib/kv'
 import { getIndexedKeys } from '../lib/indexes'
 import { makeResult, makeError } from '../lib/rpc'
-import { parseKvEntry, parseLoreSections } from '../lib/lore'
+import { parseKvEntry, parseLoreSections, matchesWorld } from '../lib/lore'
 import { formatD1CharToLore } from '../rpg/utils/kv-to-d1'
 import type { TypedToolContext } from './types'
 
 export const listTopicsSchema = z.object({
   prefix: z.string().optional(),
+  // Freeform **World:** field filter (#259) — narrows cross-world KV noise.
+  // Not a D1 world_id FK; see matchesWorld() in lib/lore.ts.
+  world: z.string().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 })
@@ -18,13 +21,23 @@ export async function handle_list_topics({ c, id, args }: TypedToolContext<typeo
   // Prefix queries use the maintained _idx:prefix:<ns> index (O(1) lookup) instead
   // of a full kvList() scan — getIndexedKeys() falls back to scan+filter itself
   // if the index doesn't exist yet, so this is safe for any prefix.
-  const allKeys = prefix ? await getIndexedKeys(c, `_idx:prefix:${prefix}`) : await kvList(c)
+  let allKeys = prefix ? await getIndexedKeys(c, `_idx:prefix:${prefix}`) : await kvList(c)
+
+  if (args.world) {
+    const raws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+    allKeys = allKeys.filter((_, i) => {
+      const raw = raws[i]
+      if (!raw) return false
+      return matchesWorld(parseKvEntry(raw).text, args.world!)
+    })
+  }
+
   const limit = Math.min(1000, args.limit ?? 1000)
   const offset = Math.max(0, args.offset ?? 0)
   const keys = allKeys.slice(offset, offset + limit)
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: keys.join(', ') }],
-    metadata: { count: keys.length, total: allKeys.length, limit, offset, prefix: prefix || null }
+    metadata: { count: keys.length, total: allKeys.length, limit, offset, prefix: prefix || null, world: args.world ?? null }
   }), 200)
 }
 
@@ -210,13 +223,16 @@ export async function handle_validate_topic_exists({ c, id, args }: TypedToolCon
  */
 export const searchLoreSchema = z.object({
   query: z.string().min(1),
+  // Freeform **World:** field filter (#259) — narrows cross-world KV noise.
+  // Not a D1 world_id FK; see matchesWorld() in lib/lore.ts.
+  world: z.string().optional(),
   max_results: z.number().min(1).max(50).default(10),
   scan_limit: z.number().int().min(1).max(2000).default(500),
 })
 
 export async function handle_search_lore({ c, id, args }: TypedToolContext<typeof searchLoreSchema>): Promise<Response> {
   try {
-    const { query: queryArg, max_results, scan_limit } = args
+    const { query: queryArg, world, max_results, scan_limit } = args
     const searchQuery = queryArg.toLowerCase()
     const allKeys = (await kvList(c)).slice(0, scan_limit)
     const results: Array<{ key: string; excerpt: string }> = []
@@ -243,6 +259,7 @@ export async function handle_search_lore({ c, id, args }: TypedToolContext<typeo
         if (!raw) continue
         const key = chunkKeys[i]
         const { text } = parseKvEntry(raw)
+        if (world && !matchesWorld(text, world)) continue
         const lowerText = text.toLowerCase()
         const idx = lowerText.indexOf(searchQuery)
         if (idx === -1) continue
@@ -263,7 +280,7 @@ export async function handle_search_lore({ c, id, args }: TypedToolContext<typeo
 
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: summaryText }],
-      metadata: { query: queryArg, match_count: results.length, keys_scanned: allKeys.length, scan_limit },
+      metadata: { query: queryArg, world: world ?? null, match_count: results.length, keys_scanned: allKeys.length, scan_limit },
       results
     }), 200)
   } catch (e) {

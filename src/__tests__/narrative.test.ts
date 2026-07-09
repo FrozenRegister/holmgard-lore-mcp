@@ -514,4 +514,46 @@ describe('check_continuity', () => {
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.scanned).toBe(0)
   })
+
+  it('world filter excludes cross-world noise (#259)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\nReferences location:missing-calder')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\nReferences location:missing-verdant')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', world: 'Calder', checks: ['dangling'] })
+    expect(res.error).toBeUndefined()
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.key === 'character:cordelia-fork')).toBe(true)
+    expect(findings.some(f => f.key === 'character:eira-holt')).toBe(false)
+    expect(res.result.metadata.world).toBe('Calder')
+  })
+
+  it('world filter is case-insensitive and excludes entries with no World field', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\nReferences location:missing-calder')
+    await seedKV('character:untagged', 'References location:missing-untagged')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', world: 'calder', checks: ['dangling'] })
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.key === 'character:cordelia-fork')).toBe(true)
+    expect(findings.some(f => f.key === 'character:untagged')).toBe(false)
+  })
+
+  it('world filter does not shrink the existence set used for dangling checks', async () => {
+    // character:cordelia-fork (Calder) references location:linwood-estate, which
+    // only exists as a Verdant Verge-tagged entry — it should NOT be reported as
+    // dangling, because the key genuinely exists in KV; world scoping narrows what
+    // gets *scanned/reported*, not what counts as "existing" for reference checks.
+    await seedKV('character:cordelia-fork', '**World:** Calder\nReferences location:linwood-estate')
+    await seedKV('location:linwood-estate', '**World:** Verdant Verge\nA manor.')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', world: 'Calder', checks: ['dangling'] })
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.key === 'character:cordelia-fork' && f.message.includes('linwood-estate'))).toBe(false)
+  })
+
+  it('no world filter scans all worlds (backward compatible)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\nReferences item:missing-a')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\nReferences item:missing-b')
+    const res = await callTool('continuity_manage', { action: 'check_continuity', checks: ['dangling'] })
+    const findings = res.result.findings as any[]
+    expect(findings.some(f => f.key === 'character:cordelia-fork')).toBe(true)
+    expect(findings.some(f => f.key === 'character:eira-holt')).toBe(true)
+    expect(res.result.metadata.world).toBeNull()
+  })
 })
