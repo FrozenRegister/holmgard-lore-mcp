@@ -263,6 +263,38 @@ describe('Character D1 → KV Projection', () => {
     expect(projection).toContain('# Character: Malformed JSON Test')
     expect(projection).toContain('## Health')
   })
+
+  // #226 Phase 2 — co-habitation host_body_id/active fields
+  it('renders Host-Body line when host_body_id is set', () => {
+    const row: Record<string, unknown> = {
+      id: 'char-cordelia', name: 'Cordelia Keel', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
+      character_type: 'pc', character_class: 'Commoner', race: 'Human',
+      host_body_id: 'char-kat-sloane',
+    }
+    const projection = formatD1CharToKv(row)
+    expect(projection).toContain('**Host-Body:** char-kat-sloane')
+  })
+
+  it('renders Active: false line when active is 0', () => {
+    const row: Record<string, unknown> = {
+      id: 'char-bellona', name: 'Bellona Keel', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
+      character_type: 'pc', character_class: 'Commoner', race: 'Human',
+      host_body_id: 'char-kat-sloane', active: 0,
+    }
+    const projection = formatD1CharToKv(row)
+    expect(projection).toContain('**Host-Body:** char-kat-sloane')
+    expect(projection).toContain('**Active:** false')
+  })
+
+  it('omits Host-Body and Active lines for an ordinary non-co-habitating character', () => {
+    const row: Record<string, unknown> = {
+      id: 'char-ordinary', name: 'Ordinary Villager', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
+      character_type: 'npc', character_class: 'Commoner', race: 'Human', active: 1,
+    }
+    const projection = formatD1CharToKv(row)
+    expect(projection).not.toContain('**Host-Body:**')
+    expect(projection).not.toContain('**Active:**')
+  })
 })
 
 describe('D1 Character Projection Edge Cases', () => {

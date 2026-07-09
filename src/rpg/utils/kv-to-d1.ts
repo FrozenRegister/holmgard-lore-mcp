@@ -257,6 +257,8 @@ export function formatD1CharToLore(row: Record<string, unknown>): string {
   if (row.race) lines.push(`**Race:** ${row.race}`)
   if (row.character_class) lines.push(`**Class:** ${row.character_class}`)
   if (row.current_room_id) lines.push(`**Location:** ${row.current_room_id}`)
+  if (row.host_body_id) lines.push(`**Host-Body:** ${row.host_body_id}`)
+  if (row.active === 0) lines.push('**Active:** false')
 
   lines.push('')
   lines.push('## Stats')
@@ -357,6 +359,8 @@ export function formatD1CharToKv(row: Record<string, unknown>): string {
   if (row.race) lines.push(`**Race:** ${row.race}`)
   if (row.character_class) lines.push(`**Class:** ${row.character_class}`)
   if (row.current_room_id) lines.push(`**Location:** ${row.current_room_id}`)
+  if (row.host_body_id) lines.push(`**Host-Body:** ${row.host_body_id}`)
+  if (row.active === 0) lines.push('**Active:** false')
 
   lines.push('')
   lines.push('## Stats')
