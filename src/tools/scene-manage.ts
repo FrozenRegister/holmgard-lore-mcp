@@ -7,6 +7,7 @@ import {
   handle_get_choice_history, getChoiceHistorySchema,
   handle_scene_brief, sceneBriefSchema,
   handle_render_pov, renderPovSchema,
+  handle_render_with_rolls, renderWithRollsSchema,
 } from './scene'
 
 const ACTION_MAP: Record<string, ActionSpec> = {
@@ -27,6 +28,10 @@ const ACTION_MAP: Record<string, ActionSpec> = {
   }),
   render_pov: defineAction(renderPovSchema, handle_render_pov, {
     pov_entity_key: 'character:eira-holt', location_key: 'location:marsh-end',
+  }),
+  render_with_rolls: defineAction(renderWithRollsSchema, handle_render_with_rolls, {
+    pov_entity_key: 'character:eira-holt', location_key: 'location:marsh-end',
+    rolls: [{ label: 'perception check', expression: '1d20+2' }],
   }),
 }
 

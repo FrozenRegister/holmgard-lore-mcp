@@ -1,6 +1,7 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
+import { setupRpgDb } from './setup-d1'
 
 describe('activate_scene', () => {
   it('activates scene and writes system:active-scene', async () => {
@@ -183,5 +184,99 @@ describe('render_pov', () => {
     const res = await callTool('scene_manage', { action: 'render_pov', pov_entity_key: 'character:ghost-9999', location_key: 'location:market' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
+  })
+})
+
+describe('render_with_rolls', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  it('combines POV rendering with one or more dice rolls (#260)', async () => {
+    await seedKV('location:foggy-alley', 'Dark alley.\n[hidden] An assassin lurks in the shadows.')
+    await seedKV('character:naive-pov', '**Status:** Scared\n**Perception:** 0.2\n**Location:** location:foggy-alley')
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:naive-pov',
+      location_key: 'location:foggy-alley',
+      rolls: [{ label: 'perception check', expression: '1d20+2' }],
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.pov).toBe('character:naive-pov')
+    expect(res.result.location.filtered_text).not.toContain('assassin')
+    expect(res.result.rolls).toHaveLength(1)
+    expect(res.result.rolls[0].label).toBe('perception check')
+    expect(res.result.rolls[0].expression).toBe('1d20+2')
+    expect(typeof res.result.rolls[0].total).toBe('number')
+    expect(res.result.rolls[0].calculationId).toBeTruthy()
+    expect(res.result.metadata.roll_count).toBe(1)
+  })
+
+  it('resolves multiple rolls in one call', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('character:bard', '**Status:** Active\n**Location:** location:tavern\n**Perception:** 0.8')
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:bard',
+      location_key: 'location:tavern',
+      rolls: [
+        { label: 'insight check', expression: '1d20+3' },
+        { label: 'damage', expression: '2d6' },
+      ],
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.rolls).toHaveLength(2)
+    expect(res.result.rolls.map((r: any) => r.label)).toEqual(['insight check', 'damage'])
+  })
+
+  it('records a per-roll error instead of failing the whole request for a malformed expression', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('character:bard', '**Status:** Active\n**Location:** location:tavern\n**Perception:** 0.8')
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:bard',
+      location_key: 'location:tavern',
+      rolls: [{ label: 'bad roll', expression: 'not-dice' }],
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.rolls[0].error).toBeDefined()
+    expect(res.result.rolls[0].label).toBe('bad roll')
+  })
+
+  it('includes voice hints alongside rolls when requested', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('character:bard', '**Status:** Active\n**Location:** location:tavern\n**Diction:** archaic and flowery\n**Perception:** 0.8')
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:bard',
+      location_key: 'location:tavern',
+      include_voice_hints: true,
+      rolls: [{ label: 'charm check', expression: '1d20' }],
+    })
+    expect(res.result.voice_hints.diction).toBe('archaic and flowery')
+    expect(res.result.rolls).toHaveLength(1)
+  })
+
+  it('returns error for nonexistent POV entity', async () => {
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:ghost-9999',
+      location_key: 'location:market',
+      rolls: [{ label: 'roll', expression: '1d20' }],
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+
+  it('rejects an empty rolls array', async () => {
+    await seedKV('location:tavern', 'The tavern is warm.')
+    await seedKV('character:bard', '**Perception:** 0.8\n**Location:** location:tavern')
+    const res = await callTool('scene_manage', {
+      action: 'render_with_rolls',
+      pov_entity_key: 'character:bard',
+      location_key: 'location:tavern',
+      rolls: [],
+    })
+    expect(res.error).toBeDefined()
   })
 })

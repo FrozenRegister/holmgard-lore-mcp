@@ -5,7 +5,8 @@ import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField, normalizeWeight } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
-import type { TypedToolContext } from './types'
+import { handleMathManage } from '../rpg/handlers/math-manage'
+import type { TypedToolContext, HonoCtx } from './types'
 
 export const activateSceneSchema = z.object({ scene_key: z.string().min(1) })
 
@@ -278,10 +279,26 @@ export const renderPovSchema = z.object({
   reveal_threshold: z.number().min(0).max(1).optional(),
 })
 
-export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof renderPovSchema>): Promise<Response> {
+type PovRenderArgs = z.infer<typeof renderPovSchema>
+
+type PovRenderData = {
+  povKey: string
+  baseKey: string
+  threshold: number
+  filteredBaseText: string
+  visibleEntities: Array<{ key: string; status: string | null; known: boolean }>
+  voiceHints: { diction: string | null; register: string | null; fixations: string | null } | null
+  voiceSource: string | null
+  knownTopics: Set<string>
+}
+
+// Shared by handle_render_pov and handle_render_with_rolls (#260) — the narrative
+// POV/visibility computation is identical; only what's appended to the response
+// (a plain result vs. dice rolls) differs between the two actions.
+async function buildPovRenderData(c: HonoCtx, args: PovRenderArgs): Promise<{ error: string } | { data: PovRenderData }> {
   const povKey = args.pov_entity_key.trim().toLowerCase()
   const rawPov = await kvGet(c, povKey)
-  if (!rawPov) return c.json(makeError(id, -32602, `POV entity "${povKey}" not found`, null), 200)
+  if (!rawPov) return { error: `POV entity "${povKey}" not found` }
 
   const { text: povText } = parseKvEntry(rawPov)
   const perception = (() => { const v = extractFieldFromText(povText, 'Perception'); return typeof v === 'number' ? normalizeWeight(v) : 0.5 })()
@@ -291,7 +308,7 @@ export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof
   const knownTopics = new Set(knowsRaw.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean))
 
   const baseKey = (args.location_key ?? args.scene_key ?? extractRawField(povText, 'Location') ?? '').trim().toLowerCase()
-  if (!baseKey) return c.json(makeError(id, -32602, 'scene_key or location_key required, or entity must have a Location field', null), 200)
+  if (!baseKey) return { error: 'scene_key or location_key required, or entity must have a Location field' }
 
   const rawBase = await kvGet(c, baseKey)
   const baseText = rawBase ? parseKvEntry(rawBase).text : ''
@@ -365,6 +382,14 @@ export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof
     voiceSource = hasOwnVoiceData ? 'entity' : (speciesText ? `species fallback (${speciesKey})` : 'none')
   }
 
+  return { data: { povKey, baseKey, threshold, filteredBaseText, visibleEntities, voiceHints, voiceSource, knownTopics } }
+}
+
+export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof renderPovSchema>): Promise<Response> {
+  const result = await buildPovRenderData(c, args)
+  if ('error' in result) return c.json(makeError(id, -32602, result.error, null), 200)
+  const { povKey, baseKey, threshold, filteredBaseText, visibleEntities, voiceHints, voiceSource, knownTopics } = result.data
+
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `POV render for "${povKey}" at "${baseKey}": ${visibleEntities.length} visible entity/entities. Perception: ${threshold.toFixed(2)}.` }],
     metadata: { pov: povKey, location: baseKey, perception: threshold, entity_count: visibleEntities.length },
@@ -373,5 +398,55 @@ export async function handle_render_pov({ c, id, args }: TypedToolContext<typeof
     visible_entities: visibleEntities,
     ...(voiceHints !== null && { voice_hints: voiceHints, voice_source: voiceSource }),
     knowledge_scope: [...knownTopics]
+  }), 200)
+}
+
+// #260 — combines render_pov's narrative/visibility computation with the shared
+// D1-backed dice engine (rpg({sub:'math', action:'roll'}), reused via
+// handleMathManage — same pattern as combat's rollD20Once in drama-manage.ts)
+// so a scene can be rendered with dice-driven outcomes in one call instead of
+// two round-trips. Rolls are mechanical/queryable state and belong in D1's
+// `calculations` table (handleMathManage already writes there); the narrative
+// render itself stays KV/freeform — see docs/storage-selection-kv-vs-d1.md.
+export const renderWithRollsSchema = renderPovSchema.extend({
+  rolls: z.array(z.object({
+    label: z.string().min(1),
+    expression: z.string().min(1),
+  })).min(1).max(10),
+  session_id: z.string().optional(),
+})
+
+export async function handle_render_with_rolls({ c, id, args }: TypedToolContext<typeof renderWithRollsSchema>): Promise<Response> {
+  const result = await buildPovRenderData(c, args)
+  if ('error' in result) return c.json(makeError(id, -32602, result.error, null), 200)
+  const { povKey, baseKey, threshold, filteredBaseText, visibleEntities, voiceHints, voiceSource, knownTopics } = result.data
+
+  const rolls: Array<{ label: string; expression: string; total: number; rolls: number[]; critical: string | null; calculationId: string } | { label: string; expression: string; error: string }> = []
+  for (const spec of args.rolls) {
+    const resp = await handleMathManage(c.env, { action: 'roll', expression: spec.expression, sessionId: args.session_id })
+    const data = JSON.parse(resp.content[0].text) as Record<string, unknown>
+    if (data.error) {
+      rolls.push({ label: spec.label, expression: spec.expression, error: String(data.message ?? 'roll failed') })
+      continue
+    }
+    rolls.push({
+      label: spec.label,
+      expression: spec.expression,
+      total: data.total as number,
+      rolls: data.rolls as number[],
+      critical: (data.critical as string | null) ?? null,
+      calculationId: data.calculationId as string,
+    })
+  }
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `POV render for "${povKey}" at "${baseKey}": ${visibleEntities.length} visible entity/entities, ${rolls.length} roll(s) resolved.` }],
+    metadata: { pov: povKey, location: baseKey, perception: threshold, entity_count: visibleEntities.length, roll_count: rolls.length },
+    pov_entity: povKey,
+    location: { key: baseKey, filtered_text: filteredBaseText },
+    visible_entities: visibleEntities,
+    ...(voiceHints !== null && { voice_hints: voiceHints, voice_source: voiceSource }),
+    knowledge_scope: [...knownTopics],
+    rolls
   }), 200)
 }
