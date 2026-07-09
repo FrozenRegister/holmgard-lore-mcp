@@ -6,7 +6,7 @@ import type { RequestIdVariables } from '../middleware/request-id'
 import { makeError } from '../lib/rpc'
 import { invalidParamsError } from '../lib/errors'
 
-type HonoCtx = Context<{ Bindings: AppBindings; Variables: RequestIdVariables }>
+export type HonoCtx = Context<{ Bindings: AppBindings; Variables: RequestIdVariables }>
 
 export interface ToolContext {
   c: HonoCtx
