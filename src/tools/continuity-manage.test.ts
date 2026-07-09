@@ -1,16 +1,15 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { env, SELF } from 'cloudflare:test'
-import { reset } from 'cloudflare:test'
+import { env, SELF, reset } from 'cloudflare:test'
 import { handle_continuity_manage } from './continuity-manage'
 
-// Wrapped describe with beforeEach reset
-const wrappedDescribe = (name: string, fn: () => void) =>
+// Re-wrapped describe to ensure reset is called
+const testDescribe = (name: string, fn: () => void) =>
   describe(name, () => {
     beforeEach(() => reset())
     fn()
   })
 
-// Test helpers
+// Test helpers - replicating src/__tests__/helpers.ts patterns
 async function seedKV(key: string, text: string) {
   return env.LORE_DB.put(key, JSON.stringify({ text, meta: { version: 1, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString() } }))
 }
@@ -44,7 +43,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // tag_topic tests
-  wrappedDescribe('tag_topic', () => {
+  testDescribe('tag_topic', () => {
     it('adds tags to an existing topic', async () => {
       await seedKV('character:eira-holt', 'A character\n**Tags:** old-tag')
       const res = await callTool('continuity_manage', {
@@ -89,7 +88,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // find_by_tag tests
-  wrappedDescribe('find_by_tag', () => {
+  testDescribe('find_by_tag', () => {
     it('finds topics by single tag', async () => {
       await env.LORE_DB.put('_tags:needs-review', JSON.stringify(['character:alice', 'location:marsh']))
       const res = await callTool('continuity_manage', {
@@ -137,7 +136,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // list_tags tests
-  wrappedDescribe('list_tags', () => {
+  testDescribe('list_tags', () => {
     it('lists all tags with counts', async () => {
       await env.LORE_DB.put('_tags:tag1', JSON.stringify(['key1', 'key2']))
       await env.LORE_DB.put('_tags:tag2', JSON.stringify(['key3']))
@@ -162,7 +161,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // bookmark_state tests
-  wrappedDescribe('bookmark_state', () => {
+  testDescribe('bookmark_state', () => {
     it('creates a snapshot with all keys', async () => {
       await seedKV('character:alice', 'Alice')
       await seedKV('character:bob', 'Bob')
@@ -188,7 +187,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // world_diff tests
-  wrappedDescribe('world_diff', () => {
+  testDescribe('world_diff', () => {
     it('compares snapshots and returns differences', async () => {
       const snap1 = {
         name: 'snap1',
@@ -216,7 +215,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // plant_setup tests
-  wrappedDescribe('plant_setup', () => {
+  testDescribe('plant_setup', () => {
     it('creates a new setup with default tension', async () => {
       const res = await callTool('continuity_manage', {
         action: 'plant_setup',
@@ -260,7 +259,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // pay_off_setup tests
-  wrappedDescribe('pay_off_setup', () => {
+  testDescribe('pay_off_setup', () => {
     it('marks setup as paid', async () => {
       await seedKV('setup:church-ambush', '**Status:** open\n**Tension:** 3')
       const res = await callTool('continuity_manage', {
@@ -284,7 +283,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // list_unpaid_setups tests
-  wrappedDescribe('list_unpaid_setups', () => {
+  testDescribe('list_unpaid_setups', () => {
     it('lists open setups', async () => {
       await env.LORE_DB.put('_idx:prefix:setup', JSON.stringify(['setup:plot1', 'setup:plot2']))
       await seedKV('setup:plot1', '**Status:** open\n**Tension:** 3\n**Description:** Plot 1\n**Created-At:** 2025-01-01T00:00:00Z')
@@ -309,7 +308,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // set_goal tests
-  wrappedDescribe('set_goal', () => {
+  testDescribe('set_goal', () => {
     it('sets a goal on an entity', async () => {
       await seedKV('character:eira-holt', 'A character')
       const res = await callTool('continuity_manage', {
@@ -358,7 +357,7 @@ describe('handle_continuity_manage', () => {
   })
 
   // check_continuity tests
-  wrappedDescribe('check_continuity', () => {
+  testDescribe('check_continuity', () => {
     it('scans for dangling references', async () => {
       await seedKV('character:alice', 'Alice knows character:nonexistent')
       const res = await callTool('continuity_manage', {
