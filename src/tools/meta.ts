@@ -21,8 +21,6 @@ export const appendEventSchema = z.object({
   at: z.string().optional(),
   world_id: z.string().optional(),
   entity_id: z.string().optional(),
-  date: z.string().optional(),
-  description: z.string().optional(),
 }).transform(args => applyAliases(args, { date: 'at', description: 'detail' }))
   .pipe(z.object({
     entity_key: z.string().min(1),
@@ -92,12 +90,13 @@ export const worldDiffSchema = z.object({
 })
 
 export const plantSetupSchema = z.object({
-  id: z.string().min(1).optional(),
+  id: z.string().min(1),
   description: z.string().min(1),
   planted_in: z.string().optional(),
   tension: z.number().int().min(1).max(5).optional(),
   expected_in: z.string().optional(),
   actors: z.array(z.string()).optional(),
+  // Alias fields must be included here for validation to accept them
   setup_id: z.string().optional(),
 }).transform(args => applyAliases(args, { setup_id: 'id' }))
   .pipe(z.object({
@@ -123,12 +122,13 @@ export const listUnpaidSetupsSchema = z.object({
 })
 
 export const setGoalSchema = z.object({
-  entity_key: z.string().min(1).optional(),
-  goal_id: z.string().min(1).optional(),
-  description: z.string().min(1).optional(),
+  entity_key: z.string().min(1),
+  goal_id: z.string().min(1),
+  description: z.string().min(1),
   parent: z.string().optional(),
   status: z.enum(['active', 'blocked', 'achieved', 'abandoned']).default('active'),
   obstacle: z.string().optional(),
+  // Alias fields must be included here for validation to accept them
   entity_name: z.string().optional(),
   goal_name: z.string().optional(),
   goal_description: z.string().optional(),
