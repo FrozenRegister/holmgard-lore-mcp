@@ -48,6 +48,49 @@ describe('list_topics', () => {
     expect(text).not.toContain('item:rusty-key')
     expect(res.result.metadata.count).toBe(2)
   })
+
+  it('filters by world field, excluding cross-world entries (#259)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\n**Status:** Active')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\n**Status:** Active')
+    const res = await callTool('lore_manage', { action: 'list', world: 'Calder' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('character:cordelia-fork')
+    expect(text).not.toContain('character:eira-holt')
+    expect(res.result.metadata.count).toBe(1)
+    expect(res.result.metadata.world).toBe('Calder')
+  })
+
+  it('world filter is case-insensitive and excludes entries with no World field', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\n**Status:** Active')
+    await seedKV('character:untagged', '**Status:** Active')
+    const res = await callTool('lore_manage', { action: 'list', world: 'calder' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('character:cordelia-fork')
+    expect(text).not.toContain('character:untagged')
+    expect(res.result.metadata.count).toBe(1)
+  })
+
+  it('combines prefix and world filters', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\n**Status:** Active')
+    await seedKV('location:linwood-estate', '**World:** Calder\n**Status:** Standing')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\n**Status:** Active')
+    const res = await callTool('lore_manage', { action: 'list', prefix: 'character', world: 'Calder' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('character:cordelia-fork')
+    expect(text).not.toContain('location:linwood-estate')
+    expect(text).not.toContain('character:eira-holt')
+    expect(res.result.metadata.count).toBe(1)
+  })
+
+  it('no world filter returns entries from all worlds (backward compatible)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\n**Status:** Active')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\n**Status:** Active')
+    const res = await callTool('lore_manage', { action: 'list' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('character:cordelia-fork')
+    expect(text).toContain('character:eira-holt')
+    expect(res.result.metadata.world).toBeNull()
+  })
 })
 
 describe('list_maps', () => {
@@ -341,6 +384,26 @@ describe('search_lore', () => {
     const res = await callTool('lore_manage', { action: 'search', query: 'magic', scan_limit: 0 })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
+  })
+
+  it('world filter excludes cross-world matches (#259)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\nWields ancient magic.')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\nWields ancient magic.')
+    const res = await callTool('lore_manage', { action: 'search', query: 'ancient magic', world: 'Calder', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:cordelia-fork')
+    expect(results.map(r => r.key)).not.toContain('character:eira-holt')
+    expect(res.result.metadata.world).toBe('Calder')
+  })
+
+  it('no world filter searches across all worlds (backward compatible)', async () => {
+    await seedKV('character:cordelia-fork', '**World:** Calder\nWields ancient magic.')
+    await seedKV('character:eira-holt', '**World:** Verdant Verge\nWields ancient magic.')
+    const res = await callTool('lore_manage', { action: 'search', query: 'ancient magic', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:cordelia-fork')
+    expect(results.map(r => r.key)).toContain('character:eira-holt')
+    expect(res.result.metadata.world).toBeNull()
   })
 })
 

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText, levenshteinDistance } from '../lib/lore'
+import { parseKvEntry, extractFieldFromText, extractRawField, updateFieldInText, levenshteinDistance, matchesWorld } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys, updateIndexes } from '../lib/indexes'
 import { CHANGELOG_KEY } from '../constants'
@@ -161,6 +161,10 @@ const SEVERITY_FLOOR_ALIASES: Record<string, 'info' | 'warn' | 'error'> = {
 
 export const checkContinuitySchema = z.object({
   scope: z.string().optional(),
+  // Freeform **World:** field filter (#259) — narrows cross-world KV noise
+  // separately from `scope` (a key-prefix filter). Not a D1 world_id FK;
+  // see matchesWorld() in lib/lore.ts.
+  world: z.string().optional(),
   checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
   severity_floor: z.string().default('info'),
   auto_fix: z.boolean().optional(),
@@ -169,6 +173,7 @@ export const checkContinuitySchema = z.object({
   severity_floor: (SEVERITY_FLOOR_ALIASES[args.severity_floor] ?? args.severity_floor) as 'info' | 'warn' | 'error'
 })).pipe(z.object({
   scope: z.string().optional(),
+  world: z.string().optional(),
   checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
   severity_floor: z.enum(['info', 'warn', 'error']),
   auto_fix: z.boolean().optional(),
@@ -886,10 +891,28 @@ function normalizeLocation(locStr: string): string {
 export async function handle_check_continuity({ c, id, args }: TypedToolContext<typeof checkContinuitySchema>): Promise<Response> {
   const activeChecks = args.checks ?? ['dangling', 'occupancy', 'knowledge', 'inventory']
   const allKeys = await kvList(c)
-  const scopedKeys = args.scope
+  const scopeFilteredKeys = args.scope
     ? allKeys.filter(k => k.startsWith(args.scope!) || k.includes(args.scope!))
     : allKeys
-  const scopedRaws = await Promise.all(scopedKeys.map(k => kvGet(c, k)))
+  const scopeFilteredRaws = await Promise.all(scopeFilteredKeys.map(k => kvGet(c, k)))
+
+  // World filtering (#259) narrows which entries get scanned/reported, but
+  // deliberately does NOT shrink allKeySet below — a dangling/occupancy
+  // reference should still resolve against every world's keys, since the
+  // referenced entity existing in another world is a different problem
+  // (or no problem at all) from it not existing anywhere.
+  let scopedKeys = scopeFilteredKeys
+  let scopedRaws = scopeFilteredRaws
+  if (args.world) {
+    const keepIdx: number[] = []
+    for (let i = 0; i < scopeFilteredKeys.length; i++) {
+      const raw = scopeFilteredRaws[i]
+      if (raw && matchesWorld(parseKvEntry(raw).text, args.world)) keepIdx.push(i)
+    }
+    scopedKeys = keepIdx.map(i => scopeFilteredKeys[i])
+    scopedRaws = keepIdx.map(i => scopeFilteredRaws[i])
+  }
+
   const allKeySet = new Set(allKeys)
 
   type Finding = { key: string; check: string; severity: 'info' | 'warn' | 'error'; message: string }
@@ -970,7 +993,7 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
 
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: summaryText }],
-      metadata: { scanned: scopedKeys.length, issue_count: filtered.length },
+      metadata: { scanned: scopedKeys.length, issue_count: filtered.length, world: args.world ?? null },
       findings: filtered
     }), 200)
   }

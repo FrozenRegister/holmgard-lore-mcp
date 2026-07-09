@@ -15,6 +15,18 @@ export function parseKvEntry(raw: string): { text: string; meta: Record<string, 
   return { text: raw, meta: {} }
 }
 
+// Case-insensitive match against a KV entry's **World:** field — a freeform
+// narrative label (e.g. "Calder", "Verdant Verge") an author writes into lore
+// text, distinct from D1's `world_id` UUID FK used by the timeline engine.
+// Used to scope check_continuity/list/search to one narrative universe and
+// filter out cross-world KV noise (#259). Entries with no World field never
+// match — they're excluded from any world-scoped result rather than guessed at.
+export function matchesWorld(text: string, world: string): boolean {
+  const field = extractRawField(text, 'World')
+  if (!field) return false
+  return field.trim().toLowerCase() === world.trim().toLowerCase()
+}
+
 // Reads a field value from lore text. Handles four formats:
 //   1. Markdown bold: **Field:** val  or  - **Field (desc):** val
 //   2. JSON block:    "Field": 0.9,
