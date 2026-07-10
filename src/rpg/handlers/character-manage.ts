@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import { syncCharacterToKv } from '../utils/character-sync'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
@@ -17,6 +17,8 @@ const ALIASES: Record<string, CharAction> = {
   find_character: 'search', query: 'search',
   cast: 'cast_spell', castspell: 'cast_spell',
   snap: 'snapshot', save_state: 'snapshot',
+  switch: 'activate', take_control: 'activate', possess: 'activate',
+  passengers: 'list_passengers', list_dormant: 'list_passengers', co_habitants: 'list_passengers',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -50,6 +52,8 @@ const InputSchema = z.object({
   alignment: z.string().optional(),
   origin: z.string().optional(),
   currentRoomId: z.string().nullable().optional(),
+  hostBodyId: z.string().nullable().optional(),
+  active: z.boolean().optional(),
   perceptionBonus: z.number().int().optional(),
   stealthBonus: z.number().int().optional(),
   xp: z.number().int().min(0).optional(),
@@ -154,9 +158,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
           background, alignment, origin, born, conditions, resistances, vulnerabilities, immunities,
           known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, max_spell_level, concentrating_on,
           legendary_actions, legendary_actions_remaining, legendary_resistances, legendary_resistances_remaining, has_lair_actions,
-          currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, created_at, updated_at
+          currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, host_body_id, active, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id, a.name, JSON.stringify(stats), hp, maxHp, ac, level, a.factionId ?? null, a.behavior ?? null, characterType, characterClass, race,
         a.background ?? null, a.alignment ?? null, a.origin ?? null, a.born ?? null,
@@ -164,7 +168,8 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         JSON.stringify(a.knownSpells ?? []), JSON.stringify(a.preparedSpells ?? []), JSON.stringify(a.cantripsKnown ?? []),
         a.spellSlots ? JSON.stringify(a.spellSlots) : null, a.pactMagicSlots ? JSON.stringify(a.pactMagicSlots) : null, a.maxSpellLevel ?? 0, a.concentratingOn ?? null,
         a.legendaryActions ?? null, a.legendaryActionsRemaining ?? null, a.legendaryResistances ?? null, a.legendaryResistancesRemaining ?? null, a.hasLairActions ? 1 : 0,
-        JSON.stringify(currency), a.currentRoomId ?? null, perceptionBonus, stealthBonus, JSON.stringify(a.resourcePools ?? {}), 0, now, now
+        JSON.stringify(currency), a.currentRoomId ?? null, perceptionBonus, stealthBonus, JSON.stringify(a.resourcePools ?? {}), 0,
+        a.hostBodyId ?? null, a.active === undefined ? 1 : (a.active ? 1 : 0), now, now
       ).run()
       // Sync D1 character to KV as markdown projection
       await syncCharacterToKv(env, id)
@@ -224,6 +229,11 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.behavior !== undefined) { sets.push('behavior = ?'); vals.push(a.behavior) }
       if (a.origin !== undefined) { sets.push('origin = ?'); vals.push(a.origin) }
       if (a.currentRoomId !== undefined) { sets.push('current_room_id = ?'); vals.push(a.currentRoomId) }
+      if (a.hostBodyId !== undefined) { sets.push('host_body_id = ?'); vals.push(a.hostBodyId) }
+      // Raw single-row PATCH, same as every other field here — does NOT cascade to
+      // deactivate siblings sharing host_body_id. Only the `activate` action performs
+      // the atomic "deactivate siblings + activate target" swap (see #226 Phase 2).
+      if (a.active !== undefined) { sets.push('active = ?'); vals.push(a.active ? 1 : 0) }
       if (a.perceptionBonus !== undefined) { sets.push('perception_bonus = ?'); vals.push(a.perceptionBonus) }
       if (a.stealthBonus !== undefined) { sets.push('stealth_bonus = ?'); vals.push(a.stealthBonus) }
       vals.push(charId)
@@ -362,6 +372,64 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       return ok({
         success: true, actionType: 'snapshot', snapshotId, characterId: charId,
         capturedAt, narrativeNote: a.narrativeNote ?? null,
+      })
+    }
+    case 'activate': {
+      const charId = a.id ?? a.characterId
+      if (!charId) return err('"id" or "characterId" is required')
+      const target = await db.prepare('SELECT id, host_body_id FROM characters WHERE id = ?').bind(charId).first() as { id: string; host_body_id: string | null } | null
+      if (!target) return err(`Character not found: ${charId}`)
+
+      const hostBodyId = a.hostBodyId ?? target.host_body_id
+
+      if (!hostBodyId) {
+        // Not part of any co-habitation group — activation is a harmless no-op-ish
+        // single-row update, not an error.
+        await db.prepare('UPDATE characters SET active = 1, updated_at = ? WHERE id = ?').bind(now, charId).run()
+        await syncCharacterToKv(env, charId)
+        return ok({ success: true, actionType: 'activate', characterId: charId, hostBodyId: null, deactivated: [] })
+      }
+
+      const { results: siblingRows } = await db.prepare('SELECT id FROM characters WHERE host_body_id = ? AND id != ?').bind(hostBodyId, charId).all()
+      const siblingIds = (siblingRows as Array<{ id: string }>).map(r => r.id)
+
+      // Atomic: deactivate every other row sharing this host body, activate the
+      // target, in one batch — must be all-or-nothing or a host body could end up
+      // with zero or two active consciousnesses (#226 Phase 2).
+      await db.batch([
+        db.prepare('UPDATE characters SET active = 0, updated_at = ? WHERE host_body_id = ? AND id != ?').bind(now, hostBodyId, charId),
+        db.prepare('UPDATE characters SET active = 1, host_body_id = ?, updated_at = ? WHERE id = ?').bind(hostBodyId, now, charId),
+      ])
+
+      // Every row whose active state changed needs its KV projection refreshed.
+      await Promise.all([charId, ...siblingIds].map(id => syncCharacterToKv(env, id)))
+
+      return ok({ success: true, actionType: 'activate', characterId: charId, hostBodyId, deactivated: siblingIds })
+    }
+    case 'list_passengers': {
+      let hostBodyId = a.hostBodyId ?? null
+      if (!hostBodyId) {
+        const charId = a.id ?? a.characterId
+        if (!charId) return err('"hostBodyId" or "id"/"characterId" is required')
+        const row = await db.prepare('SELECT host_body_id FROM characters WHERE id = ?').bind(charId).first() as { host_body_id: string | null } | null
+        if (!row) return err(`Character not found: ${charId}`)
+        if (!row.host_body_id) {
+          return ok({ success: true, actionType: 'list_passengers', hostBodyId: null, activeCharacterId: charId, passengers: [], count: 0 })
+        }
+        hostBodyId = row.host_body_id
+      }
+
+      const { results } = await db.prepare(
+        'SELECT id, name, active, character_type FROM characters WHERE host_body_id = ? ORDER BY active DESC, name'
+      ).bind(hostBodyId).all()
+      const rows = results as Array<{ id: string; name: string; active: number; character_type: string }>
+      const activeRow = rows.find(r => r.active === 1) ?? null
+      const passengers = rows.filter(r => r.active !== 1)
+
+      return ok({
+        success: true, actionType: 'list_passengers', hostBodyId,
+        activeCharacterId: activeRow ? activeRow.id : null,
+        active: activeRow, passengers, count: passengers.length,
       })
     }
   }

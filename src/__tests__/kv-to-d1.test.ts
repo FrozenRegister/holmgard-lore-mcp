@@ -194,4 +194,25 @@ describe('formatD1CharToLore', () => {
     expect(text).toContain('- Stealthy')
     expect(text).toContain('A mysterious rogue.')
   })
+
+  // #226 Phase 2 — co-habitation host_body_id/active fields
+  it('renders Host-Body and Active: false lines when set, omits them otherwise', () => {
+    const passenger = {
+      name: 'Bellona Keel', hp: 10, max_hp: 10, ac: 12, level: 3,
+      character_class: 'Fighter', race: 'Human', stats: '{}', resource_pools: '{}',
+      host_body_id: 'char-kat-sloane', active: 0,
+    }
+    const passengerText = formatD1CharToLore(passenger as Record<string, unknown>)
+    expect(passengerText).toContain('**Host-Body:** char-kat-sloane')
+    expect(passengerText).toContain('**Active:** false')
+
+    const ordinary = {
+      name: 'Ordinary Villager', hp: 10, max_hp: 10, ac: 10, level: 1,
+      character_class: 'Commoner', race: 'Human', stats: '{}', resource_pools: '{}',
+      active: 1,
+    }
+    const ordinaryText = formatD1CharToLore(ordinary as Record<string, unknown>)
+    expect(ordinaryText).not.toContain('**Host-Body:**')
+    expect(ordinaryText).not.toContain('**Active:**')
+  })
 })
