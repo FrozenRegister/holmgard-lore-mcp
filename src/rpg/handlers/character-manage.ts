@@ -54,6 +54,7 @@ const InputSchema = z.object({
   currentRoomId: z.string().nullable().optional(),
   hostBodyId: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  worldId: z.string().nullable().optional(),
   perceptionBonus: z.number().int().optional(),
   stealthBonus: z.number().int().optional(),
   xp: z.number().int().min(0).optional(),
@@ -158,9 +159,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
           background, alignment, origin, born, conditions, resistances, vulnerabilities, immunities,
           known_spells, prepared_spells, cantrips_known, spell_slots, pact_magic_slots, max_spell_level, concentrating_on,
           legendary_actions, legendary_actions_remaining, legendary_resistances, legendary_resistances_remaining, has_lair_actions,
-          currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, host_body_id, active, created_at, updated_at
+          currency, current_room_id, perception_bonus, stealth_bonus, resource_pools, xp, host_body_id, active, world_id, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id, a.name, JSON.stringify(stats), hp, maxHp, ac, level, a.factionId ?? null, a.behavior ?? null, characterType, characterClass, race,
         a.background ?? null, a.alignment ?? null, a.origin ?? null, a.born ?? null,
@@ -169,7 +170,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         a.spellSlots ? JSON.stringify(a.spellSlots) : null, a.pactMagicSlots ? JSON.stringify(a.pactMagicSlots) : null, a.maxSpellLevel ?? 0, a.concentratingOn ?? null,
         a.legendaryActions ?? null, a.legendaryActionsRemaining ?? null, a.legendaryResistances ?? null, a.legendaryResistancesRemaining ?? null, a.hasLairActions ? 1 : 0,
         JSON.stringify(currency), a.currentRoomId ?? null, perceptionBonus, stealthBonus, JSON.stringify(a.resourcePools ?? {}), 0,
-        a.hostBodyId ?? null, a.active === undefined ? 1 : (a.active ? 1 : 0), now, now
+        a.hostBodyId ?? null, a.active === undefined ? 1 : (a.active ? 1 : 0), a.worldId ?? null, now, now
       ).run()
       // Sync D1 character to KV as markdown projection
       await syncCharacterToKv(env, id)
@@ -183,9 +184,12 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       return ok({ success: true, actionType: 'get', character: parseChar(row as Record<string, unknown>) })
     }
     case 'list': {
-      let query = 'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac FROM characters'
+      let query = 'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, world_id FROM characters'
       const binds: unknown[] = []
-      if (a.characterTypeFilter) { query += ' WHERE character_type = ?'; binds.push(a.characterTypeFilter) }
+      const conditions: string[] = []
+      if (a.characterTypeFilter) { conditions.push('character_type = ?'); binds.push(a.characterTypeFilter) }
+      if (a.worldId) { conditions.push('world_id = ?'); binds.push(a.worldId) }
+      if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ')
       query += ' ORDER BY name LIMIT ?'
       binds.push(a.limit ?? 50)
       const { results } = await db.prepare(query).bind(...binds).all()
@@ -236,6 +240,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.active !== undefined) { sets.push('active = ?'); vals.push(a.active ? 1 : 0) }
       if (a.perceptionBonus !== undefined) { sets.push('perception_bonus = ?'); vals.push(a.perceptionBonus) }
       if (a.stealthBonus !== undefined) { sets.push('stealth_bonus = ?'); vals.push(a.stealthBonus) }
+      if (a.worldId !== undefined) { sets.push('world_id = ?'); vals.push(a.worldId) }
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
       // Sync D1 character to KV as markdown projection
@@ -286,8 +291,12 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
     case 'search': {
       if (!a.query) return err('"query" is required for search')
       const pattern = `%${a.query}%`
-      const { results } = await db.prepare('SELECT id, name, character_type, character_class, race, level FROM characters WHERE name LIKE ? ORDER BY name LIMIT ?')
-        .bind(pattern, a.limit ?? 50).all()
+      let query = 'SELECT id, name, character_type, character_class, race, level, world_id FROM characters WHERE name LIKE ?'
+      const binds: unknown[] = [pattern]
+      if (a.worldId) { query += ' AND world_id = ?'; binds.push(a.worldId) }
+      query += ' ORDER BY name LIMIT ?'
+      binds.push(a.limit ?? 50)
+      const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'search', query: a.query, characters: results, count: results.length })
     }
     case 'cast_spell': {

@@ -268,6 +268,82 @@ describe('character_manage tool', () => {
     expect(r.count).toBeGreaterThanOrEqual(0)
   })
 
+  // ── World Scoping (#268) ─────────────────────────────────────────────────────
+
+  it('create accepts a worldId', async () => {
+    const r = await callTool('character_manage', {
+      action: 'create',
+      name: 'World-Scoped Char',
+      worldId: 'world:calder'
+    })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: r.characterId })
+    expect(char.character.world_id).toBe('world:calder')
+  })
+
+  it('list with worldId filters out cross-world characters (two Kael regression)', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(1)
+    expect(r.characters[0].world_id).toBe('world:calder')
+  })
+
+  it('list with worldId combined with characterTypeFilter', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Calder PC', characterType: 'pc', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Calder NPC', characterType: 'npc', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Verge PC', characterType: 'pc', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder', characterTypeFilter: 'pc' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(1)
+    expect(r.characters[0].name).toBe('Calder PC')
+  })
+
+  it('list with no worldId is backward-compatible and returns all worlds', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Calder Char', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Verge Char', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'list' })
+    expect(r.success).toBe(true)
+    const worlds = r.characters.map((c: any) => c.world_id)
+    expect(worlds).toContain('world:calder')
+    expect(worlds).toContain('world:verdant-verge')
+  })
+
+  it('search with worldId filters out cross-world matches', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'search', query: 'Kael', worldId: 'world:calder' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(1)
+    expect(r.characters[0].world_id).toBe('world:calder')
+  })
+
+  it('search with no worldId is backward-compatible and returns all worlds', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'search', query: 'Kael' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(2)
+  })
+
+  it('update sets worldId on an existing character', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Unassigned Char' })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      worldId: 'world:calder'
+    })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.world_id).toBe('world:calder')
+  })
+
   it('update modifies character properties', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
