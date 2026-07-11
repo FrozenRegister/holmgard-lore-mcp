@@ -5,7 +5,7 @@ import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
 import {
-  handleWaypointManage, getWaypoint, getWaypointDistance,
+  handleWaypointManage, getWaypoint, getWaypointDistance, computeHexForLatLon,
   DEFAULT_GOTLAND_WAYPOINTS, DEFAULT_GOTLAND_DISTANCES,
 } from '../rpg/handlers/waypoint-manage'
 
@@ -25,6 +25,12 @@ describe('handleWaypointManage', () => {
   it('returns guiding error for unknown action', async () => {
     const r = await handleWaypointManage(db(), { action: 'zap' })
     expect(r.content[0].text).toContain('zap')
+  })
+
+  it('returns a schema error for malformed input (e.g. lat as a non-numeric string)', async () => {
+    const r = await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', lat: 'not-a-number', lon: 18.2948, q: 0, r: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
   })
 
   // register
@@ -163,6 +169,27 @@ describe('handleWaypointManage', () => {
     expect(fetched.waypoint.kind).toBe('port')
   })
 
+  it('update only touches the fields explicitly provided, leaving the rest unchanged', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', lat: 57.6349, lon: 18.2948, q: 0, r: 0, kind: 'port' })).content[0].text)
+    await handleWaypointManage(db(), { action: 'update', id: created.waypointId, kind: 'landmark' })
+    const fetched = JSON.parse((await handleWaypointManage(db(), { action: 'get', id: created.waypointId })).content[0].text)
+    expect(fetched.waypoint.kind).toBe('landmark')
+    expect(fetched.waypoint.lat).toBe(57.6349)
+    expect(fetched.waypoint.lon).toBe(18.2948)
+    expect(fetched.waypoint.q).toBe(0)
+    expect(fetched.waypoint.r).toBe(0)
+  })
+
+  it('update can change lat/lon without touching kind', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', lat: 57.6349, lon: 18.2948, q: 0, r: 0, kind: 'port' })).content[0].text)
+    await handleWaypointManage(db(), { action: 'update', id: created.waypointId, lat: 57.7 })
+    const fetched = JSON.parse((await handleWaypointManage(db(), { action: 'get', id: created.waypointId })).content[0].text)
+    expect(fetched.waypoint.lat).toBe(57.7)
+    expect(fetched.waypoint.kind).toBe('port')
+  })
+
   // delete
   it('delete requires id or waypointId', async () => {
     const r = await handleWaypointManage(db(), { action: 'delete' })
@@ -213,13 +240,14 @@ describe('handleWaypointManage', () => {
     expect(body.valid).toBe(true)
   })
 
-  it('validate returns valid: false with didYouMean for a near-miss', async () => {
+  it('validate returns valid: false with didYouMean for a near-miss, ranked by similarity', async () => {
     await createWorld()
     await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', lat: 57.6349, lon: 18.2948, q: 0, r: 0 })
+    await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Klintehamn', lat: 57.3897, lon: 18.2033, q: -4, r: 6 })
     const r = await handleWaypointManage(db(), { action: 'validate', worldId: WORLD, name: 'Visbi' })
     const body = JSON.parse(r.content[0].text)
     expect(body.valid).toBe(false)
-    expect(body.didYouMean).toContain('Visby')
+    expect(body.didYouMean[0]).toBe('Visby')
   })
 
   // seed_defaults
@@ -389,5 +417,16 @@ describe('handleWaypointManage', () => {
       .bind(WORLD, aId, bId, 18.26, 'osrm_foot_v1', now).run()
     const result = await getWaypointDistance(env.RPG_DB, WORLD, aId, bId)
     expect(result).toEqual({ found: true, routable: true, distanceKm: 18.26 })
+  })
+
+  // computeHexForLatLon (used by the offline precompute script)
+  it('computeHexForLatLon derives the origin waypoint\'s own hex as (0, 0)', () => {
+    const origin = { originLat: 57.6349, originLon: 18.2948, kmPerHex: 3 }
+    expect(computeHexForLatLon(57.6349, 18.2948, origin)).toEqual({ q: 0, r: 0 })
+  })
+
+  it('computeHexForLatLon derives a non-origin waypoint\'s hex position', () => {
+    const origin = { originLat: 57.6349, originLon: 18.2948, kmPerHex: 3 }
+    expect(computeHexForLatLon(57.5388, 18.4677, origin)).toEqual({ q: 1, r: 2 }) // Roma Kloster
   })
 })

@@ -148,6 +148,20 @@ describe('handlePartyManage — waypoint march (#328)', () => {
     expect(party.travel_remaining_km).toBe(18.26)
   })
 
+  it('begin_march accepts fromWaypointId/toWaypointId directly (not just names)', async () => {
+    await createWorld()
+    const visbyId = await registerWaypoint('Visby', 57.6349, 18.2948, 0, 0)
+    const romaId = await registerWaypoint('Roma Kloster', 57.5388, 18.4677, 1, 2)
+    await setDistance(visbyId, romaId, 18.26)
+    const partyId = await createParty()
+
+    const r = await handlePartyManage(db(), { action: 'begin_march', partyId, fromWaypointId: visbyId, toWaypointId: romaId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.blocked).toBe(false)
+    expect(body.toWaypoint.id).toBe(romaId)
+  })
+
   it('begin_march accepts an explicit pace override', async () => {
     await createWorld()
     const visbyId = await registerWaypoint('Visby', 57.6349, 18.2948, 0, 0)
