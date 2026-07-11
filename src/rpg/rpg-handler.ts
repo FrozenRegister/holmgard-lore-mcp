@@ -41,6 +41,7 @@ import { handleTimeManage } from './handlers/time-manage'
 import { handleTimelineManage } from './handlers/timeline-manage'
 import { handleBiomeManage } from './handlers/biome-manage'
 import { handleZoneTypeManage } from './handlers/zone-type-manage'
+import { handleWaypointManage } from './handlers/waypoint-manage'
 import { handleEncounterManage } from './handlers/encounter-manage'
 import { handleProductionManage } from './handlers/production-manage'
 import { handleResourceManage } from './handlers/resource-manage'
@@ -84,6 +85,7 @@ const SUB_MAP: Record<string, RpgFn> = {
   timeline:      handleTimelineManage,
   biome:         handleBiomeManage,
   zone_type:     handleZoneTypeManage,
+  waypoint:      handleWaypointManage,
   encounter:     handleEncounterManage,
   production:    handleProductionManage,
   resource:      handleResourceManage,
