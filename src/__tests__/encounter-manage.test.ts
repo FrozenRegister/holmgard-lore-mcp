@@ -410,4 +410,80 @@ describe('handleEncounterManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.infected).toBe(false)
   })
+
+  // ── #284 — stealthCheck integration ─────────────────────────────────────
+
+  it('resolve short-circuits with confrontationAvoided when stealth is a clean avoidance', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'resolve', worldId: WORLD, x: 5, y: 5,
+      stealthCheck: true, yieldStealthRoll: 20, stealthMode: 'hiding', distanceZone: 'edge', windDirection: 'away',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.confrontationAvoided).toBe(true)
+    expect(body.encounter).toBe(false)
+    expect(body.roll).toBe(0)
+    expect(body.threshold).toBe(0)
+    expect(body.stealthResult.outcome).toBe('avoided_entirely')
+    // Short-circuits before the threat roll — no encounter type is selected.
+    expect(body.encounterType).toBeUndefined()
+  })
+
+  it('check also short-circuits with confrontationAvoided/stealthResult on a tense_moment', async () => {
+    await createWorld()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'check', worldId: WORLD, x: 5, y: 5,
+      stealthCheck: true, yieldStealthRoll: 3, stealthMode: 'active', distanceZone: 'unknown', windDirection: 'none',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.confrontationAvoided).toBe(true)
+    expect(body.stealthResult.outcome).toBe('tense_moment')
+  })
+
+  it('resolve continues the normal threshold pipeline and attaches stealthResult when the predator wins the opposed check', async () => {
+    await createWorld()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'resolve', worldId: WORLD, x: 5, y: 5,
+      stealthCheck: true, yieldStealthRoll: 1, stealthMode: 'rushed', distanceZone: 'core', windDirection: 'toward', yieldBleeding: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.confrontationAvoided).toBeUndefined()
+    expect(body.stealthResult.outcome).toBe('ambushed')
+    expect(body.stealthResult.advantage).toBe('predator')
+    // No biome threat registered — the normal threshold pipeline still runs
+    // and reports no encounter, independent of the stealth outcome.
+    expect(body.encounter).toBe(false)
+  })
+
+  it('resolve attaches a full stealthResult alongside a normal triggered+selected encounter', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false,
+      stealthCheck: true, yieldStealthRoll: 1,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.encounter).toBe(true)
+    expect(body.encounterType).toBe('predator')
+    expect(body.stealthResult.outcome).toBe('predator_searching')
+  })
+
+  it('resolve without stealthCheck omits stealthResult entirely', async () => {
+    await createWorld()
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.stealthResult).toBeUndefined()
+  })
 })

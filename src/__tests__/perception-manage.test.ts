@@ -1,13 +1,21 @@
 // Direct handler tests for perception-manage (not registered in rpgToolRegistry)
 import { describe } from './helpers'
 import { env } from 'cloudflare:test'
-import { expect, it, beforeEach } from 'vitest'
+import { expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { setupRpgDb } from './setup-d1'
-import { handlePerceptionManage } from '../rpg/handlers/perception-manage'
+import {
+  handlePerceptionManage,
+  predatorPerceptionModifier,
+  yieldStealthModifier,
+  stealthOutcomeFromMargin,
+} from '../rpg/handlers/perception-manage'
 
 describe('handlePerceptionManage', () => {
   beforeEach(async () => {
     await setupRpgDb(env.RPG_DB)
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   const db = () => ({ RPG_DB: env.RPG_DB } as any)
@@ -113,5 +121,145 @@ describe('handlePerceptionManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.count).toBeGreaterThanOrEqual(1)
+  })
+
+  // ── #284 — predatorPerceptionModifier ───────────────────────────────────
+
+  it('predatorPerceptionModifier: core distance zone adds +5', () => {
+    const { total, breakdown } = predatorPerceptionModifier({ distanceZone: 'core', windDirection: 'none', yieldBleeding: false, yieldCookingOrFire: false })
+    expect(total).toBe(5)
+    expect(breakdown.distanceZone).toBe(5)
+  })
+
+  it('predatorPerceptionModifier: edge distance zone subtracts -3', () => {
+    const { total } = predatorPerceptionModifier({ distanceZone: 'edge', windDirection: 'none', yieldBleeding: false, yieldCookingOrFire: false })
+    expect(total).toBe(-3)
+  })
+
+  it('predatorPerceptionModifier: unknown distance zone contributes nothing', () => {
+    const { total, breakdown } = predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'none', yieldBleeding: false, yieldCookingOrFire: false })
+    expect(total).toBe(0)
+    expect(breakdown.distanceZone).toBeUndefined()
+  })
+
+  it('predatorPerceptionModifier: wind toward adds +4, away subtracts -4, crosswind adds +1', () => {
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'toward', yieldBleeding: false, yieldCookingOrFire: false }).total).toBe(4)
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'away', yieldBleeding: false, yieldCookingOrFire: false }).total).toBe(-4)
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'crosswind', yieldBleeding: false, yieldCookingOrFire: false }).total).toBe(1)
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'none', yieldBleeding: false, yieldCookingOrFire: false }).total).toBe(0)
+  })
+
+  it('predatorPerceptionModifier: yield bleeding adds +6, cooking/fire adds +3, both stack', () => {
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'none', yieldBleeding: true, yieldCookingOrFire: false }).total).toBe(6)
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'none', yieldBleeding: false, yieldCookingOrFire: true }).total).toBe(3)
+    expect(predatorPerceptionModifier({ distanceZone: 'unknown', windDirection: 'none', yieldBleeding: true, yieldCookingOrFire: true }).total).toBe(9)
+  })
+
+  // ── #284 — yieldStealthModifier ─────────────────────────────────────────
+
+  it('yieldStealthModifier: stealth mode modifiers (hiding +2, active +0, passive -5, rushed -8)', () => {
+    expect(yieldStealthModifier({ stealthMode: 'hiding', isNight: false, partySize: 1 }).total).toBe(2)
+    expect(yieldStealthModifier({ stealthMode: 'active', isNight: false, partySize: 1 }).total).toBe(0)
+    expect(yieldStealthModifier({ stealthMode: 'passive', isNight: false, partySize: 1 }).total).toBe(-5)
+    expect(yieldStealthModifier({ stealthMode: 'rushed', isNight: false, partySize: 1 }).total).toBe(-8)
+  })
+
+  it('yieldStealthModifier: cover type forest-like +3, open-like -3, wet-like +1, unrecognized/none 0', () => {
+    expect(yieldStealthModifier({ stealthMode: 'active', coverType: 'dense forest', isNight: false, partySize: 1 }).total).toBe(3)
+    expect(yieldStealthModifier({ stealthMode: 'active', coverType: 'open field', isNight: false, partySize: 1 }).total).toBe(-3)
+    expect(yieldStealthModifier({ stealthMode: 'active', coverType: 'wet marsh', isNight: false, partySize: 1 }).total).toBe(1)
+    expect(yieldStealthModifier({ stealthMode: 'active', coverType: 'rocky outcrop', isNight: false, partySize: 1 }).total).toBe(0)
+    expect(yieldStealthModifier({ stealthMode: 'active', isNight: false, partySize: 1 }).total).toBe(0)
+  })
+
+  it('yieldStealthModifier: night adds +2, party size subtracts -2 per member beyond 1', () => {
+    expect(yieldStealthModifier({ stealthMode: 'active', isNight: true, partySize: 1 }).total).toBe(2)
+    expect(yieldStealthModifier({ stealthMode: 'active', isNight: false, partySize: 3 }).total).toBe(-4)
+    expect(yieldStealthModifier({ stealthMode: 'active', isNight: true, partySize: 3 }).breakdown.partySize).toBe(-4)
+  })
+
+  // ── #284 — stealthOutcomeFromMargin ─────────────────────────────────────
+
+  it('stealthOutcomeFromMargin covers every outcome band', () => {
+    expect(stealthOutcomeFromMargin(5)).toEqual({ outcome: 'avoided_entirely', advantage: 'none' })
+    expect(stealthOutcomeFromMargin(100)).toEqual({ outcome: 'avoided_entirely', advantage: 'none' })
+    expect(stealthOutcomeFromMargin(4)).toEqual({ outcome: 'tense_moment', advantage: 'none' })
+    expect(stealthOutcomeFromMargin(1)).toEqual({ outcome: 'tense_moment', advantage: 'none' })
+    expect(stealthOutcomeFromMargin(0)).toEqual({ outcome: 'predator_searching', advantage: 'none' })
+    expect(stealthOutcomeFromMargin(-1)).toEqual({ outcome: 'yield_spotted', advantage: 'yield' })
+    expect(stealthOutcomeFromMargin(-4)).toEqual({ outcome: 'yield_spotted', advantage: 'yield' })
+    expect(stealthOutcomeFromMargin(-5)).toEqual({ outcome: 'ambushed', advantage: 'predator' })
+    expect(stealthOutcomeFromMargin(-100)).toEqual({ outcome: 'ambushed', advantage: 'predator' })
+  })
+
+  // ── #284 — stealth_check action ─────────────────────────────────────────
+
+  it('stealth_check: clean avoidance when yield total clears predator total by 5+', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handlePerceptionManage(db(), {
+      action: 'stealth_check', rollValue: 20, stealthMode: 'hiding', distanceZone: 'edge', windDirection: 'away',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.yieldRoll).toBe(20)
+    expect(body.predatorRoll).toBe(1)
+    expect(body.outcome).toBe('avoided_entirely')
+    expect(body.advantage).toBe('none')
+    expect(body.yieldModifiers.stealthMode).toBe(2)
+    expect(body.predatorModifiers.distanceZone).toBe(-3)
+  })
+
+  it('stealth_check: ambushed when predator total clears yield total by 5+', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handlePerceptionManage(db(), {
+      action: 'stealth_check', rollValue: 1, stealthMode: 'rushed', distanceZone: 'core', windDirection: 'toward',
+      yieldBleeding: true, yieldCookingOrFire: true, partySize: 3,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.outcome).toBe('ambushed')
+    expect(body.advantage).toBe('predator')
+  })
+
+  it('stealth_check: uses a random yield roll when rollValue is omitted', async () => {
+    const r = await handlePerceptionManage(db(), { action: 'stealth_check' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.yieldRoll).toBeGreaterThanOrEqual(1)
+    expect(body.predatorRoll).toBeGreaterThanOrEqual(1)
+  })
+
+  // ── #284 — perception_contested action ──────────────────────────────────
+
+  it('perception_contested: detected true when observer total ties or beats actor total', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 1, observerModifier: 0, actorModifier: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.margin).toBe(0)
+    expect(body.detected).toBe(true)
+  })
+
+  it('perception_contested: detected false when actor total exceeds observer total', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 20, observerModifier: 0, actorModifier: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.detected).toBe(false)
+  })
+
+  it('perception_contested: observerId/targetId default to null when omitted', async () => {
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.observerId).toBeNull()
+    expect(body.targetId).toBeNull()
+  })
+
+  it('perception_contested: passes through observerId/targetId when supplied', async () => {
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested', observerId: 'obs-10', targetId: 'target-10' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.observerId).toBe('obs-10')
+    expect(body.targetId).toBe('target-10')
   })
 })

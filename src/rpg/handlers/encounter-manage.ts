@@ -36,6 +36,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { resolveZonesAt, type ResolvedZone } from './world-map'
 import { getBiomeRegistry } from './biome-manage'
+import { predatorPerceptionModifier, yieldStealthModifier, stealthOutcomeFromMargin, type StealthOutcome, type StealthAdvantage } from './perception-manage'
 
 const ACTIONS = ['resolve', 'check', 'list_types', 'add_type', 'check_infection'] as const
 type EncounterAction = typeof ACTIONS[number]
@@ -63,6 +64,23 @@ const InputSchema = z.object({
   weather: z.enum(['clear', 'rain', 'snow', 'fog']).optional(),
   includeInjuries: z.boolean().optional().default(true),
   characterIds: z.array(z.string()).optional().default([]),
+  // #284 — optional stealth/perception opposed check ahead of the threat
+  // roll. See perception-manage.ts for the shared modifier tables/outcome
+  // bands; resolveEncounterCore short-circuits on avoided_entirely/
+  // tense_moment (no confrontation, no threat roll needed at all) and
+  // otherwise proceeds to the normal threshold pipeline with the stealth
+  // result attached for context.
+  stealthCheck: z.boolean().optional().default(false),
+  stealthMode: z.enum(['active', 'passive', 'rushed', 'hiding']).optional().default('active'),
+  coverType: z.string().optional(),
+  windDirection: z.enum(['toward', 'away', 'crosswind', 'none']).optional().default('none'),
+  distanceZone: z.enum(['core', 'edge', 'unknown']).optional().default('unknown'),
+  yieldBleeding: z.boolean().optional().default(false),
+  yieldCookingOrFire: z.boolean().optional().default(false),
+  isNight: z.boolean().optional().default(false),
+  yieldStealthBonus: z.number().optional().default(0),
+  predatorPerceptionBonus: z.number().optional().default(0),
+  yieldStealthRoll: z.number().int().min(1).max(20).optional(),
   // add_type
   predatorName: z.string().optional(),
   category: z.enum(CATEGORIES).optional(),
@@ -226,6 +244,28 @@ export interface EncounterResolveInput {
   // no injury persistence. Without this flag, a `check` call would still pay
   // for the full type-selection query even though the response discards it.
   lightweight?: boolean
+  // #284 — stealth/perception opposed check, see InputSchema comment above.
+  stealthCheck?: boolean
+  stealthMode?: 'active' | 'passive' | 'rushed' | 'hiding'
+  coverType?: string
+  windDirection?: 'toward' | 'away' | 'crosswind' | 'none'
+  distanceZone?: 'core' | 'edge' | 'unknown'
+  yieldBleeding?: boolean
+  yieldCookingOrFire?: boolean
+  isNight?: boolean
+  yieldStealthBonus?: number
+  predatorPerceptionBonus?: number
+  yieldStealthRoll?: number
+}
+
+export interface EncounterStealthResult {
+  outcome: StealthOutcome
+  advantage: StealthAdvantage
+  yieldRoll: number
+  predatorRoll: number
+  yieldTotal: number
+  predatorTotal: number
+  margin: number
 }
 
 export interface EncounterInjuryResult {
@@ -259,6 +299,8 @@ export interface EncounterResolveResult {
   encounterDescription?: string | null
   injuries?: EncounterInjuryResult[]
   message?: string
+  confrontationAvoided?: boolean
+  stealthResult?: EncounterStealthResult
 }
 
 // Core resolution logic, shared by handleEncounterManage's resolve/check
@@ -274,6 +316,31 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const includeInjuries = input.includeInjuries ?? true
   const characterIds = input.characterIds ?? []
   const now = new Date().toISOString()
+
+  let stealthResult: EncounterStealthResult | undefined
+  if (input.stealthCheck) {
+    const yieldRoll = input.yieldStealthRoll ?? Math.floor(Math.random() * 20) + 1
+    const predatorRoll = Math.floor(Math.random() * 20) + 1
+    const yieldMod = yieldStealthModifier({
+      stealthMode: input.stealthMode ?? 'active', coverType: input.coverType, isNight: input.isNight ?? false, partySize,
+    })
+    const predatorMod = predatorPerceptionModifier({
+      distanceZone: input.distanceZone ?? 'unknown', windDirection: input.windDirection ?? 'none',
+      yieldBleeding: input.yieldBleeding ?? false, yieldCookingOrFire: input.yieldCookingOrFire ?? false,
+    })
+    const yieldTotal = yieldRoll + (input.yieldStealthBonus ?? 0) + yieldMod.total
+    const predatorTotal = predatorRoll + (input.predatorPerceptionBonus ?? 0) + predatorMod.total
+    const margin = yieldTotal - predatorTotal
+    const { outcome, advantage } = stealthOutcomeFromMargin(margin)
+    stealthResult = { outcome, advantage, yieldRoll, predatorRoll, yieldTotal, predatorTotal, margin }
+
+    // Clean avoidance or a near-miss with no advantage either way means no
+    // confrontation at all — skip the threat roll entirely rather than
+    // rolling a threshold check nobody needs.
+    if (outcome === 'avoided_entirely' || outcome === 'tense_moment') {
+      return { worldId, x, y, encounter: false, roll: 0, threshold: 0, modifiers: {}, confrontationAvoided: true, stealthResult }
+    }
+  }
 
   const zones = await resolveZonesAt(db, worldId, x, y)
   const { zoneThreat, dominant } = resolveZoneThreat(zones)
@@ -291,7 +358,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const triggered = roll <= threshold
 
   if (input.lightweight || !triggered) {
-    return { worldId, x, y, encounter: triggered, roll, threshold, modifiers: breakdown }
+    return { worldId, x, y, encounter: triggered, roll, threshold, modifiers: breakdown, stealthResult }
   }
 
   const { results: allTypes } = await db.prepare('SELECT * FROM encounter_types WHERE world_id = ? AND min_threat <= ?').bind(worldId, threshold).all() as
@@ -299,7 +366,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
 
   if (allTypes.length === 0) {
     return {
-      worldId, x, y, encounter: true, roll, threshold, modifiers: breakdown, encounterType: null,
+      worldId, x, y, encounter: true, roll, threshold, modifiers: breakdown, encounterType: null, stealthResult,
       message: 'Encounter triggered but no encounter_types are registered for this threshold — use encounter.add_type to register some, or lower an existing type\'s minThreat.',
     }
   }
@@ -353,7 +420,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
     threatLevel: selectedZone?.threatLevel ?? null,
     displaced: isDisplaced, displacedBy,
     encounterDescription: selected.description,
-    injuries,
+    injuries, stealthResult,
   }
 }
 
@@ -376,10 +443,14 @@ export async function handleEncounterManage(env: AppBindings, args: Record<strin
         scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather,
         includeInjuries: match.matched === 'resolve' && a.includeInjuries, characterIds: a.characterIds,
         lightweight: match.matched === 'check',
+        stealthCheck: a.stealthCheck, stealthMode: a.stealthMode, coverType: a.coverType, windDirection: a.windDirection,
+        distanceZone: a.distanceZone, yieldBleeding: a.yieldBleeding, yieldCookingOrFire: a.yieldCookingOrFire,
+        isNight: a.isNight, yieldStealthBonus: a.yieldStealthBonus, predatorPerceptionBonus: a.predatorPerceptionBonus,
+        yieldStealthRoll: a.yieldStealthRoll,
       })
 
       if (match.matched === 'check') {
-        return ok({ success: true, actionType: 'check', worldId: result.worldId, x: result.x, y: result.y, encounter: result.encounter, roll: result.roll, threshold: result.threshold, modifiers: result.modifiers })
+        return ok({ success: true, actionType: 'check', worldId: result.worldId, x: result.x, y: result.y, encounter: result.encounter, roll: result.roll, threshold: result.threshold, modifiers: result.modifiers, confrontationAvoided: result.confrontationAvoided, stealthResult: result.stealthResult })
       }
       return ok({ success: true, actionType: 'resolve', ...result })
     }

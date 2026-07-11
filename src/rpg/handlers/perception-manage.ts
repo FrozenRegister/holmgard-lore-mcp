@@ -10,13 +10,15 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers'] as const
+const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers', 'stealth_check', 'perception_contested'] as const
 type PerceptionAction = typeof ACTIONS[number]
 const ALIASES: Record<string, PerceptionAction> = {
   check: 'assess', perceive: 'assess', observe: 'assess', inspect: 'assess', roll: 'assess',
   history: 'get_history', past: 'get_history',
   latest: 'get_latest', current: 'get_latest', last: 'get_latest',
   observers: 'list_observers', watchers: 'list_observers',
+  stealth: 'stealth_check', sneak: 'stealth_check', hide_check: 'stealth_check',
+  contested: 'perception_contested', opposed_check: 'perception_contested', spot_check: 'perception_contested',
 }
 
 const InputSchema = z.object({
@@ -28,7 +30,95 @@ const InputSchema = z.object({
   dc: z.number().int().min(1).max(30).optional().default(12),
   perceptionType: z.enum(['sight', 'hearing', 'smell', 'arcana', 'investigation', 'insight']).optional().default('sight'),
   limit: z.number().int().min(1).max(50).optional().default(20),
+  // #284 — stealth_check
+  stealthMode: z.enum(['active', 'passive', 'rushed', 'hiding']).optional().default('active'),
+  coverType: z.string().optional(),
+  windDirection: z.enum(['toward', 'away', 'crosswind', 'none']).optional().default('none'),
+  distanceZone: z.enum(['core', 'edge', 'unknown']).optional().default('unknown'),
+  yieldBleeding: z.boolean().optional().default(false),
+  yieldCookingOrFire: z.boolean().optional().default(false),
+  isNight: z.boolean().optional().default(false),
+  partySize: z.number().int().min(1).optional().default(1),
+  yieldStealthBonus: z.number().optional().default(0),
+  predatorPerceptionBonus: z.number().optional().default(0),
+  // #284 — perception_contested
+  observerModifier: z.number().optional().default(0),
+  actorModifier: z.number().optional().default(0),
 })
+
+// ── #284 — Stealth vs. predator-perception opposed check ────────────────────
+// Both sides roll 1d20 + a caller-supplied base ability modifier (no creature
+// stat-block system exists in this repo, so bonuses are accepted as explicit
+// input rather than looked up) + situational modifiers from the tables below
+// (transcribed from the issue). Exported so encounter-manage.ts can reuse the
+// same math for its own stealth-aware resolve/check integration.
+
+export function predatorPerceptionModifier(a: {
+  distanceZone: 'core' | 'edge' | 'unknown'
+  windDirection: 'toward' | 'away' | 'crosswind' | 'none'
+  yieldBleeding: boolean
+  yieldCookingOrFire: boolean
+}): { total: number; breakdown: Record<string, number> } {
+  const breakdown: Record<string, number> = {}
+  if (a.distanceZone === 'core') breakdown.distanceZone = 5
+  else if (a.distanceZone === 'edge') breakdown.distanceZone = -3
+
+  if (a.windDirection === 'toward') breakdown.wind = 4
+  else if (a.windDirection === 'away') breakdown.wind = -4
+  else if (a.windDirection === 'crosswind') breakdown.wind = 1
+
+  if (a.yieldBleeding) breakdown.bleeding = 6
+  if (a.yieldCookingOrFire) breakdown.cookingOrFire = 3
+
+  const total = Object.values(breakdown).reduce((s, v) => s + v, 0)
+  return { total, breakdown }
+}
+
+function coverTypeModifier(coverType: string | undefined): number {
+  if (!coverType) return 0
+  const t = coverType.toLowerCase()
+  if (t.includes('forest')) return 3
+  if (t.includes('open')) return -3
+  if (t.includes('wet')) return 1
+  return 0
+}
+
+const STEALTH_MODE_MODIFIERS: Record<'active' | 'passive' | 'rushed' | 'hiding', number> = {
+  hiding: 2, active: 0, passive: -5, rushed: -8,
+}
+
+export function yieldStealthModifier(a: {
+  stealthMode: 'active' | 'passive' | 'rushed' | 'hiding'
+  coverType?: string
+  isNight: boolean
+  partySize: number
+}): { total: number; breakdown: Record<string, number> } {
+  const breakdown: Record<string, number> = { stealthMode: STEALTH_MODE_MODIFIERS[a.stealthMode] }
+
+  const cover = coverTypeModifier(a.coverType)
+  if (cover !== 0) breakdown.coverType = cover
+
+  if (a.isNight) breakdown.night = 2
+  if (a.partySize > 1) breakdown.partySize = -2 * (a.partySize - 1)
+
+  const total = Object.values(breakdown).reduce((s, v) => s + v, 0)
+  return { total, breakdown }
+}
+
+export type StealthOutcome = 'avoided_entirely' | 'tense_moment' | 'predator_searching' | 'yield_spotted' | 'ambushed'
+export type StealthAdvantage = 'none' | 'yield' | 'predator'
+
+// margin = yieldTotal - predatorTotal. >=5 clean avoidance; 1-4 a near-miss
+// with no advantage either way; 0 a tie (predator knows something is off but
+// hasn't pinned it down); negative bands hand advantage to whichever side is
+// further ahead.
+export function stealthOutcomeFromMargin(margin: number): { outcome: StealthOutcome; advantage: StealthAdvantage } {
+  if (margin >= 5) return { outcome: 'avoided_entirely', advantage: 'none' }
+  if (margin >= 1) return { outcome: 'tense_moment', advantage: 'none' }
+  if (margin === 0) return { outcome: 'predator_searching', advantage: 'none' }
+  if (margin >= -4) return { outcome: 'yield_spotted', advantage: 'yield' }
+  return { outcome: 'ambushed', advantage: 'predator' }
+}
 
 const PERCEPTION_DESCRIPTIONS: Record<string, Record<string, string>> = {
   sight:         { success: 'You spot details others might miss.', failure: 'Nothing unusual catches your eye.', crit: 'Your sharp eyes reveal hidden secrets.' },
@@ -83,6 +173,35 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       if (!a.targetId) return err('"targetId" is required')
       const { results } = await db.prepare('SELECT DISTINCT observer_id, MAX(seq) as latest_seq, MAX(created_at) as last_checked FROM perception_assessments WHERE target_ref_id = ? GROUP BY observer_id ORDER BY last_checked DESC LIMIT ?').bind(a.targetId, a.limit).all()
       return ok({ success: true, actionType: 'list_observers', targetId: a.targetId, observers: results, count: results.length })
+    }
+    case 'stealth_check': {
+      const yieldRoll = a.rollValue ?? Math.floor(Math.random() * 20) + 1
+      const predatorRoll = Math.floor(Math.random() * 20) + 1
+      const yieldMod = yieldStealthModifier({ stealthMode: a.stealthMode, coverType: a.coverType, isNight: a.isNight, partySize: a.partySize })
+      const predatorMod = predatorPerceptionModifier({ distanceZone: a.distanceZone, windDirection: a.windDirection, yieldBleeding: a.yieldBleeding, yieldCookingOrFire: a.yieldCookingOrFire })
+      const yieldTotal = yieldRoll + a.yieldStealthBonus + yieldMod.total
+      const predatorTotal = predatorRoll + a.predatorPerceptionBonus + predatorMod.total
+      const margin = yieldTotal - predatorTotal
+      const { outcome, advantage } = stealthOutcomeFromMargin(margin)
+      return ok({
+        success: true, actionType: 'stealth_check',
+        yieldRoll, predatorRoll, yieldTotal, predatorTotal, margin, outcome, advantage,
+        stealthMode: a.stealthMode, distanceZone: a.distanceZone, windDirection: a.windDirection,
+        yieldModifiers: yieldMod.breakdown, predatorModifiers: predatorMod.breakdown,
+      })
+    }
+    case 'perception_contested': {
+      const observerRoll = Math.floor(Math.random() * 20) + 1
+      const actorRoll = a.rollValue ?? Math.floor(Math.random() * 20) + 1
+      const observerTotal = observerRoll + a.observerModifier
+      const actorTotal = actorRoll + a.actorModifier
+      const margin = observerTotal - actorTotal
+      const detected = margin >= 0
+      return ok({
+        success: true, actionType: 'perception_contested',
+        observerId: a.observerId ?? null, targetId: a.targetId ?? null,
+        observerRoll, actorRoll, observerTotal, actorTotal, margin, detected,
+      })
     }
   }
 }
