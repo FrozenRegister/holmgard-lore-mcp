@@ -154,7 +154,7 @@ describe('handleTravelManage', () => {
   it('travel with resolveEncounter and worldId/x/y calls the full encounter engine', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await createRoom('room-encounter', 'Ambush Room')
     const r = await handleTravelManage(db(), {
       action: 'travel', toRoomId: 'room-encounter', resolveEncounter: true, worldId: WORLD, x: 5, y: 5, includeInjuries: false,
