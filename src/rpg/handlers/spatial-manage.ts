@@ -2,12 +2,24 @@
 // Source: src/server/consolidated/spatial-manage.ts
 // room_edges table does not exist in schema — exits stored as JSON in room_nodes.exits.
 // room_networks renamed to node_networks in schema.
+//
+// #290 (#274 follow-up) — room_nodes.biome_context is no longer a hardcoded
+// 8-value DB CHECK constraint (see migration 0015). `biome` is now validated
+// against the per-world dynamic biome registry (biome-manage.ts's
+// getBiomeRegistry), matching the exact pattern already used by
+// world-map.ts's patch/batch actions: if the target world has zero
+// registered biomes, validation is skipped entirely (backward compatible
+// for worlds that never ran biome.seed_defaults); otherwise the biome name
+// must be one of that world's registered biomes. Validation only runs when
+// a `worldId` is given — a room created with no worldId has nothing to
+// validate against, same as world_map's own convention.
 
 import { z } from 'zod'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { getBiomeRegistry } from './biome-manage'
 
 const ACTIONS = ['look', 'generate', 'update', 'get_exits', 'move', 'list', 'network_create', 'network_get', 'network_list'] as const
 type SpatialAction = typeof ACTIONS[number]
@@ -25,14 +37,12 @@ const ALIASES: Record<string, SpatialAction> = {
 
 const ExitSchema = z.object({ direction: z.string(), targetRoomId: z.string(), label: z.string().optional() })
 
-const BIOMES = ['forest', 'mountain', 'urban', 'dungeon', 'coastal', 'cavern', 'divine', 'arcane'] as const
-
 const InputSchema = z.object({
   action: z.string(),
   roomId: z.string().optional(),
   name: z.string().optional(),
   description: z.string().optional(),
-  biome: z.enum(BIOMES).optional().default('dungeon'),
+  biome: z.string().optional().default('dungeon'),
   atmosphere: z.array(z.string()).optional().default([]),
   exits: z.array(ExitSchema).optional().default([]),
   entityIds: z.array(z.string()).optional().default([]),
@@ -43,7 +53,22 @@ const InputSchema = z.object({
   networkType: z.enum(['cluster', 'linear']).optional().default('cluster'),
   nodeIds: z.array(z.string()).optional().default([]),
   limit: z.number().int().min(1).max(100).optional().default(20),
+  worldIdFilter: z.string().optional(),
 })
+
+// Shared by `generate`/`update` — returns an error message string when the
+// biome isn't registered for this world, or null when validation passes
+// (including the "no worldId given" / "world has zero registered biomes"
+// backward-compatible skip cases).
+async function validateBiome(db: D1Database, worldId: string | undefined, biome: string): Promise<string | null> {
+  if (!worldId) return null
+  const registry = await getBiomeRegistry(db, worldId)
+  if (registry.size === 0) return null
+  if (!registry.has(biome)) {
+    return `Unknown biome "${biome}" for this world. Registered biomes: ${[...registry.keys()].sort().join(', ')}`
+  }
+  return null
+}
 
 export async function handleSpatialManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
@@ -65,23 +90,30 @@ export async function handleSpatialManage(env: AppBindings, args: Record<string,
       return ok({
         success: true, actionType: 'look', roomId: a.roomId,
         name: room.name, description: room.base_description,
-        biome: room.biome_context, atmosphere: JSON.parse(room.atmospherics as string ?? '[]'),
+        biome: room.biome_context, worldId: room.world_id, atmosphere: JSON.parse(room.atmospherics as string ?? '[]'),
         exits, entityCount: entityIds.length, entityIds,
         visitedCount: (room.visited_count as number ?? 0) + 1,
       })
     }
     case 'generate': {
       if (!a.name) return err('"name" is required')
+      const biomeError = await validateBiome(db, a.worldId, a.biome)
+      if (biomeError) return err(biomeError)
       const id = crypto.randomUUID()
       const desc = a.description && a.description.trim().length >= 10 ? a.description : `${a.name}: a location waiting to be explored.`
-      await db.prepare('INSERT INTO room_nodes (id, name, base_description, biome_context, atmospherics, exits, entity_ids, created_at, updated_at, visited_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.name, desc, a.biome, JSON.stringify(a.atmosphere), JSON.stringify(a.exits), JSON.stringify(a.entityIds), now, now, 0).run()
-      return ok({ success: true, actionType: 'generate', roomId: id, name: a.name, biome: a.biome, exitCount: a.exits.length })
+      await db.prepare('INSERT INTO room_nodes (id, name, base_description, biome_context, atmospherics, exits, entity_ids, created_at, updated_at, visited_count, world_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, a.name, desc, a.biome, JSON.stringify(a.atmosphere), JSON.stringify(a.exits), JSON.stringify(a.entityIds), now, now, 0, a.worldId ?? null).run()
+      return ok({ success: true, actionType: 'generate', roomId: id, name: a.name, biome: a.biome, worldId: a.worldId ?? null, exitCount: a.exits.length })
     }
     case 'update': {
       if (!a.roomId) return err('"roomId" is required')
-      const room = await db.prepare('SELECT * FROM room_nodes WHERE id = ?').bind(a.roomId).first()
+      const room = await db.prepare('SELECT * FROM room_nodes WHERE id = ?').bind(a.roomId).first() as Record<string, unknown> | null
       if (!room) return err(`Room not found: ${a.roomId}`)
+      if (a.biome !== undefined) {
+        const effectiveWorldId = a.worldId ?? (room.world_id as string | null) ?? undefined
+        const biomeError = await validateBiome(db, effectiveWorldId, a.biome)
+        if (biomeError) return err(biomeError)
+      }
       const updates: string[] = ['updated_at = ?']
       const binds: unknown[] = [now]
       if (a.name !== undefined) { updates.unshift('name = ?'); binds.unshift(a.name) }
@@ -89,6 +121,7 @@ export async function handleSpatialManage(env: AppBindings, args: Record<string,
       if (a.biome !== undefined) { updates.unshift('biome_context = ?'); binds.unshift(a.biome) }
       if (a.atmosphere.length > 0) { updates.unshift('atmospherics = ?'); binds.unshift(JSON.stringify(a.atmosphere)) }
       if (a.exits.length > 0) { updates.unshift('exits = ?'); binds.unshift(JSON.stringify(a.exits)) }
+      if (a.worldId !== undefined) { updates.unshift('world_id = ?'); binds.unshift(a.worldId) }
       binds.push(a.roomId)
       await db.prepare(`UPDATE room_nodes SET ${updates.join(', ')} WHERE id = ?`).bind(...binds).run()
       return ok({ success: true, actionType: 'update', roomId: a.roomId })
@@ -112,7 +145,12 @@ export async function handleSpatialManage(env: AppBindings, args: Record<string,
       return ok({ success: true, actionType: 'move', fromRoomId: a.roomId, direction: a.direction, toRoomId: nextRoom.id, roomName: nextRoom.name, description: nextRoom.base_description })
     }
     case 'list': {
-      const { results } = await db.prepare('SELECT id, name, biome_context, visited_count FROM room_nodes ORDER BY created_at DESC LIMIT ?').bind(a.limit).all()
+      let query = 'SELECT id, name, biome_context, visited_count, world_id FROM room_nodes'
+      const binds: unknown[] = []
+      if (a.worldIdFilter) { query += ' WHERE world_id = ?'; binds.push(a.worldIdFilter) }
+      query += ' ORDER BY created_at DESC LIMIT ?'
+      binds.push(a.limit)
+      const { results } = await db.prepare(query).bind(...binds).all()
       return ok({ success: true, actionType: 'list', rooms: results, count: results.length })
     }
     case 'network_create': {
