@@ -15,7 +15,7 @@ import { getBiomeRegistry } from './biome-manage'
 // a sensible preview instead of '?' for every tile.
 const LEGACY_BIOME_GLYPHS: Record<string, string> = { grass: '.', forest: 'T', mountain: 'M', water: '~', desert: 'd', swamp: 'S', plains: ',', tundra: '_', wasteland: 'X' }
 
-const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi'] as const
+const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones'] as const
 type WorldMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldMapAction> = {
   summary: 'overview', world_view: 'overview',
@@ -26,7 +26,98 @@ const ALIASES: Record<string, WorldMapAction> = {
   render: 'preview', ascii: 'preview', view: 'preview',
   search_poi: 'find_poi', get_poi: 'find_poi',
   recommend_poi: 'suggest_poi', new_poi: 'suggest_poi',
+  edit_poi: 'update_poi', modify_poi: 'update_poi', poi_update: 'update_poi',
+  zone_query: 'query_zone', check_zone: 'query_zone',
+  zones: 'list_zones', get_zones: 'list_zones',
 }
+
+// #276 — zone shape math (circle/polygon/ring) shared by query_zone, list_zones,
+// and preview's zone overlay.
+type ZoneShape =
+  | { type: 'circle'; circle: { radius: number } }
+  | { type: 'polygon'; polygon: Array<[number, number]> }
+  | { type: 'ring'; ring: { inner: number; outer: number; points?: number | null } }
+
+function pointInCircle(px: number, py: number, cx: number, cy: number, radius: number): boolean {
+  const dx = px - cx; const dy = py - cy
+  return Math.sqrt(dx * dx + dy * dy) <= radius
+}
+
+function pointInRing(px: number, py: number, cx: number, cy: number, inner: number, outer: number): boolean {
+  const dx = px - cx; const dy = py - cy
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  return dist >= inner && dist <= outer
+}
+
+function pointInPolygon(px: number, py: number, polygon: Array<[number, number]>): boolean {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i]
+    const [xj, yj] = polygon[j]
+    const intersect = (yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function pointInZone(px: number, py: number, cx: number, cy: number, zone: ZoneShape): boolean {
+  if (zone.type === 'circle') return pointInCircle(px, py, cx, cy, zone.circle.radius)
+  if (zone.type === 'ring') return pointInRing(px, py, cx, cy, zone.ring.inner, zone.ring.outer)
+  if (zone.type === 'polygon') return pointInPolygon(px, py, zone.polygon)
+  return false
+}
+
+function parseZoneMetadata(raw: string | null): { zone?: ZoneShape; zoneType?: string; predator?: string } | null {
+  if (!raw) return null
+  try {
+    const meta = JSON.parse(raw)
+    if (!meta || typeof meta !== 'object') return null
+    return { zone: meta.zone, zoneType: meta.zone_type, predator: meta.predator }
+  } catch {
+    return null
+  }
+}
+
+// Merges zone-shape params into a structure's existing metadata JSON. Shape
+// fields (radius/polygon/ring) are replaced wholesale when any is given;
+// zone_type/predator are patched independently so a caller can update one
+// without clobbering the other's existing value. Returns null when there is
+// nothing zone-related to store (fully backward-compatible plain POIs).
+function mergeZoneMetadata(
+  existingMetaRaw: string | null,
+  patch: {
+    radius?: number
+    polygon?: Array<[number, number]>
+    ringInner?: number
+    ringOuter?: number
+    ringPoints?: number
+    zoneType?: string
+    predatorRef?: string
+  }
+): string | null {
+  const existing = parseZoneMetadata(existingMetaRaw)
+  let zone: ZoneShape | undefined = existing?.zone
+  if (patch.polygon !== undefined) {
+    zone = { type: 'polygon', polygon: patch.polygon }
+  } else if (patch.ringInner !== undefined && patch.ringOuter !== undefined) {
+    zone = { type: 'ring', ring: { inner: patch.ringInner, outer: patch.ringOuter, points: patch.ringPoints ?? null } }
+  } else if (patch.radius !== undefined) {
+    zone = { type: 'circle', circle: { radius: patch.radius } }
+  }
+  const zoneType = patch.zoneType ?? existing?.zoneType
+  const predator = patch.predatorRef ?? existing?.predator
+  const meta: Record<string, unknown> = {}
+  if (zone) meta.zone = zone
+  if (zoneType) meta.zone_type = zoneType
+  if (predator) meta.predator = predator
+  return Object.keys(meta).length > 0 ? JSON.stringify(meta) : null
+}
+
+// Overlay glyphs for zone types rendered in preview's ASCII grid — single
+// Unicode code points only, so each grid cell stays exactly one character
+// wide. 'broadcast' zones are deliberately not overlaid (informational only,
+// queryable via query_zone/list_zones, but would add too much visual noise).
+const ZONE_GLYPHS: Record<string, string> = { perimeter: '⚡', exclusion: '#', hazard: '!', territory: '@' }
 
 // #275 — bulk tile import ceiling. ~200 bytes/tile row, comfortably under
 // Worker request-body and response-time limits; a 100x100 world (10k tiles)
@@ -53,6 +144,15 @@ const InputSchema = z.object({
   validateBiomes: z.boolean().optional().default(true),
   query: z.string().optional(),
   structureType: z.string().optional(),
+  structureId: z.string().optional(),
+  name: z.string().optional(),
+  radius: z.number().min(0).optional(),
+  polygon: z.array(z.tuple([z.number(), z.number()])).optional(),
+  ringInner: z.number().min(0).optional(),
+  ringOuter: z.number().min(0).optional(),
+  ringPoints: z.number().int().min(1).optional(),
+  zoneType: z.string().optional(),
+  predatorRef: z.string().optional(),
 })
 
 export async function handleWorldMap(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -170,6 +270,30 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
           grid[gy][gx] = registry.get(t.biome)?.glyph ?? LEGACY_BIOME_GLYPHS[t.biome] ?? '?'
         }
       }
+
+      // #276 — overlay zone glyphs (perimeter/territory/exclusion/hazard) on
+      // top of the base terrain grid. First matching zone wins per cell.
+      const { results: zoneStructs } = await db.prepare('SELECT x, y, metadata FROM structures WHERE world_id = ?').bind(a.worldId).all() as
+        { results: Array<{ x: number; y: number; metadata: string | null }> }
+      const zoneOverlays = zoneStructs
+        .map(s => {
+          const meta = parseZoneMetadata(s.metadata)
+          if (!meta?.zone) return null
+          return { x: s.x, y: s.y, zone: meta.zone, zoneType: meta.zoneType ?? 'territory' }
+        })
+        .filter((z): z is NonNullable<typeof z> => z !== null && ZONE_GLYPHS[z.zoneType] !== undefined)
+      for (let gy = 0; gy < a.height; gy++) {
+        for (let gx = 0; gx < a.width; gx++) {
+          const worldX = a.x + gx; const worldY = a.y + gy
+          for (const zo of zoneOverlays) {
+            if (pointInZone(worldX, worldY, zo.x, zo.y, zo.zone)) {
+              grid[gy][gx] = ZONE_GLYPHS[zo.zoneType]
+              break
+            }
+          }
+        }
+      }
+
       const ascii = grid.map(row => row.join('')).join('\n')
       return ok({ success: true, actionType: 'preview', worldId: a.worldId, ascii, x: a.x, y: a.y, width: a.width, height: a.height })
     }
@@ -184,11 +308,75 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
     }
     case 'suggest_poi': {
       if (!a.worldId || !a.query || a.x === undefined || a.y === undefined) return err('"worldId", "query" (name), "x", and "y" are required')
+      if (a.polygon !== undefined && a.polygon.length < 3) return err('"polygon" requires at least 3 points')
       const id = crypto.randomUUID()
       const structType = a.structureType ?? 'landmark'
-      await db.prepare('INSERT INTO structures (id, world_id, region_id, name, type, x, y, population, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.regionId ?? null, a.query, structType, a.x, a.y, 0, now, now).run()
-      return ok({ success: true, actionType: 'suggest_poi', structureId: id, name: a.query, type: structType, worldId: a.worldId, x: a.x, y: a.y })
+      const metadata = mergeZoneMetadata(null, {
+        radius: a.radius, polygon: a.polygon, ringInner: a.ringInner, ringOuter: a.ringOuter, ringPoints: a.ringPoints,
+        zoneType: a.zoneType, predatorRef: a.predatorRef,
+      })
+      const hasZone = a.radius !== undefined || a.polygon !== undefined || (a.ringInner !== undefined && a.ringOuter !== undefined)
+      await db.prepare('INSERT INTO structures (id, world_id, region_id, name, type, x, y, population, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, a.worldId, a.regionId ?? null, a.query, structType, a.x, a.y, 0, now, now, metadata).run()
+      return ok({ success: true, actionType: 'suggest_poi', structureId: id, name: a.query, type: structType, worldId: a.worldId, x: a.x, y: a.y, hasZone })
+    }
+    case 'update_poi': {
+      if (!a.structureId) return err('"structureId" is required')
+      const existing = await db.prepare('SELECT * FROM structures WHERE id = ?').bind(a.structureId).first() as Record<string, unknown> | null
+      if (!existing) return err(`Structure not found: ${a.structureId}`)
+      if (a.polygon !== undefined && a.polygon.length < 3) return err('"polygon" requires at least 3 points')
+
+      const sets: string[] = ['updated_at = ?']
+      const vals: unknown[] = [now]
+      if (a.name !== undefined) { sets.push('name = ?'); vals.push(a.name) }
+      if (a.structureType !== undefined) { sets.push('type = ?'); vals.push(a.structureType) }
+      if (a.x !== undefined) { sets.push('x = ?'); vals.push(a.x) }
+      if (a.y !== undefined) { sets.push('y = ?'); vals.push(a.y) }
+      if (a.regionId !== undefined) { sets.push('region_id = ?'); vals.push(a.regionId) }
+
+      const zoneFieldsTouched = a.radius !== undefined || a.polygon !== undefined || a.ringInner !== undefined
+        || a.ringOuter !== undefined || a.zoneType !== undefined || a.predatorRef !== undefined
+      if (zoneFieldsTouched) {
+        const metadata = mergeZoneMetadata(existing.metadata as string | null, {
+          radius: a.radius, polygon: a.polygon, ringInner: a.ringInner, ringOuter: a.ringOuter, ringPoints: a.ringPoints,
+          zoneType: a.zoneType, predatorRef: a.predatorRef,
+        })
+        sets.push('metadata = ?'); vals.push(metadata)
+      }
+
+      vals.push(a.structureId)
+      await db.prepare(`UPDATE structures SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+      return ok({ success: true, actionType: 'update_poi', structureId: a.structureId })
+    }
+    case 'query_zone': {
+      if (!a.worldId || a.x === undefined || a.y === undefined) return err('"worldId", "x", and "y" are required')
+      const { results } = await db.prepare('SELECT id, name, x, y, metadata FROM structures WHERE world_id = ?').bind(a.worldId).all() as
+        { results: Array<{ id: string; name: string; x: number; y: number; metadata: string | null }> }
+      const zones: Array<{ structureId: string; name: string; zoneType: string | null; distanceToCenter: number }> = []
+      let inPerimeter = false
+      for (const s of results) {
+        const meta = parseZoneMetadata(s.metadata)
+        if (!meta?.zone) continue
+        if (!pointInZone(a.x, a.y, s.x, s.y, meta.zone)) continue
+        const distanceToCenter = Math.round(Math.hypot(a.x - s.x, a.y - s.y) * 10) / 10
+        zones.push({ structureId: s.id, name: s.name, zoneType: meta.zoneType ?? null, distanceToCenter })
+        if (meta.zoneType === 'perimeter') inPerimeter = true
+      }
+      return ok({ success: true, actionType: 'query_zone', worldId: a.worldId, x: a.x, y: a.y, zones, inPerimeter })
+    }
+    case 'list_zones': {
+      if (!a.worldId) return err('"worldId" is required')
+      const { results } = await db.prepare('SELECT id, name, type, x, y, metadata FROM structures WHERE world_id = ?').bind(a.worldId).all() as
+        { results: Array<{ id: string; name: string; type: string; x: number; y: number; metadata: string | null }> }
+      const zones = results
+        .map(s => {
+          const meta = parseZoneMetadata(s.metadata)
+          if (!meta?.zone) return null
+          return { structureId: s.id, name: s.name, type: s.type, x: s.x, y: s.y, zoneType: meta.zoneType ?? null, zone: meta.zone, predator: meta.predator ?? null }
+        })
+        .filter((z): z is NonNullable<typeof z> => z !== null)
+        .filter(z => !a.zoneType || z.zoneType === a.zoneType)
+      return ok({ success: true, actionType: 'list_zones', worldId: a.worldId, zones, count: zones.length })
     }
   }
 }

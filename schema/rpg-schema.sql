@@ -206,6 +206,10 @@ CREATE TABLE IF NOT EXISTS structures (
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 
+-- Zone/territory shapes (#276) — see migration 0011. metadata JSON reused,
+-- no new column; this partial index keeps zone-bearing lookups fast.
+CREATE INDEX IF NOT EXISTS idx_structures_zone ON structures(world_id) WHERE json_extract(metadata, '$.zone') IS NOT NULL;
+
 -- Dynamic per-world biome registry (#274) — see migration 0010 for the
 -- rollout notes on why spatial_manage's room_nodes.biome_context CHECK
 -- constraint isn't also replaced by this table yet.

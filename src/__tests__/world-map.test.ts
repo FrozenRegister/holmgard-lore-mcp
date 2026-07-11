@@ -321,5 +321,242 @@ describe('handleWorldMap', () => {
     expect(body.success).toBe(true)
     expect(body.name).toBe('Dark Tower')
     expect(body.structureId).toBeTruthy()
+    expect(body.hasZone).toBe(false)
+  })
+
+  // ── zones (#276) ──────────────────────────────────────────────────────────
+
+  it('suggest_poi rejects a polygon with fewer than 3 points', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Bad Shape', x: 0, y: 0,
+      polygon: [[0, 0], [1, 1]],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('polygon')
+  })
+
+  it('suggest_poi creates a circle zone', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Ratite Nesting Ground', x: 50, y: 50,
+      radius: 8, zoneType: 'territory',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hasZone).toBe(true)
+  })
+
+  it('suggest_poi creates a polygon zone', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73,
+      polygon: [[34, 71], [38, 71], [38, 75], [34, 75]], zoneType: 'territory', predatorRef: 'giant_panther',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hasZone).toBe(true)
+  })
+
+  it('suggest_poi creates a ring zone (perimeter)', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Laser-Pylon Perimeter', x: 50, y: 50,
+      ringInner: 18, ringOuter: 22, ringPoints: 240, zoneType: 'perimeter',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hasZone).toBe(true)
+  })
+
+  it('suggest_poi with zoneType/predatorRef but no shape stores metadata without a queryable zone', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Vague Threat', x: 1, y: 1, zoneType: 'hazard',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hasZone).toBe(false)
+    const zones = JSON.parse((await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })).content[0].text)
+    expect(zones.count).toBe(0)
+  })
+
+  it('update_poi requires structureId', async () => {
+    const r = await handleWorldMap(db(), { action: 'update_poi', name: 'New Name' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('update_poi returns not found for an unknown structureId', async () => {
+    const r = await handleWorldMap(db(), { action: 'update_poi', structureId: 'no-such-structure', name: 'X' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('update_poi rejects a polygon with fewer than 3 points', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Zone', x: 0, y: 0 })).content[0].text)
+    const r = await handleWorldMap(db(), { action: 'update_poi', structureId: created.structureId, polygon: [[0, 0]] })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('update_poi patches name/type/position without touching zone metadata', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Old Name', x: 0, y: 0, radius: 5, zoneType: 'territory',
+    })).content[0].text)
+    const r = await handleWorldMap(db(), { action: 'update_poi', structureId: created.structureId, name: 'New Name', x: 10, y: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    const zones = JSON.parse((await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })).content[0].text)
+    expect(zones.count).toBe(1)
+    expect(zones.zones[0].zone.circle.radius).toBe(5)
+  })
+
+  it('update_poi patches zone_type alone, preserving the existing shape', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Shifting Zone', x: 0, y: 0, radius: 5, zoneType: 'territory',
+    })).content[0].text)
+    await handleWorldMap(db(), { action: 'update_poi', structureId: created.structureId, zoneType: 'exclusion' })
+    const zones = JSON.parse((await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })).content[0].text)
+    expect(zones.zones[0].zoneType).toBe('exclusion')
+    expect(zones.zones[0].zone.circle.radius).toBe(5)
+  })
+
+  it('update_poi replaces a circle shape with a polygon shape', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Reshaped Zone', x: 0, y: 0, radius: 5, zoneType: 'territory',
+    })).content[0].text)
+    await handleWorldMap(db(), { action: 'update_poi', structureId: created.structureId, polygon: [[0, 0], [5, 0], [5, 5]] })
+    const zones = JSON.parse((await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })).content[0].text)
+    expect(zones.zones[0].zone.type).toBe('polygon')
+  })
+
+  it('query_zone requires worldId, x, and y', async () => {
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('query_zone returns no zones for a point outside every zone', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 4, zoneType: 'territory' })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 0, y: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.zones).toEqual([])
+    expect(body.inPerimeter).toBe(false)
+  })
+
+  it('query_zone finds a circle territory containing the point', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 4, zoneType: 'territory', predatorRef: 'giant_panther' })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 37, y: 73 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.zones).toHaveLength(1)
+    expect(body.zones[0].name).toBe('Panther Range')
+    expect(body.zones[0].zoneType).toBe('territory')
+    expect(body.zones[0].distanceToCenter).toBe(1)
+  })
+
+  it('query_zone finds a polygon zone containing the point', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Sumpfkarren Depths', x: 42, y: 70,
+      polygon: [[40, 68], [44, 68], [44, 72], [40, 72]], zoneType: 'exclusion',
+    })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 41, y: 69 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.zones).toHaveLength(1)
+    expect(body.zones[0].zoneType).toBe('exclusion')
+  })
+
+  it('query_zone sets inPerimeter true for a point within a ring zone band', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Laser-Pylon Perimeter', x: 50, y: 50,
+      ringInner: 18, ringOuter: 22, zoneType: 'perimeter',
+    })
+    const inside = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 70, y: 50 })
+    const insideBody = JSON.parse(inside.content[0].text)
+    expect(insideBody.inPerimeter).toBe(true)
+
+    const outside = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 50, y: 50 })
+    const outsideBody = JSON.parse(outside.content[0].text)
+    expect(outsideBody.inPerimeter).toBe(false)
+  })
+
+  it('query_zone reports multiple overlapping zones', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 10, zoneType: 'territory' })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Broadcast Shadow', x: 36, y: 73, radius: 10, zoneType: 'exclusion' })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 36, y: 73 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zones).toHaveLength(2)
+  })
+
+  it('list_zones requires worldId', async () => {
+    const r = await handleWorldMap(db(), { action: 'list_zones' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('list_zones returns empty for a world with no zones', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.count).toBe(0)
+  })
+
+  it('list_zones ignores plain (non-zone) POIs', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Dark Tower', x: 10, y: 20 })
+    const r = await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.count).toBe(0)
+  })
+
+  it('list_zones filters by zoneType', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 4, zoneType: 'territory' })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Sumpfkarren Depths', x: 42, y: 70, radius: 4, zoneType: 'exclusion' })
+    const r = await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD, zoneType: 'exclusion' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.count).toBe(1)
+    expect(body.zones[0].name).toBe('Sumpfkarren Depths')
+  })
+
+  it('preview overlays a territory zone glyph over the base terrain', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'grass' }] })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 2, zoneType: 'territory' })
+    const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 5, y: 5, width: 1, height: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.ascii).toBe('@')
+  })
+
+  it('preview overlays a perimeter ring glyph and leaves cells outside the band untouched', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 70, y: 50, biome: 'grass' }, { x: 50, y: 50, biome: 'grass' }] })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Perimeter', x: 50, y: 50, ringInner: 18, ringOuter: 22, zoneType: 'perimeter' })
+    const inBand = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 70, y: 50, width: 1, height: 1 })
+    expect(JSON.parse(inBand.content[0].text).ascii).toBe('⚡')
+    const outOfBand = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 50, y: 50, width: 1, height: 1 })
+    expect(JSON.parse(outOfBand.content[0].text).ascii).toBe('.')
+  })
+
+  it('preview does not overlay a broadcast zone (deliberately unrendered)', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'grass' }] })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Broadcast Shadow', x: 5, y: 5, radius: 2, zoneType: 'broadcast' })
+    const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 5, y: 5, width: 1, height: 1 })
+    expect(JSON.parse(r.content[0].text).ascii).toBe('.')
   })
 })
