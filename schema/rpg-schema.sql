@@ -19,11 +19,20 @@ CREATE TABLE IF NOT EXISTS worlds (
 -- ── World State (time_manage) ─────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS world_state (
-  world_id         TEXT PRIMARY KEY,
-  current_date     TEXT NOT NULL DEFAULT '2184-07-15',
-  era              TEXT,
-  tick_speed       TEXT NOT NULL DEFAULT 'realtime',
-  last_advanced_at TEXT,
+  world_id              TEXT PRIMARY KEY,
+  current_date          TEXT NOT NULL DEFAULT '2184-07-15',
+  era                   TEXT,
+  tick_speed            TEXT NOT NULL DEFAULT 'realtime',
+  last_advanced_at      TEXT,
+  -- Production Cycle (#283) — see migration 0013.
+  production_day        INTEGER NOT NULL DEFAULT 0,
+  perimeter_radius      INTEGER,
+  weather               TEXT,
+  hazard_level          TEXT NOT NULL DEFAULT 'standard',
+  encounter_modifier    REAL NOT NULL DEFAULT 0,
+  extraction_window     TEXT NOT NULL DEFAULT 'closed',
+  last_intervention_at  TEXT,
+  production_mood       TEXT NOT NULL DEFAULT 'neutral',
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 
@@ -147,7 +156,10 @@ CREATE TABLE IF NOT EXISTS characters (
   resource_pools                 TEXT DEFAULT '{}',
   background                     TEXT,
   alignment                      TEXT,
-  origin                         TEXT
+  origin                         TEXT,
+  -- Production Cycle (#283) — JSON stat block (days_survived, crates_claimed,
+  -- etc.), see migration 0013.
+  production_state               TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_characters_type ON characters(character_type);
@@ -315,12 +327,31 @@ CREATE TABLE IF NOT EXISTS parties (
   current_poi      TEXT,
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL,
-  last_played_at   TEXT
+  last_played_at   TEXT,
+  -- Party Trust & Betrayal (#285) — see migration 0013. Extends this existing
+  -- table rather than a second, colliding "party" concept.
+  morale           INTEGER NOT NULL DEFAULT 62,
+  cohesion         TEXT NOT NULL DEFAULT 'stable',
+  watch_order      TEXT NOT NULL DEFAULT '[]',
+  current_watch    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_parties_status   ON parties(status);
 CREATE INDEX IF NOT EXISTS idx_parties_world    ON parties(world_id);
 CREATE INDEX IF NOT EXISTS idx_parties_position ON parties(position_x, position_y);
+
+-- Party Trust & Betrayal (#285) — see migration 0013.
+CREATE TABLE IF NOT EXISTS party_trust (
+  id                 TEXT PRIMARY KEY,
+  party_id           TEXT NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+  from_character_id  TEXT NOT NULL,
+  to_character_id    TEXT NOT NULL,
+  trust_score        INTEGER NOT NULL DEFAULT 50,
+  updated_at         TEXT NOT NULL,
+  UNIQUE(party_id, from_character_id, to_character_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_party_trust_party ON party_trust(party_id);
 
 CREATE TABLE IF NOT EXISTS party_members (
   id               TEXT PRIMARY KEY,
@@ -1035,3 +1066,105 @@ CREATE TABLE IF NOT EXISTS entity_knowledge (
 );
 CREATE INDEX IF NOT EXISTS idx_entity_knowledge_entity ON entity_knowledge(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entity_knowledge_topic  ON entity_knowledge(entity_id, topic);
+
+-- ── Production Cycle (#283) ──────────────────────────────────────────────────
+-- See migration 0013. world_state/characters columns are defined inline
+-- above, at their existing table definitions.
+
+CREATE TABLE IF NOT EXISTS production_calendar (
+  id            TEXT PRIMARY KEY,
+  world_id      TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  day           INTEGER NOT NULL,
+  event_type    TEXT NOT NULL,
+  event_data    TEXT,
+  triggered     INTEGER NOT NULL DEFAULT 0,
+  triggered_at  TEXT,
+  resolved      INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(world_id, day, event_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_production_calendar_world_day ON production_calendar(world_id, day);
+
+-- ── Resource Survival (#286) ─────────────────────────────────────────────────
+-- See migration 0013.
+
+CREATE TABLE IF NOT EXISTS resource_inventory (
+  id                 TEXT PRIMARY KEY,
+  world_id           TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  owner_type         TEXT NOT NULL CHECK(owner_type IN ('character', 'party')),
+  owner_id           TEXT NOT NULL,
+  item_name          TEXT NOT NULL,
+  category           TEXT NOT NULL,
+  quantity           INTEGER NOT NULL DEFAULT 1,
+  degradation_timer  REAL,
+  expires_on_day     INTEGER,
+  spoiled            INTEGER NOT NULL DEFAULT 0,
+  acquired_day       INTEGER,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_resource_inventory_owner ON resource_inventory(owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_resource_inventory_world ON resource_inventory(world_id);
+
+CREATE TABLE IF NOT EXISTS resource_owner_state (
+  owner_type        TEXT NOT NULL CHECK(owner_type IN ('character', 'party')),
+  owner_id          TEXT NOT NULL,
+  world_id          TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  days_without_food INTEGER NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL,
+  PRIMARY KEY(owner_type, owner_id)
+);
+
+CREATE TABLE IF NOT EXISTS crate_drops (
+  id          TEXT PRIMARY KEY,
+  world_id    TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  day         INTEGER NOT NULL,
+  x           INTEGER NOT NULL,
+  y           INTEGER NOT NULL,
+  contents    TEXT NOT NULL,
+  claimed     INTEGER NOT NULL DEFAULT 0,
+  claimed_by  TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crate_drops_world_day ON crate_drops(world_id, day);
+
+-- ── Broadcast & Production Intervention (#287) ───────────────────────────────
+-- See migration 0013.
+
+CREATE TABLE IF NOT EXISTS broadcast_approval (
+  character_id  TEXT PRIMARY KEY REFERENCES characters(id) ON DELETE CASCADE,
+  world_id      TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  approval      INTEGER NOT NULL DEFAULT 50,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_approval_world ON broadcast_approval(world_id);
+
+CREATE TABLE IF NOT EXISTS broadcast_votes (
+  id           TEXT PRIMARY KEY,
+  world_id     TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  vote_type    TEXT NOT NULL,
+  day          INTEGER NOT NULL,
+  options      TEXT,
+  result       TEXT,
+  resolved     INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL,
+  resolved_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_votes_world ON broadcast_votes(world_id, resolved);
+
+CREATE TABLE IF NOT EXISTS broadcast_interventions (
+  id                   TEXT PRIMARY KEY,
+  world_id             TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  day                  INTEGER NOT NULL,
+  intervention_type    TEXT NOT NULL,
+  target_character_id  TEXT,
+  details              TEXT,
+  created_at           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_interventions_world ON broadcast_interventions(world_id, day);

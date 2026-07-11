@@ -6,7 +6,7 @@ const SUB_VALUES = [
   'npc', 'session', 'combat', 'combat_action', 'combat_map', 'spawn',
   'strategy', 'turn', 'spatial', 'world_map', 'batch', 'travel',
   'perception', 'scene', 'rest', 'scroll', 'event', 'drama', 'time', 'timeline',
-  'biome', 'encounter',
+  'biome', 'encounter', 'production', 'resource', 'broadcast',
 ]
 
 export const rpgToolDefinitions: any[] = [
