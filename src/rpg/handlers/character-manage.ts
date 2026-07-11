@@ -186,10 +186,23 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
     }
     case 'get': {
       const charId = a.id ?? a.characterId
-      if (!charId) return err('"id" or "characterId" is required')
-      const row = await db.prepare('SELECT * FROM characters WHERE id = ?').bind(charId).first()
-      if (!row) return err(`Character not found: ${charId}`)
-      return ok({ success: true, actionType: 'get', character: parseChar(row as Record<string, unknown>) })
+      if (!charId && !a.name) return err('"id", "characterId", or "name" is required')
+
+      if (charId) {
+        const row = await db.prepare('SELECT * FROM characters WHERE id = ?').bind(charId).first()
+        if (!row) return err(`Character not found: ${charId}`)
+        return ok({ success: true, actionType: 'get', character: parseChar(row as Record<string, unknown>) })
+      }
+
+      // #309 — lookup by exact name when no id/characterId is given.
+      const { results } = await db.prepare('SELECT * FROM characters WHERE name = ? LIMIT 2').bind(a.name).all()
+      if (results.length === 0) return err(`Character not found: ${a.name}`)
+      if (results.length > 1) {
+        return err(`Multiple characters with name '${a.name}' exist. Use "id"/"characterId" for an unambiguous lookup.`, {
+          characters: results.map(r => parseChar(r as Record<string, unknown>)),
+        })
+      }
+      return ok({ success: true, actionType: 'get', character: parseChar(results[0] as Record<string, unknown>) })
     }
     case 'list': {
       let query = 'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, world_id, born FROM characters'

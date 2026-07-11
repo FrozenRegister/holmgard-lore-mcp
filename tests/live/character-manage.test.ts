@@ -69,4 +69,26 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     const found = listRes.characters.find((c: { id: string }) => c.id === bornId)
     expect(found.born).toBe('2166-03-10')
   })
+
+  it('get retrieves a character by exact name (#309)', async () => {
+    const name = `Unique Name ${uid()}`
+    const charId = await createChar({ name })
+
+    const getRes = parseResult(await tool('character_manage', { action: 'get', name }))
+    expect(getRes.success).toBe(true)
+    expect(getRes.character.id).toBe(charId)
+  })
+
+  it('get by name with duplicates returns a warning and both matches (#309)', async () => {
+    const name = `Duplicate Name ${uid()}`
+    const id1 = await createChar({ name })
+    const id2 = await createChar({ name })
+
+    const getRes = parseResult(await tool('character_manage', { action: 'get', name }))
+    expect(getRes.error).toBe(true)
+    expect(getRes.message).toContain('Multiple characters')
+    const ids = getRes.characters.map((c: { id: string }) => c.id)
+    expect(ids).toContain(id1)
+    expect(ids).toContain(id2)
+  })
 })

@@ -188,6 +188,32 @@ describe('character_manage tool', () => {
     expect(r.message).toContain('required')
   })
 
+  it('get retrieves character by exact name (#309)', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Aragorn' })
+    const r = await callTool('character_manage', { action: 'get', name: 'Aragorn' })
+    expect(r.success).toBe(true)
+    expect(r.character.name).toBe('Aragorn')
+    expect(r.character.id).toBe(created.characterId)
+  })
+
+  it('get by name with no match returns error (#309)', async () => {
+    const r = await callTool('character_manage', { action: 'get', name: 'NonexistentCharacter' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('not found')
+  })
+
+  it('get by name with duplicate matches returns both characters with a warning (#309)', async () => {
+    const char1 = await callTool('character_manage', { action: 'create', name: 'Legolas' })
+    const char2 = await callTool('character_manage', { action: 'create', name: 'Legolas' })
+    const r = await callTool('character_manage', { action: 'get', name: 'Legolas' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('Multiple characters')
+    expect(r.characters).toHaveLength(2)
+    const charIds = (r.characters as Array<{ id: string }>).map(c => c.id)
+    expect(charIds).toContain(char1.characterId)
+    expect(charIds).toContain(char2.characterId)
+  })
+
   it('list returns all characters', async () => {
     await callTool('character_manage', { action: 'create', name: 'Alice' })
     await callTool('character_manage', { action: 'create', name: 'Bob' })
