@@ -34,7 +34,7 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            async function tryMerge(prNumber, headSha) {
+            async function tryMerge(prNumber, headSha, headRef) {
               // Fetch all check runs for this commit (excludes this job itself by name)
               const { data } = await github.rest.checks.listForRef({
                 owner: context.repo.owner,
@@ -93,11 +93,24 @@ jobs:
                   merge_method: 'squash',
                 })
                 console.log(`PR #${prNumber}: merged successfully`)
-                return true
               } catch (e) {
                 console.log(`PR #${prNumber}: merge failed (may already be merged): ${e.message}`)
                 return false
               }
+
+              // Delete the source branch now that it's merged — best-effort;
+              // a missing headRef (shouldn't happen), a protected branch, or
+              // a branch already deleted by something else must never fail
+              // this job, since the merge itself already succeeded.
+              if (headRef) {
+                try {
+                  await github.rest.git.deleteRef({ owner: context.repo.owner, repo: context.repo.repo, ref: `heads/${headRef}` })
+                  console.log(`PR #${prNumber}: deleted branch ${headRef}`)
+                } catch (e) {
+                  console.log(`PR #${prNumber}: could not delete branch ${headRef}: ${e.message}`)
+                }
+              }
+              return true
             }
 
             try {
@@ -112,12 +125,12 @@ jobs:
                 const candidates = prs.filter(p => !p.draft && p.labels.some(l => l.name === 'auto-merge'))
                 console.log(`Scheduled sweep: ${candidates.length} open PR(s) with the auto-merge label`)
                 for (const pr of candidates) {
-                  await tryMerge(pr.number, pr.head.sha)
+                  await tryMerge(pr.number, pr.head.sha, pr.head.ref)
                 }
                 return
               }
 
-              let prNumber, headSha
+              let prNumber, headSha, headRef
 
               if (context.eventName === 'pull_request') {
                 // Triggered by label being applied to PR
@@ -131,6 +144,7 @@ jobs:
                 }
                 prNumber = context.payload.pull_request.number
                 headSha = context.payload.pull_request.head.sha
+                headRef = context.payload.pull_request.head.ref
                 console.log(`Triggered by label on PR #${prNumber} at ${headSha}`)
               } else {
                 // Triggered by CI completing — find an open non-draft PR at this SHA with auto-merge label
@@ -162,10 +176,11 @@ jobs:
                 }
                 prNumber = pr.number
                 headSha = sha
+                headRef = branch
                 console.log(`Found matching PR #${prNumber}`)
               }
 
-              await tryMerge(prNumber, headSha)
+              await tryMerge(prNumber, headSha, headRef)
             } catch (e) {
               console.error(`Error in auto-merge: ${e.message}`)
               console.error(e.stack)
