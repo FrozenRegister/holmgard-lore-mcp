@@ -194,6 +194,26 @@ describe('handleTimeManage', () => {
     expect(body.next_birthday).toBe('2185-03-01')
   })
 
+  it('get_age handles year-only born date (#303): years correct, months/days/next_birthday null', async () => {
+    await seedWorld('w-partial', '2184-07-15')
+    await seedChar('c-partial', '2155') // year-only, ~29 years old
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_age', world_id: 'w-partial', character_id: 'c-partial' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.age.years).toBe(29)
+    expect(body.age.months).toBeNull()
+    expect(body.age.days).toBeNull()
+    expect(body.next_birthday).toBeNull()
+    expect(body.is_birthday_today).toBe(false)
+    expect(body.is_partial_date).toBe(true)
+  })
+
+  it('get_age reports is_partial_date false for a full born date', async () => {
+    await seedWorld('w-full', '2184-07-15')
+    await seedChar('c-full', '2166-03-10')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_age', world_id: 'w-full', character_id: 'c-full' })).content[0].text)
+    expect(body.is_partial_date).toBe(false)
+  })
+
   it('get_age returns error for unknown character', async () => {
     await seedWorld('w-age3', '2184-07-15')
     const body = JSON.parse((await handleTimeManage(db(), { action: 'get_age', world_id: 'w-age3', character_id: 'no-char' })).content[0].text)
@@ -267,6 +287,13 @@ describe('handleTimeManage', () => {
     await seedWorld('w-noborn', '2184-07-01')
     await seedChar('c-noborn2', null)
     const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-noborn', by: '30 days' })).content[0].text)
+    expect(body.birthdays_triggered).toHaveLength(0)
+  })
+
+  it('advance never triggers a birthday for a year-only born date (#303)', async () => {
+    await seedWorld('w-partial-adv', '2184-07-01')
+    await seedChar('c-partial-adv', '2155') // year-only — no month/day to match against any range
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-partial-adv', by: '60 days' })).content[0].text)
     expect(body.birthdays_triggered).toHaveLength(0)
   })
 

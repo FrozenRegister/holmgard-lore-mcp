@@ -60,4 +60,13 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     expect(listRes.activeCharacterId).toBe(activeId)
     expect(listRes.passengers.map((p: { id: string }) => p.id)).toEqual([passengerId])
   })
+
+  it('list includes the born field (#302)', async () => {
+    const bornId = await createChar({ name: `Born ${uid()}`, born: '2166-03-10' })
+
+    const listRes = parseResult(await tool('character_manage', { action: 'list', limit: 200 }))
+    expect(listRes.success).toBe(true)
+    const found = listRes.characters.find((c: { id: string }) => c.id === bornId)
+    expect(found.born).toBe('2166-03-10')
+  })
 })
