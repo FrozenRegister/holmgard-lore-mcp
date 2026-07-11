@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Visby",
+    "lat": 57.6349,
+    "lon": 18.2948,
+    "kind": "port",
+    "q": 0,
+    "r": 0
+  },
+  {
+    "name": "Roma Kloster",
+    "lat": 57.5388,
+    "lon": 18.4677,
+    "kind": "landmark",
+    "q": 1,
+    "r": 2
+  },
+  {
+    "name": "Fårösund",
+    "lat": 57.8607,
+    "lon": 18.9757,
+    "kind": "crossing",
+    "q": 11,
+    "r": -6
+  },
+  {
+    "name": "Klintehamn",
+    "lat": 57.3897,
+    "lon": 18.2033,
+    "kind": "port",
+    "q": -4,
+    "r": 6
+  }
+]
