@@ -621,6 +621,8 @@ const CONTINUITY_MANAGE_SCHEMA = {
         at: { type: 'string', description: 'ISO datetime of the event (defaults to now)' },
         date: { type: 'string', description: 'Alias for at' },
         source: { type: 'string', description: 'Accepted but currently unused — informational provenance note.' },
+        world_id: { type: 'string', description: 'D1 world ID — when supplied, the event is also written to the timeline_events D1 table (dual-write alongside the KV event log), returned as d1_event_id' },
+        entity_id: { type: 'string', description: 'D1 character ID the event refers to — validated as a foreign key against the characters table when world_id is supplied' },
       },
       additionalProperties: false,
     },

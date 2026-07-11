@@ -1,0 +1,4 @@
+### Fix — append_event schema didn't advertise world_id/entity_id (#267)
+- `continuity_manage`'s published `append_event` schema never listed `world_id`/`entity_id` as valid parameters (and had `additionalProperties: false`), even though the handler has fully supported dual-writing to the D1 `timeline_events` table since #223. Callers following the documented API had no way to discover these parameters, so `d1_event_id` always came back `null` in practice.
+- The D1 write path itself was already correct and tested — this was purely a schema/handler drift, the same class of bug fixed for 5 other tools in the `type: 'object'` root-schema fix.
+- Adds `world_id`/`entity_id` to the advertised schema, a regression test asserting they're present in `tools/list`, and first-ever live coverage for this schema shape.

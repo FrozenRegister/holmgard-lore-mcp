@@ -66,6 +66,20 @@ describe('append_event', () => {
     })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.entity_key).toBe('character:test')
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+
+    const row = await env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(res.result.metadata.d1_event_id).first()
+    expect(row).toBeTruthy()
+  })
+
+  it('advertises world_id and entity_id in the published append_event schema (#267)', async () => {
+    const res = await rpc('tools/list')
+    const continuityManage = res.result.tools.find((t: { name: string }) => t.name === 'continuity_manage')
+    const appendEventBranch = continuityManage.inputSchema.oneOf.find(
+      (branch: { properties: { action: { const: string } } }) => branch.properties.action.const === 'append_event'
+    )
+    expect(appendEventBranch.properties.world_id).toBeDefined()
+    expect(appendEventBranch.properties.entity_id).toBeDefined()
   })
 
   it('is idempotent within 1s for identical verb+object', async () => {
