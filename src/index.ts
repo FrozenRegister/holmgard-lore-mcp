@@ -15,6 +15,7 @@ import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
 import { setToolIndex, setSchemaIndex } from './rpg/registry'
 import { mathManageSchemaDoc } from './rpg/definitions'
+import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 
@@ -193,6 +194,23 @@ app.post('/mcp', async (c) => {
 
       const { text, meta } = parseKvEntry(raw)
       return c.json(makeResult(id, { key, text, meta }), 200)
+    }
+
+    if (method === 'get_world_biomes') {
+      if (!getIsAuthenticated(c)) {
+        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+      }
+      const worldId = (params?.worldId ?? '').toString()
+      if (!worldId) return c.json(makeError(id, -32602, 'Invalid params: missing worldId'), 200)
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+
+      // Reuses biome-manage.ts's existing `list` action — one handler, two
+      // envelopes (content-block for tools/call via rpg{sub:'biome'}, clean
+      // structured JSON here) — same pattern as get_lore/list_topics.
+      const listResult = await handleBiomeManage(c.env, { action: 'list', worldId })
+      const parsed = JSON.parse(listResult.content[0].text) as { error?: boolean; message?: string; biomes?: unknown[]; count?: number }
+      if (parsed.error) return c.json(makeError(id, -32000, parsed.message ?? 'Failed to list biomes', null), 200)
+      return c.json(makeResult(id, { worldId, biomes: parsed.biomes, count: parsed.count }), 200)
     }
 
     if (method === 'get_lore_batch') {
