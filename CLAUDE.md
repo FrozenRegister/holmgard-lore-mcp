@@ -109,6 +109,22 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **Full Issue Resolution Protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) for the complete workflow (branching, testing, documentation, PR creation).
 
+### Delegation triage — when an issue is a cheaper-agent candidate
+
+**Whenever you pick up a GitHub Issue in this repo — for any reason, not just when explicitly asked — classify it before writing code.** Some issues are worth executing directly; others are pure spec-following work that a cheaper/faster agent (DeepSeek v4 Pro, DeepSeek v4 Flash, GLM-5.2, Kimi K2.5, Kimi K2.7-Code, MiMo-v2.5, MiMo-v2.5-Pro, MiniMax-M3, Qwen3.7-Max, Qwen3.7-Plus, or similar) can execute just as well once the judgment calls are already made. Getting this classification wrong in the "delegate" direction is expensive — the failure mode isn't slightly-worse code, it's a wrong architectural call (e.g. picking D1 where KV belongs, or guess-backfilling narrative data) that then needs a second pass to catch.
+
+**Route to a cheaper agent when the issue itself is the spec** — every open question is already answered in the issue body, the task is "follow this pattern N times" (e.g. #66's file-by-file integration test list, each with a named pattern to copy), and it doesn't touch:
+
+- The KV vs. D1 storage-selection decision (`docs/storage-selection-kv-vs-d1.md`)
+- Migration safety / schema design (self-referential FKs, `ALTER TABLE` quirks under D1/miniflare)
+- Data backfill or repair of production narrative content (guessing here breaks a session, not just a test)
+- API surface placement (`MCP` vs. `/admin/*` — see the convention below)
+- Any question the issue itself flags as open/undecided (e.g. #210's game-balance questions)
+
+**Keep it with yourself (or escalate to a human decision via `AskUserQuestion`) when the remaining work is judgment, not typing** — anything on the list above, or any issue where you'd have to *decide* something not already decided by the issue text, prior art in the codebase, or this file. When in doubt, the cost asymmetry favors keeping it: a cheap agent executing a wrong call is more expensive to unwind than the tokens saved by delegating.
+
+If you do delegate, the handoff prompt needs to carry the same context a fresh reader would need — file paths, the exact pattern to copy, and which of the constraints above are already resolved for this task — not just the issue text pasted verbatim.
+
 ## Architecture
 
 **Single file worker**: all logic lives in `src/index.ts` — a [Hono](https://hono.dev/) app exported as the Workers default export.
