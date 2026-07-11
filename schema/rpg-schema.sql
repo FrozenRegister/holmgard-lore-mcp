@@ -51,13 +51,16 @@ CREATE TABLE IF NOT EXISTS node_networks (
 CREATE INDEX IF NOT EXISTS idx_node_networks_coords ON node_networks(center_x, center_y);
 CREATE INDEX IF NOT EXISTS idx_node_networks_world  ON node_networks(world_id);
 
+-- biome_context has no CHECK constraint (#290) — validated at the
+-- application layer against the per-world dynamic biome registry
+-- (biome-manage.ts's getBiomeRegistry), same pattern as world_map.ts's
+-- tiles.biome. See migration 0015 for the table-rebuild history (SQLite
+-- can't drop a CHECK constraint in place).
 CREATE TABLE IF NOT EXISTS room_nodes (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 100),
   base_description TEXT NOT NULL CHECK(length(trim(base_description)) >= 10 AND length(base_description) <= 2000),
-  biome_context    TEXT NOT NULL CHECK(biome_context IN (
-    'forest', 'mountain', 'urban', 'dungeon', 'coastal', 'cavern', 'divine', 'arcane'
-  )),
+  biome_context    TEXT NOT NULL,
   atmospherics     TEXT NOT NULL DEFAULT '[]',
   exits            TEXT NOT NULL DEFAULT '[]',
   entity_ids       TEXT NOT NULL DEFAULT '[]',
@@ -67,13 +70,15 @@ CREATE TABLE IF NOT EXISTS room_nodes (
   last_visited_at  TEXT,
   local_x          INTEGER DEFAULT 0,
   local_y          INTEGER DEFAULT 0,
-  network_id       TEXT REFERENCES node_networks(id) ON DELETE SET NULL
+  network_id       TEXT REFERENCES node_networks(id) ON DELETE SET NULL,
+  world_id         TEXT REFERENCES worlds(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_room_nodes_biome        ON room_nodes(biome_context);
 CREATE INDEX IF NOT EXISTS idx_room_nodes_visited      ON room_nodes(last_visited_at DESC);
 CREATE INDEX IF NOT EXISTS idx_room_nodes_local_coords ON room_nodes(local_x, local_y);
 CREATE INDEX IF NOT EXISTS idx_room_nodes_network      ON room_nodes(network_id);
+CREATE INDEX IF NOT EXISTS idx_room_nodes_world        ON room_nodes(world_id);
 
 -- Nations must be created before regions (regions.owner_nation_id → nations)
 CREATE TABLE IF NOT EXISTS nations (
