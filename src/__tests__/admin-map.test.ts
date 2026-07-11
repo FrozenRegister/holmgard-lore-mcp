@@ -128,7 +128,7 @@ describe('admin map routes', () => {
       expect(body.count).toBe(2)
     })
 
-    it('upserts hexes on repeated push (INSERT OR REPLACE)', async () => {
+    it('upserts hexes on repeated push', async () => {
       const hexes = [{ q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'v1' }]
       await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
 
@@ -146,6 +146,43 @@ describe('admin map routes', () => {
         .bind('test-map').first<{ terrain: string; label: string }>()
       expect(row?.terrain).toBe('mountains')
       expect(row?.label).toBe('Rockpeak')
+    })
+
+    // ── RPG-owned column preservation (#321 — fixes INSERT OR REPLACE wiping
+    // world_id/biome on every editor push; see docs/issues/HIGH-map-push-
+    // insert-or-replace-wipes-rpg-columns.md) ──────────────────────────────
+    it('preserves an existing world_id/biome across a repeated push that omits them', async () => {
+      await createWorld('world-preserve')
+      await env.RPG_DB.prepare(
+        "INSERT INTO hexes (q, r, map_id, terrain, world_id, biome, updated_at) VALUES (0, 0, 'preserve-test', 'forest', ?, 'forest', datetime('now'))"
+      ).bind('world-preserve').run()
+
+      const res = await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'preserve-test', hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Renamed', description: '' }] },
+        ADMIN_SECRET,
+      )
+      expect(res.status).toBe(200)
+
+      const row = await env.RPG_DB.prepare('SELECT world_id, biome, label FROM hexes WHERE q=0 AND r=0 AND map_id=?')
+        .bind('preserve-test').first<{ world_id: string; biome: string; label: string }>()
+      expect(row?.world_id).toBe('world-preserve')
+      expect(row?.biome).toBe('forest')
+      expect(row?.label).toBe('Renamed')
+    })
+
+    it('sets worldId/biome from the editor push when provided', async () => {
+      await createWorld('world-set')
+      const res = await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'set-test', hexes: [{ q: 0, r: 0, terrain: 'plains', name: 'Greenfield', description: '', worldId: 'world-set', biome: 'plains' }] },
+        ADMIN_SECRET,
+      )
+      expect(res.status).toBe(200)
+      const row = await env.RPG_DB.prepare('SELECT world_id, biome FROM hexes WHERE q=0 AND r=0 AND map_id=?')
+        .bind('set-test').first<{ world_id: string; biome: string }>()
+      expect(row?.world_id).toBe('world-set')
+      expect(row?.biome).toBe('plains')
     })
 
     it('defaults map_id to "main" when mapId is absent', async () => {
@@ -231,7 +268,7 @@ describe('admin map routes', () => {
       expect(body.count).toBe(2)
     })
 
-    it('upserts landmarks on repeated push (INSERT OR REPLACE)', async () => {
+    it('upserts landmarks on repeated push', async () => {
       const base = { id: 'lm-1', q: 0, r: 0, name: 'Thornkeep', type: 'castle', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }
       await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks: [base] }, ADMIN_SECRET)
 
@@ -243,6 +280,31 @@ describe('admin map routes', () => {
         .bind('lm-1').first<{ name: string; category: string }>()
       expect(row?.name).toBe('Thornkeep Ruins')
       expect(row?.category).toBe('ruin')
+    })
+
+    // ── RPG-owned column preservation (#321 — see docs/issues/HIGH-map-push-
+    // insert-or-replace-wipes-rpg-columns.md) ──────────────────────────────
+    it('preserves world_id/zone_* columns across a repeated push that only touches editor-owned fields', async () => {
+      await createWorld('world-lm-preserve')
+      await env.RPG_DB.prepare(
+        `INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, zone_type, zone_shape, threat_level, updated_at)
+         VALUES ('lm-zone-1', 'lm-preserve-test', 0, 0, 'Wolf Den', 'zone', ?, 'territory', '{"type":"circle","radius":3}', 4, datetime('now'))`
+      ).bind('world-lm-preserve').run()
+
+      const res = await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'lm-preserve-test', landmarks: [{ id: 'lm-zone-1', q: 0, r: 0, name: 'Wolf Den Renamed', type: 'zone', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }] },
+        ADMIN_SECRET,
+      )
+      expect(res.status).toBe(200)
+
+      const row = await env.RPG_DB.prepare('SELECT name, world_id, zone_type, zone_shape, threat_level FROM landmarks WHERE id=?')
+        .bind('lm-zone-1').first<{ name: string; world_id: string; zone_type: string; zone_shape: string; threat_level: number }>()
+      expect(row?.name).toBe('Wolf Den Renamed')
+      expect(row?.world_id).toBe('world-lm-preserve')
+      expect(row?.zone_type).toBe('territory')
+      expect(row?.zone_shape).toBe('{"type":"circle","radius":3}')
+      expect(row?.threat_level).toBe(4)
     })
 
     it('defaults map_id to "main" when mapId is absent', async () => {

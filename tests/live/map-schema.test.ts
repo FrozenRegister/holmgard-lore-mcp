@@ -37,6 +37,7 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('map schema world-scoping (#319)'
     expect(body.hexes).toHaveLength(1)
     expect(body.hexes[0]).toEqual({
       mapId, q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'Dense forest',
+      worldId: null, biome: null,
     })
     expect(body.landmarks).toHaveLength(1)
     const lm = body.landmarks[0] as Record<string, unknown>
@@ -44,5 +45,20 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('map schema world-scoping (#319)'
     expect(lm.name).toBe('Old Watchtower')
     expect(lm.type).toBe('poi')
     expect(lm.notes).toBe('A ruin.')
+  })
+
+  it('push-hexes accepts worldId/biome and readback round-trips them (#321)', async () => {
+    const mapId = `test-map-${uid()}`
+    const pushRes = await adminPost('/admin/map/push-hexes', {
+      mapId,
+      hexes: [{ q: 0, r: 0, terrain: 'plains', name: 'Greenfield', description: '', worldId: `nonexistent-${uid()}`, biome: 'plains' }],
+    })
+    expect(pushRes.ok).toBe(true)
+
+    const body = await readback(mapId)
+    expect(body.hexes).toHaveLength(1)
+    const hex = body.hexes[0] as Record<string, unknown>
+    expect(hex.biome).toBe('plains')
+    expect(typeof hex.worldId).toBe('string')
   })
 })
