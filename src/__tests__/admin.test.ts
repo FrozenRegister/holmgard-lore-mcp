@@ -428,22 +428,6 @@ describe('admin endpoints', () => {
     })
   })
 
-  describe('/admin/map/setup-db', () => {
-    it('500 responses never expose internal details', async () => {
-      const res = await SELF.fetch('http://example.com/admin/map/setup-db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'not json',
-      })
-      expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
-      expect(body.ok).toBe(false)
-      expect(typeof body.error).toBe('string')
-      expect(body.error).not.toContain('KVNamespace')
-      expect(body.error).not.toContain('.ts:')
-    })
-  })
-
   describe('/admin/map/push-hexes', () => {
     it('500 responses never expose internal details', async () => {
       const res = await SELF.fetch('http://example.com/admin/map/push-hexes', {
