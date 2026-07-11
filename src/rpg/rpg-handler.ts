@@ -76,6 +76,11 @@ const SUB_MAP: Record<string, RpgFn> = {
   batch:         handleBatchManage,
   travel:        handleTravelManage,
   perception:    handlePerceptionManage,
+  // #335 — "stealth" is the name narrators reach for (and what #285's own
+  // issue title used), but the actual mechanic (stealth_check) lives under
+  // perception's action set, not a separate handler. Alias the sub name
+  // rather than duplicating/splitting the handler.
+  stealth:       handlePerceptionManage,
   scene:         handleSceneManage,
   rest:          handleRestManage,
   scroll:        handleScrollManage,
