@@ -91,4 +91,21 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     expect(ids).toContain(id1)
     expect(ids).toContain(id2)
   })
+
+  it('recompute_derived recalculates ac/perception_bonus/stealth_bonus from stats (#266)', async () => {
+    const charId = await createChar({
+      name: `Recompute ${uid()}`,
+      stats: { str: 10, dex: 12, con: 10, int: 10, wis: 16, cha: 10 },
+      ac: 999, perceptionBonus: 999, stealthBonus: 999,
+    })
+
+    const recomputeRes = parseResult(await tool('character_manage', { action: 'recompute_derived', characterId: charId }))
+    expect(recomputeRes.success).toBe(true)
+    expect(recomputeRes.charactersUpdated).toBe(1)
+
+    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    expect(getRes.character.ac).toBe(11) // 10 + (12-10)/2
+    expect(getRes.character.perception_bonus).toBe(3) // (16-10)/2
+    expect(getRes.character.stealth_bonus).toBe(1) // (12-10)/2
+  })
 })

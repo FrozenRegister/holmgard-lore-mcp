@@ -967,6 +967,66 @@ describe('character_manage tool', () => {
     expect(char.character.stealth_bonus).toBe(5)
   })
 
+  // ── recompute_derived (#266) ──────────────────────────────────────────────
+
+  it('recompute_derived requires id/characterId or worldId', async () => {
+    const r = await callTool('character_manage', { action: 'recompute_derived' })
+    expect(r.error).toBe(true)
+  })
+
+  it('recompute_derived returns not found for an unknown characterId', async () => {
+    const r = await callTool('character_manage', { action: 'recompute_derived', characterId: 'nonexistent' })
+    expect(r.error).toBe(true)
+  })
+
+  it('recompute_derived recalculates ac/perception_bonus/stealth_bonus from current stats for a single character', async () => {
+    const stats = { str: 10, dex: 12, con: 18, int: 16, wis: 16, cha: 18 }
+    const created = await callTool('character_manage', { action: 'create', name: 'Stale Stats', stats })
+    // Simulate a character whose level was restored after corruption but whose
+    // derived combat stats were never re-synced — directly force them stale.
+    await env.RPG_DB.prepare('UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE id = ?')
+      .bind(created.characterId).run()
+
+    const r = await callTool('character_manage', { action: 'recompute_derived', characterId: created.characterId })
+    expect(r.success).toBe(true)
+    expect(r.charactersUpdated).toBe(1)
+    expect(r.characterIds).toEqual([created.characterId])
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.ac).toBe(11) // 10 + (12-10)/2 = 11
+    expect(char.character.perception_bonus).toBe(3) // (16-10)/2 = 3
+    expect(char.character.stealth_bonus).toBe(1) // (12-10)/2 = 1
+  })
+
+  it('recompute_derived bulk-updates every character in a worldId', async () => {
+    const a = await callTool('character_manage', {
+      action: 'create', name: 'World Char A', worldId: 'world-recompute', stats: { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 },
+    })
+    const b = await callTool('character_manage', {
+      action: 'create', name: 'World Char B', worldId: 'world-recompute', stats: { str: 10, dex: 8, con: 10, int: 10, wis: 18, cha: 10 },
+    })
+    await env.RPG_DB.prepare('UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE world_id = ?')
+      .bind('world-recompute').run()
+
+    const r = await callTool('character_manage', { action: 'recompute_derived', worldId: 'world-recompute' })
+    expect(r.success).toBe(true)
+    expect(r.charactersUpdated).toBe(2)
+    expect(r.characterIds.sort()).toEqual([a.characterId, b.characterId].sort())
+
+    const charA = await callTool('character_manage', { action: 'get', id: a.characterId })
+    const charB = await callTool('character_manage', { action: 'get', id: b.characterId })
+    expect(charA.character.ac).toBe(12) // 10 + (14-10)/2
+    expect(charB.character.ac).toBe(9)  // 10 + (8-10)/2
+    expect(charB.character.perception_bonus).toBe(4) // (18-10)/2
+  })
+
+  it('recompute_derived returns charactersUpdated: 0 for a worldId with no matching characters', async () => {
+    const r = await callTool('character_manage', { action: 'recompute_derived', worldId: 'no-such-world' })
+    expect(r.success).toBe(true)
+    expect(r.charactersUpdated).toBe(0)
+    expect(r.characterIds).toEqual([])
+  })
+
   // ── PATCH Semantics (Preserve Existing Fields) ────────────────────────────
 
   it('update with only stats preserves level and other fields', async () => {
