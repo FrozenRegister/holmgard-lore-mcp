@@ -199,6 +199,18 @@ describe('character_manage tool', () => {
     expect(r.characters).toBeInstanceOf(Array)
   })
 
+  it('list includes born field (#302)', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Dated Dave', born: '2166-03-10' })
+    await callTool('character_manage', { action: 'create', name: 'Undated Uma' })
+
+    const r = await callTool('character_manage', { action: 'list' })
+    expect(r.success).toBe(true)
+    const dave = r.characters.find((c: any) => c.name === 'Dated Dave')
+    const uma = r.characters.find((c: any) => c.name === 'Undated Uma')
+    expect(dave.born).toBe('2166-03-10')
+    expect(uma.born).toBeNull()
+  })
+
   it('list respects limit parameter', async () => {
     for (let i = 0; i < 5; i++) {
       await callTool('character_manage', { action: 'create', name: `Char${i}` })

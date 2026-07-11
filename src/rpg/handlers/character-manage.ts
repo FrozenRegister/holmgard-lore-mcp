@@ -192,7 +192,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       return ok({ success: true, actionType: 'get', character: parseChar(row as Record<string, unknown>) })
     }
     case 'list': {
-      let query = 'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, world_id FROM characters'
+      let query = 'SELECT id, name, character_type, character_class, race, level, hp, max_hp, ac, world_id, born FROM characters'
       const binds: unknown[] = []
       const conditions: string[] = []
       if (a.characterTypeFilter) { conditions.push('character_type = ?'); binds.push(a.characterTypeFilter) }

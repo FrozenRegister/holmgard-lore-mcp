@@ -98,6 +98,7 @@ function season(month: number): string {
 
 function birthdayInRange(born: string, fromDate: string, toDate: string): boolean {
   const [, birthMonth, birthDay] = parseDateParts(born)
+  if (birthMonth === undefined || birthDay === undefined) return false
   const [fy] = parseDateParts(fromDate)
   const [ty] = parseDateParts(toDate)
   for (let y = fy; y <= ty; y++) {
@@ -107,17 +108,23 @@ function birthdayInRange(born: string, fromDate: string, toDate: string): boolea
   return false
 }
 
-function nextBirthday(born: string, currentDate: string): string {
-  const [cy] = parseDateParts(currentDate)
+function nextBirthday(born: string, currentDate: string): string | null {
   const [, birthMonth, birthDay] = parseDateParts(born)
+  if (birthMonth === undefined || birthDay === undefined) return null
+  const [cy] = parseDateParts(currentDate)
   const bdayThisYear = `${cy}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`
   if (bdayThisYear >= currentDate) return bdayThisYear
   return `${cy + 1}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`
 }
 
-function computeAge(born: string, currentDate: string): { years: number; months: number; days: number } {
+function computeAge(born: string, currentDate: string): { years: number; months: number | null; days: number | null } {
   const [by, bm, bd] = parseDateParts(born)
   const [cy, cm, cd] = parseDateParts(currentDate)
+
+  if (bm === undefined || bd === undefined) {
+    // Year-only born date — month/day can't be computed, only the year delta.
+    return { years: cy - by, months: null, days: null }
+  }
 
   let years = cy - by
   let months = cm - bm
@@ -210,7 +217,8 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       }
       const age = computeAge(char.born, ws.current_date)
       const bday = nextBirthday(char.born, ws.current_date)
-      const isToday = ws.current_date.slice(5) === char.born.slice(5)
+      const isPartialDate = bday === null
+      const isToday = !isPartialDate && ws.current_date.slice(5) === char.born.slice(5)
       return ok({
         success: true, actionType: 'get_age',
         character: char.name, character_id: char.id,
@@ -218,6 +226,7 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         age,
         next_birthday: bday,
         is_birthday_today: isToday,
+        is_partial_date: isPartialDate,
       })
     }
 
