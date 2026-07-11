@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import { syncCharacterToKv } from '../utils/character-sync'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
@@ -19,6 +19,7 @@ const ALIASES: Record<string, CharAction> = {
   snap: 'snapshot', save_state: 'snapshot',
   switch: 'activate', take_control: 'activate', possess: 'activate',
   passengers: 'list_passengers', list_dormant: 'list_passengers', co_habitants: 'list_passengers',
+  recompute: 'recompute_derived', refresh_derived: 'recompute_derived', sync_derived_stats: 'recompute_derived',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -273,6 +274,36 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (!charId) return err('"id" or "characterId" is required')
       await db.prepare('DELETE FROM characters WHERE id = ?').bind(charId).run()
       return ok({ success: true, actionType: 'delete', characterId: charId })
+    }
+    case 'recompute_derived': {
+      // #266 — ac/perception_bonus/stealth_bonus are real, explicitly-stored
+      // columns (not computed on write), so once a character's ability
+      // scores change — or, as with the Calder cast, once corrupted rows get
+      // their level restored without anyone re-deriving these three fields —
+      // they go stale. This recomputes them from each character's own
+      // already-stored `stats` using the exact formula parseChar() already
+      // uses as its *display-only* fallback (10+DEXmod, WISmod, DEXmod),
+      // and persists the result. Pure arithmetic over data that already
+      // exists — no narrative guessing involved.
+      const charId = a.id ?? a.characterId
+      if (!charId && !a.worldId) return err('"id"/"characterId", or "worldId" for a bulk recompute, is required')
+      let query = 'SELECT id, stats FROM characters'
+      const binds: unknown[] = []
+      if (charId) { query += ' WHERE id = ?'; binds.push(charId) }
+      else { query += ' WHERE world_id = ?'; binds.push(a.worldId) }
+      const { results } = await db.prepare(query).bind(...binds).all() as { results: Array<{ id: string; stats: string }> }
+      if (charId && results.length === 0) return err(`Character not found: ${charId}`)
+      const characterIds: string[] = []
+      for (const row of results) {
+        const stats = JSON.parse(row.stats) as { dex: number; wis: number }
+        const dexMod = abilityModifier(stats.dex)
+        const wisMod = abilityModifier(stats.wis)
+        await db.prepare('UPDATE characters SET ac = ?, perception_bonus = ?, stealth_bonus = ?, updated_at = ? WHERE id = ?')
+          .bind(10 + dexMod, wisMod, dexMod, now, row.id).run()
+        await syncCharacterToKv(env, row.id)
+        characterIds.push(row.id)
+      }
+      return ok({ success: true, actionType: 'recompute_derived', charactersUpdated: characterIds.length, characterIds })
     }
     case 'add_xp': {
       const charId = a.id ?? a.characterId
