@@ -250,6 +250,23 @@ CREATE TABLE IF NOT EXISTS biomes (
 
 CREATE INDEX IF NOT EXISTS idx_biomes_world ON biomes(world_id);
 
+-- Dynamic per-world zone-type registry (#320 follow-up) — see migration 0020.
+-- glyph is nullable: a zone type with no glyph renders no overlay in preview
+-- at all (deliberately informational-only, e.g. 'broadcast').
+CREATE TABLE IF NOT EXISTS zone_types (
+  id          TEXT PRIMARY KEY,
+  world_id    TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  glyph       TEXT,
+  color_hex   TEXT,
+  description TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  UNIQUE(world_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_zone_types_world ON zone_types(world_id);
+
 -- Encounter resolution engine (#280) — see migration 0012.
 CREATE TABLE IF NOT EXISTS encounter_types (
   id             TEXT PRIMARY KEY,

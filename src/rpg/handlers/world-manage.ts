@@ -7,6 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { seedDefaultBiomes } from './biome-manage'
+import { seedDefaultZoneTypes } from './zone-type-manage'
 
 const ACTIONS = ['create', 'get', 'list', 'delete', 'update', 'generate', 'get_state'] as const
 type WorldAction = typeof ACTIONS[number]
@@ -44,6 +45,7 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.name, seed, width, height, now, now).run()
       await seedDefaultBiomes(db, id)
+      await seedDefaultZoneTypes(db, id)
       return ok({ success: true, actionType: 'create', worldId: id, name: a.name, seed, width, height })
     }
     case 'get': {
@@ -83,6 +85,7 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.name, seed, width, height, now, now).run()
       await seedDefaultBiomes(db, id)
+      await seedDefaultZoneTypes(db, id)
       return ok({ success: true, actionType: 'generate', worldId: id, name: a.name, seed, width, height, note: 'World created with seed. Tile generation is a separate process.' })
     }
     case 'get_state': {
