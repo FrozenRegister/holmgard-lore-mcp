@@ -51,8 +51,20 @@ describe('handleProductionManage', () => {
     expect(body.extractionWindow).toBe('closed')
     expect(['storm', 'rain', 'overcast', 'clear']).toContain(body.weather)
     expect(body.crateDrop.success).toBe(true)
-    expect(body.corpseDecomposition).toBeNull()
-    expect(body.corpseDecompositionNote).toContain('#288')
+    expect(body.corpseDecomposition).toEqual([])
+  })
+
+  it('advance_day ticks corpse decomposition for every non-recovered corpse with a death_at in the world (#288 integration)', async () => {
+    await createWorld()
+    const now = new Date().toISOString()
+    const oldDeath = new Date(Date.now() - 30 * 3_600_000).toISOString() // 30h ago -> bloat stage
+    await env.RPG_DB.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, state, state_updated_at, harvestable_resources, created_at, updated_at, death_at, decomposition_stage) VALUES (?, ?, ?, 'pc', ?, 'fresh', ?, '[]', ?, ?, ?, 'fresh')`)
+      .bind('corpse-1', 'char-dead', 'Fallen Yield', WORLD, now, now, now, oldDeath).run()
+    const r = await handleProductionManage(db(), { action: 'advance_day', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.corpseDecomposition).toHaveLength(1)
+    expect(body.corpseDecomposition[0].corpseId).toBe('corpse-1')
+    expect(body.corpseDecomposition[0].newStage).toBe('bloat')
   })
 
   it('advance_day advances an existing world_state row across multiple calls', async () => {

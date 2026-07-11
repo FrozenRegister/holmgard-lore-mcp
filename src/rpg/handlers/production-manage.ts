@@ -16,10 +16,9 @@
 //   narrator/predator-roster edit via encounter.add_type, not something a
 //   daily clock tick should silently mutate.
 // - Corpse decomposition (the #283 integration contract's step "tick corpse
-//   decomposition → call corpse.decompose") is deliberately NOT wired here.
-//   #288 (Corpse Ecology) hasn't shipped yet in this batch — it's next.
-//   advance_day's response includes `corpseDecomposition: null` with a note,
-//   not a silent no-op, so callers can see this is pending, not broken.
+//   decomposition → call corpse.decompose") is now wired via #288's
+//   tickAllCorpseDecomposition — every non-recovered corpse with a death_at
+//   in the world is re-ticked each advance_day call.
 // - production.encounter_modifier (hazard + weather) is computed and stored
 //   on world_state but is NOT automatically read by encounter-manage's
 //   resolveEncounterCore in this PR — wiring that dependency into an
@@ -38,6 +37,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleResourceManage, tickAllOwnersDegradation, type DegradeResult } from './resource-manage'
 import { runProductionIntervene, createPendingVote, type ProductionInterveneResult } from './broadcast-manage'
+import { tickAllCorpseDecomposition } from './corpse-manage'
 
 const ACTIONS = ['advance_day', 'get_state', 'set_schedule', 'list_events'] as const
 type ProductionAction = typeof ACTIONS[number]
@@ -163,6 +163,8 @@ export async function handleProductionManage(env: AppBindings, args: Record<stri
 
       const intervention: ProductionInterveneResult = await runProductionIntervene(db, a.worldId, day, a.interventionSignals)
 
+      const corpseDecomposition = await tickAllCorpseDecomposition(db, a.worldId, now)
+
       const { results: upcomingEvents } = await db.prepare('SELECT day, event_type, event_data FROM production_calendar WHERE world_id = ? AND day > ? AND triggered = 0 ORDER BY day LIMIT 10').bind(a.worldId, day).all()
 
       return ok({
@@ -170,8 +172,7 @@ export async function handleProductionManage(env: AppBindings, args: Record<stri
         perimeterRadius, hazardLevel: hazard.level, hazardNote: hazard.note, encounterModifier,
         weather: weatherRoll.weather, fog: weatherRoll.fog, movementModifier: weatherRoll.movementModifier,
         extractionWindow, crateDrop, resourceDegradation, pendingVoteId, intervention,
-        corpseDecomposition: null, corpseDecompositionNote: 'Deferred — #288 (Corpse Ecology) has not shipped yet.',
-        triggeredScheduledEvents: scheduled, upcomingEvents,
+        corpseDecomposition, triggeredScheduledEvents: scheduled, upcomingEvents,
       })
     }
     case 'get_state': {

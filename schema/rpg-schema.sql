@@ -639,13 +639,23 @@ CREATE TABLE IF NOT EXISTS corpses (
   created_at           TEXT NOT NULL,
   updated_at           TEXT NOT NULL,
   currency             TEXT DEFAULT '{"gold":0,"silver":0,"copper":0}',
-  currency_looted      INTEGER NOT NULL DEFAULT 0
+  currency_looted      INTEGER NOT NULL DEFAULT 0,
+  -- Corpse Ecology (#288) — see migration 0014. Additive; the legacy `state`
+  -- enum/CHECK above is untouched, so D&D-style corpse usage is unaffected.
+  death_at                    TEXT,
+  cause_of_death              TEXT,
+  decomposition_stage         TEXT NOT NULL DEFAULT 'fresh',
+  preserve_inventory_snapshot TEXT NOT NULL DEFAULT '[]',
+  recovered                   INTEGER NOT NULL DEFAULT 0,
+  recovery_type               TEXT,
+  is_landmark                 INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_corpses_encounter      ON corpses(encounter_id);
 CREATE INDEX IF NOT EXISTS idx_corpses_world_position ON corpses(world_id, position_x, position_y);
 CREATE INDEX IF NOT EXISTS idx_corpses_state          ON corpses(state);
 CREATE INDEX IF NOT EXISTS idx_corpses_character      ON corpses(character_id);
+CREATE INDEX IF NOT EXISTS idx_corpses_decomposition_stage ON corpses(decomposition_stage);
 
 CREATE TABLE IF NOT EXISTS corpse_inventory (
   corpse_id TEXT NOT NULL,
