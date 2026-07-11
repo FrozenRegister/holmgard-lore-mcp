@@ -4,6 +4,7 @@ import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
 import { handleWorldMap } from '../rpg/handlers/world-map'
+import { handleBiomeManage } from '../rpg/handlers/biome-manage'
 
 describe('handleWorldMap', () => {
   beforeEach(async () => {
@@ -111,6 +112,69 @@ describe('handleWorldMap', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.ascii).toBeTruthy()
+  })
+
+  it('preview falls back to legacy glyphs for a world with no registered biomes', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'forest' }] })
+    const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 0, y: 0, width: 1, height: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.ascii).toBe('T')
+  })
+
+  it('preview uses the registered glyph for a custom biome (#274)', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'limestone_karst' }] })
+    const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 0, y: 0, width: 1, height: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.ascii).toBe('K')
+  })
+
+  it('preview falls back to "?" for a biome unknown to both registry and legacy map', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'limestone_karst' }] })
+    // A cell with no tile at all should render as '?' regardless of registry state
+    const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 5, y: 5, width: 1, height: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.ascii).toBe('?')
+  })
+
+  it('patch skips biome validation for a world with no registered biomes (backward compatible)', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'patch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'totally_made_up' }]
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesUpdated).toBe(1)
+  })
+
+  it('patch rejects an unregistered biome once the world has a biome registry (#274)', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    const r = await handleWorldMap(db(), {
+      action: 'patch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'not_a_real_biome' }]
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('not_a_real_biome')
+    expect(body.message).toContain('limestone_karst')
+  })
+
+  it('patch accepts a registered biome once the world has a biome registry', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    const r = await handleWorldMap(db(), {
+      action: 'patch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'limestone_karst' }]
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesUpdated).toBe(1)
   })
 
   it('find_poi requires worldId', async () => {
