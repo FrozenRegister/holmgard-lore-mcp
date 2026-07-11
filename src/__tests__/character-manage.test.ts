@@ -332,6 +332,51 @@ describe('character_manage tool', () => {
     expect(r.characters.length).toBe(2)
   })
 
+  it('list with snake_case world_id filters out cross-world characters (the actual #268 reproduction)', async () => {
+    // The issue's own reproduction calls `world_id` (snake_case) — the
+    // WHERE-clause filtering already worked for camelCase `worldId`, but
+    // Zod silently drops unrecognized keys, so `world_id` was accepted
+    // without erroring yet never actually filtered anything.
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'list', world_id: 'world:calder' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(1)
+    expect(r.characters[0].world_id).toBe('world:calder')
+  })
+
+  it('search with snake_case world_id filters out cross-world matches', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
+    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+
+    const r = await callTool('character_manage', { action: 'search', query: 'Kael', world_id: 'world:calder' })
+    expect(r.success).toBe(true)
+    expect(r.characters.length).toBe(1)
+    expect(r.characters[0].world_id).toBe('world:calder')
+  })
+
+  it('create accepts snake_case world_id', async () => {
+    const r = await callTool('character_manage', { action: 'create', name: 'Snake Case Char', world_id: 'world:calder' })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: r.characterId })
+    expect(char.character.world_id).toBe('world:calder')
+  })
+
+  it('update accepts snake_case world_id', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Unassigned Char 2' })
+    const r = await callTool('character_manage', { action: 'update', id: created.characterId, world_id: 'world:calder' })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.world_id).toBe('world:calder')
+  })
+
+  it('camelCase worldId still takes priority when both are given (defensive, not expected in practice)', async () => {
+    await callTool('character_manage', { action: 'create', name: 'Both Keys', worldId: 'world:calder', world_id: 'world:verdant-verge' })
+    const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder' })
+    expect(r.characters.some((c: any) => c.name === 'Both Keys')).toBe(true)
+  })
+
   it('update sets worldId on an existing character', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Unassigned Char' })
     const r = await callTool('character_manage', {
