@@ -1,8 +1,8 @@
-# Issue: 5 Tool `inputSchema`s Missing Root `type: 'object'` — Broke Strict MCP Clients
+# Issue: Published `inputSchema`s Drift From Zod Handler Schemas — Two Confirmed Occurrences
 
 **Severity:** HIGH
 **Reported:** 2026-07-11
-**Status:** Fixed
+**Status:** Fixed (both known occurrences); underlying systemic risk not fixed
 
 ## Symptom
 
@@ -40,3 +40,14 @@ Added a regression test (`protocol-basics.test.ts`): `tools/list` response is as
 ## Lesson
 
 When adding a new tool whose `inputSchema` uses `oneOf`/`anyOf`/`allOf` at the root (the action-dispatch pattern used throughout this repo), the root object must **also** declare `type: 'object'` even though every branch already does. This repo's own fetch-based test harness cannot catch a violation of this rule — only a real MCP client (or a dedicated assertion like the one added here) will.
+
+## Second occurrence: `append_event` missing `world_id`/`entity_id` (#267)
+
+The same root cause — **the published `inputSchema` in `src/tools/definitions.ts` and the Zod schema actually enforced server-side (`appendEventSchema` in `src/tools/meta.ts`) are two independently-maintained sources of truth that can silently drift** — produced a second, differently-shaped bug: `continuity_manage`'s `append_event` branch never listed `world_id`/`entity_id` in its `properties`, and had `additionalProperties: false`. The D1 dual-write logic behind those two fields was fully implemented and passing tests since #223; the only thing broken was that no caller following the documented schema could ever discover or supply them. `#267` reported this as "D1 write paths still not wired," but the write path was fine — the API surface just never told anyone it existed.
+
+This confirms the risk described above is systemic, not a one-off: **`src/index.ts`'s `tools/call` handler does not validate `args` against the published `inputSchema` at all** — it passes `args` straight to the Zod-validated handler (see `src/index.ts` around the `tools/call` branch). So the published schema is *purely advisory* to callers and has no server-side enforcement keeping it honest. Anything server-side (this repo's own tests, `tests/live/*`) that calls tools directly with extra fields will keep working even if those fields quietly fall out of the advertised schema — the drift is invisible until a real schema-validating client (or a human reading the docs) hits it.
+
+### Suggested follow-up (not done here — scoped fix only, twice now)
+
+- Add a comprehensive drift-detection test: for every `oneOf` branch across all five action-dispatch tools, assert its advertised `properties` keys are a superset of what the corresponding Zod schema's `.shape` accepts. This would catch future occurrences at PR time instead of one field at a time after a live client hits it.
+- Alternatively, derive `inputSchema` from the Zod schema directly (e.g. `zod-to-json-schema`) so there is only one source of truth instead of two hand-maintained ones. This is a larger refactor (`ToolDefinition.inputSchema` is currently a hand-written `Record<string, any>` for every tool) and out of scope for a bug-fix PR.

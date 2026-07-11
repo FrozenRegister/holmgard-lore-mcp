@@ -19,6 +19,16 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
     expect(res.result).toBeTruthy()
   })
 
+  it('tools/list advertises world_id and entity_id on continuity_manage append_event (#267)', async () => {
+    const res = await rpc('tools/list')
+    const continuityManage = res.result.tools.find((t: { name: string }) => t.name === 'continuity_manage')
+    const appendEventBranch = continuityManage.inputSchema.oneOf.find(
+      (branch: { properties: { action: { const: string } } }) => branch.properties.action.const === 'append_event'
+    )
+    expect(appendEventBranch.properties.world_id).toBeDefined()
+    expect(appendEventBranch.properties.entity_id).toBeDefined()
+  })
+
   it('list_topics (direct method)', async () => {
     const res = await rpc('list_topics')
     expect(res.error).toBeUndefined()
