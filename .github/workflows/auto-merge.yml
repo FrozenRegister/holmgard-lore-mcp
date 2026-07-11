@@ -7,18 +7,25 @@ on:
     workflows: ["CI", "PR Quality Checks", "Auto-fix Markdown"]
     types: [completed]
   schedule:
-    # Fallback poller — workflow_run only reliably fires for CI runs triggered by a
-    # `push` (i.e. after merge to main), not for the `pull_request`-triggered runs
-    # that produce check results on feature branches. Without this, a PR labeled
-    # `auto-merge` before its checks finish never gets re-checked once they do.
-    - cron: '*/15 * * * *'
+    # Last-resort fallback poller — ci.yml and pr-quality.yml each dispatch this
+    # workflow directly via workflow_dispatch the moment their own jobs finish
+    # (reliable, a direct API call rather than workflow_run chaining, which only
+    # reliably fires for push-triggered runs, not pull_request-triggered ones).
+    # This cron only matters if that dispatch itself somehow fails to fire.
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
   pull-requests: write
   contents: write
   checks: read
-  workflows: write
+  # actions: write — required for the workflow_dispatch trigger to work at all.
+  # The old value here was literally `workflows: write`, which isn't a real
+  # permission scope; GitHub silently failed to parse/execute this entire file
+  # for every trigger as a result (confirmed via the Actions API: every prior
+  # run showed up under the raw filename instead of the declared `name:`,
+  # which is what happens when a workflow file fails to parse — see #281).
+  actions: write
 
 jobs:
   merge:

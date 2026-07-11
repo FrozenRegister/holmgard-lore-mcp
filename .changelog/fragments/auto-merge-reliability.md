@@ -1,0 +1,4 @@
+### CI — fix auto-merge.yml (was failing on every trigger since at least 2026-07-09)
+- `auto-merge.yml`'s `permissions` block had `workflows: write`, which isn't a real GitHub Actions permission scope — this silently broke the entire workflow file's ability to parse/execute for every trigger (`schedule`, `pull_request: [labeled]`, `workflow_run`, `workflow_dispatch`). Fixed to `actions: write`. See #281.
+- `ci.yml` and `pr-quality.yml` now each dispatch `auto-merge.yml` directly via `workflow_dispatch` (best-effort, `continue-on-error: true`) the moment their own jobs finish, instead of relying solely on `workflow_run` chaining — which only reliably fires for push-triggered runs, not `pull_request`-triggered ones.
+- Shortens the scheduled fallback poller from `*/15` to `*/5` (GitHub's minimum interval) as defense-in-depth.
