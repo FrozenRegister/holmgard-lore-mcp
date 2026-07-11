@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { MCP_API_KEY, rpc, tool } from './helpers'
+import { MCP_API_KEY, rpc, tool, uid } from './helpers'
 
 describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
   it('initialize', async () => {
@@ -37,6 +37,18 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
   it('get_lore (direct method)', async () => {
     const res = await rpc('get_lore', { key: 'character:sarah-weaver' })
     expect(res.error).toBeUndefined()
+  })
+
+  it('get_world_biomes (direct method, #321) requires worldId', async () => {
+    const res = await rpc('get_world_biomes', {})
+    expect(res.error).toBeDefined()
+  })
+
+  it('get_world_biomes (direct method, #321) returns an empty array for an unregistered worldId', async () => {
+    const res = await rpc('get_world_biomes', { worldId: `nonexistent-${uid()}` })
+    expect(res.error).toBeUndefined()
+    expect(res.result.biomes).toEqual([])
+    expect(res.result.count).toBe(0)
   })
 })
 
