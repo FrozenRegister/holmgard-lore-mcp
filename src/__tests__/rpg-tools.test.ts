@@ -312,6 +312,34 @@ describe('RPG engine tools', () => {
     expect(zoneTypes.count).toBeGreaterThan(0)
   })
 
+  it('rpg world create auto-seeds a world_state row so time.get_date works immediately (#330)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'TimeStateWorld', theme: 'fantasy' })
+    const date = await callTool('rpg', { sub: 'time', action: 'get_date', world_id: world.worldId })
+    expect(date.error).toBeUndefined()
+    expect(date.success).toBe(true)
+  })
+
+  it('rpg world generate auto-seeds a world_state row so time.get_date works immediately (#330)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'generate', name: 'ProcgenTimeStateWorld' })
+    const date = await callTool('rpg', { sub: 'time', action: 'get_date', world_id: world.worldId })
+    expect(date.error).toBeUndefined()
+    expect(date.success).toBe(true)
+  })
+
+  it('rpg time accepts camelCase worldId as an alias for world_id (#336)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'TimeCasingWorld', theme: 'fantasy' })
+    const date = await callTool('rpg', { sub: 'time', action: 'get_date', worldId: world.worldId })
+    expect(date.error).toBeUndefined()
+    expect(date.success).toBe(true)
+  })
+
+  it('rpg stealth is a working alias for perception\'s stealth_check action (#335)', async () => {
+    const r = await callTool('rpg', { sub: 'stealth', action: 'stealth_check' })
+    expect(r.error).toBeUndefined()
+    expect(r.success).toBe(true)
+    expect(r.actionType).toBe('stealth_check')
+  })
+
   it('rpg world get requires id or worldId', async () => {
     const r = await callTool('rpg', { sub: 'world', action: 'get' })
     expect(r.error).toBe(true)
