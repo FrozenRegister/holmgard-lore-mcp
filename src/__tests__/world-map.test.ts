@@ -177,6 +177,116 @@ describe('handleWorldMap', () => {
     expect(body.tilesUpdated).toBe(1)
   })
 
+  it('batch requires worldId and tiles array', async () => {
+    const r = await handleWorldMap(db(), { action: 'batch', worldId: WORLD, tiles: [] })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('batch rejects payloads over the 1000-tile ceiling', async () => {
+    await createWorld()
+    const tiles = Array.from({ length: 1001 }, (_, i) => ({ x: i, y: 0, biome: 'grass' }))
+    const r = await handleWorldMap(db(), { action: 'batch', worldId: WORLD, tiles })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('1000')
+  })
+
+  it('batch inserts new tiles and reports duration', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'grass' }, { x: 1, y: 0, biome: 'water' }, { x: 2, y: 0, biome: 'forest' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(3)
+    expect(body.tilesUpdated).toBe(0)
+    expect(body.errors).toEqual([])
+    expect(typeof body.duration_ms).toBe('number')
+  })
+
+  it('batch reports updates separately from inserts on a mixed payload', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'grass' }] })
+    const r = await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'water' }, { x: 1, y: 0, biome: 'forest' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(1)
+    expect(body.tilesUpdated).toBe(1)
+    const fetched = JSON.parse((await handleWorldMap(db(), { action: 'tiles', worldId: WORLD, x: 0, y: 0, width: 1, height: 1 })).content[0].text)
+    expect(fetched.tiles[0].biome).toBe('water')
+  })
+
+  it('batch skips biome validation for a world with no registered biomes (backward compatible)', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'totally_made_up' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(1)
+    expect(body.errors).toEqual([])
+  })
+
+  it('batch flags unknown biomes as per-tile errors but still writes valid tiles once a registry exists (#274)', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    const r = await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'limestone_karst' }, { x: 1, y: 0, biome: 'not_a_real_biome' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(1)
+    expect(body.errors).toEqual([{ index: 1, x: 1, y: 0, biome: 'not_a_real_biome', error: 'Unknown biome' }])
+    const fetched = JSON.parse((await handleWorldMap(db(), { action: 'tiles', worldId: WORLD, x: 1, y: 0, width: 1, height: 1 })).content[0].text)
+    expect(fetched.tiles).toEqual([])
+  })
+
+  it('batch skips validation entirely when validateBiomes is false, even with a registry present', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K' })
+    const r = await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD, validateBiomes: false,
+      tiles: [{ x: 0, y: 0, biome: 'not_a_real_biome' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(1)
+    expect(body.errors).toEqual([])
+  })
+
+  it('batch chunks writes over 100 tiles into multiple db.batch() calls', async () => {
+    await createWorld()
+    const tiles = Array.from({ length: 250 }, (_, i) => ({ x: i, y: 0, biome: 'grass' }))
+    const r = await handleWorldMap(db(), { action: 'batch', worldId: WORLD, tiles })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tilesInserted).toBe(250)
+  })
+
+  it('batch returns an error if the D1 write fails', async () => {
+    await createWorld()
+    const failingDb = {
+      RPG_DB: {
+        prepare: (env.RPG_DB as any).prepare.bind(env.RPG_DB),
+        batch: async () => { throw new Error('simulated D1 failure') },
+      },
+    } as any
+    const r = await handleWorldMap(failingDb, {
+      action: 'batch', worldId: WORLD,
+      tiles: [{ x: 0, y: 0, biome: 'grass' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('simulated D1 failure')
+  })
+
   it('find_poi requires worldId', async () => {
     const r = await handleWorldMap(db(), { action: 'find_poi' })
     const body = JSON.parse(r.content[0].text)

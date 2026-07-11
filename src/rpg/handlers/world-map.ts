@@ -15,17 +15,23 @@ import { getBiomeRegistry } from './biome-manage'
 // a sensible preview instead of '?' for every tile.
 const LEGACY_BIOME_GLYPHS: Record<string, string> = { grass: '.', forest: 'T', mountain: 'M', water: '~', desert: 'd', swamp: 'S', plains: ',', tundra: '_', wasteland: 'X' }
 
-const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'preview', 'find_poi', 'suggest_poi'] as const
+const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi'] as const
 type WorldMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldMapAction> = {
   summary: 'overview', world_view: 'overview',
   get_region: 'region', region_view: 'region', show_region: 'region',
   get_tiles: 'tiles', tile_data: 'tiles',
   update: 'patch', update_tiles: 'patch', modify: 'patch',
+  bulk: 'batch', bulk_import: 'batch', import_tiles: 'batch',
   render: 'preview', ascii: 'preview', view: 'preview',
   search_poi: 'find_poi', get_poi: 'find_poi',
   recommend_poi: 'suggest_poi', new_poi: 'suggest_poi',
 }
+
+// #275 — bulk tile import ceiling. ~200 bytes/tile row, comfortably under
+// Worker request-body and response-time limits; a 100x100 world (10k tiles)
+// needs 10 calls at this ceiling, which is an acceptable chunking cost.
+const MAX_BATCH_TILES = 1000
 
 const TilePatch = z.object({
   x: z.number().int(), y: z.number().int(),
@@ -44,6 +50,7 @@ const InputSchema = z.object({
   width: z.number().int().min(1).max(20).optional().default(5),
   height: z.number().int().min(1).max(20).optional().default(5),
   tiles: z.array(TilePatch).optional().default([]),
+  validateBiomes: z.boolean().optional().default(true),
   query: z.string().optional(),
   structureType: z.string().optional(),
 })
@@ -98,6 +105,58 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
         updated++
       }
       return ok({ success: true, actionType: 'patch', worldId: a.worldId, tilesUpdated: updated })
+    }
+    case 'batch': {
+      if (!a.worldId || a.tiles.length === 0) return err('"worldId" and "tiles" are required')
+      if (a.tiles.length > MAX_BATCH_TILES) {
+        return err(`"tiles" exceeds the ${MAX_BATCH_TILES}-tile-per-call limit (received ${a.tiles.length}). Chunk the payload at the application level.`)
+      }
+      const start = Date.now()
+      const errors: Array<{ index: number; x: number; y: number; biome: string; error: string }> = []
+      let validTiles = a.tiles
+
+      if (a.validateBiomes) {
+        const registry = await getBiomeRegistry(db, a.worldId)
+        if (registry.size > 0) {
+          validTiles = []
+          a.tiles.forEach((t, index) => {
+            if (registry.has(t.biome)) validTiles.push(t)
+            else errors.push({ index, x: t.x, y: t.y, biome: t.biome, error: 'Unknown biome' })
+          })
+        }
+      }
+
+      let tilesInserted = 0
+      let tilesUpdated = 0
+      if (validTiles.length > 0) {
+        const xs = validTiles.map(t => t.x)
+        const ys = validTiles.map(t => t.y)
+        const { results: existingRows } = await db.prepare(
+          'SELECT x, y FROM tiles WHERE world_id = ? AND x >= ? AND x <= ? AND y >= ? AND y <= ?'
+        ).bind(a.worldId, Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)).all() as { results: Array<{ x: number; y: number }> }
+        const existingKeys = new Set(existingRows.map(r => `${r.x},${r.y}`))
+        for (const t of validTiles) {
+          if (existingKeys.has(`${t.x},${t.y}`)) tilesUpdated++
+          else tilesInserted++
+        }
+
+        try {
+          for (let i = 0; i < validTiles.length; i += 100) {
+            const chunk = validTiles.slice(i, i + 100)
+            await db.batch(chunk.map(t =>
+              db.prepare('INSERT INTO tiles (id, world_id, x, y, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(world_id, x, y) DO UPDATE SET biome = excluded.biome, elevation = excluded.elevation, moisture = excluded.moisture, temperature = excluded.temperature')
+                .bind(crypto.randomUUID(), a.worldId, t.x, t.y, t.biome, t.elevation, t.moisture, t.temperature)
+            ))
+          }
+        } catch (e) {
+          return err(`Batch write failed: ${(e as Error).message}`)
+        }
+      }
+
+      return ok({
+        success: true, actionType: 'batch', worldId: a.worldId,
+        tilesInserted, tilesUpdated, errors, duration_ms: Date.now() - start,
+      })
     }
     case 'preview': {
       if (!a.worldId || a.x === undefined || a.y === undefined) return err('"worldId", "x", and "y" are required')
