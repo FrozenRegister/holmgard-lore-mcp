@@ -101,6 +101,29 @@ Track locations, regions, and how the world is connected.
 | `world_map` | Narrator | Get a spatial overview of locations and distances |
 | `spatial_manage` | Narrator | Track which entities are at which location (who's in the tavern right now?) |
 | `get_location_occupants` | Narrator | Quick lookup: who/what is at this location? |
+| `rpg{sub:"waypoint"}` | Narrator | Real-world-anchored named locations + precomputed travel distances between them (Gotland campaign, #328) |
+
+**Real-world-distance party movement (`rpg{sub:"waypoint"}` + `rpg{sub:"party"}`, #328):**
+
+For a Gotland-set campaign, `waypoint.seed_defaults({worldId})` seeds four named
+places (Visby, Roma Kloster, Fårösund, Klintehamn) with real lat/lon, a
+derived hex `(q, r)`, and precomputed real foot-routing distances between
+every pair. A party then moves with `party.begin_march({partyId,
+fromWaypointName, toWaypointName})`, and a narrator resolves a day's travel
+for every marching party in a world with the exported `tickAllPartiesMarch()`
+helper (deliberately not wired into `production.advance_day`, which ticks the
+whole world's hazard/weather/degradation — movement resolves per-party so one
+party's march never blocks on another's turn). An unrouted pair returns a
+structured `{blocked: true, reason: 'no_route_found' | 'not_precomputed'}`
+response, never a tool error.
+
+**Known Behavior:** the offline precompute script (`scripts/gotland-precompute-distances.mjs`)
+was expected to demonstrate the "no route" case at Fårösund (the plan assumed
+no bridge exists in the foot-routing graph). In practice, OSRM's foot profile
+finds a route across every pair in the seeded 4-waypoint set, including
+Fårösund — apparently via the free ferry crossing — so the shipped seed data
+has no real example of an unroutable pair; the `not_precomputed`/`no_route_found`
+paths are exercised by unit tests against synthetic fixture data instead.
 
 **Example Use:**
 ```
