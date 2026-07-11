@@ -14,6 +14,7 @@ export interface ToolDefinition {
 
 const LORE_MANAGE_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   oneOf: [
     {
       type: 'object',
@@ -229,6 +230,7 @@ const LORE_MANAGE_SCHEMA = {
 
 const ENTITY_MANAGE_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   oneOf: [
     {
       type: 'object',
@@ -412,6 +414,7 @@ const ENTITY_MANAGE_SCHEMA = {
 
 const WORLD_MANAGE_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   oneOf: [
     {
       type: 'object',
@@ -520,6 +523,7 @@ const WORLD_MANAGE_SCHEMA = {
 
 const SCENE_MANAGE_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   oneOf: [
     {
       type: 'object',
@@ -600,6 +604,7 @@ const SCENE_MANAGE_SCHEMA = {
 
 const CONTINUITY_MANAGE_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   oneOf: [
     {
       type: 'object',
