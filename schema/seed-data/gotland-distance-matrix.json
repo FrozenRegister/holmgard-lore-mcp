@@ -1,0 +1,74 @@
+[
+  {
+    "from": "Visby",
+    "to": "Roma Kloster",
+    "distanceKm": 18.261400000000002,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Visby",
+    "to": "Fårösund",
+    "distanceKm": 54.2194,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Visby",
+    "to": "Klintehamn",
+    "distanceKm": 33.4662,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Roma Kloster",
+    "to": "Visby",
+    "distanceKm": 18.7283,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Roma Kloster",
+    "to": "Fårösund",
+    "distanceKm": 62.1195,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Roma Kloster",
+    "to": "Klintehamn",
+    "distanceKm": 27.5658,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Fårösund",
+    "to": "Visby",
+    "distanceKm": 54.096599999999995,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Fårösund",
+    "to": "Roma Kloster",
+    "distanceKm": 62.121199999999995,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Fårösund",
+    "to": "Klintehamn",
+    "distanceKm": 87.8599,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Klintehamn",
+    "to": "Visby",
+    "distanceKm": 33.5186,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Klintehamn",
+    "to": "Roma Kloster",
+    "distanceKm": 27.5658,
+    "routeSource": "osrm_foot_v1"
+  },
+  {
+    "from": "Klintehamn",
+    "to": "Fårösund",
+    "distanceKm": 87.86760000000001,
+    "routeSource": "osrm_foot_v1"
+  }
+]

@@ -34,11 +34,13 @@ import { z } from 'zod'
 import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '../utils/fuzzy-enum'
 
 import { ok, err, type McpResponse } from '../utils/response'
+import { getWaypoint, getWaypointDistance } from './waypoint-manage'
 import type { AppBindings } from '../../types'
 
 const ACTIONS = [
   'create', 'get', 'list', 'update', 'delete', 'add_member', 'remove_member', 'set_leader',
   'trust_shift', 'resolve_conflict', 'betrayal_check', 'morale_roll', 'watch_rotation',
+  'begin_march', 'get_march_status',
 ] as const
 type PartyAction = typeof ACTIONS[number]
 const ALIASES: Record<string, PartyAction> = {
@@ -52,6 +54,8 @@ const ALIASES: Record<string, PartyAction> = {
   betrayal: 'betrayal_check', check_betrayal: 'betrayal_check',
   morale: 'morale_roll', morale_check: 'morale_roll',
   watch: 'watch_rotation', assign_watch: 'watch_rotation',
+  march: 'begin_march', travel_to: 'begin_march',
+  march_status: 'get_march_status',
 } as Record<string, PartyAction>
 
 // Transcribed from the issue's "Trust Events" table. `delta` is applied to
@@ -125,6 +129,12 @@ const InputSchema = z.object({
     conModifier: z.number().optional().default(0),
     rollValue: z.number().int().min(1).max(20).optional(),
   })).optional().default([]),
+  // begin_march (#328 — Gotland real-world-distance movement)
+  toWaypointId: z.string().optional(),
+  toWaypointName: z.string().optional(),
+  fromWaypointId: z.string().optional(),
+  fromWaypointName: z.string().optional(),
+  pace: z.number().positive().optional(),
 })
 
 async function getTrustMatrix(db: D1Database, partyId: string): Promise<Array<{ from_character_id: string; to_character_id: string; trust_score: number }>> {
@@ -317,5 +327,99 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
 
       return ok({ success: true, actionType: 'watch_rotation', partyId, watchOrder, results })
     }
+    case 'begin_march': {
+      const partyId = a.partyId ?? a.id
+      if (!partyId) return err('"partyId" or "id" is required')
+      if (!a.toWaypointId && !a.toWaypointName) return err('"toWaypointId" or "toWaypointName" is required')
+      const party = await db.prepare('SELECT world_id, current_waypoint_id FROM parties WHERE id = ?').bind(partyId).first() as
+        { world_id: string | null; current_waypoint_id: string | null } | null
+      if (!party) return err(`Party not found: ${partyId}`)
+      if (!party.world_id) return err('Party has no world_id — waypoint movement requires a world-scoped party')
+
+      const toWaypoint = await getWaypoint(db, party.world_id, a.toWaypointId ?? a.toWaypointName!)
+      if (!toWaypoint) return err(`Waypoint not found: ${a.toWaypointId ?? a.toWaypointName}`)
+
+      const fromIdentifier = a.fromWaypointId ?? a.fromWaypointName ?? party.current_waypoint_id
+      if (!fromIdentifier) return err('Party has no current waypoint — provide "fromWaypointId"/"fromWaypointName" to start the first leg')
+      const fromWaypoint = await getWaypoint(db, party.world_id, fromIdentifier)
+      if (!fromWaypoint) return err(`Waypoint not found: ${fromIdentifier}`)
+
+      const distance = await getWaypointDistance(db, party.world_id, fromWaypoint.id, toWaypoint.id)
+      if (!distance.routable) {
+        return ok({
+          success: true, actionType: 'begin_march', partyId, blocked: true, reason: distance.reason,
+          fromWaypoint: { id: fromWaypoint.id, name: fromWaypoint.name }, toWaypoint: { id: toWaypoint.id, name: toWaypoint.name },
+        })
+      }
+
+      const sets: string[] = ['travel_target_waypoint_id = ?', 'travel_remaining_km = ?', 'travel_status = ?', 'updated_at = ?']
+      const vals: unknown[] = [toWaypoint.id, distance.distanceKm, 'marching', now]
+      if (a.pace !== undefined) { sets.push('travel_pace_km_per_day = ?'); vals.push(a.pace) }
+      vals.push(partyId)
+      await db.prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+
+      return ok({
+        success: true, actionType: 'begin_march', partyId, blocked: false,
+        fromWaypoint: { id: fromWaypoint.id, name: fromWaypoint.name },
+        toWaypoint: { id: toWaypoint.id, name: toWaypoint.name },
+        distanceKm: distance.distanceKm, travelStatus: 'marching',
+      })
+    }
+    case 'get_march_status': {
+      const partyId = a.partyId ?? a.id
+      if (!partyId) return err('"partyId" or "id" is required')
+      const party = await db.prepare(
+        'SELECT world_id, current_waypoint_id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day, travel_status FROM parties WHERE id = ?'
+      ).bind(partyId).first() as {
+        world_id: string | null; current_waypoint_id: string | null; travel_target_waypoint_id: string | null
+        travel_remaining_km: number | null; travel_pace_km_per_day: number; travel_status: string
+      } | null
+      if (!party) return err(`Party not found: ${partyId}`)
+
+      const currentWaypoint = party.world_id && party.current_waypoint_id ? await getWaypoint(db, party.world_id, party.current_waypoint_id) : null
+      const targetWaypoint = party.world_id && party.travel_target_waypoint_id ? await getWaypoint(db, party.world_id, party.travel_target_waypoint_id) : null
+
+      return ok({
+        success: true, actionType: 'get_march_status', partyId,
+        travelStatus: party.travel_status,
+        currentWaypoint: currentWaypoint ? { id: currentWaypoint.id, name: currentWaypoint.name } : null,
+        targetWaypoint: targetWaypoint ? { id: targetWaypoint.id, name: targetWaypoint.name } : null,
+        remainingKm: party.travel_remaining_km, pace: party.travel_pace_km_per_day,
+      })
+    }
   }
+}
+
+// Exported for the narrator to resolve a day (or several) of marching for
+// every currently-marching party in a world — deliberately NOT called from
+// production-manage.ts's advance_day, which ticks the whole world's hazard/
+// weather/resource-degradation/corpse-decomposition at once. Movement
+// resolves per-party so one party's march never blocks on another's turn.
+// Leftover travel budget beyond arrival is discarded, not carried into a
+// next leg — a fresh begin_march starts the next leg.
+export async function tickAllPartiesMarch(
+  db: D1Database, worldId: string, daysToAdvance = 1
+): Promise<Array<{ partyId: string; status: 'marching' | 'arrived'; remainingKm: number | null; arrivedAtWaypointId?: string }>> {
+  const now = new Date().toISOString()
+  const { results: marching } = await db.prepare(
+    'SELECT id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day FROM parties WHERE world_id = ? AND travel_status = ?'
+  ).bind(worldId, 'marching').all() as {
+    results: Array<{ id: string; travel_target_waypoint_id: string; travel_remaining_km: number; travel_pace_km_per_day: number }>
+  }
+
+  const out: Array<{ partyId: string; status: 'marching' | 'arrived'; remainingKm: number | null; arrivedAtWaypointId?: string }> = []
+  for (const party of marching) {
+    const remaining = Math.max(0, party.travel_remaining_km - party.travel_pace_km_per_day * daysToAdvance)
+    if (remaining <= 0) {
+      const target = await getWaypoint(db, worldId, party.travel_target_waypoint_id)
+      await db.prepare(
+        'UPDATE parties SET current_waypoint_id = ?, current_hex_q = ?, current_hex_r = ?, travel_target_waypoint_id = NULL, travel_remaining_km = NULL, travel_status = ?, updated_at = ? WHERE id = ?'
+      ).bind(party.travel_target_waypoint_id, target?.q ?? null, target?.r ?? null, 'stationary', now, party.id).run()
+      out.push({ partyId: party.id, status: 'arrived', remainingKm: 0, arrivedAtWaypointId: party.travel_target_waypoint_id })
+    } else {
+      await db.prepare('UPDATE parties SET travel_remaining_km = ?, updated_at = ? WHERE id = ?').bind(remaining, now, party.id).run()
+      out.push({ partyId: party.id, status: 'marching', remainingKm: remaining })
+    }
+  }
+  return out
 }
