@@ -682,15 +682,33 @@ admin.post('/map/push-hexes', async (c) => {
       const stmts = chunk
         .filter((h): h is Record<string, unknown> => !!h && typeof h === 'object')
         .map((h) =>
+          // #321 — this route only ever owns terrain/label/data (the editor's
+          // freeform fields). worldId/biome are RPG-owned (world_map.ts's
+          // patch/batch actions) but the editor's push MAY optionally carry
+          // them (e.g. #321's biome picker); COALESCE preserves whichever
+          // RPG-set value already exists when the editor doesn't send one,
+          // rather than resetting it to null (the old INSERT OR REPLACE did
+          // exactly that on every editor push, silently wiping any world_id/
+          // biome set via world_map.patch — see docs/issues/HIGH-map-push-
+          // insert-or-replace-wipes-rpg-columns.md).
           db.prepare(
-            'INSERT OR REPLACE INTO hexes (q, r, map_id, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+            `INSERT INTO hexes (q, r, map_id, terrain, label, data, world_id, biome, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(q, r, map_id) DO UPDATE SET
+               terrain = excluded.terrain, label = excluded.label, data = excluded.data,
+               world_id = COALESCE(excluded.world_id, hexes.world_id),
+               biome = COALESCE(excluded.biome, hexes.biome),
+               updated_at = excluded.updated_at`
           ).bind(
             h.q ?? 0,
             h.r ?? 0,
             mapId,
             h.terrain ?? null,
             h.name ?? null,
-            JSON.stringify({ description: h.description ?? '' })
+            JSON.stringify({ description: h.description ?? '' }),
+            h.worldId ?? null,
+            h.biome ?? null,
+            new Date().toISOString()
           )
         )
       if (stmts.length > 0) {
@@ -726,8 +744,18 @@ admin.post('/map/push-landmarks', async (c) => {
       const stmts = chunk
         .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object')
         .map((l) =>
+          // #321 — same fix as push-hexes: this route only owns name/category/
+          // data. world_id/region_id/population/zone_* are RPG-owned (set via
+          // world_map.ts's suggest_poi/update_poi); preserve them on an
+          // ordinary editor push instead of resetting to their column
+          // defaults, which the old INSERT OR REPLACE silently did.
           db.prepare(
-            'INSERT OR REPLACE INTO landmarks (id, map_id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            `INSERT INTO landmarks (id, map_id, q, r, name, category, data, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               map_id = excluded.map_id, q = excluded.q, r = excluded.r,
+               name = excluded.name, category = excluded.category, data = excluded.data,
+               updated_at = excluded.updated_at`
           ).bind(
             l.id ?? '',
             mapId,
@@ -741,7 +769,8 @@ admin.post('/map/push-landmarks', async (c) => {
               linkedMapId: l.linkedMapId ?? null,
               visible: l.visible ?? true,
               linkedLoreKey: l.linkedLoreKey ?? null,
-            })
+            }),
+            new Date().toISOString()
           )
         )
       if (stmts.length > 0) {

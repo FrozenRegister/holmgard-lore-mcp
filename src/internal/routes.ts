@@ -34,6 +34,12 @@ interface HexRecord {
   terrain: string
   name: string
   description: string
+  // #321 — RPG-owned fields, additive so the editor's biome-assignment panel
+  // can show a hex's current biome without a separate round-trip. Absent on
+  // hexes with no world_id set yet (null, not omitted, so older/typed
+  // clients see a stable shape).
+  worldId: string | null
+  biome: string | null
 }
 
 interface LandmarkRecord {
@@ -60,6 +66,8 @@ function rowToHex(row: Record<string, unknown>): HexRecord {
     terrain: String(row.terrain ?? ''),
     name: String(row.label ?? ''),
     description: String(data.description ?? ''),
+    worldId: (row.world_id as string | null) ?? null,
+    biome: (row.biome as string | null) ?? null,
   }
 }
 
@@ -102,7 +110,7 @@ internal.post('/map-readback', async (c) => {
 
     const db = c.env.RPG_DB as any
     const [hexesResult, landmarksResult] = await Promise.all([
-      db.prepare('SELECT q, r, map_id, terrain, label, data FROM hexes WHERE map_id = ? ORDER BY q, r')
+      db.prepare('SELECT q, r, map_id, terrain, label, data, world_id, biome FROM hexes WHERE map_id = ? ORDER BY q, r')
         .bind(mapId)
         .all(),
       db.prepare('SELECT id, map_id, q, r, name, category, data FROM landmarks WHERE map_id = ? ORDER BY name')
