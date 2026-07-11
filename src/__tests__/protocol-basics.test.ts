@@ -36,6 +36,14 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('load_tool_schema')
   })
 
+  it('every tool inputSchema declares type: object at the root (MCP spec compliance)', async () => {
+    const res = await rpc('tools/list')
+    const tools = res.result.tools as Array<{ name: string; inputSchema: { type?: string } }>
+    for (const tool of tools) {
+      expect(tool.inputSchema.type, `${tool.name} inputSchema.type`).toBe('object')
+    }
+  })
+
   it('rejects requests with wrong jsonrpc version', async () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
