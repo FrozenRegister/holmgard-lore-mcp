@@ -33,8 +33,43 @@ CREATE TABLE IF NOT EXISTS world_state (
   extraction_window     TEXT NOT NULL DEFAULT 'closed',
   last_intervention_at  TEXT,
   production_mood       TEXT NOT NULL DEFAULT 'neutral',
+  -- Gotland waypoint movement (#328) — see migration 0021.
+  geo_origin_lat        REAL,
+  geo_origin_lon        REAL,
+  geo_km_per_hex        REAL,
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
+
+-- Gotland waypoint registry + precomputed pairwise distances (#328) — see
+-- migration 0021. Mechanism is generic/reusable by any world; actual named
+-- places are only seeded into a world that opts in via waypoint.seed_defaults.
+CREATE TABLE IF NOT EXISTS waypoints (
+  id         TEXT PRIMARY KEY,
+  world_id   TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  q          INTEGER NOT NULL,
+  r          INTEGER NOT NULL,
+  lat        REAL NOT NULL,
+  lon        REAL NOT NULL,
+  kind       TEXT NOT NULL DEFAULT 'settlement',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(world_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_waypoints_world ON waypoints(world_id);
+
+CREATE TABLE IF NOT EXISTS waypoint_distances (
+  world_id         TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  from_waypoint_id TEXT NOT NULL REFERENCES waypoints(id) ON DELETE CASCADE,
+  to_waypoint_id   TEXT NOT NULL REFERENCES waypoints(id) ON DELETE CASCADE,
+  distance_km      REAL,
+  route_source     TEXT NOT NULL,
+  computed_at      TEXT NOT NULL,
+  PRIMARY KEY (world_id, from_waypoint_id, to_waypoint_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_waypoint_distances_world ON waypoint_distances(world_id);
 
 CREATE TABLE IF NOT EXISTS node_networks (
   id          TEXT PRIMARY KEY,
@@ -421,12 +456,25 @@ CREATE TABLE IF NOT EXISTS parties (
   morale           INTEGER NOT NULL DEFAULT 62,
   cohesion         TEXT NOT NULL DEFAULT 'stable',
   watch_order      TEXT NOT NULL DEFAULT '[]',
-  current_watch    TEXT
+  current_watch    TEXT,
+  -- Gotland waypoint movement (#328) — see migration 0021. No FK on the
+  -- waypoint-id columns (mirrors landmarks.zone_type having no FK to
+  -- zone_types.name); validity is an application-level check in
+  -- party-manage.ts. travel_pace_km_per_day's DEFAULT 24 is the only place
+  -- this number lives — application code never hardcodes a fallback pace.
+  current_waypoint_id       TEXT,
+  travel_target_waypoint_id TEXT,
+  travel_remaining_km       REAL,
+  travel_pace_km_per_day    REAL NOT NULL DEFAULT 24,
+  travel_status             TEXT NOT NULL DEFAULT 'stationary' CHECK (travel_status IN ('stationary', 'marching', 'blocked', 'arrived')),
+  current_hex_q             INTEGER,
+  current_hex_r             INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_parties_status   ON parties(status);
 CREATE INDEX IF NOT EXISTS idx_parties_world    ON parties(world_id);
 CREATE INDEX IF NOT EXISTS idx_parties_position ON parties(position_x, position_y);
+CREATE INDEX IF NOT EXISTS idx_parties_travel_status ON parties(world_id, travel_status);
 
 -- Party Trust & Betrayal (#285) — see migration 0013.
 CREATE TABLE IF NOT EXISTS party_trust (
