@@ -4,6 +4,8 @@ import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
 import { handleTravelManage } from '../rpg/handlers/travel-manage'
+import { handleBiomeManage } from '../rpg/handlers/biome-manage'
+import { handleWorldMap } from '../rpg/handlers/world-map'
 
 describe('handleTravelManage', () => {
   beforeEach(async () => {
@@ -121,5 +123,48 @@ describe('handleTravelManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.hoursElapsed).toBe(8)
+  })
+
+  // ── resolveEncounter integration (#280) ────────────────────────────────────
+
+  const WORLD = 'world-1'
+  async function createWorld() {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(WORLD, 'Test World', 'abc123', 100, 100, now, now).run()
+  }
+
+  it('travel without resolveEncounter keeps the legacy flat-chance flag', async () => {
+    await createRoom('room-legacy', 'Legacy Room')
+    const r = await handleTravelManage(db(), { action: 'travel', toRoomId: 'room-legacy' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(typeof body.randomEncounter).toBe('boolean')
+    expect(body.encounter).toBeUndefined()
+  })
+
+  it('travel with resolveEncounter but no worldId/x/y falls back to the legacy flag', async () => {
+    await createRoom('room-nocoords', 'No Coords Room')
+    const r = await handleTravelManage(db(), { action: 'travel', toRoomId: 'room-nocoords', resolveEncounter: true })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(typeof body.randomEncounter).toBe('boolean')
+    expect(body.encounter).toBeUndefined()
+  })
+
+  it('travel with resolveEncounter and worldId/x/y calls the full encounter engine', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await createRoom('room-encounter', 'Ambush Room')
+    const r = await handleTravelManage(db(), {
+      action: 'travel', toRoomId: 'room-encounter', resolveEncounter: true, worldId: WORLD, x: 5, y: 5, includeInjuries: false,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.arrived).toBe(true)
+    expect(body.encounter).toBeDefined()
+    expect(body.encounter.encounter).toBe(true)
+    expect(body.encounter.threshold).toBe(100)
+    expect(body.randomEncounter).toBeUndefined()
   })
 })

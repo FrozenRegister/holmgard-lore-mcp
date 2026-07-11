@@ -76,6 +76,7 @@ describe('handleBiomeManage', () => {
     expect(body.category).toBe('terrain')
     expect(body.colorHex).toBe('#888888')
     expect(body.movementCost).toBe(1.0)
+    expect(body.baseThreat).toBe(0)
     expect(body.biomeId).toBeTruthy()
   })
 
@@ -83,13 +84,14 @@ describe('handleBiomeManage', () => {
     await createWorld()
     const r = await handleBiomeManage(db(), {
       action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K',
-      category: 'terrain', colorHex: '#AABBCC', movementCost: 2.5, description: 'Jagged karst formations',
+      category: 'terrain', colorHex: '#AABBCC', movementCost: 2.5, baseThreat: 15, description: 'Jagged karst formations',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.glyph).toBe('K')
     expect(body.colorHex).toBe('#AABBCC')
     expect(body.movementCost).toBe(2.5)
+    expect(body.baseThreat).toBe(15)
   })
 
   it('register rejects a duplicate name for the same world', async () => {
@@ -201,7 +203,7 @@ describe('handleBiomeManage', () => {
     const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
     const r = await handleBiomeManage(db(), {
       action: 'update', id: created.biomeId, glyph: 'B', category: 'hazard',
-      colorHex: '#112233', movementCost: 4, description: 'Sucking mud',
+      colorHex: '#112233', movementCost: 4, baseThreat: 25, description: 'Sucking mud',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -210,6 +212,7 @@ describe('handleBiomeManage', () => {
     expect(fetched.biome.category).toBe('hazard')
     expect(fetched.biome.color_hex).toBe('#112233')
     expect(fetched.biome.movement_cost).toBe(4)
+    expect(fetched.biome.base_threat).toBe(25)
     expect(fetched.biome.description).toBe('Sucking mud')
   })
 
@@ -344,5 +347,14 @@ describe('handleBiomeManage', () => {
     const forest = registry.get('forest')
     expect(forest?.colorHex).toBe('#1A472A')
     expect(forest?.movementCost).toBe(1.5)
+  })
+
+  it('getBiomeRegistry also exposes baseThreat, defaulting to 0 (#280)', async () => {
+    await createWorld()
+    await seedDefaultBiomes(env.RPG_DB, WORLD)
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', baseThreat: 20 })
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    expect(registry.get('forest')?.baseThreat).toBe(0)
+    expect(registry.get('limestone_karst')?.baseThreat).toBe(20)
   })
 })

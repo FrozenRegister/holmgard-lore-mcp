@@ -221,6 +221,9 @@ CREATE TABLE IF NOT EXISTS biomes (
   category      TEXT NOT NULL DEFAULT 'terrain',
   color_hex     TEXT NOT NULL DEFAULT '#888888',
   movement_cost REAL NOT NULL DEFAULT 1.0,
+  -- #280 — baseline threat contribution ("biome_base" in encounter.resolve).
+  -- See migration 0012.
+  base_threat   REAL NOT NULL DEFAULT 0,
   description   TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
@@ -229,6 +232,46 @@ CREATE TABLE IF NOT EXISTS biomes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_biomes_world ON biomes(world_id);
+
+-- Encounter resolution engine (#280) — see migration 0012.
+CREATE TABLE IF NOT EXISTS encounter_types (
+  id             TEXT PRIMARY KEY,
+  world_id       TEXT NOT NULL,
+  predator_name  TEXT,
+  category       TEXT NOT NULL,
+  aggression     TEXT NOT NULL DEFAULT 'curious',
+  base_weight    REAL NOT NULL DEFAULT 1.0,
+  min_threat     REAL NOT NULL DEFAULT 0,
+  requires_core  INTEGER NOT NULL DEFAULT 0,
+  description    TEXT,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_encounter_types_world ON encounter_types(world_id);
+
+CREATE TABLE IF NOT EXISTS character_injuries (
+  id               TEXT PRIMARY KEY,
+  character_id     TEXT,
+  world_id         TEXT NOT NULL,
+  severity         TEXT NOT NULL,
+  injury_type      TEXT NOT NULL,
+  location         TEXT,
+  ability          TEXT,
+  ability_modifier INTEGER,
+  bleeding_rate    TEXT,
+  infection_risk   TEXT,
+  recovery         TEXT,
+  description      TEXT,
+  treated          INTEGER NOT NULL DEFAULT 0,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_injuries_character ON character_injuries(character_id);
+CREATE INDEX IF NOT EXISTS idx_character_injuries_world ON character_injuries(world_id);
 
 CREATE TABLE IF NOT EXISTS rivers (
   id               TEXT PRIMARY KEY,
