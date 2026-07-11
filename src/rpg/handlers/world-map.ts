@@ -8,6 +8,12 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { getBiomeRegistry } from './biome-manage'
+
+// Legacy fallback glyphs for worlds with zero registered biomes (#274) — kept
+// only so pre-existing worlds that never ran biome.seed_defaults still render
+// a sensible preview instead of '?' for every tile.
+const LEGACY_BIOME_GLYPHS: Record<string, string> = { grass: '.', forest: 'T', mountain: 'M', water: '~', desert: 'd', swamp: 'S', plains: ',', tundra: '_', wasteland: 'X' }
 
 const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'preview', 'find_poi', 'suggest_poi'] as const
 type WorldMapAction = typeof ACTIONS[number]
@@ -77,6 +83,13 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
     }
     case 'patch': {
       if (!a.worldId || a.tiles.length === 0) return err('"worldId" and "tiles" are required')
+      const registry = await getBiomeRegistry(db, a.worldId)
+      if (registry.size > 0) {
+        const invalid = a.tiles.map(t => t.biome).filter(b => !registry.has(b))
+        if (invalid.length > 0) {
+          return err(`Unknown biome(s) for this world: ${[...new Set(invalid)].join(', ')}. Registered biomes: ${[...registry.keys()].sort().join(', ')}`)
+        }
+      }
       let updated = 0
       for (const tile of a.tiles) {
         const id = crypto.randomUUID()
@@ -90,11 +103,13 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
       if (!a.worldId || a.x === undefined || a.y === undefined) return err('"worldId", "x", and "y" are required')
       const { results: tiles } = await db.prepare('SELECT x, y, biome FROM tiles WHERE world_id = ? AND x >= ? AND x < ? AND y >= ? AND y < ?')
         .bind(a.worldId, a.x, a.x + a.width, a.y, a.y + a.height).all() as { results: Array<{ x: number; y: number; biome: string }> }
-      const BIOME_GLYPHS: Record<string, string> = { grass: '.', forest: 'T', mountain: 'M', water: '~', desert: 'd', swamp: 'S', plains: ',', tundra: '_', wasteland: 'X' }
+      const registry = await getBiomeRegistry(db, a.worldId)
       const grid: string[][] = Array.from({ length: a.height }, () => Array(a.width).fill('?'))
       for (const t of tiles) {
         const gx = t.x - a.x; const gy = t.y - a.y
-        if (gx >= 0 && gx < a.width && gy >= 0 && gy < a.height) grid[gy][gx] = BIOME_GLYPHS[t.biome] ?? '?'
+        if (gx >= 0 && gx < a.width && gy >= 0 && gy < a.height) {
+          grid[gy][gx] = registry.get(t.biome)?.glyph ?? LEGACY_BIOME_GLYPHS[t.biome] ?? '?'
+        }
       }
       const ascii = grid.map(row => row.join('')).join('\n')
       return ok({ success: true, actionType: 'preview', worldId: a.worldId, ascii, x: a.x, y: a.y, width: a.width, height: a.height })

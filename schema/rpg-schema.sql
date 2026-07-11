@@ -206,6 +206,26 @@ CREATE TABLE IF NOT EXISTS structures (
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 
+-- Dynamic per-world biome registry (#274) — see migration 0010 for the
+-- rollout notes on why spatial_manage's room_nodes.biome_context CHECK
+-- constraint isn't also replaced by this table yet.
+CREATE TABLE IF NOT EXISTS biomes (
+  id            TEXT PRIMARY KEY,
+  world_id      TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  glyph         TEXT NOT NULL DEFAULT '?',
+  category      TEXT NOT NULL DEFAULT 'terrain',
+  color_hex     TEXT NOT NULL DEFAULT '#888888',
+  movement_cost REAL NOT NULL DEFAULT 1.0,
+  description   TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
+  UNIQUE(world_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_biomes_world ON biomes(world_id);
+
 CREATE TABLE IF NOT EXISTS rivers (
   id               TEXT PRIMARY KEY,
   world_id         TEXT NOT NULL,

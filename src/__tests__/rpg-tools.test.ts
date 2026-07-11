@@ -285,6 +285,21 @@ describe('RPG engine tools', () => {
     expect(r.error).toBe(true)
   })
 
+  it('rpg world create auto-seeds the default biome registry (#274)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'BiomeWorld', theme: 'fantasy' })
+    const biomes = await callTool('rpg', { sub: 'biome', action: 'list', worldId: world.worldId })
+    expect(biomes.success).toBe(true)
+    expect(biomes.count).toBeGreaterThan(0)
+    expect(biomes.biomes.some((b: any) => b.name === 'forest')).toBe(true)
+  })
+
+  it('rpg world generate auto-seeds the default biome registry (#274)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'generate', name: 'ProcgenBiomeWorld' })
+    const biomes = await callTool('rpg', { sub: 'biome', action: 'list', worldId: world.worldId })
+    expect(biomes.success).toBe(true)
+    expect(biomes.count).toBeGreaterThan(0)
+  })
+
   it('rpg world get requires id or worldId', async () => {
     const r = await callTool('rpg', { sub: 'world', action: 'get' })
     expect(r.error).toBe(true)
