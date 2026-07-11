@@ -1045,33 +1045,55 @@ CREATE INDEX IF NOT EXISTS idx_perception_assessments_observer ON perception_ass
 CREATE INDEX IF NOT EXISTS idx_perception_assessments_target   ON perception_assessments(target_ref_kind, target_ref_id);
 
 -- ── Map Editor (hexes + landmarks) ───────────────────────────────────────────
--- These two tables are NOT in Mnehmos; they back the /admin/map/* routes
--- consumed by holmgard-lore-editor's mapSync.ts.
+-- These two tables are NOT in Mnehmos; they back the /admin/map/* routes and
+-- /internal/map-readback consumed by holmgard-lore-editor's mapSync.ts.
+-- world_id/biome/elevation/moisture/temperature (hexes) and world_id/region_id/
+-- population/zone_*/predator_ref/threat_level/dominance_rank (landmarks) were
+-- added by migration 0019 (#319, Phase 1 of #308) to begin unifying this hex
+-- map with the RPG engine's square-grid worlds/tiles/structures/biomes system
+-- — see that migration's header comment for the full rationale.
 
 CREATE TABLE IF NOT EXISTS hexes (
-  q          INTEGER NOT NULL,
-  r          INTEGER NOT NULL,
-  map_id     TEXT NOT NULL DEFAULT 'main',
-  terrain    TEXT,
-  label      TEXT,
-  data       TEXT DEFAULT '{}',
-  updated_at TEXT DEFAULT (DATETIME('now')),
+  q           INTEGER NOT NULL,
+  r           INTEGER NOT NULL,
+  map_id      TEXT NOT NULL DEFAULT 'main',
+  terrain     TEXT,
+  label       TEXT,
+  data        TEXT DEFAULT '{}',
+  biome       TEXT,
+  elevation   INTEGER DEFAULT 0,
+  moisture    INTEGER DEFAULT 50,
+  temperature INTEGER DEFAULT 15,
+  world_id    TEXT REFERENCES worlds(id) ON DELETE SET NULL,
+  updated_at  TEXT DEFAULT (DATETIME('now')),
   PRIMARY KEY (q, r, map_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_hexes_world ON hexes(world_id);
+CREATE INDEX IF NOT EXISTS idx_hexes_map   ON hexes(map_id);
+
 CREATE TABLE IF NOT EXISTS landmarks (
-  id         TEXT PRIMARY KEY,
-  map_id     TEXT NOT NULL DEFAULT 'main',
-  q          INTEGER NOT NULL,
-  r          INTEGER NOT NULL,
-  name       TEXT NOT NULL,
-  category   TEXT,
-  data       TEXT DEFAULT '{}',
-  updated_at TEXT DEFAULT (DATETIME('now'))
+  id             TEXT PRIMARY KEY,
+  map_id         TEXT NOT NULL DEFAULT 'main',
+  q              INTEGER NOT NULL,
+  r              INTEGER NOT NULL,
+  name           TEXT NOT NULL,
+  category       TEXT,
+  data           TEXT DEFAULT '{}',
+  world_id       TEXT REFERENCES worlds(id) ON DELETE SET NULL,
+  region_id      TEXT,
+  population     INTEGER DEFAULT 0,
+  zone_type      TEXT,
+  zone_shape     TEXT,
+  predator_ref   TEXT,
+  threat_level   INTEGER,
+  dominance_rank INTEGER,
+  updated_at     TEXT DEFAULT (DATETIME('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_landmarks_map    ON landmarks(map_id);
 CREATE INDEX IF NOT EXISTS idx_landmarks_coords ON landmarks(q, r);
+CREATE INDEX IF NOT EXISTS idx_landmarks_world  ON landmarks(world_id);
 
 -- ── Entity Relations ──────────────────────────────────────────────────────────
 

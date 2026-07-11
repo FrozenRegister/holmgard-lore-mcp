@@ -5,15 +5,9 @@ import { setupRpgDb } from './setup-d1'
 
 describe('admin map routes', () => {
   beforeEach(async () => {
-    // Initialize schema in both D1 contexts:
-    // - test context (for direct env.RPG_DB reads in assertions)
-    // - worker context (for SELF.fetch INSERT operations)
+    // hexes/landmarks are created by the migrations themselves (#319) — no
+    // separate /admin/map/setup-db call needed any more.
     await setupRpgDb(env.RPG_DB)
-    await SELF.fetch('http://example.com/admin/map/setup-db', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: ADMIN_SECRET }),
-    })
   })
   async function mapPost(path: string, body: Record<string, unknown>, secret?: string) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -24,6 +18,94 @@ describe('admin map routes', () => {
       body: JSON.stringify(body),
     })
   }
+
+  async function createWorld(id: string) {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, id, 'seed', 10, 10, now, now).run()
+  }
+
+  // ── world_id/biome/climate columns (#319, Phase 1 of #308) ──────────────────
+
+  innerDescribe('world_id/biome/climate columns', () => {
+    it('hexes: world_id and biome default null, elevation/moisture/temperature default correctly', async () => {
+      await env.RPG_DB.prepare(
+        "INSERT INTO hexes (q, r, map_id, terrain, label, data, updated_at) VALUES (0, 0, 'default-test', 'forest', 'Thornwood', '{}', datetime('now'))"
+      ).run()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id, biome, elevation, moisture, temperature FROM hexes WHERE q = 0 AND r = 0 AND map_id = ?'
+      ).bind('default-test').first() as Record<string, unknown>
+      expect(row.world_id).toBeNull()
+      expect(row.biome).toBeNull()
+      expect(row.elevation).toBe(0)
+      expect(row.moisture).toBe(50)
+      expect(row.temperature).toBe(15)
+    })
+
+    it('hexes: accepts a world_id referencing an existing world', async () => {
+      await createWorld('world-hex-fk')
+      await env.RPG_DB.prepare(
+        "INSERT INTO hexes (q, r, map_id, terrain, world_id, updated_at) VALUES (1, 1, 'fk-test', 'plains', ?, datetime('now'))"
+      ).bind('world-hex-fk').run()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id FROM hexes WHERE q = 1 AND r = 1 AND map_id = ?'
+      ).bind('fk-test').first() as Record<string, unknown>
+      expect(row.world_id).toBe('world-hex-fk')
+    })
+
+    it('hexes: rejects a world_id that does not reference an existing world', async () => {
+      await expect(
+        env.RPG_DB.prepare(
+          "INSERT INTO hexes (q, r, map_id, world_id, updated_at) VALUES (2, 2, 'fk-fail', 'nonexistent-world', datetime('now'))"
+        ).run()
+      ).rejects.toThrow()
+    })
+
+    it('landmarks: world_id/region_id/zone columns default null, population defaults 0', async () => {
+      await env.RPG_DB.prepare(
+        "INSERT INTO landmarks (id, map_id, q, r, name, category, updated_at) VALUES ('lm-default', 'default-test', 0, 0, 'A Landmark', 'poi', datetime('now'))"
+      ).run()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?'
+      ).bind('lm-default').first() as Record<string, unknown>
+      expect(row.world_id).toBeNull()
+      expect(row.region_id).toBeNull()
+      expect(row.population).toBe(0)
+      expect(row.zone_type).toBeNull()
+      expect(row.zone_shape).toBeNull()
+      expect(row.predator_ref).toBeNull()
+      expect(row.threat_level).toBeNull()
+      expect(row.dominance_rank).toBeNull()
+    })
+
+    it('landmarks: accepts a world_id referencing an existing world, and zone columns when set', async () => {
+      await createWorld('world-lm-fk')
+      await env.RPG_DB.prepare(
+        `INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank, updated_at)
+         VALUES ('lm-zone', 'fk-test', 3, 3, 'Wolf Den', 'zone', ?, 'region-1', 12, 'territory', '{"type":"circle","radius":3}', 'wolf', 4, 2, datetime('now'))`
+      ).bind('world-lm-fk').run()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?'
+      ).bind('lm-zone').first() as Record<string, unknown>
+      expect(row.world_id).toBe('world-lm-fk')
+      expect(row.region_id).toBe('region-1')
+      expect(row.population).toBe(12)
+      expect(row.zone_type).toBe('territory')
+      expect(row.zone_shape).toBe('{"type":"circle","radius":3}')
+      expect(row.predator_ref).toBe('wolf')
+      expect(row.threat_level).toBe(4)
+      expect(row.dominance_rank).toBe(2)
+    })
+
+    it('landmarks: rejects a world_id that does not reference an existing world', async () => {
+      await expect(
+        env.RPG_DB.prepare(
+          "INSERT INTO landmarks (id, map_id, q, r, name, world_id, updated_at) VALUES ('lm-fk-fail', 'fk-fail', 4, 4, 'Bad Ref', 'nonexistent-world', datetime('now'))"
+        ).run()
+      ).rejects.toThrow()
+    })
+  })
 
   // ── /admin/map/push-hexes ──────────────────────────────────────────────────
 

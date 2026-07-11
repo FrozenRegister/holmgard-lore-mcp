@@ -7,12 +7,9 @@ import { setupRpgDb } from './setup-d1'
 
 describe('RPG engine tools', () => {
   beforeEach(async () => {
+    // hexes/landmarks are created by the migrations themselves (#319) — no
+    // separate /admin/map/setup-db call needed any more.
     await setupRpgDb(env.RPG_DB)
-    await SELF.fetch('http://example.com/admin/map/setup-db', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: 'test-secret-123' }),
-    })
   })
 
   async function callTool(name: string, args: Record<string, unknown>) {

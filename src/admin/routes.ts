@@ -653,32 +653,12 @@ admin.delete('/relations/:id', async (c) => {
 })
 
 // ── Map routes ──────────────────────────────────────────────────────────────
-
-// Single-line CREATE TABLE statements (exec() processes line-by-line in D1).
-const MAP_SCHEMA_DDL = [
-  "CREATE TABLE IF NOT EXISTS hexes (q INTEGER NOT NULL, r INTEGER NOT NULL, map_id TEXT NOT NULL DEFAULT 'main', terrain TEXT, label TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')), PRIMARY KEY (q, r, map_id))",
-  "CREATE TABLE IF NOT EXISTS landmarks (id TEXT PRIMARY KEY, map_id TEXT NOT NULL DEFAULT 'main', q INTEGER NOT NULL, r INTEGER NOT NULL, name TEXT NOT NULL, category TEXT, data TEXT DEFAULT '{}', updated_at TEXT DEFAULT (DATETIME('now')))",
-  "CREATE INDEX IF NOT EXISTS idx_landmarks_map ON landmarks(map_id)",
-  "CREATE INDEX IF NOT EXISTS idx_landmarks_coords ON landmarks(q, r)",
-]
-
-admin.post('/map/setup-db', async (c) => {
-  try {
-    const body = await c.req.json()
-    if (!(await checkSecret(c, body))) {
-      return c.json({ ok: false, error: 'unauthorized' }, 401)
-    }
-    const db = c.env?.RPG_DB
-    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
-    for (const ddl of MAP_SCHEMA_DDL) {
-      await db.exec(ddl)
-    }
-    return c.json({ ok: true }, 200)
-  } catch (e) {
-    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
-    return errorResponse(c, e)
-  }
-})
+// `hexes`/`landmarks` are created by schema/migrations/0001_initial.sql (and
+// updated by 0019_map_tables_world_scoping.sql, #319) — the D1 migration
+// pipeline is authoritative for their schema. The `POST /admin/map/setup-db`
+// route that used to re-run an ad-hoc, uncoordinated copy of this DDL at
+// request time (bypassing .github/workflows/d1-migrate.yml) has been removed
+// as part of #319 since it was fully redundant with the migrations.
 
 const D1_CHUNK = 100
 
