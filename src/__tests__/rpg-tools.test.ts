@@ -297,6 +297,21 @@ describe('RPG engine tools', () => {
     expect(biomes.count).toBeGreaterThan(0)
   })
 
+  it('rpg world create auto-seeds the default zone-type registry (#320)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'ZoneTypeWorld', theme: 'fantasy' })
+    const zoneTypes = await callTool('rpg', { sub: 'zone_type', action: 'list', worldId: world.worldId })
+    expect(zoneTypes.success).toBe(true)
+    expect(zoneTypes.count).toBeGreaterThan(0)
+    expect(zoneTypes.zoneTypes.some((z: any) => z.name === 'perimeter')).toBe(true)
+  })
+
+  it('rpg world generate auto-seeds the default zone-type registry (#320)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'generate', name: 'ProcgenZoneTypeWorld' })
+    const zoneTypes = await callTool('rpg', { sub: 'zone_type', action: 'list', worldId: world.worldId })
+    expect(zoneTypes.success).toBe(true)
+    expect(zoneTypes.count).toBeGreaterThan(0)
+  })
+
   it('rpg world get requires id or worldId', async () => {
     const r = await callTool('rpg', { sub: 'world', action: 'get' })
     expect(r.error).toBe(true)
