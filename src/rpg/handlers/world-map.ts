@@ -68,12 +68,27 @@ function pointInZone(px: number, py: number, cx: number, cy: number, zone: ZoneS
   return false
 }
 
-function parseZoneMetadata(raw: string | null): { zone?: ZoneShape; zoneType?: string; predator?: string } | null {
+export interface ZoneMetadata {
+  zone?: ZoneShape
+  zoneType?: string
+  predator?: string
+  // #280 — optional threat/dominance data for encounter resolution. threatLevel
+  // is a narrator-authored 0-100 scale; dominanceRank ranks overlapping zones
+  // when more than one territory covers the same point (higher wins; the
+  // loser becomes a "displaced" contributor in encounter.resolve).
+  threatLevel?: number
+  dominanceRank?: number
+}
+
+export function parseZoneMetadata(raw: string | null): ZoneMetadata | null {
   if (!raw) return null
   try {
     const meta = JSON.parse(raw)
     if (!meta || typeof meta !== 'object') return null
-    return { zone: meta.zone, zoneType: meta.zone_type, predator: meta.predator }
+    return {
+      zone: meta.zone, zoneType: meta.zone_type, predator: meta.predator,
+      threatLevel: meta.threat_level, dominanceRank: meta.dominance_rank,
+    }
   } catch {
     return null
   }
@@ -81,9 +96,10 @@ function parseZoneMetadata(raw: string | null): { zone?: ZoneShape; zoneType?: s
 
 // Merges zone-shape params into a structure's existing metadata JSON. Shape
 // fields (radius/polygon/ring) are replaced wholesale when any is given;
-// zone_type/predator are patched independently so a caller can update one
-// without clobbering the other's existing value. Returns null when there is
-// nothing zone-related to store (fully backward-compatible plain POIs).
+// zone_type/predator/threatLevel/dominanceRank are patched independently so a
+// caller can update one without clobbering the others' existing values.
+// Returns null when there is nothing zone-related to store (fully
+// backward-compatible plain POIs).
 function mergeZoneMetadata(
   existingMetaRaw: string | null,
   patch: {
@@ -94,6 +110,8 @@ function mergeZoneMetadata(
     ringPoints?: number
     zoneType?: string
     predatorRef?: string
+    threatLevel?: number
+    dominanceRank?: number
   }
 ): string | null {
   const existing = parseZoneMetadata(existingMetaRaw)
@@ -107,11 +125,45 @@ function mergeZoneMetadata(
   }
   const zoneType = patch.zoneType ?? existing?.zoneType
   const predator = patch.predatorRef ?? existing?.predator
+  const threatLevel = patch.threatLevel ?? existing?.threatLevel
+  const dominanceRank = patch.dominanceRank ?? existing?.dominanceRank
   const meta: Record<string, unknown> = {}
   if (zone) meta.zone = zone
   if (zoneType) meta.zone_type = zoneType
   if (predator) meta.predator = predator
+  if (threatLevel !== undefined) meta.threat_level = threatLevel
+  if (dominanceRank !== undefined) meta.dominance_rank = dominanceRank
   return Object.keys(meta).length > 0 ? JSON.stringify(meta) : null
+}
+
+export interface ResolvedZone {
+  structureId: string
+  name: string
+  zoneType: string | null
+  predator: string | null
+  threatLevel: number | null
+  dominanceRank: number | null
+  distanceToCenter: number
+}
+
+// Shared by query_zone and encounter-manage.ts (#280) — every zone shape
+// containing (x, y), with the threat/dominance data encounter resolution
+// needs to rank overlapping territories.
+export async function resolveZonesAt(db: D1Database, worldId: string, x: number, y: number): Promise<ResolvedZone[]> {
+  const { results } = await db.prepare('SELECT id, name, x, y, metadata FROM structures WHERE world_id = ?').bind(worldId).all() as
+    { results: Array<{ id: string; name: string; x: number; y: number; metadata: string | null }> }
+  const zones: ResolvedZone[] = []
+  for (const s of results) {
+    const meta = parseZoneMetadata(s.metadata)
+    if (!meta?.zone) continue
+    if (!pointInZone(x, y, s.x, s.y, meta.zone)) continue
+    zones.push({
+      structureId: s.id, name: s.name, zoneType: meta.zoneType ?? null, predator: meta.predator ?? null,
+      threatLevel: meta.threatLevel ?? null, dominanceRank: meta.dominanceRank ?? null,
+      distanceToCenter: Math.round(Math.hypot(x - s.x, y - s.y) * 10) / 10,
+    })
+  }
+  return zones
 }
 
 // Overlay glyphs for zone types rendered in preview's ASCII grid — single
@@ -260,6 +312,8 @@ const InputSchema = z.object({
   ringPoints: z.number().int().min(1).optional(),
   zoneType: z.string().optional(),
   predatorRef: z.string().optional(),
+  threatLevel: z.number().min(0).max(100).optional(),
+  dominanceRank: z.number().int().optional(),
   renderWidth: z.number().int().min(1).max(200).optional().default(100),
   renderHeight: z.number().int().min(1).max(200).optional().default(100),
   showStructures: z.boolean().optional().default(true),
@@ -429,7 +483,7 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
       const structType = a.structureType ?? 'landmark'
       const metadata = mergeZoneMetadata(null, {
         radius: a.radius, polygon: a.polygon, ringInner: a.ringInner, ringOuter: a.ringOuter, ringPoints: a.ringPoints,
-        zoneType: a.zoneType, predatorRef: a.predatorRef,
+        zoneType: a.zoneType, predatorRef: a.predatorRef, threatLevel: a.threatLevel, dominanceRank: a.dominanceRank,
       })
       const hasZone = a.radius !== undefined || a.polygon !== undefined || (a.ringInner !== undefined && a.ringOuter !== undefined)
       await db.prepare('INSERT INTO structures (id, world_id, region_id, name, type, x, y, population, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -452,10 +506,11 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
 
       const zoneFieldsTouched = a.radius !== undefined || a.polygon !== undefined || a.ringInner !== undefined
         || a.ringOuter !== undefined || a.zoneType !== undefined || a.predatorRef !== undefined
+        || a.threatLevel !== undefined || a.dominanceRank !== undefined
       if (zoneFieldsTouched) {
         const metadata = mergeZoneMetadata(existing.metadata as string | null, {
           radius: a.radius, polygon: a.polygon, ringInner: a.ringInner, ringOuter: a.ringOuter, ringPoints: a.ringPoints,
-          zoneType: a.zoneType, predatorRef: a.predatorRef,
+          zoneType: a.zoneType, predatorRef: a.predatorRef, threatLevel: a.threatLevel, dominanceRank: a.dominanceRank,
         })
         sets.push('metadata = ?'); vals.push(metadata)
       }
@@ -466,18 +521,8 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
     }
     case 'query_zone': {
       if (!a.worldId || a.x === undefined || a.y === undefined) return err('"worldId", "x", and "y" are required')
-      const { results } = await db.prepare('SELECT id, name, x, y, metadata FROM structures WHERE world_id = ?').bind(a.worldId).all() as
-        { results: Array<{ id: string; name: string; x: number; y: number; metadata: string | null }> }
-      const zones: Array<{ structureId: string; name: string; zoneType: string | null; distanceToCenter: number }> = []
-      let inPerimeter = false
-      for (const s of results) {
-        const meta = parseZoneMetadata(s.metadata)
-        if (!meta?.zone) continue
-        if (!pointInZone(a.x, a.y, s.x, s.y, meta.zone)) continue
-        const distanceToCenter = Math.round(Math.hypot(a.x - s.x, a.y - s.y) * 10) / 10
-        zones.push({ structureId: s.id, name: s.name, zoneType: meta.zoneType ?? null, distanceToCenter })
-        if (meta.zoneType === 'perimeter') inPerimeter = true
-      }
+      const zones = await resolveZonesAt(db, a.worldId, a.x, a.y)
+      const inPerimeter = zones.some(z => z.zoneType === 'perimeter')
       return ok({ success: true, actionType: 'query_zone', worldId: a.worldId, x: a.x, y: a.y, zones, inPerimeter })
     }
     case 'list_zones': {
@@ -488,7 +533,10 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
         .map(s => {
           const meta = parseZoneMetadata(s.metadata)
           if (!meta?.zone) return null
-          return { structureId: s.id, name: s.name, type: s.type, x: s.x, y: s.y, zoneType: meta.zoneType ?? null, zone: meta.zone, predator: meta.predator ?? null }
+          return {
+            structureId: s.id, name: s.name, type: s.type, x: s.x, y: s.y, zoneType: meta.zoneType ?? null, zone: meta.zone,
+            predator: meta.predator ?? null, threatLevel: meta.threatLevel ?? null, dominanceRank: meta.dominanceRank ?? null,
+          }
         })
         .filter((z): z is NonNullable<typeof z> => z !== null)
         .filter(z => !a.zoneType || z.zoneType === a.zoneType)

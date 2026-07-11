@@ -36,6 +36,10 @@ const InputSchema = z.object({
   category: z.enum(CATEGORIES).optional(),
   colorHex: z.string().optional(),
   movementCost: z.number().min(0).optional(),
+  // #280 — baseline threat contribution ("biome_base" in encounter.resolve's
+  // formula). Defaults to 0 so every existing biome is unaffected until a
+  // narrator opts in.
+  baseThreat: z.number().min(0).max(100).optional(),
   description: z.string().optional(),
 })
 
@@ -79,11 +83,11 @@ export async function seedDefaultBiomes(db: D1Database, worldId: string): Promis
   return seeded
 }
 
-/** Used by world_map.ts. A world with zero registered biomes is treated as unrestricted (backward compatible). */
-export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number }>> {
-  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost FROM biomes WHERE world_id = ?').bind(worldId).all() as
-    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number }> }
-  return new Map(results.map(r => [r.name, { glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost }]))
+/** Used by world_map.ts and encounter-manage.ts. A world with zero registered biomes is treated as unrestricted (backward compatible). */
+export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number; baseThreat: number }>> {
+  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost, base_threat FROM biomes WHERE world_id = ?').bind(worldId).all() as
+    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number; base_threat: number }> }
+  return new Map(results.map(r => [r.name, { glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost, baseThreat: r.base_threat }]))
 }
 
 export async function handleBiomeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -107,16 +111,17 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
       if (!HEX_COLOR.test(colorHex)) return err('"colorHex" must be a 6-digit hex color like #A1B2C3')
       const movementCost = a.movementCost ?? 1.0
       const category = a.category ?? 'terrain'
+      const baseThreat = a.baseThreat ?? 0
       const existing = await db.prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
       if (existing) return err(`Biome "${a.name}" already exists for this world`)
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.name, glyph, category, colorHex, movementCost, a.description ?? null, now, now).run()
-      return ok({ success: true, actionType: 'register', biomeId: id, worldId: a.worldId, name: a.name, glyph, category, colorHex, movementCost })
+      await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, a.worldId, a.name, glyph, category, colorHex, movementCost, baseThreat, a.description ?? null, now, now).run()
+      return ok({ success: true, actionType: 'register', biomeId: id, worldId: a.worldId, name: a.name, glyph, category, colorHex, movementCost, baseThreat })
     }
     case 'list': {
       if (!a.worldId) return err('"worldId" is required')
-      const { results } = await db.prepare('SELECT id, name, glyph, category, color_hex, movement_cost, description FROM biomes WHERE world_id = ? ORDER BY name').bind(a.worldId).all()
+      const { results } = await db.prepare('SELECT id, name, glyph, category, color_hex, movement_cost, base_threat, description FROM biomes WHERE world_id = ? ORDER BY name').bind(a.worldId).all()
       return ok({ success: true, actionType: 'list', worldId: a.worldId, biomes: results, count: results.length })
     }
     case 'get': {
@@ -145,6 +150,7 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
         sets.push('color_hex = ?'); vals.push(a.colorHex)
       }
       if (a.movementCost !== undefined) { sets.push('movement_cost = ?'); vals.push(a.movementCost) }
+      if (a.baseThreat !== undefined) { sets.push('base_threat = ?'); vals.push(a.baseThreat) }
       if (a.description !== undefined) { sets.push('description = ?'); vals.push(a.description) }
       vals.push(targetId)
       await db.prepare(`UPDATE biomes SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { resolveEncounterCore } from './encounter-manage'
 
 const ACTIONS = ['travel', 'loot', 'rest'] as const
 type TravelAction = typeof ACTIONS[number]
@@ -24,6 +25,22 @@ const InputSchema = z.object({
   restType: z.enum(['short', 'long']).optional().default('short'),
   roomId: z.string().optional(),
   characterIds: z.array(z.string()).optional().default([]),
+  // #280 — encounter.resolve integration. room_nodes (this handler's own
+  // location model) has no world_id/x/y at all, so resolveEncounter can only
+  // call the full engine when the caller also supplies worldId/x/y for the
+  // world_map-side location matching this room; otherwise it falls back to
+  // the pre-existing flat 15% flag.
+  resolveEncounter: z.boolean().optional().default(false),
+  worldId: z.string().optional(),
+  x: z.number().int().optional(),
+  y: z.number().int().optional(),
+  partySize: z.number().int().min(1).optional().default(1),
+  timeOfDay: z.enum(['dawn', 'dusk', 'night', 'midday', 'day']).optional(),
+  noiseLevel: z.enum(['loud', 'moderate', 'silent']).optional(),
+  scentModifiers: z.array(z.enum(['blood', 'cooking', 'fire'])).optional().default([]),
+  partyInjuries: z.array(z.string()).optional().default(['none']),
+  weather: z.enum(['clear', 'rain', 'snow', 'fog']).optional(),
+  includeInjuries: z.boolean().optional().default(true),
 })
 
 const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
@@ -77,6 +94,25 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
         return err('"toRoomId" or ("fromRoomId" + "direction") is required')
       }
       await db.prepare('UPDATE room_nodes SET visited_count = visited_count + 1, last_visited_at = ?, updated_at = ? WHERE id = ?').bind(now, now, targetRoom.id).run()
+
+      if (a.resolveEncounter && a.worldId && a.x !== undefined && a.y !== undefined) {
+        const encounter = await resolveEncounterCore(db, {
+          worldId: a.worldId, x: a.x, y: a.y, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
+          scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather,
+          includeInjuries: a.includeInjuries, characterIds: a.characterIds,
+        })
+        return ok({
+          success: true, actionType: 'travel',
+          arrived: true, roomId: targetRoom.id, roomName: targetRoom.name,
+          description: targetRoom.base_description, biome: targetRoom.biome_context,
+          encounter,
+        })
+      }
+
+      // Legacy flat-chance flag — preserved for callers that don't track
+      // world_map coordinates for their room_nodes (see #280's scope note:
+      // full encounter.resolve requires worldId/x/y, which room_nodes itself
+      // doesn't carry).
       const hasEncounter = Math.random() < 0.15
       return ok({
         success: true, actionType: 'travel',

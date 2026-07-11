@@ -501,6 +501,56 @@ describe('handleWorldMap', () => {
     expect(body.zones).toHaveLength(2)
   })
 
+  // ── zone threat/dominance (#280) ──────────────────────────────────────────
+
+  it('suggest_poi stores threatLevel and dominanceRank on a zone', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 10,
+      zoneType: 'territory', predatorRef: 'giant_panther', threatLevel: 40, dominanceRank: 5,
+    })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 36, y: 73 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zones[0].threatLevel).toBe(40)
+    expect(body.zones[0].dominanceRank).toBe(5)
+    expect(body.zones[0].predator).toBe('giant_panther')
+  })
+
+  it('query_zone returns null threatLevel/dominanceRank when not set', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Vague Zone', x: 5, y: 5, radius: 2, zoneType: 'territory' })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 5, y: 5 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zones[0].threatLevel).toBeNull()
+    expect(body.zones[0].dominanceRank).toBeNull()
+  })
+
+  it('update_poi patches threatLevel/dominanceRank independently of shape and zoneType', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Leonar Range', x: 20, y: 20, radius: 6, zoneType: 'territory', threatLevel: 20, dominanceRank: 2,
+    })).content[0].text)
+    await handleWorldMap(db(), { action: 'update_poi', structureId: created.structureId, threatLevel: 55 })
+    const r = await handleWorldMap(db(), { action: 'query_zone', worldId: WORLD, x: 20, y: 20 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zones[0].threatLevel).toBe(55)
+    expect(body.zones[0].dominanceRank).toBe(2)
+    expect(body.zones[0].zoneType).toBe('territory')
+  })
+
+  it('list_zones includes threatLevel/dominanceRank/predator', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 36, y: 73, radius: 10,
+      zoneType: 'territory', predatorRef: 'giant_panther', threatLevel: 40, dominanceRank: 5,
+    })
+    const r = await handleWorldMap(db(), { action: 'list_zones', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zones[0].threatLevel).toBe(40)
+    expect(body.zones[0].dominanceRank).toBe(5)
+    expect(body.zones[0].predator).toBe('giant_panther')
+  })
+
   it('list_zones requires worldId', async () => {
     const r = await handleWorldMap(db(), { action: 'list_zones' })
     const body = JSON.parse(r.content[0].text)

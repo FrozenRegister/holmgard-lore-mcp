@@ -40,6 +40,7 @@ import { handleDramaManage } from './handlers/drama-manage'
 import { handleTimeManage } from './handlers/time-manage'
 import { handleTimelineManage } from './handlers/timeline-manage'
 import { handleBiomeManage } from './handlers/biome-manage'
+import { handleEncounterManage } from './handlers/encounter-manage'
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
@@ -78,6 +79,7 @@ const SUB_MAP: Record<string, RpgFn> = {
   time:          handleTimeManage,
   timeline:      handleTimelineManage,
   biome:         handleBiomeManage,
+  encounter:     handleEncounterManage,
 }
 
 export const handle_rpg: ToolHandler = async ({ c, id, args }) => {
