@@ -1,0 +1,7 @@
+### Feature — Quest Milestones, Journals, and Races entity types
+- New `quest_milestones` table (migration 0016): ordered sub-objectives for a quest, with status tracking, optional entity linking, and color/privacy flags. Admin CRUD at `POST`/`PATCH`/`DELETE /admin/quests/:questId/milestones[/:milestoneId]`; read via `GET /api/entities/quests/:id/milestones`.
+- New `journals`/`journal_participants` tables (migration 0017): campaign session logs with optional calendar-date fields and linked participants (character/location/quest/nation). Read via `GET /api/entities/journals`, `/journals/:id`, `/journals/:id/participants`.
+- New `races` table (migration 0018): first-class ancestry/species entity with a self-referential `parent_race_id` for lineage. Read via `GET /api/entities/races`, `/races/:id`.
+- Races and journals are read-only for now (no admin write route yet) — writes go through direct D1 access until a future PR adds one.
+- Recovered from an abandoned branch (`claude/editor-github-issues-zle1sf`) that implemented this but was never opened as a PR — ported onto current `main` with renumbered migrations (the branch's 0009/0010/0011 collided with unrelated migrations already using those numbers) and full test coverage (the original had none).
+- All three entity types follow the existing `/api/entities/*` REST-read convention already used for characters/quests/items (see `src/api/entity-reads.ts`) — this is a separate, established pattern from the MCP `tools/call` surface, not a new architecture decision.

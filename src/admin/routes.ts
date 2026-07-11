@@ -857,4 +857,112 @@ admin.post('/import', async (c) => {
   }
 })
 
+// ── Quest Milestones ────────────────────────────────────────────────────────
+
+admin.post('/quests/:questId/milestones', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    const questId = c.req.param('questId')
+    const { title, notes, status, linked_entity_type, linked_entity_id, color, is_private } = body as Record<string, unknown>
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return c.json({ ok: false, error: 'title is required' }, 400)
+    }
+
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+
+    // Get max sort_order for this quest
+    const maxResult = await db.prepare('SELECT MAX(sort_order) as max_order FROM quest_milestones WHERE quest_id = ?').bind(questId).first() as { max_order: number | null }
+    const nextOrder = (maxResult?.max_order ?? -1) + 1
+
+    await db.prepare(`
+      INSERT INTO quest_milestones (id, quest_id, sort_order, title, notes, status, linked_entity_type, linked_entity_id, color, is_private, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id, questId, nextOrder,
+      title.toString().trim(),
+      notes ? String(notes).trim() : null,
+      status ? String(status) : 'pending',
+      linked_entity_type ? String(linked_entity_type) : null,
+      linked_entity_id ? String(linked_entity_id) : null,
+      color ? String(color) : null,
+      is_private ? 1 : 0,
+      now, now
+    ).run()
+
+    return c.json({ ok: true, id, sort_order: nextOrder }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return errorResponse(c, e)
+  }
+})
+
+admin.patch('/quests/:questId/milestones/:milestoneId', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    const milestoneId = c.req.param('milestoneId')
+    const { title, notes, status, linked_entity_type, linked_entity_id, color, is_private, sort_order } = body as Record<string, unknown>
+
+    const sets: string[] = ['updated_at = ?']
+    const vals: unknown[] = [new Date().toISOString()]
+
+    if (title !== undefined) { sets.push('title = ?'); vals.push(title ? String(title).trim() : '') }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes ? String(notes).trim() : null) }
+    if (status !== undefined) { sets.push('status = ?'); vals.push(String(status)) }
+    if (linked_entity_type !== undefined) { sets.push('linked_entity_type = ?'); vals.push(linked_entity_type ? String(linked_entity_type) : null) }
+    if (linked_entity_id !== undefined) { sets.push('linked_entity_id = ?'); vals.push(linked_entity_id ? String(linked_entity_id) : null) }
+    if (color !== undefined) { sets.push('color = ?'); vals.push(color ? String(color) : null) }
+    if (is_private !== undefined) { sets.push('is_private = ?'); vals.push(is_private ? 1 : 0) }
+    if (sort_order !== undefined) { sets.push('sort_order = ?'); vals.push(Number(sort_order)) }
+
+    vals.push(milestoneId)
+
+    await db.prepare(`UPDATE quest_milestones SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+
+    return c.json({ ok: true }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return errorResponse(c, e)
+  }
+})
+
+admin.delete('/quests/:questId/milestones/:milestoneId', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    if (!(await checkSecret(c, body))) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+
+    const db = c.env?.RPG_DB
+    if (!db) return c.json({ ok: false, error: 'RPG_DB unavailable' }, 503)
+
+    const milestoneId = c.req.param('milestoneId')
+
+    await db.prepare('DELETE FROM quest_milestones WHERE id = ?').bind(milestoneId).run()
+
+    return c.json({ ok: true }, 200)
+  } catch (e) {
+    console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
+    return errorResponse(c, e)
+  }
+})
+
 export default admin

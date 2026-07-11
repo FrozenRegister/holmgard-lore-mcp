@@ -429,6 +429,36 @@ entityReads.get('/quests/:id/log', async (c) => {
   }
 })
 
+entityReads.get('/quests/:id/milestones', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const result = await db.prepare(
+      'SELECT id, quest_id, sort_order, title, notes, status, linked_entity_type, linked_entity_id, color, is_private, created_at, updated_at FROM quest_milestones WHERE quest_id = ? ORDER BY sort_order ASC'
+    ).bind(id).all()
+    const milestones = (result.results as Array<Record<string, unknown>>).map(row => ({
+      id:                String(row.id ?? ''),
+      quest_id:          String(row.quest_id ?? ''),
+      sort_order:        Number(row.sort_order ?? 0),
+      title:             String(row.title ?? ''),
+      notes:             row.notes ? String(row.notes) : null,
+      status:            String(row.status ?? 'pending'),
+      linked_entity_type: row.linked_entity_type ? String(row.linked_entity_type) : null,
+      linked_entity_id:  row.linked_entity_id ? String(row.linked_entity_id) : null,
+      color:             row.color ? String(row.color) : null,
+      is_private:        Boolean(row.is_private ?? 0),
+      created_at:        String(row.created_at ?? ''),
+      updated_at:        String(row.updated_at ?? ''),
+    }))
+    return c.json({ milestones, total: milestones.length })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Items ─────────────────────────────────────────────────────────────────────
 
 function normaliseItem(row: Record<string, unknown>) {
@@ -473,9 +503,158 @@ entityReads.get('/items/:id', async (c) => {
   }
 })
 
+// ── Races ────────────────────────────────────────────────────────────────────
+
+function normaliseRace(row: Record<string, unknown>) {
+  return {
+    id:              String(row.id ?? ''),
+    name:            String(row.name ?? 'Unknown'),
+    description:     String(row.description ?? ''),
+    is_extinct:      Boolean(row.is_extinct ?? 0),
+    parent_race_id:  row.parent_race_id ? String(row.parent_race_id) : null,
+  }
+}
+
+entityReads.get('/races', async (c) => {
+  const db = c.env.RPG_DB
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const result = await db.prepare(
+      'SELECT id, name, description, is_extinct, parent_race_id FROM races ORDER BY name ASC'
+    ).all()
+    const races = (result.results as Array<Record<string, unknown>>).map(normaliseRace)
+    return c.json({ races, total: races.length })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/races/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, description, is_extinct, parent_race_id FROM races WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ race: normaliseRace(row) })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+// ── Journals (session logs) ──────────────────────────────────────────────────────
+
+function normaliseJournal(row: Record<string, unknown>) {
+  return {
+    id:           String(row.id ?? ''),
+    name:         String(row.name ?? 'Unknown'),
+    date_year:    row.date_year !== null && row.date_year !== undefined ? Number(row.date_year) : null,
+    date_month:   row.date_month !== null && row.date_month !== undefined ? Number(row.date_month) : null,
+    date_day:     row.date_day !== null && row.date_day !== undefined ? Number(row.date_day) : null,
+    calendar_id:  row.calendar_id ? String(row.calendar_id) : null,
+    is_private:   Boolean(row.is_private ?? 0),
+    created_at:   String(row.created_at ?? ''),
+  }
+}
+
+function normaliseJournalDetail(row: Record<string, unknown>) {
+  return {
+    ...normaliseJournal(row),
+    entry:        String(row.entry ?? ''),
+    updated_at:   String(row.updated_at ?? ''),
+  }
+}
+
+entityReads.get('/journals', async (c) => {
+  const db = c.env.RPG_DB
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const result = await db.prepare(
+      'SELECT id, name, date_year, date_month, date_day, calendar_id, is_private, created_at FROM journals ORDER BY date_year DESC, date_month DESC, date_day DESC LIMIT 100'
+    ).all()
+    const journals = (result.results as Array<Record<string, unknown>>).map(normaliseJournal)
+    return c.json({ journals, total: journals.length })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/journals/:id', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const row = await db.prepare(
+      'SELECT id, name, entry, date_year, date_month, date_day, calendar_id, is_private, created_at, updated_at FROM journals WHERE id = ? LIMIT 1'
+    ).bind(id).first() as Record<string, unknown> | null
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    return c.json({ journal: normaliseJournalDetail(row) })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+entityReads.get('/journals/:id/participants', async (c) => {
+  const db = c.env.RPG_DB
+  /* istanbul ignore next */
+  if (!db) return c.json({ error: 'RPG_DB unavailable' }, 503)
+  try {
+    const id = c.req.param('id')
+    const result = await db.prepare(`
+      SELECT jp.entity_type, jp.entity_id
+      FROM journal_participants jp
+      WHERE jp.journal_id = ?
+      ORDER BY jp.created_at ASC
+    `).bind(id).all()
+
+    // For each participant, fetch its name from the appropriate table
+    const participants = await Promise.all(
+      (result.results as Array<{ entity_type: string; entity_id: string }>).map(async (p) => {
+        let entity_name = 'Unknown'
+        try {
+          if (p.entity_type === 'character') {
+            const r = await db.prepare('SELECT name FROM characters WHERE id = ? LIMIT 1').bind(p.entity_id).first() as { name: string } | null
+            if (r) entity_name = r.name
+          } else if (p.entity_type === 'location') {
+            const r = await db.prepare('SELECT name FROM room_nodes WHERE id = ? LIMIT 1').bind(p.entity_id).first() as { name: string } | null
+            if (r) entity_name = r.name
+          } else if (p.entity_type === 'quest') {
+            const r = await db.prepare('SELECT name FROM quests WHERE id = ? LIMIT 1').bind(p.entity_id).first() as { name: string } | null
+            if (r) entity_name = r.name
+          } else if (p.entity_type === 'nation') {
+            const r = await db.prepare('SELECT name FROM nations WHERE id = ? LIMIT 1').bind(p.entity_id).first() as { name: string } | null
+            if (r) entity_name = r.name
+          }
+        /* istanbul ignore next -- defensive: name lookups above are simple SELECTs against known tables, not expected to throw */
+        } catch {
+          // no-op: leave entity_name as 'Unknown'
+        }
+        return {
+          entity_type: p.entity_type,
+          entity_id: p.entity_id,
+          entity_name,
+        }
+      })
+    )
+
+    return c.json({ participants, total: participants.length })
+  } catch (e) {
+    /* istanbul ignore next */
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
 // ── Entity relations ──────────────────────────────────────────────────────────
 
-const ENTITY_TYPE_SLUGS = new Set(['characters', 'locations', 'nations', 'regions', 'quests', 'items'])
+const ENTITY_TYPE_SLUGS = new Set(['characters', 'locations', 'nations', 'regions', 'quests', 'items', 'races', 'journals'])
 
 function normaliseRelation(row: Record<string, unknown>) {
   return {
