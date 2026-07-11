@@ -45,6 +45,19 @@ describe('handlePartyManage — waypoint march (#328)', () => {
     expect(body.error).toBe(true)
   })
 
+  it('begin_march accepts "id" as an alias for "partyId"', async () => {
+    await createWorld()
+    const visbyId = await registerWaypoint('Visby', 57.6349, 18.2948, 0, 0)
+    const romaId = await registerWaypoint('Roma Kloster', 57.5388, 18.4677, 1, 2)
+    await setDistance(visbyId, romaId, 18.26)
+    const partyId = await createParty()
+
+    const r = await handlePartyManage(db(), { action: 'begin_march', id: partyId, fromWaypointName: 'Visby', toWaypointName: 'Roma Kloster' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.blocked).toBe(false)
+  })
+
   it('begin_march requires toWaypointId or toWaypointName', async () => {
     await createWorld()
     const partyId = await createParty()
@@ -200,6 +213,15 @@ describe('handlePartyManage — waypoint march (#328)', () => {
     expect(body.error).toBe(true)
   })
 
+  it('get_march_status accepts "id" as an alias for "partyId"', async () => {
+    await createWorld()
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'get_march_status', id: partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.travelStatus).toBe('stationary')
+  })
+
   it('get_march_status reports stationary with null waypoints for a fresh party', async () => {
     await createWorld()
     const partyId = await createParty()
@@ -228,6 +250,19 @@ describe('handlePartyManage — waypoint march (#328)', () => {
   })
 
   // ── tickAllPartiesMarch ──────────────────────────────────────────────────
+
+  it('tickAllPartiesMarch defaults daysToAdvance to 1 when omitted', async () => {
+    await createWorld()
+    const visbyId = await registerWaypoint('Visby', 57.6349, 18.2948, 0, 0)
+    const farosundId = await registerWaypoint('Fårösund', 57.8607, 18.9757, 11, -6)
+    await setDistance(visbyId, farosundId, 54.22)
+    const partyId = await createParty()
+    await env.RPG_DB.prepare('UPDATE parties SET current_waypoint_id = ? WHERE id = ?').bind(visbyId, partyId).run()
+    await handlePartyManage(db(), { action: 'begin_march', partyId, toWaypointName: 'Fårösund' })
+
+    const results = await tickAllPartiesMarch(env.RPG_DB, WORLD)
+    expect(results).toEqual([{ partyId, status: 'marching', remainingKm: 54.22 - 24 }])
+  })
 
   it('tickAllPartiesMarch resolves exact and overshoot arrival, discarding leftover budget', async () => {
     await createWorld()
