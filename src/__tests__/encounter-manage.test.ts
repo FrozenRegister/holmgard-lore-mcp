@@ -48,7 +48,7 @@ describe('handleEncounterManage', () => {
   it('resolve guarantees an encounter when the tile biome has baseThreat 100', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -59,7 +59,7 @@ describe('handleEncounterManage', () => {
   it('resolve returns a message and null encounterType when no encounter_types are registered', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
@@ -70,7 +70,7 @@ describe('handleEncounterManage', () => {
   it('resolve excludes types whose minThreat exceeds the resolved threshold', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 30 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'unreachable', minThreat: 90 })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
@@ -82,7 +82,7 @@ describe('handleEncounterManage', () => {
   it('resolve selects a registered predator type and returns encounter details', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), {
       action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther', aggression: 'hunting', description: 'A giant panther stalks.',
     })
@@ -100,7 +100,7 @@ describe('handleEncounterManage', () => {
   it('resolve assigns and persists an injury for a predator encounter when characterIds are given', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, characterIds: ['char-1'] })
@@ -120,7 +120,7 @@ describe('handleEncounterManage', () => {
   it('resolve does not persist an injury when no characterIds are given (generic party)', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
@@ -133,7 +133,7 @@ describe('handleEncounterManage', () => {
   it('resolve skips injuries entirely when includeInjuries is false', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
@@ -144,7 +144,7 @@ describe('handleEncounterManage', () => {
   it('resolve skips injuries for a non-predator encounter category', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'environmental', description: 'A rockslide.' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
@@ -156,15 +156,15 @@ describe('handleEncounterManage', () => {
   it('resolve flags displacement when the selected type belongs to a suppressed subordinate zone', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     // Dominant zone (higher dominanceRank) — no registered encounter_type for it.
     await handleWorldMap(db(), {
-      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 10,
+      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', q: 5, r: 5, radius: 10,
       zoneType: 'territory', predatorRef: 'giant_panther', threatLevel: 40, dominanceRank: 10,
     })
     // Subordinate zone (lower dominanceRank) — the only registered type belongs here.
     await handleWorldMap(db(), {
-      action: 'suggest_poi', worldId: WORLD, query: 'Leonar Range', x: 5, y: 5, radius: 10,
+      action: 'suggest_poi', worldId: WORLD, query: 'Leonar Range', q: 5, r: 5, radius: 10,
       zoneType: 'territory', predatorRef: 'leonar', threatLevel: 20, dominanceRank: 1,
     })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'leonar', description: 'A displaced Leonar hunts at the edge of its former range.' })
@@ -181,9 +181,9 @@ describe('handleEncounterManage', () => {
   it('resolve does not flag displacement for the sole/dominant zone', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleWorldMap(db(), {
-      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 10,
+      action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', q: 5, r: 5, radius: 10,
       zoneType: 'territory', predatorRef: 'giant_panther', threatLevel: 40, dominanceRank: 10,
     })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
@@ -197,7 +197,7 @@ describe('handleEncounterManage', () => {
   it('resolve falls back to the unfiltered type list when every requiresCore type fails the core check', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     // requiresCore but no zone at this point matches 'silverback' at all.
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'silverback', requiresCore: true })
     vi.spyOn(Math, 'random').mockReturnValue(0)
@@ -210,7 +210,7 @@ describe('handleEncounterManage', () => {
   it('check returns encounter/roll/threshold without selecting a type or assigning injuries', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, characterIds: ['char-1'] })
     const body = JSON.parse(r.content[0].text)
@@ -416,7 +416,7 @@ describe('handleEncounterManage', () => {
   it('resolve short-circuits with confrontationAvoided when stealth is a clean avoidance', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {
       action: 'resolve', worldId: WORLD, x: 5, y: 5,
@@ -466,7 +466,7 @@ describe('handleEncounterManage', () => {
   it('resolve attaches a full stealthResult alongside a normal triggered+selected encounter', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
-    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 5, y: 5, biome: 'deadly_ground' }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {

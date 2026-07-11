@@ -239,15 +239,15 @@ describe('handleBiomeManage', () => {
     expect(fetched.error).toBe(true)
   })
 
-  it('delete rejects removal of a biome referenced by an existing tile', async () => {
+  it('delete rejects removal of a biome referenced by an existing hex', async () => {
     await createWorld()
     const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
-    await env.RPG_DB.prepare('INSERT INTO tiles (id, world_id, x, y, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), WORLD, 1, 1, 'bog', 0, 50, 15).run()
+    await env.RPG_DB.prepare('INSERT INTO hexes (q, r, map_id, world_id, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(1, 1, 'main', WORLD, 'bog', 0, 50, 15).run()
     const r = await handleBiomeManage(db(), { action: 'delete', id: created.biomeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
-    expect(body.message).toContain('referenced by existing tiles')
+    expect(body.message).toContain('referenced by existing hexes')
   })
 
   // validate

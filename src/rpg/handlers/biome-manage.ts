@@ -161,8 +161,10 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
       if (!targetId) return err('"id" or "biomeId" is required')
       const biome = await db.prepare('SELECT world_id, name FROM biomes WHERE id = ?').bind(targetId).first() as { world_id: string; name: string } | null
       if (!biome) return err(`Biome not found: ${targetId}`)
-      const tileRef = await db.prepare('SELECT 1 FROM tiles WHERE world_id = ? AND biome = ? LIMIT 1').bind(biome.world_id, biome.name).first()
-      if (tileRef) return err(`Cannot delete biome "${biome.name}" — referenced by existing tiles in this world`)
+      // #320 — the RPG engine's terrain grid is now the hex-axial `hexes`
+      // table (unified with the map editor, #308/#319).
+      const hexRef = await db.prepare('SELECT 1 FROM hexes WHERE world_id = ? AND biome = ? LIMIT 1').bind(biome.world_id, biome.name).first()
+      if (hexRef) return err(`Cannot delete biome "${biome.name}" — referenced by existing hexes in this world`)
       await db.prepare('DELETE FROM biomes WHERE id = ?').bind(targetId).run()
       return ok({ success: true, actionType: 'delete', biomeId: targetId })
     }

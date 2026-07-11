@@ -10,7 +10,7 @@
 // documented here and in the PR/changelog rather than guessed silently):
 //
 // - Zone "threat level" (0-100) and "dominance rank" are new optional fields
-//   on world_map's zone metadata (see world-map.ts's mergeZoneMetadata) —
+//   on world_map's zone columns (see world-map.ts's mergeZoneFields) —
 //   the issue assumed query_zone already returned "resolved threat data with
 //   dominance suppression", but #276 as shipped only carried shape/type/
 //   predator, no numeric threat concept at all.
@@ -346,8 +346,10 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const { zoneThreat, dominant } = resolveZoneThreat(zones)
 
   const registry = await getBiomeRegistry(db, worldId)
-  const tile = await db.prepare('SELECT biome FROM tiles WHERE world_id = ? AND x = ? AND y = ?').bind(worldId, x, y).first() as { biome: string } | null
-  const biomeBase = tile ? (registry.get(tile.biome)?.baseThreat ?? 0) : 0
+  // #320 — the RPG engine's terrain grid is now the hex-axial `hexes` table
+  // (unified with the map editor, #308/#319); x/y here are hex q/r coordinates.
+  const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(worldId, x, y).first() as { biome: string } | null
+  const biomeBase = hex ? (registry.get(hex.biome)?.baseThreat ?? 0) : 0
 
   const { total: modifierTotal, breakdown } = computeModifiers({
     timeOfDay: input.timeOfDay, noiseLevel: input.noiseLevel, scentModifiers, partySize, partyInjuries, weather: input.weather,
@@ -393,7 +395,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   }
 
   const selectedZone = selected.predator_name ? zoneByPredator.get(selected.predator_name) : undefined
-  const isDisplaced = !!selectedZone && dominant !== null && selectedZone.structureId !== dominant.structureId
+  const isDisplaced = !!selectedZone && dominant !== null && selectedZone.landmarkId !== dominant.landmarkId
   const displacedBy = isDisplaced ? (dominant!.predator ?? dominant!.name) : null
 
   const margin = threshold - roll
