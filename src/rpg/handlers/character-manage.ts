@@ -55,6 +55,13 @@ const InputSchema = z.object({
   hostBodyId: z.string().nullable().optional(),
   active: z.boolean().optional(),
   worldId: z.string().nullable().optional(),
+  // #268 — callers (including this repo's own issue reproductions) commonly
+  // pass the snake_case `world_id` used elsewhere in the RPG handlers
+  // (time-manage.ts, timeline-manage.ts). Zod silently drops unrecognized
+  // keys, so `world_id` was accepted but never actually filtered — every
+  // action below reads `a.worldId`, normalized from either key immediately
+  // after parsing.
+  world_id: z.string().nullable().optional(),
   perceptionBonus: z.number().int().optional(),
   stealthBonus: z.number().int().optional(),
   xp: z.number().int().min(0).optional(),
@@ -131,6 +138,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
   const db = env.RPG_DB!
