@@ -80,9 +80,10 @@ export async function seedDefaultBiomes(db: D1Database, worldId: string): Promis
 }
 
 /** Used by world_map.ts. A world with zero registered biomes is treated as unrestricted (backward compatible). */
-export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string }>> {
-  const { results } = await db.prepare('SELECT name, glyph FROM biomes WHERE world_id = ?').bind(worldId).all() as { results: Array<{ name: string; glyph: string }> }
-  return new Map(results.map(r => [r.name, { glyph: r.glyph }]))
+export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number }>> {
+  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost FROM biomes WHERE world_id = ?').bind(worldId).all() as
+    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number }> }
+  return new Map(results.map(r => [r.name, { glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost }]))
 }
 
 export async function handleBiomeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {

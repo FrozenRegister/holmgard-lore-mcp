@@ -336,4 +336,13 @@ describe('handleBiomeManage', () => {
     expect(registry.get('forest')?.glyph).toBe('T')
     expect(registry.size).toBe(DEFAULT_BIOMES.length)
   })
+
+  it('getBiomeRegistry also exposes colorHex and movementCost (#277)', async () => {
+    await createWorld()
+    await seedDefaultBiomes(env.RPG_DB, WORLD)
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    const forest = registry.get('forest')
+    expect(forest?.colorHex).toBe('#1A472A')
+    expect(forest?.movementCost).toBe(1.5)
+  })
 })

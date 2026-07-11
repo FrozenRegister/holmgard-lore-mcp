@@ -15,7 +15,7 @@ import { getBiomeRegistry } from './biome-manage'
 // a sensible preview instead of '?' for every tile.
 const LEGACY_BIOME_GLYPHS: Record<string, string> = { grass: '.', forest: 'T', mountain: 'M', water: '~', desert: 'd', swamp: 'S', plains: ',', tundra: '_', wasteland: 'X' }
 
-const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones'] as const
+const ACTIONS = ['overview', 'region', 'tiles', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones', 'render_svg'] as const
 type WorldMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldMapAction> = {
   summary: 'overview', world_view: 'overview',
@@ -29,6 +29,7 @@ const ALIASES: Record<string, WorldMapAction> = {
   edit_poi: 'update_poi', modify_poi: 'update_poi', poi_update: 'update_poi',
   zone_query: 'query_zone', check_zone: 'query_zone',
   zones: 'list_zones', get_zones: 'list_zones',
+  svg: 'render_svg', export_svg: 'render_svg', map_svg: 'render_svg',
 }
 
 // #276 — zone shape math (circle/polygon/ring) shared by query_zone, list_zones,
@@ -124,6 +125,112 @@ const ZONE_GLYPHS: Record<string, string> = { perimeter: '⚡', exclusion: '#', 
 // needs 10 calls at this ceiling, which is an acceptable chunking cost.
 const MAX_BATCH_TILES = 1000
 
+// #277 — server-side SVG map export.
+const SVG_TILE_PX = 10
+
+// Fallback colors for the original 9 legacy biome names on worlds with no
+// registered biome (mirrors LEGACY_BIOME_GLYPHS above; values match the
+// DEFAULT_BIOMES color_hex entries in biome-manage.ts so a freshly-seeded
+// world and a legacy unseeded world render identically).
+const LEGACY_BIOME_COLORS: Record<string, string> = {
+  grass: '#8B9A46', forest: '#1A472A', mountain: '#808080', water: '#1A5276',
+  desert: '#EDC9AF', swamp: '#3D5724', plains: '#C2B280', tundra: '#D6E5E3', wasteland: '#5C4033',
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+}
+
+interface RenderStructure { id: string; name: string; type: string; x: number; y: number; metadata: string | null }
+interface RenderTile { x: number; y: number; biome: string }
+interface RenderHighlight { x: number; y: number; label?: string; color?: string }
+
+// Pure string-concatenation SVG builder — no external library, no browser
+// dependency, matching #277's "no client-side rendering" requirement.
+function buildMapSvg(params: {
+  tiles: RenderTile[]
+  registry: Map<string, { glyph: string; colorHex: string; movementCost: number }>
+  structures: RenderStructure[]
+  x: number; y: number; width: number; height: number
+  showStructures: boolean; showZones: boolean; showPerimeter: boolean; gridLabels: boolean
+  highlight: RenderHighlight[]
+}): { svg: string; tileCount: number; structureCount: number; zoneCount: number } {
+  const { tiles, registry, structures, x: vx, y: vy, width, height, showStructures, showZones, showPerimeter, gridLabels, highlight } = params
+  const w = width * SVG_TILE_PX
+  const h = height * SVG_TILE_PX
+  const parts: string[] = []
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`)
+  parts.push(`<rect x="0" y="0" width="${w}" height="${h}" fill="#000000"/>`)
+
+  for (const t of tiles) {
+    const gx = t.x - vx; const gy = t.y - vy
+    if (gx < 0 || gx >= width || gy < 0 || gy >= height) continue
+    const color = registry.get(t.biome)?.colorHex ?? LEGACY_BIOME_COLORS[t.biome] ?? '#888888'
+    parts.push(`<rect x="${gx * SVG_TILE_PX}" y="${gy * SVG_TILE_PX}" width="${SVG_TILE_PX}" height="${SVG_TILE_PX}" fill="${color}"/>`)
+  }
+
+  let zoneCount = 0
+  if (showZones || showPerimeter) {
+    for (const s of structures) {
+      const meta = parseZoneMetadata(s.metadata)
+      if (!meta?.zone) continue
+      const zoneType = meta.zoneType ?? 'territory'
+      if (zoneType === 'perimeter' ? !showPerimeter : !showZones) continue
+      zoneCount++
+      const cx = (s.x - vx) * SVG_TILE_PX + SVG_TILE_PX / 2
+      const cy = (s.y - vy) * SVG_TILE_PX + SVG_TILE_PX / 2
+      if (meta.zone.type === 'circle') {
+        parts.push(`<circle cx="${cx}" cy="${cy}" r="${meta.zone.circle.radius * SVG_TILE_PX}" fill="#ff0000" fill-opacity="0.2" stroke="#ff0000" stroke-opacity="0.5"/>`)
+      } else if (meta.zone.type === 'polygon') {
+        const pts = meta.zone.polygon.map(([px, py]) => `${(px - vx) * SVG_TILE_PX},${(py - vy) * SVG_TILE_PX}`).join(' ')
+        parts.push(`<polygon points="${pts}" fill="#ff0000" fill-opacity="0.2" stroke="#ff0000" stroke-opacity="0.5"/>`)
+      } else if (meta.zone.type === 'ring') {
+        // Approximated as a single dashed ring rather than N individual pylon
+        // markers — one shape, same visual read ("a dotted ring"), far
+        // cheaper than emitting hundreds of point elements.
+        const avgR = ((meta.zone.ring.inner + meta.zone.ring.outer) / 2) * SVG_TILE_PX
+        const strokeWidth = (meta.zone.ring.outer - meta.zone.ring.inner) * SVG_TILE_PX
+        parts.push(`<circle cx="${cx}" cy="${cy}" r="${avgR}" fill="none" stroke="#ff0000" stroke-width="${strokeWidth}" stroke-dasharray="4 4" stroke-opacity="0.6"/>`)
+      }
+    }
+  }
+
+  let structureCount = 0
+  if (showStructures) {
+    for (const s of structures) {
+      const meta = parseZoneMetadata(s.metadata)
+      // A ring zone's perimeter visual already represents it — skip the
+      // redundant center-point marker for that structure.
+      if (meta?.zone?.type === 'ring') continue
+      structureCount++
+      const cx = (s.x - vx) * SVG_TILE_PX + SVG_TILE_PX / 2
+      const cy = (s.y - vy) * SVG_TILE_PX + SVG_TILE_PX / 2
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="3" fill="#ffffff" stroke="#000000"/>`)
+      parts.push(`<text x="${cx + 5}" y="${cy}" font-size="8" fill="#ffffff">${escapeXml(s.name)}</text>`)
+    }
+  }
+
+  for (const hl of highlight) {
+    const cx = (hl.x - vx) * SVG_TILE_PX + SVG_TILE_PX / 2
+    const cy = (hl.y - vy) * SVG_TILE_PX + SVG_TILE_PX / 2
+    const color = hl.color ?? '#FF4444'
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="4" fill="${color}"/>`)
+    if (hl.label) parts.push(`<text x="${cx + 6}" y="${cy}" font-size="8" fill="${color}">${escapeXml(hl.label)}</text>`)
+  }
+
+  if (gridLabels) {
+    for (let gx = 0; gx < width; gx += 10) {
+      parts.push(`<text x="${gx * SVG_TILE_PX}" y="10" font-size="8" fill="#ffffff">${vx + gx}</text>`)
+    }
+    for (let gy = 0; gy < height; gy += 10) {
+      parts.push(`<text x="0" y="${gy * SVG_TILE_PX + 10}" font-size="8" fill="#ffffff">${vy + gy}</text>`)
+    }
+  }
+
+  parts.push('</svg>')
+  return { svg: parts.join(''), tileCount: tiles.length, structureCount, zoneCount }
+}
+
 const TilePatch = z.object({
   x: z.number().int(), y: z.number().int(),
   biome: z.string().optional().default('grass'),
@@ -153,6 +260,15 @@ const InputSchema = z.object({
   ringPoints: z.number().int().min(1).optional(),
   zoneType: z.string().optional(),
   predatorRef: z.string().optional(),
+  renderWidth: z.number().int().min(1).max(200).optional().default(100),
+  renderHeight: z.number().int().min(1).max(200).optional().default(100),
+  showStructures: z.boolean().optional().default(true),
+  showZones: z.boolean().optional().default(true),
+  showPerimeter: z.boolean().optional().default(true),
+  gridLabels: z.boolean().optional().default(false),
+  highlight: z.array(z.object({
+    x: z.number(), y: z.number(), label: z.string().optional(), color: z.string().optional(),
+  })).optional().default([]),
 })
 
 export async function handleWorldMap(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -377,6 +493,28 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
         .filter((z): z is NonNullable<typeof z> => z !== null)
         .filter(z => !a.zoneType || z.zoneType === a.zoneType)
       return ok({ success: true, actionType: 'list_zones', worldId: a.worldId, zones, count: zones.length })
+    }
+    case 'render_svg': {
+      if (!a.worldId) return err('"worldId" is required')
+      const vx = a.x ?? 0
+      const vy = a.y ?? 0
+      const vw = a.renderWidth
+      const vh = a.renderHeight
+      const { results: tiles } = await db.prepare('SELECT x, y, biome FROM tiles WHERE world_id = ? AND x >= ? AND x < ? AND y >= ? AND y < ?')
+        .bind(a.worldId, vx, vx + vw, vy, vy + vh).all() as { results: RenderTile[] }
+      const { results: structures } = await db.prepare('SELECT id, name, type, x, y, metadata FROM structures WHERE world_id = ? AND x >= ? AND x < ? AND y >= ? AND y < ?')
+        .bind(a.worldId, vx, vx + vw, vy, vy + vh).all() as { results: RenderStructure[] }
+      const registry = await getBiomeRegistry(db, a.worldId)
+      const { svg, tileCount, structureCount, zoneCount } = buildMapSvg({
+        tiles, registry, structures, x: vx, y: vy, width: vw, height: vh,
+        showStructures: a.showStructures, showZones: a.showZones, showPerimeter: a.showPerimeter, gridLabels: a.gridLabels,
+        highlight: a.highlight,
+      })
+      return ok({
+        success: true, actionType: 'render_svg', worldId: a.worldId, svg,
+        dimensions: { width: vw * SVG_TILE_PX, height: vh * SVG_TILE_PX },
+        tileCount, structureCount, zoneCount,
+      })
     }
   }
 }

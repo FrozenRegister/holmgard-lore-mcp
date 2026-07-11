@@ -559,4 +559,160 @@ describe('handleWorldMap', () => {
     const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD, x: 5, y: 5, width: 1, height: 1 })
     expect(JSON.parse(r.content[0].text).ascii).toBe('.')
   })
+
+  // ── render_svg (#277) ─────────────────────────────────────────────────────
+
+  it('render_svg requires worldId', async () => {
+    const r = await handleWorldMap(db(), { action: 'render_svg' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('render_svg returns a well-formed SVG with correct dimensions for an empty world', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)
+    expect(body.svg.trim().endsWith('</svg>')).toBe(true)
+    expect(body.dimensions).toEqual({ width: 100, height: 100 })
+    expect(body.tileCount).toBe(0)
+    expect(body.structureCount).toBe(0)
+    expect(body.zoneCount).toBe(0)
+  })
+
+  it('render_svg defaults to a 100x100 viewport at (0,0)', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.dimensions).toEqual({ width: 1000, height: 1000 })
+  })
+
+  it('render_svg uses the registered biome color for a tile', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', colorHex: '#C8BFB4' })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'limestone_karst' }] })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 1, renderHeight: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tileCount).toBe(1)
+    expect(body.svg).toContain('#C8BFB4')
+  })
+
+  it('render_svg falls back to legacy colors for a world with no registered biomes', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'forest' }] })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 1, renderHeight: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.svg).toContain('#1A472A')
+  })
+
+  it('render_svg falls back to a default gray for a biome with no known color', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 0, y: 0, biome: 'totally_unknown_biome' }] })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 1, renderHeight: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.svg).toContain('#888888')
+  })
+
+  it('render_svg renders a structure marker with an escaped name', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Tower <of> "Doom" & Sons', x: 5, y: 5 })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.structureCount).toBe(1)
+    expect(body.svg).toContain('Tower &lt;of&gt; &quot;Doom&quot; &amp; Sons')
+    expect(body.svg).not.toContain('<of>')
+  })
+
+  it('render_svg omits structure markers when showStructures is false', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Tower', x: 5, y: 5 })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10, showStructures: false })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.structureCount).toBe(0)
+    expect(body.svg).not.toContain('Tower')
+  })
+
+  it('render_svg renders a circle zone overlay and counts it', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 3, zoneType: 'territory' })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zoneCount).toBe(1)
+    expect(body.svg).toContain('<circle')
+    expect(body.svg).toContain('fill-opacity="0.2"')
+  })
+
+  it('render_svg renders a polygon zone overlay', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'suggest_poi', worldId: WORLD, query: 'Sumpfkarren Depths', x: 5, y: 5,
+      polygon: [[3, 3], [7, 3], [7, 7], [3, 7]], zoneType: 'exclusion',
+    })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zoneCount).toBe(1)
+    expect(body.svg).toContain('<polygon')
+  })
+
+  it('render_svg approximates a ring zone as a single dashed circle and skips its redundant center marker', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Perimeter', x: 5, y: 5, ringInner: 2, ringOuter: 4, zoneType: 'perimeter' })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zoneCount).toBe(1)
+    expect(body.structureCount).toBe(0)
+    expect(body.svg).toContain('stroke-dasharray="4 4"')
+  })
+
+  it('render_svg omits zone overlays when showZones is false (perimeter unaffected)', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 3, zoneType: 'territory' })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Perimeter', x: 5, y: 5, ringInner: 2, ringOuter: 4, zoneType: 'perimeter' })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10, showZones: false })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zoneCount).toBe(1)
+  })
+
+  it('render_svg omits the perimeter overlay when showPerimeter is false (territory unaffected)', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Range', x: 5, y: 5, radius: 3, zoneType: 'territory' })
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Perimeter', x: 5, y: 5, ringInner: 2, ringOuter: 4, zoneType: 'perimeter' })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10, showPerimeter: false })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.zoneCount).toBe(1)
+  })
+
+  it('render_svg renders highlight markers with custom label and color', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), {
+      action: 'render_svg', worldId: WORLD, renderWidth: 10, renderHeight: 10,
+      highlight: [{ x: 5, y: 5, label: 'Yune', color: '#FF4444' }],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.svg).toContain('#FF4444')
+    expect(body.svg).toContain('Yune')
+  })
+
+  it('render_svg renders grid labels when requested', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 20, renderHeight: 20, gridLabels: true })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.svg).toContain('<text x="0" y="10"')
+  })
+
+  it('render_svg omits grid labels by default', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, renderWidth: 20, renderHeight: 20 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.svg).not.toContain('<text x="0" y="10"')
+  })
+
+  it('render_svg respects a non-default x/y viewport offset', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, tiles: [{ x: 50, y: 50, biome: 'grass' }] })
+    const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, x: 40, y: 40, renderWidth: 20, renderHeight: 20 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tileCount).toBe(1)
+  })
 })
