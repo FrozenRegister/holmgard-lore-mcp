@@ -42,8 +42,21 @@ jobs:
                 ref: headSha,
                 per_page: 100,
               })
-              const checks = data.check_runs.filter(r => r.name !== 'merge')
-              console.log(`PR #${prNumber}: found ${data.check_runs.length} total checks, ${checks.length} after filtering 'merge'`)
+              // listForRef returns every check-run ever recorded for this SHA, including
+              // stale ones from an earlier run of the same named check (e.g. a PR body
+              // edit re-triggers pr-quality.yml, which creates a *new* check-run object
+              // rather than replacing the old one) — without deduping to the latest per
+              // name, a since-fixed failure keeps blocking merge forever.
+              const latestByName = new Map()
+              for (const r of data.check_runs) {
+                if (r.name === 'merge') continue
+                const existing = latestByName.get(r.name)
+                if (!existing || new Date(r.started_at) > new Date(existing.started_at)) {
+                  latestByName.set(r.name, r)
+                }
+              }
+              const checks = [...latestByName.values()]
+              console.log(`PR #${prNumber}: found ${data.check_runs.length} total check runs, ${checks.length} unique checks after filtering 'merge' and deduping to latest per name`)
 
               const pending = checks.filter(r => r.status !== 'completed')
               if (pending.length > 0) {
