@@ -35,6 +35,10 @@ const ALIASES: Record<string, TimelineAction> = {
 const InputSchema = z.object({
   action:          z.string(),
   world_id:        z.string().optional(),
+  // #336 — every other rpg sub accepts camelCase worldId; timeline was a
+  // snake_case-only outlier. Accept both, normalized to world_id below,
+  // since all of this handler's internal logic already reads a.world_id.
+  worldId:         z.string().optional(),
   thread:          z.string().optional(),
   from:            z.string().optional(),
   to:              z.string().optional(),
@@ -74,6 +78,7 @@ export async function handleTimelineManage(env: AppBindings, args: Record<string
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  if (a.world_id === undefined && a.worldId !== undefined) a.world_id = a.worldId
 
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)

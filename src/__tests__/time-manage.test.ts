@@ -3,7 +3,7 @@ import { describe } from './helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
-import { handleTimeManage } from '../rpg/handlers/time-manage'
+import { handleTimeManage, seedWorldState } from '../rpg/handlers/time-manage'
 
 describe('handleTimeManage', () => {
   beforeEach(async () => {
@@ -90,6 +90,22 @@ describe('handleTimeManage', () => {
     const r = await handleTimeManage(db(), { action: 'get_date', world_id: 'no-such-world' })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
+  })
+
+  it('get_date accepts camelCase worldId as an alias for world_id (#336)', async () => {
+    await seedWorld('w-camel', '2184-07-15')
+    const r = await handleTimeManage(db(), { action: 'get_date', worldId: 'w-camel' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBeUndefined()
+    expect(body.current_date).toBe('2184-07-15')
+  })
+
+  it('world_id takes precedence when both world_id and worldId are given', async () => {
+    await seedWorld('w-snake', '2184-07-15')
+    const r = await handleTimeManage(db(), { action: 'get_date', world_id: 'w-snake', worldId: 'no-such-world' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBeUndefined()
+    expect(body.current_date).toBe('2184-07-15')
   })
 
   it('get_date returns correct season for summer', async () => {
@@ -326,5 +342,23 @@ describe('handleTimeManage', () => {
     const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-yearbday', by: '30 days' })).content[0].text)
     expect(body.birthdays_triggered).toHaveLength(1)
     expect(body.birthdays_triggered[0].id).toBe('c-yearbday')
+  })
+
+  // ── seedWorldState (#330 — used by world_manage.create/generate) ──────────
+
+  it('seedWorldState creates a row usable immediately by get_date', async () => {
+    await env.RPG_DB.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind('w-fresh', 'Fresh World', 'seed', 10, 10, now, now).run()
+    await seedWorldState(env.RPG_DB, 'w-fresh')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_date', world_id: 'w-fresh' })).content[0].text)
+    expect(body.error).toBeUndefined()
+    expect(body.current_date).toBe('2184-07-15') // world_state.current_date's column DEFAULT
+  })
+
+  it('seedWorldState is idempotent — does not overwrite an existing row', async () => {
+    await seedWorld('w-existing', '2190-03-01')
+    await seedWorldState(env.RPG_DB, 'w-existing')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_date', world_id: 'w-existing' })).content[0].text)
+    expect(body.current_date).toBe('2190-03-01')
   })
 })

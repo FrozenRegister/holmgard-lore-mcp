@@ -69,6 +69,14 @@ describe('handleTimelineManage', () => {
     expect(body.events[0].id).toBe('evt-a') // ordered by event_at ASC
   })
 
+  it('get_events accepts camelCase worldId as an alias for world_id (#336)', async () => {
+    await seedWorld('w-ge-camel')
+    await seedEvent('w-ge-camel', { id: 'evt-camel', verb: 'departed', eventAt: '2184-07-01' })
+    const body = JSON.parse((await handleTimelineManage(db(), { action: 'get_events', worldId: 'w-ge-camel' })).content[0].text)
+    expect(body.error).toBeUndefined()
+    expect(body.events).toHaveLength(1)
+  })
+
   it('get_events filters by thread', async () => {
     await seedWorld('w-ge-thread')
     await seedEvent('w-ge-thread', { verb: 'marched', thread: 'main' })

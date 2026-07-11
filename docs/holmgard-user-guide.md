@@ -552,6 +552,17 @@ The test payloads used plausible-but-incorrect field names instead of the tool's
 
 `character_manage` (and the rest of the `rpg { sub: "...", action: "..." }` dispatcher — `src/rpg/`) is a **separate, D1-backed system** from `lore_manage`/`world_manage`/`entity_manage`/`continuity_manage` (`src/tools/`), which all read/write the same KV-backed lore store. A character created via `lore_manage[set]` as `character:eira-holt` will never appear in `character_manage[get]`, and vice versa — these are two intentionally distinct subsystems, not a bug (tracked as [#180](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/180)). For a KV-lore-based world (like Fen-Surgeon), stick to `lore_manage`/`world_manage`/`entity_manage`/`continuity_manage` and full `character:<id>`-style keys throughout — don't mix in `character_manage` or `rpg{sub:"character",...}` calls for the same entities.
 
+### Known Behavior: `rpg` sub routing/init fixes (#330, #335, #336)
+
+- **`world.create`/`world.generate` now seed a `world_state` row automatically** (#330), matching the existing biome/zone-type auto-seed pattern. Previously `time.get_date`/`get_age`/`advance` all failed with `"No world_state found"` for any newly-created world until `time.set_date` was called once first. A one-time migration (`0022_backfill_world_state.sql`) backfilled the row for worlds created before this fix.
+- **`rpg{sub:"stealth"}` now works** (#335) — it's an alias for `rpg{sub:"perception"}`'s `stealth_check` action, not a separate handler. There is no dedicated `stealth-manage.ts`; stealth mechanics live in `perception-manage.ts` alongside `perception_contested`.
+- **`time.get_date`/`timeline.get_events` now accept camelCase `worldId`** as well as their original snake_case `world_id` (#336) — every other `rpg` sub already used `worldId`; these two were the last snake_case-only outliers. Both keys work; `world_id` wins if both are somehow supplied.
+- **#331/#332/#333/#334 (D1_ERROR: missing table/column for encounter/resource/broadcast/biome) were found already fixed** by unrelated prior work when investigated for this fix — closed as stale rather than re-fixed. If you hit a `D1_ERROR` on any `rpg` sub today, it's worth double-checking against a fresh `world.create` before assuming it's the same root cause.
+
+### Known Behavior: numeric parameters over this MCP connection
+
+Independently discovered while verifying the fixes above: at least one connected MCP client in this project's toolchain stringifies numeric arguments before they reach the Worker (e.g. `{ x: 50 }` arrives as `{ x: "50" }`), tripping every handler's `z.number()` validation with `"Expected number, received string"`. This reproduces on plain integer literals across unrelated subs (`character.list`'s `limit`, `encounter.resolve`'s `x`/`y`, `waypoint.calibrate`'s `kmPerHex`), so it's a transport/client-side serialization issue, not a per-handler bug — there is currently no server-side workaround (coercing every numeric field to also accept a numeric string would silently mask real type errors from other, correctly-serializing clients). If you hit this, omit the optional numeric param or pass it through a client that serializes numbers correctly.
+
 ---
 
 ## Tips for Immersion

@@ -26,6 +26,10 @@ const ALIASES: Record<string, TimeAction> = {
 const InputSchema = z.object({
   action:       z.string(),
   world_id:     z.string().optional(),
+  // #336 — every other rpg sub accepts camelCase worldId; time was the one
+  // snake_case-only outlier. Accept both, normalized to world_id below,
+  // since all of this handler's internal logic already reads a.world_id.
+  worldId:      z.string().optional(),
   date:         z.string().optional(),
   era:          z.string().optional(),
   character_id: z.string().optional(),
@@ -153,12 +157,23 @@ function parseByString(by: string): { amount: number; unit: 'days' | 'months' | 
   return { amount, unit }
 }
 
+// ── World state seeding (#330) ───────────────────────────────────────────────
+// world_manage.create/generate never seeded a world_state row (unlike
+// biomes/zone-types, which do get auto-seeded there) — every world_state
+// column besides world_id has a DEFAULT or is nullable, so a bare insert is
+// sufficient. Idempotent: `INSERT OR IGNORE` is a no-op for a world that
+// already has a row (e.g. one that already called set_date).
+export async function seedWorldState(db: D1Database, worldId: string): Promise<void> {
+  await db.prepare('INSERT OR IGNORE INTO world_state (world_id) VALUES (?)').bind(worldId).run()
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function handleTimeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  if (a.world_id === undefined && a.worldId !== undefined) a.world_id = a.worldId
 
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
