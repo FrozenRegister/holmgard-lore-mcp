@@ -1,0 +1,6 @@
+### Feature — Zone/territory shapes on world_map (#276)
+- `suggest_poi` and a new `update_poi` action accept optional `radius` (circle), `polygon` (array of `[x,y]` pairs, min 3), `ringInner`/`ringOuter`/`ringPoints` (ring band), `zoneType` (e.g. `territory`, `perimeter`, `exclusion`, `hazard`, `broadcast`), and `predatorRef` — stored as zone geometry JSON in the existing `structures.metadata` column (no schema change to the table itself; only an added partial index for lookup speed).
+- New `query_zone(worldId, x, y)` action resolves every zone shape containing a point (circle/polygon/point-in-circle math, ring band math) and reports `inPerimeter` for any `zoneType: "perimeter"` zone.
+- New `list_zones(worldId, zoneType?)` action lists all zone-bearing structures, optionally filtered by zone type.
+- `preview`'s ASCII output now overlays single-glyph zone markers (`⚡` perimeter, `#` exclusion, `!` hazard, `@` territory) on top of the base terrain grid; `broadcast` zones are deliberately not rendered (informational only, queryable but not visual).
+- `update_poi` preserves the existing zone shape when only `zoneType`/`predatorRef` is patched, and vice versa — matching this handler's existing "only touched fields written" convention.
