@@ -1,0 +1,1 @@
+Added `set_sensory_profile` action to `entity_manage`. Allows writing sensory fields (temperature, scent, texture, sound_signature, visual_descriptors, composite) to an entity lore entry. Supports individual fields or full composite profile. Fixes #348.

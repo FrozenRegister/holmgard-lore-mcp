@@ -306,8 +306,22 @@ const ENTITY_MANAGE_SCHEMA = {
       required: ['action', 'entity_key'],
       properties: {
         action: { type: 'string', const: 'get_sensory_profile', description: "Get an entity's sensory profile" },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action', 'entity_key'],
+      properties: {
         action: { type: 'string', const: 'set_sensory_profile', description: "Set an entity's sensory profile" },
         entity_key: { type: 'string', minLength: 1, description: 'Entity lore key' },
+        temperature: { type: 'string', description: 'Thermal signature' },
+        scent: { type: 'string', description: 'Olfactory profile' },
+        texture: { type: 'string', description: 'Tactile surface' },
+        sound_signature: { type: 'string', description: 'Auditory characteristics' },
+        visual_descriptors: { type: 'string', description: 'Visual appearance markers' },
+        composite: { type: 'string', description: 'Full sensory profile as single string' },
       },
       additionalProperties: false,
     },
