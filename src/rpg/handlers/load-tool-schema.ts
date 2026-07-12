@@ -9,6 +9,7 @@ import type { AppBindings } from '../../types'
 
 const InputSchema = z.object({
   toolName: z.string().min(1).describe('Exact tool name to retrieve the schema for'),
+  sub: z.string().optional().describe('For the "rpg" tool only — the sub-system to get the schema for (e.g. "corpse", "combat", "quest"). Returns that sub\'s input schema.'),
 })
 
 interface ToolSchema {
@@ -19,10 +20,37 @@ interface ToolSchema {
 
 let _schemaIndex: Record<string, ToolSchema> | null = null
 
+// #339 — sub-level schema registry for the "rpg" monolith tool.
+// Each entry maps an rpg sub name (e.g. "corpse", "quest") to its
+// input schema, so load_tool_schema({ toolName: "rpg", sub: "corpse" })
+// returns the corpse-manage handler's parameter schema.
+// Built incrementally — only populated for subs that opt in.
+let _rpgSubSchemaIndex: Record<string, ToolSchema> | null = null
+
 export function setSchemaIndex(tools: Array<{ name: string; inputSchema: unknown; description: string }>) {
   _schemaIndex = Object.fromEntries(
     tools.map(t => [t.name, { name: t.name, description: t.description, inputSchema: t.inputSchema }]),
   )
+}
+
+/**
+ * Register a sub-level schema for the "rpg" tool.
+ * Call this during startup for every rpg handler that wants its schema
+ * discoverable via load_tool_schema.
+ *
+ * Example: registerRpgSubSchema("corpse", "Corpse management", corpseSchemaDoc)
+ */
+export function registerRpgSubSchema(
+  subName: string,
+  description: string,
+  inputSchema: unknown,
+): void {
+  if (!_rpgSubSchemaIndex) _rpgSubSchemaIndex = {}
+  _rpgSubSchemaIndex[subName] = {
+    name: `rpg.sub:${subName}`,
+    description,
+    inputSchema,
+  }
 }
 
 export async function handleLoadToolSchema(_env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -30,7 +58,25 @@ export async function handleLoadToolSchema(_env: AppBindings, args: Record<strin
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   if (!_schemaIndex) return err('Schema index not yet initialized')
 
-  const { toolName } = parsed.data
+  const { toolName, sub } = parsed.data
+
+  // #339 — sub-level lookup: load_tool_schema({ toolName: "rpg", sub: "corpse" })
+  if (sub && toolName === 'rpg' && _rpgSubSchemaIndex) {
+    const subSchema = _rpgSubSchemaIndex[sub]
+    if (subSchema) {
+      return ok({ success: true, toolName, sub, schema: subSchema })
+    }
+    const allSubs = Object.keys(_rpgSubSchemaIndex)
+    const suggestions = findCloseMatches(sub, allSubs, 0.3, 5)
+    if (suggestions.length > 0) {
+      return err(
+        `RPG sub "${sub}" not found in schema index. Did you mean: ${suggestions.map(s => `${s.name} (${(s.score * 100).toFixed(0)}%)`).join(', ')}?`,
+        { toolName, sub, didYouMean: suggestions.map(s => ({ name: s.name, confidence: s.score })) },
+      )
+    }
+    return err(`RPG sub "${sub}" not found in schema index. Use load_tool_schema({ toolName: "search_tools", query: "corpse" }) or check rpg.definitions.ts for the full sub list.`, { toolName, sub })
+  }
+
   const schema = _schemaIndex[toolName]
 
   if (schema) {
