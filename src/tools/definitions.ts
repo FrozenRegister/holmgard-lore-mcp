@@ -312,6 +312,21 @@ const ENTITY_MANAGE_SCHEMA = {
     },
     {
       type: 'object',
+      required: ['action', 'entity_key'],
+      properties: {
+        action: { type: 'string', const: 'set_sensory_profile', description: "Set an entity's sensory profile" },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key' },
+        temperature: { type: 'string', description: 'Thermal signature' },
+        scent: { type: 'string', description: 'Olfactory profile' },
+        texture: { type: 'string', description: 'Tactile surface' },
+        sound_signature: { type: 'string', description: 'Auditory characteristics' },
+        visual_descriptors: { type: 'string', description: 'Visual appearance markers' },
+        composite: { type: 'string', description: 'Full sensory profile as single string' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
       required: ['action', 'entity_a', 'entity_b', 'interaction_type'],
       properties: {
         action: { type: 'string', const: 'get_compatibility', description: 'Get compatibility score between two entities for an interaction type' },
@@ -812,7 +827,7 @@ export const toolDefinitions: ToolDefinition[] = [
     name: 'entity_manage',
     title: 'Entity Manage',
     version: '1.0.0',
-    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, create_consumption_timeline, set_consumption_timeline, list_active_threads, resolve_interaction',
+    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, set_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, create_consumption_timeline, set_consumption_timeline, list_active_threads, resolve_interaction',
     inputSchema: ENTITY_MANAGE_SCHEMA,
   },
   {

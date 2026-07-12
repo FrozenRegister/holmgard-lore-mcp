@@ -1075,3 +1075,67 @@ export async function handle_set_consumption_timeline({ c, id, args }: TypedTool
     timeline: updatedTimeline,
   }), 200)
 }
+
+export const setSensoryProfileSchema = z.object({
+  entity_key: z.string().min(1),
+  temperature: z.string().optional(),
+  scent: z.string().optional(),
+  texture: z.string().optional(),
+  sound_signature: z.string().optional(),
+  visual_descriptors: z.string().optional(),
+  composite: z.string().optional(),
+})
+
+export async function handle_set_sensory_profile({ c, id, args }: TypedToolContext<typeof setSensoryProfileSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
+  const raw = await kvGet(c, entityKey)
+  if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+  const { text, meta } = parseKvEntry(raw)
+  let updatedText = text
+  const fieldsWritten: string[] = []
+
+  // Write composite Sensory-Profile if provided
+  if (args.composite) {
+    updatedText = updateFieldInText(updatedText, 'Sensory-Profile', args.composite)
+    fieldsWritten.push('Sensory-Profile')
+  }
+
+  // Write individual fields
+  if (args.temperature) {
+    updatedText = updateFieldInText(updatedText, 'Temperature', args.temperature)
+    fieldsWritten.push('Temperature')
+  }
+  if (args.scent) {
+    updatedText = updateFieldInText(updatedText, 'Scent', args.scent)
+    fieldsWritten.push('Scent')
+  }
+  if (args.texture) {
+    updatedText = updateFieldInText(updatedText, 'Texture', args.texture)
+    fieldsWritten.push('Texture')
+  }
+  if (args.sound_signature) {
+    updatedText = updateFieldInText(updatedText, 'Sound-Signature', args.sound_signature)
+    fieldsWritten.push('Sound-Signature')
+  }
+  if (args.visual_descriptors) {
+    updatedText = updateFieldInText(updatedText, 'Visual-Descriptors', args.visual_descriptors)
+    fieldsWritten.push('Visual-Descriptors')
+  }
+
+  if (fieldsWritten.length === 0) {
+    return c.json(makeError(id, -32602, 'No sensory profile fields provided', null), 200)
+  }
+
+  await pushHistory(c, entityKey, raw)
+  const now = new Date().toISOString()
+  const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+  await appendChangelog(c, entityKey, version)
+  loreDB[entityKey] = updatedText
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Sensory profile set for "${entityKey}": ${fieldsWritten.join(', ')}.` }],
+    metadata: { entity_key: entityKey, fields_written: fieldsWritten, version }
+  }), 200)
+}
