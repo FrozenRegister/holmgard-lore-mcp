@@ -256,6 +256,22 @@ describe('RPG engine tools', () => {
     expect(r.error).toBe(true)
   })
 
+  it('load_tool_schema returns sub-level schema for rpg (+sub param) (#339)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'combat' })
+    expect(r.success).toBe(true)
+    expect(r.schema.name).toContain('rpg.sub:combat')
+    expect(r.schema.description).toContain('combat')
+  })
+
+  it('load_tool_schema errors for unknown rpg sub with did_you_mean (#339)', async () => {
+    // "corps" should fuzzy-match "corpse" above the 0.3 threshold
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'corps' })
+    expect(r.error).toBe(true)
+    expect(r.didYouMean).toBeDefined()
+    expect(r.didYouMean.length).toBeGreaterThan(0)
+    expect(r.didYouMean.some((s: any) => s.name === 'corpse')).toBe(true)
+  })
+
   // ── rpg world — remaining actions ─────────────────────────────────────────
 
   it('rpg world update, generate, get_state, delete', async () => {
@@ -471,6 +487,21 @@ describe('RPG engine tools', () => {
   it('rpg combat get_encounter 404s for an unknown id', async () => {
     const r = await callTool('rpg', { sub: 'combat', action: 'get_encounter', id: 'nonexistent-encounter' })
     expect(r.error).toBe(true)
+  })
+
+  it('rpg combat add_combatant auto-generates token from characterId (#343)', async () => {
+    const char = await callTool('rpg', { sub: 'character', action: 'create', name: 'Grimslade', characterClass: 'Fighter', hp: 25, maxHp: 25 })
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
+    const added = await callTool('rpg', { sub: 'combat', action: 'add_combatant', id: enc.encounterId, characterId: char.characterId })
+    expect(added.success).toBe(true)
+    expect(added.token.name).toBe('Grimslade')
+  })
+
+  it('rpg combat add_combatant errors without token or characterId (#343)', async () => {
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
+    const r = await callTool('rpg', { sub: 'combat', action: 'add_combatant', id: enc.encounterId })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('token')
   })
 
   // ── rpg combat_map ─────────────────────────────────────────────────────────

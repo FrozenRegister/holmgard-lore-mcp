@@ -13,7 +13,7 @@ import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
-import { setToolIndex, setSchemaIndex } from './rpg/registry'
+import { setToolIndex, setSchemaIndex, registerRpgSubSchema } from './rpg/registry'
 import { mathManageSchemaDoc } from './rpg/definitions'
 import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
@@ -29,6 +29,40 @@ setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.des
 // handler of its own, so it must not be added to the tool index (that would
 // advertise a callable tool that 404s on tools/call).
 setSchemaIndex([...toolDefinitions, mathManageSchemaDoc].map((t: any) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })))
+
+// #339 — register rpg sub-level schemas so load_tool_schema({ toolName: "rpg", sub: "corpse" }) works.
+// These are static documentation schemas describing each sub's parameters,
+// extracted from their Zod InputSchema definitions.
+const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<string, unknown> }> = [
+  { sub: 'corpse', description: 'Corpse ecology — decomposition, scavenging, looting, psychological impact. Actions: create, get, list, loot, decay, generate_loot, delete, register, decompose, scavenge_check, loot_corpse, recover, get_state, psychological_impact.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Corpse UUID' }, characterId: { type: 'string' }, characterName: { type: 'string' }, worldId: { type: 'string' }, hoursSinceDeath: { type: 'number', description: 'Override computed elapsed time' }, looterCharacterId: { type: 'string' }, observerCharacterId: { type: 'string' }, recoveryType: { type: 'string', enum: ['memorial_package', 'warning_display', 'trophy_recovery', 'research_recovery'] }, relationship: { type: 'string', enum: ['stranger', 'party_member', 'betrayed_them', 'saved_them'] } }, required: ['action', 'id'] } },
+  { sub: 'quest', description: 'Quest management. Actions: create, get, list, update, delete, complete, fail, add_objective, complete_objective.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, questId: { type: 'string' }, worldId: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, objective: { type: 'object', description: '{ description: string, completed?: boolean, order?: number }' } }, required: ['action'] } },
+  { sub: 'combat', description: 'Combat encounter management. Actions: create_encounter, get_encounter, list_encounters, add_combatant, remove_combatant, start, end, next_turn, get_state, death_save, legendary_action, lair_action.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Encounter ID' }, regionId: { type: 'string' }, characterId: { type: 'string' }, token: { type: 'object', description: '{ name: string, type: "pc"|"npc"|"enemy"|"neutral", initiative?: number, hp?: number }' }, filter: { type: 'string', enum: ['all', 'active', 'completed'] } }, required: ['action'] } },
+  { sub: 'combat_action', description: 'Combat actions (attack, cast, use item). Actions: attack, cast, use_item, heal, defend, dodge, ready.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, encounterId: { type: 'string' }, actorId: { type: 'string' }, targetId: { type: 'string' }, weaponName: { type: 'string' }, spellName: { type: 'string' }, attackRoll: { type: 'number' }, damageRoll: { type: 'string' } }, required: ['action'] } },
+  { sub: 'character', description: 'Character CRUD and management. Actions: create, get, list, update, delete, recompute_derived, set_driver, get_driver, list_passengers.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, name: { type: 'string' }, worldId: { type: 'string' }, characterClass: { type: 'string' }, race: { type: 'string' }, level: { type: 'number' }, hp: { type: 'number' }, maxHp: { type: 'number' } }, required: ['action'] } },
+  { sub: 'aura', description: 'Aura and concentration management. Actions: create, get, list, remove, expire, get_affecting, concentrate, break_concentration, check_save, check_duration.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Aura instance UUID from create' }, ownerId: { type: 'string' }, targetId: { type: 'string' }, characterId: { type: 'string' }, spellName: { type: 'string' }, spellLevel: { type: 'number' }, radius: { type: 'number' } }, required: ['action'] } },
+  { sub: 'secret', description: 'Secret management (hidden knowledge, backstory). Actions: create, get, list, update, delete, reveal, check_reveal.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Secret UUID from create' }, worldId: { type: 'string' }, name: { type: 'string' }, publicDescription: { type: 'string' }, secretDescription: { type: 'string' }, linkedEntityId: { type: 'string' }, sensitivity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } }, required: ['action'] } },
+  { sub: 'narrative', description: 'Narrative notes (plot threads, session logs). Actions: create, get, list, update, delete, archive, resolve.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Note UUID (noteId) from create' }, worldId: { type: 'string' }, type: { type: 'string', enum: ['plot_thread', 'canonical_moment', 'npc_voice', 'foreshadowing', 'session_log'] }, content: { type: 'string' }, visibility: { type: 'string', enum: ['dm_only', 'player_visible'] } }, required: ['action'] } },
+  { sub: 'resource', description: 'Resource survival — food, water, medical supplies. Actions: get_state, consume, scavenge, add, transfer.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, ownerType: { type: 'string', enum: ['character', 'party'] }, ownerId: { type: 'string' }, worldId: { type: 'string' }, itemName: { type: 'string' }, category: { type: 'string' }, quantity: { type: 'number' } }, required: ['action'] } },
+  { sub: 'broadcast', description: 'Broadcast and production intervention. Actions: get_state, vote, intervene, schedule_drop.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, voteType: { type: 'string' }, interventionType: { type: 'string' }, targetCharacterId: { type: 'string' } }, required: ['action', 'worldId'] } },
+  { sub: 'production', description: 'Production cycle — advance_day, perimeter, extraction. Actions: advance_day, get_state, set_state, list_events.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, daysToAdvance: { type: 'number' } }, required: ['action', 'worldId'] } },
+  { sub: 'stealth', description: 'Stealth and perception checks (aliased to perception sub). Actions: check (alias for perception stealth_check).',
+    schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, worldId: { type: 'string' }, targetId: { type: 'string' } }, required: ['action'] } },
+]
+
+for (const s of SUB_SCHEMAS) {
+  registerRpgSubSchema(s.sub, s.description, s.schema)
+}
 
 // ── App ───────────────────────────────────────────────────────────────────────
 

@@ -16,11 +16,12 @@ export const rpgMetaToolDefinitions: any[] = [
   },
   {
     name: 'load_tool_schema', title: 'Load Tool Schema', version: '1.0.0',
-    description: 'Return the full JSON input schema for a named tool. Use this to see all available parameters before calling an unfamiliar tool.',
+    description: 'Return the full JSON input schema for a named tool. When toolName is "rpg", pass "sub" to get the schema for a specific sub-system (e.g. "corpse", "combat").',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
       properties: {
-        toolName: { type: 'string', minLength: 1, description: 'Exact tool name (e.g. "character_manage", "combat_action")' },
+        toolName: { type: 'string', minLength: 1, description: 'Exact tool name (e.g. "character_manage", "combat_action", or "rpg" for sub-level lookups)' },
+        sub: { type: 'string', minLength: 1, description: 'For "rpg" tool only — the sub-system name (e.g. "corpse", "combat", "quest")' },
       },
       required: ['toolName'], additionalProperties: false
     }

@@ -52,7 +52,7 @@ export async function handleSecretManage(env: AppBindings, args: Record<string, 
       return ok({ success: true, actionType: 'create', secretId: id, name: a.name, sensitivity: a.sensitivity })
     }
     case 'get': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (the secret UUID returned by create, e.g. "uuid-of-the-secret") is required. Use "list" with worldId to find secret IDs, or filter by linkedEntityId')
       const row = await db.prepare('SELECT * FROM secrets WHERE id = ?').bind(a.id).first()
       if (!row) return err(`Secret not found: ${a.id}`)
       return ok({ success: true, actionType: 'get', secret: { ...row, reveal_conditions: JSON.parse((row as any).reveal_conditions ?? '[]'), leak_patterns: JSON.parse((row as any).leak_patterns ?? '[]') } })

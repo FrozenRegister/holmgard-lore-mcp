@@ -53,7 +53,7 @@ export async function handleNarrativeManage(env: AppBindings, args: Record<strin
       return ok({ success: true, actionType: 'create', noteId: id, type: a.type })
     }
     case 'get': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (the note UUID returned by create, "noteId") is required. Use "list" with worldId to find narrative note IDs. Example: { action: "get", id: "uuid-of-the-note", worldId: "..." }')
       const row = await db.prepare('SELECT * FROM narrative_notes WHERE id = ?').bind(a.id).first()
       if (!row) return err(`Note not found: ${a.id}`)
       return ok({ success: true, actionType: 'get', note: { ...row, metadata: JSON.parse((row as any).metadata ?? '{}'), tags: JSON.parse((row as any).tags ?? '[]') } })

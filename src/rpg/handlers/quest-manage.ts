@@ -17,6 +17,9 @@ const ALIASES: Record<string, QuestAction> = {
   tick_objective: 'complete_objective', check_objective: 'complete_objective',
 } as Record<string, QuestAction>
 
+// #345 — objective object schema surfaced in error messages.
+// Fields: description (string, required), completed (boolean, default false),
+// order (integer, optional). Pass a plain string as shorthand for { description: "..." }.
 const ObjectiveSchema = z.object({ description: z.string(), completed: z.boolean().default(false), order: z.number().int().optional() })
 
 const InputSchema = z.object({
@@ -100,7 +103,9 @@ export async function handleQuestManage(env: AppBindings, args: Record<string, u
     }
     case 'add_objective': {
       const qId = a.id ?? a.questId
-      if (!qId || !a.objective) return err('"id"/"questId" and "objective" are required')
+      if (!qId) return err('"id" or "questId" is required')
+      if (!a.objective) return err('"objective" is required. Expected an object with fields: description (string, required), completed (boolean, optional, default false), order (integer, optional). Example: { description: "Locate the spring", completed: false }')
+      if (typeof a.objective === 'string') return err('"objective" must be an object, not a string. Use: { description: "' + a.objective + '", completed: false }')
       const row = await db.prepare('SELECT objectives FROM quests WHERE id = ?').bind(qId).first() as { objectives: string } | null
       if (!row) return err(`Quest not found: ${qId}`)
       const objectives = JSON.parse(row.objectives)
