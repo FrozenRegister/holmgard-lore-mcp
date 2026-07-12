@@ -1,7 +1,7 @@
 // src/tools/system.ts
 import { z } from 'zod'
 import { kvGet, kvList, kvListMaps } from '../lib/kv'
-import { getIndexedKeys } from '../lib/indexes'
+import { getIndexedKeys, getAllKeys } from '../lib/indexes'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, parseLoreSections, matchesWorld } from '../lib/lore'
 import { formatD1CharToLore } from '../rpg/utils/kv-to-d1'
@@ -21,7 +21,8 @@ export async function handle_list_topics({ c, id, args }: TypedToolContext<typeo
   // Prefix queries use the maintained _idx:prefix:<ns> index (O(1) lookup) instead
   // of a full kvList() scan — getIndexedKeys() falls back to scan+filter itself
   // if the index doesn't exist yet, so this is safe for any prefix.
-  let allKeys = prefix ? await getIndexedKeys(c, `_idx:prefix:${prefix}`) : await kvList(c)
+  // No-prefix queries use the _idx:prefix:all master index (#359).
+  let allKeys = prefix ? await getIndexedKeys(c, `_idx:prefix:${prefix}`) : await getAllKeys(c)
 
   if (args.world) {
     const raws = await Promise.all(allKeys.map(k => kvGet(c, k)))
@@ -75,8 +76,9 @@ export async function handle_get_lore({ c, id, args }: TypedToolContext<typeof g
   const key = args.query.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) {
-    // Auto-suggest: scan keys for similar matches when not found
-    const allKeys = await kvList(c)
+    // Auto-suggest: use the _idx:prefix:all master index instead of a full
+    // kvList() scan (#359). Falls back to kvList() if the index doesn't exist.
+    const allKeys = await getAllKeys(c)
     const query = key.includes(':') ? key.split(':').pop()! : key
     const suggestions = allKeys.filter(k => k.includes(query)).slice(0, 5)
     const errorPayload: Record<string, unknown> = { key }
@@ -185,7 +187,9 @@ function scoreMatch(query: string, candidate: string): number {
 export const validateTopicExistsSchema = z.object({ query_string: z.string().min(1) })
 
 export async function handle_validate_topic_exists({ c, id, args }: TypedToolContext<typeof validateTopicExistsSchema>): Promise<Response> {
-  const allKeys = await kvList(c)
+  // Use the _idx:prefix:all master index instead of a full kvList() scan (#359).
+  // Falls back to kvList() if the index doesn't exist.
+  const allKeys = await getAllKeys(c)
   const query = args.query_string.trim().toLowerCase()
 
   if (allKeys.includes(query)) {

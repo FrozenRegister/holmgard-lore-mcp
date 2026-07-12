@@ -2,7 +2,12 @@
 import { getKV, kvList, kvGet } from './kv'
 import { extractFieldFromText, parseKvEntry, extractRawField } from './lore'
 
-// Maintains _idx:location:<loc>, _idx:thread:<thread>, _idx:prefix:<prefix> indexes
+// Master index key that tracks ALL lore keys — eliminates O(n) kvList() scans
+// in list_topics, get_lore auto-suggest, and validate_topic_exists (#359).
+export const ALL_KEYS_INDEX = '_idx:prefix:all'
+
+// Maintains _idx:location:<loc>, _idx:thread:<thread>, _idx:prefix:<prefix> indexes,
+// plus the _idx:prefix:all master index.
 // Call after writing a lore entry to keep indexes in sync. Pass oldText=null on creation.
 export async function updateIndexes(c: any, key: string, newText: string, oldText: string | null): Promise<void> {
   const kv = getKV(c)
@@ -43,6 +48,13 @@ export async function updateIndexes(c: any, key: string, newText: string, oldTex
   if (newPrefix) {
     await addToIndex(c, `_idx:prefix:${newPrefix}`, key)
   }
+
+  // Update master all-keys index — add on create/modify, remove on delete
+  if (newText) {
+    await addToIndex(c, ALL_KEYS_INDEX, key)
+  } else {
+    await removeFromIndex(c, ALL_KEYS_INDEX, key)
+  }
 }
 
 // NOTE: Index updates are best-effort under concurrent load.
@@ -81,6 +93,13 @@ export async function removeFromIndex(c: any, indexKey: string, key: string): Pr
   } catch (e) { console.warn(`Failed to remove from index ${indexKey}`, e) }
 }
 
+// Returns all lore keys via the _idx:prefix:all master index (O(1) KV read).
+// Falls back to kvList() when the index doesn't exist yet (e.g. test seeds
+// that bypass set_lore, or a fresh KV store before any writes).
+export async function getAllKeys(c: any): Promise<string[]> {
+  return getIndexedKeys(c, ALL_KEYS_INDEX)
+}
+
 // Reads keys from an index (or falls back to kvList + filtering if index missing)
 export async function getIndexedKeys(c: any, indexKey: string): Promise<string[]> {
   try {
@@ -96,6 +115,10 @@ export async function getIndexedKeys(c: any, indexKey: string): Promise<string[]
   // Fallback: build filter based on index type (for test compatibility)
   if (indexKey.startsWith('_idx:prefix:')) {
     const prefix = indexKey.slice('_idx:prefix:'.length)
+    // The 'all' master index returns every key — no prefix filtering
+    if (prefix === 'all') {
+      return kvList(c)
+    }
     const allKeys = await kvList(c)
     return allKeys.filter(k => k.startsWith(`${prefix}:`))
   }

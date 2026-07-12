@@ -91,6 +91,39 @@ describe('list_topics', () => {
     expect(text).toContain('character:eira-holt')
     expect(res.result.metadata.world).toBeNull()
   })
+
+  it('uses _idx:prefix:all master index when entries are created via set_lore (#359)', async () => {
+    // When entries are written through set_lore, the _idx:prefix:all index is
+    // maintained automatically. list_topics should read from it instead of
+    // scanning all KV keys.
+    await callTool('lore_manage', { action: 'set', key: 'character:idx-test-1', text: 'Test 1' })
+    await callTool('lore_manage', { action: 'set', key: 'location:idx-test-2', text: 'Test 2' })
+    // Verify the master index was built
+    const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    expect(idxRaw).not.toBeNull()
+    const idxKeys = JSON.parse(idxRaw!) as string[]
+    expect(idxKeys).toContain('character:idx-test-1')
+    expect(idxKeys).toContain('location:idx-test-2')
+
+    const res = await callTool('lore_manage', { action: 'list' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('character:idx-test-1')
+    expect(text).toContain('location:idx-test-2')
+  })
+
+  it('falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
+    // seedKV bypasses set_lore, so no index is built — getAllKeys() should
+    // fall back to kvList() transparently.
+    await seedKV('fallback:key-a', 'A')
+    await seedKV('fallback:key-b', 'B')
+    const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    expect(idxRaw).toBeNull() // No index built by seedKV
+
+    const res = await callTool('lore_manage', { action: 'list' })
+    const text = res.result.content[0].text as string
+    expect(text).toContain('fallback:key-a')
+    expect(text).toContain('fallback:key-b')
+  })
 })
 
 describe('list_maps', () => {
@@ -212,6 +245,26 @@ describe('get_lore', () => {
     expect(res.error.code).toBe(-32602)
     expect(res.error.message).toContain('No lore found')
   })
+
+  it('auto-suggest uses _idx:prefix:all index when entries are created via set_lore (#359)', async () => {
+    // When entries are written through set_lore, the _idx:prefix:all index is
+    // maintained. get_lore auto-suggest should read from it instead of scanning.
+    await callTool('lore_manage', { action: 'set', key: 'character:suggest-target', text: 'Target lore' })
+    // Query with a partial key that won't match directly but should trigger auto-suggest
+    const res = await callTool('lore_manage', { action: 'get', query: 'suggest-targ' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:suggest-target')
+    expect(res.error.data.alternatives).toContain('character:suggest-target')
+  })
+
+  it('auto-suggest falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
+    // seedKV bypasses set_lore, so no index is built — auto-suggest should
+    // still work via the kvList() fallback.
+    await seedKV('character:fallback-suggest', 'Fallback lore')
+    const res = await callTool('lore_manage', { action: 'get', query: 'fallback-sug' })
+    expect(res.error).toBeDefined()
+    expect(res.error.data.did_you_mean).toBe('character:fallback-suggest')
+  })
 })
 
 describe('get_lore D1 redirect', () => {
@@ -329,6 +382,26 @@ describe('delete_lore', () => {
     const get = await callTool('lore_manage', { action: 'get', query: 'write:to-delete' })
     expect(get.error).toBeDefined()
   })
+
+  it('removes the key from _idx:prefix:all on delete (#359)', async () => {
+    await callTool('lore_manage', { action: 'set', key: 'character:delete-idx', text: 'To be deleted' })
+    // Verify it's in the index
+    let idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    expect(idxRaw).not.toBeNull()
+    let idxKeys = JSON.parse(idxRaw!) as string[]
+    expect(idxKeys).toContain('character:delete-idx')
+
+    // Delete it
+    await callTool('lore_manage', { action: 'delete', key: 'character:delete-idx' })
+
+    // Verify it's removed from the index
+    idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    if (idxRaw) {
+      idxKeys = JSON.parse(idxRaw) as string[]
+      expect(idxKeys).not.toContain('character:delete-idx')
+    }
+    // If idxRaw is null, the index was emptied and deleted — also correct
+  })
 })
 
 describe('search_lore', () => {
@@ -432,6 +505,34 @@ describe('validate_topic_exists', () => {
     expect(res.result.exists).toBe(false)
     expect(res.result.namespace_matches).toHaveLength(0)
     expect(res.result.suggestion).toBeNull()
+  })
+
+  it('uses _idx:prefix:all index when entries are created via set_lore (#359)', async () => {
+    // When entries are written through set_lore, the _idx:prefix:all index is
+    // maintained. validate_topic_exists should read from it instead of scanning.
+    await callTool('lore_manage', { action: 'set', key: 'character:validate-idx', text: 'Validate test' })
+    // Verify the master index contains the key
+    const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    expect(idxRaw).not.toBeNull()
+    const idxKeys = JSON.parse(idxRaw!) as string[]
+    expect(idxKeys).toContain('character:validate-idx')
+
+    // Exact match should work via the index
+    const res = await callTool('lore_manage', { action: 'validate', query_string: 'character:validate-idx' })
+    expect(res.result.exists).toBe(true)
+    expect(res.result.exact_match).toBe('character:validate-idx')
+  })
+
+  it('falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
+    // seedKV bypasses set_lore, so no index is built — validate should
+    // still work via the kvList() fallback.
+    await seedKV('character:validate-fallback', 'Fallback validate')
+    const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
+    expect(idxRaw).toBeNull()
+
+    const res = await callTool('lore_manage', { action: 'validate', query_string: 'validate-fall' })
+    expect(res.result.exists).toBe(false)
+    expect(res.result.namespace_matches).toContain('character:validate-fallback')
   })
 })
 
