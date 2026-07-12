@@ -71,7 +71,7 @@ export const senseEnvironmentSchema = z.object({
   entity_key: z.string().min(1),
 }))
 export const getThreadComparisonSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
-export const checkConvergenceSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1), world_id: z.string().min(1) })
+export const checkConvergenceSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1), world_id: z.string().min(1).optional() })
 
 // --- Handlers ---
 
@@ -608,31 +608,74 @@ export const handle_check_convergence: TypedToolHandler<typeof checkConvergenceS
   const threadB = args.thread_b.trim()
   const worldId = args.world_id
 
-  if (!c.env.RPG_DB) {
-    return c.json(makeError(id, -32603, 'D1 database not available', null), 200)
+  // D1-first path: when world_id is provided, query timeline_events directly
+  if (worldId && c.env.RPG_DB) {
+    const db = c.env.RPG_DB
+
+    const datesA = await db.prepare(
+      `SELECT DISTINCT DATE(event_at) as event_date, location_id
+       FROM timeline_events
+       WHERE world_id = ? AND thread_id = ? AND event_at IS NOT NULL`
+    ).bind(worldId, threadA).all()
+
+    const datesB = await db.prepare(
+      `SELECT DISTINCT DATE(event_at) as event_date, location_id
+       FROM timeline_events
+       WHERE world_id = ? AND thread_id = ? AND event_at IS NOT NULL`
+    ).bind(worldId, threadB).all()
+
+    const dateSetA = new Set(datesA.results.map((r: any) => r.event_date).filter(Boolean))
+    const dateSetB = new Set(datesB.results.map((r: any) => r.event_date).filter(Boolean))
+    const locSetA = new Set(datesA.results.map((r: any) => r.location_id).filter(Boolean))
+    const locSetB = new Set(datesB.results.map((r: any) => r.location_id).filter(Boolean))
+
+    const sharedDates = [...dateSetA].filter(d => dateSetB.has(d))
+    const sharedLocations = [...locSetA].filter(l => locSetB.has(l))
+    const canConverge = sharedDates.length > 0 || sharedLocations.length > 0
+
+    const framing = canConverge
+      ? `Threads "${threadA}" and "${threadB}" can converge via ${sharedDates.length > 0 ? `shared date(s): ${sharedDates.join(', ')}` : ''}${sharedDates.length > 0 && sharedLocations.length > 0 ? ' and ' : ''}${sharedLocations.length > 0 ? `shared location(s): ${sharedLocations.join(', ')}` : ''}.`
+      : `No convergence points found between "${threadA}" and "${threadB}".`
+
+    return c.json(makeResult(id, {
+      content: [{ type: 'text', text: framing }],
+      metadata: { retrieved: datesA.results.length + datesB.results.length, written: 0, source: 'd1' },
+      can_converge: canConverge, thread_a: threadA, thread_b: threadB,
+      shared_dates: sharedDates, shared_locations: sharedLocations,
+      framing
+    }), 200)
   }
 
-  const db = c.env.RPG_DB
+  // KV fallback path: use _idx:thread indexes (populated by append_event/plant_setup)
+  const { keys: keysA, rawValues: rawValuesA } = await resolveIndexedEntities(c, `_idx:thread:${threadA}`, 'Thread', threadA)
+  const { keys: keysB, rawValues: rawValuesB } = await resolveIndexedEntities(c, `_idx:thread:${threadB}`, 'Thread', threadB)
+  type TInfo = { key: string; current_date: string | null; location: string | null }
+  const entitiesA: TInfo[] = [], entitiesB: TInfo[] = []
 
-  const datesA = await db.prepare(
-    `SELECT DISTINCT DATE(event_at) as event_date, location_id
-     FROM timeline_events
-     WHERE world_id = ? AND thread_id = ? AND event_at IS NOT NULL`
-  ).bind(worldId, threadA).all()
+  for (let i = 0; i < keysA.length; i++) {
+    const raw = rawValuesA[i]
+    if (!raw) continue
+    const key = keysA[i]
+    const { text } = parseKvEntry(raw)
+    const info: TInfo = { key, current_date: extractRawField(text, 'Current-Date'), location: extractRawField(text, 'Location') }
+    entitiesA.push(info)
+  }
 
-  const datesB = await db.prepare(
-    `SELECT DISTINCT DATE(event_at) as event_date, location_id
-     FROM timeline_events
-     WHERE world_id = ? AND thread_id = ? AND event_at IS NOT NULL`
-  ).bind(worldId, threadB).all()
+  for (let i = 0; i < keysB.length; i++) {
+    const raw = rawValuesB[i]
+    if (!raw) continue
+    const key = keysB[i]
+    const { text } = parseKvEntry(raw)
+    const info: TInfo = { key, current_date: extractRawField(text, 'Current-Date'), location: extractRawField(text, 'Location') }
+    entitiesB.push(info)
+  }
 
-  const dateSetA = new Set(datesA.results.map((r: any) => r.event_date).filter(Boolean))
-  const dateSetB = new Set(datesB.results.map((r: any) => r.event_date).filter(Boolean))
-  const locSetA = new Set(datesA.results.map((r: any) => r.location_id).filter(Boolean))
-  const locSetB = new Set(datesB.results.map((r: any) => r.location_id).filter(Boolean))
-
-  const sharedDates = [...dateSetA].filter(d => dateSetB.has(d))
-  const sharedLocations = [...locSetA].filter(l => locSetB.has(l))
+  const datesA = new Set(entitiesA.map(e => e.current_date).filter(Boolean) as string[])
+  const datesB = new Set(entitiesB.map(e => e.current_date).filter(Boolean) as string[])
+  const locsA = new Set(entitiesA.map(e => e.location).filter(Boolean) as string[])
+  const locsB = new Set(entitiesB.map(e => e.location).filter(Boolean) as string[])
+  const sharedDates = [...datesA].filter(d => datesB.has(d))
+  const sharedLocations = [...locsA].filter(l => locsB.has(l))
   const canConverge = sharedDates.length > 0 || sharedLocations.length > 0
 
   const framing = canConverge
@@ -641,12 +684,14 @@ export const handle_check_convergence: TypedToolHandler<typeof checkConvergenceS
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: framing }],
-    metadata: { retrieved: datesA.results.length + datesB.results.length, written: 0 },
+    metadata: { retrieved: keysA.length + keysB.length, written: 0, source: 'kv' },
     can_converge: canConverge, thread_a: threadA, thread_b: threadB,
     shared_dates: sharedDates, shared_locations: sharedLocations,
+    entity_overlap: { a_entities: entitiesA.map(e => e.key), b_entities: entitiesB.map(e => e.key) },
     framing
   }), 200)
 }
+
 
 export async function handle_get_world_state({ c, id }: ToolContext): Promise<Response> {
   const keys = await kvList(c)
