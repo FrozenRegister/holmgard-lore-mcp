@@ -104,6 +104,7 @@ export const plantSetupSchema = z.object({
   expected_in: z.string().optional(),
   actors: z.array(z.string()).optional(),
   setup_id: z.string().optional(),
+  thread: z.string().optional(),
 }).transform(args => ({
   ...args,
   id: args.id || args.setup_id,
@@ -115,6 +116,7 @@ export const plantSetupSchema = z.object({
     tension: z.number().int().min(1).max(5).optional(),
     expected_in: z.string().optional(),
     actors: z.array(z.string()).optional(),
+    thread: z.string().optional(),
   }))
 
 export const payOffSetupSchema = z.object({
@@ -256,9 +258,14 @@ export async function handle_append_event({ c, id, args }: TypedToolContext<type
     if (kv) await kv.put(eventsKey, JSON.stringify(events))
   }
 
+  // Update thread index if thread is specified
+  if (args.thread && !duplicate) {
+    await updateIndexes(c, entityKey, `**Thread:** ${args.thread}`, null)
+  }
+
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Event "${newEvent.verb}" appended to "${entityKey}"${duplicate ? ' (duplicate skipped)' : ''}.` }],
-    metadata: { entity_key: entityKey, event_count: events.length, duplicate, d1_event_id: d1EventId }
+    metadata: { entity_key: entityKey, event_count: events.length, duplicate, d1_event_id: d1EventId, thread: args.thread }
   }), 200)
 }
 
@@ -743,6 +750,7 @@ export async function handle_plant_setup({ c, id, args }: TypedToolContext<typeo
   if (args.planted_in) lines.push(`**Planted-In:** ${args.planted_in}`)
   if (args.expected_in) lines.push(`**Expected-In:** ${args.expected_in}`)
   if (args.actors && args.actors.length > 0) lines.push(`**Actors:** ${args.actors.join(', ')}`)
+  if (args.thread) lines.push(`**Thread:** ${args.thread}`)
   const text = lines.join('\n')
 
   const existingRaw = await kvGet(c, setupKey)
