@@ -473,6 +473,21 @@ describe('RPG engine tools', () => {
     expect(r.error).toBe(true)
   })
 
+  it('rpg combat add_combatant auto-generates token from characterId (#343)', async () => {
+    const char = await callTool('rpg', { sub: 'character', action: 'create', name: 'Grimslade', characterClass: 'Fighter', hp: 25, maxHp: 25 })
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
+    const added = await callTool('rpg', { sub: 'combat', action: 'add_combatant', id: enc.encounterId, characterId: char.characterId })
+    expect(added.success).toBe(true)
+    expect(added.token.name).toBe('Grimslade')
+  })
+
+  it('rpg combat add_combatant errors without token or characterId (#343)', async () => {
+    const enc = await callTool('rpg', { sub: 'combat', action: 'create_encounter' })
+    const r = await callTool('rpg', { sub: 'combat', action: 'add_combatant', id: enc.encounterId })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('token')
+  })
+
   // ── rpg combat_map ─────────────────────────────────────────────────────────
 
   it('rpg combat_map create+get+update+move_token+render+delete round-trip', async () => {
