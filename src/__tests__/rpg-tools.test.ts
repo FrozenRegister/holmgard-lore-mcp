@@ -264,10 +264,12 @@ describe('RPG engine tools', () => {
   })
 
   it('load_tool_schema errors for unknown rpg sub with did_you_mean (#339)', async () => {
-    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'nonexistentsub' })
+    // "corps" should fuzzy-match "corpse" above the 0.3 threshold
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'corps' })
     expect(r.error).toBe(true)
     expect(r.didYouMean).toBeDefined()
     expect(r.didYouMean.length).toBeGreaterThan(0)
+    expect(r.didYouMean.some((s: any) => s.name === 'corpse')).toBe(true)
   })
 
   // ── rpg world — remaining actions ─────────────────────────────────────────
