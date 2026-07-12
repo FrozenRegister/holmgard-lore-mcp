@@ -97,11 +97,12 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
       // #343 — auto-generate token from characterId when token is omitted.
       // If characterId is provided, look up the character name and use it
       // as the token name; otherwise require an explicit token object.
-      if (!a.token) {
+      let token = a.token
+      if (!token) {
         if (a.characterId) {
           const char = await db.prepare('SELECT name FROM characters WHERE id = ?').bind(a.characterId).first() as { name: string } | null
           const tokenName = char?.name ?? a.characterId
-          a.token = { id: crypto.randomUUID(), name: tokenName, characterId: a.characterId, type: 'npc' as const }
+          token = { id: crypto.randomUUID(), name: tokenName, characterId: a.characterId, type: 'npc' as const }
         } else {
           return err('"token" (object with {name, type}) is required when characterId is not provided. Example: { name: "Goblin Archer", type: "enemy" }')
         }
@@ -109,7 +110,7 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
       const row = await db.prepare('SELECT tokens FROM encounters WHERE id = ?').bind(a.id).first() as { tokens: string } | null
       if (!row) return err(`Encounter not found: ${a.id}`)
       const tokens = parseTokens(row.tokens) as object[]
-      const newToken = { ...a.token, id: a.token.id ?? crypto.randomUUID() }
+      const newToken = { ...token, id: token.id ?? crypto.randomUUID() }
       tokens.push(newToken)
       await db.prepare('UPDATE encounters SET tokens = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(tokens), now, a.id).run()
       return ok({ success: true, actionType: 'add_combatant', encounterId: a.id, token: newToken, totalCombatants: tokens.length })
