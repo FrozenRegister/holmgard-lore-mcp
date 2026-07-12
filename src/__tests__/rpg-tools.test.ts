@@ -256,6 +256,20 @@ describe('RPG engine tools', () => {
     expect(r.error).toBe(true)
   })
 
+  it('load_tool_schema returns sub-level schema for rpg (+sub param) (#339)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'combat' })
+    expect(r.success).toBe(true)
+    expect(r.schema.name).toContain('rpg.sub:combat')
+    expect(r.schema.description).toContain('combat')
+  })
+
+  it('load_tool_schema errors for unknown rpg sub with did_you_mean (#339)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'nonexistentsub' })
+    expect(r.error).toBe(true)
+    expect(r.didYouMean).toBeDefined()
+    expect(r.didYouMean.length).toBeGreaterThan(0)
+  })
+
   // ── rpg world — remaining actions ─────────────────────────────────────────
 
   it('rpg world update, generate, get_state, delete', async () => {
