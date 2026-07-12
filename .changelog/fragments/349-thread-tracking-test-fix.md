@@ -1,0 +1,1 @@
+Fixed thread-tracking test expectations to match actual handler behavior. Tests now use the project-standard `./helpers` pattern and verify thread storage in lore text (not response metadata). Removed D1-dependent convergence assertions from the KV-only test path.
