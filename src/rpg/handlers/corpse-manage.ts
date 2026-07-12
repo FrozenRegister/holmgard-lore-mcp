@@ -224,7 +224,7 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       })
     }
     case 'decompose': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (corpse UUID) is required. Optional: "hoursSinceDeath" (number) to override the computed elapsed time')
       const row = await db.prepare('SELECT death_at, decomposition_stage, recovered FROM corpses WHERE id = ?').bind(a.id).first() as { death_at: string | null; decomposition_stage: string; recovered: number } | null
       if (!row) return err(`Corpse not found: ${a.id}`)
       if (row.recovered) return err(`Corpse ${a.id} has already been recovered by Production and is no longer tracked`)
@@ -257,8 +257,8 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       })
     }
     case 'loot_corpse': {
-      if (!a.id) return err('"id" is required')
-      if (!a.looterCharacterId) return err('"looterCharacterId" is required')
+      if (!a.id) return err('"id" (corpse UUID) is required. Also requires "looterCharacterId" (character UUID doing the looting)')
+      if (!a.looterCharacterId) return err('"looterCharacterId" (character UUID) is required. Optional: "dexModifier" (number), "rollValue" (1-20)')
       const row = await db.prepare('SELECT decomposition_stage, preserve_inventory_snapshot, recovered FROM corpses WHERE id = ?').bind(a.id).first() as
         { decomposition_stage: string; preserve_inventory_snapshot: string; recovered: number } | null
       if (!row) return err(`Corpse not found: ${a.id}`)
@@ -294,7 +294,7 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       return ok({ success: true, actionType: 'loot_corpse', corpseId: a.id, roll, total, dc: stage.lootDC, succeeded: true, itemsLooted: lootable, diseaseExposure })
     }
     case 'recover': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (corpse UUID) is required. Optional: "recoveryType" (memorial_package | warning_display | trophy_recovery | research_recovery). Corpse must be at Bloat stage or later')
       const row = await db.prepare('SELECT decomposition_stage, recovered FROM corpses WHERE id = ?').bind(a.id).first() as { decomposition_stage: string; recovered: number } | null
       if (!row) return err(`Corpse not found: ${a.id}`)
       if (row.recovered) return err(`Corpse ${a.id} has already been recovered`)
@@ -305,7 +305,7 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       return ok({ success: true, actionType: 'recover', corpseId: a.id, recoveryType })
     }
     case 'get_state': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (corpse UUID) is required. Use "list" with worldIdFilter to find corpse IDs. Example: { action: "get_state", id: "corpse-uuid" }')
       const row = await db.prepare('SELECT * FROM corpses WHERE id = ?').bind(a.id).first() as Record<string, unknown> | null
       if (!row) return err(`Corpse not found: ${a.id}`)
       const stage = STAGES.find(s => s.name === row.decomposition_stage) ?? STAGES[0]
@@ -317,7 +317,8 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       })
     }
     case 'psychological_impact': {
-      if (!a.id || !a.observerCharacterId) return err('"id" and "observerCharacterId" are required')
+      if (!a.id) return err('"id" (corpse UUID) is required')
+      if (!a.observerCharacterId) return err('"observerCharacterId" (character UUID of the observer) is required. Optional: "relationship" (stranger | party_member | betrayed_them | saved_them), "wisModifier" (number), "rollValue" (1-20)')
       const row = await db.prepare('SELECT decomposition_stage FROM corpses WHERE id = ?').bind(a.id).first() as { decomposition_stage: DecompositionStage['name'] } | null
       if (!row) return err(`Corpse not found: ${a.id}`)
 

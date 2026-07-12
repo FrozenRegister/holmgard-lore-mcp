@@ -66,7 +66,7 @@ export async function handleAuraManage(env: AppBindings, args: Record<string, un
       return ok({ success: true, actionType: 'create', auraId: id, spellName: a.spellName, ownerId: a.ownerId })
     }
     case 'get': {
-      if (!a.id) return err('"id" is required')
+      if (!a.id) return err('"id" (the aura instance ID returned by create, e.g. "uuid-of-the-aura") is required. Use "list" to find aura IDs for an owner, or pass "ownerId" (character UUID) instead')
       const row = await db.prepare('SELECT * FROM auras WHERE id = ?').bind(a.id).first()
       if (!row) return err(`Aura not found: ${a.id}`)
       return ok({ success: true, actionType: 'get', aura: { ...row, effects: JSON.parse((row as any).effects ?? '{}') } })

@@ -94,7 +94,18 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
     }
     case 'add_combatant': {
       if (!a.id) return err('"id" (encounterId) is required')
-      if (!a.token) return err('"token" is required')
+      // #343 — auto-generate token from characterId when token is omitted.
+      // If characterId is provided, look up the character name and use it
+      // as the token name; otherwise require an explicit token object.
+      if (!a.token) {
+        if (a.characterId) {
+          const char = await db.prepare('SELECT name FROM characters WHERE id = ?').bind(a.characterId).first() as { name: string } | null
+          const tokenName = char?.name ?? a.characterId
+          a.token = { id: crypto.randomUUID(), name: tokenName, characterId: a.characterId, type: 'npc' as const }
+        } else {
+          return err('"token" (object with {name, type}) is required when characterId is not provided. Example: { name: "Goblin Archer", type: "enemy" }')
+        }
+      }
       const row = await db.prepare('SELECT tokens FROM encounters WHERE id = ?').bind(a.id).first() as { tokens: string } | null
       if (!row) return err(`Encounter not found: ${a.id}`)
       const tokens = parseTokens(row.tokens) as object[]
