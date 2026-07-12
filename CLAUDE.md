@@ -240,11 +240,12 @@ for (let i = 0; i < keys.length; i++) {
 
 ### Index-on-Write System
 
-Indexes are maintained automatically when lore entries are written. Three types of indexes track location, thread membership, and key prefix:
+Indexes are maintained automatically when lore entries are written. Four types of indexes track location, thread membership, key prefix, and a master list of all keys:
 
 - `_idx:location:<location-key>` — array of entity keys at this location
 - `_idx:thread:<thread-id>` — array of entity keys in this thread
 - `_idx:prefix:<prefix>` — array of keys starting with this prefix (e.g., `character`, `setup`)
+- `_idx:prefix:all` — master index of ALL lore keys; eliminates O(n) `kvList()` scans in `list_topics`, `get_lore` auto-suggest, and `validate_topic_exists` (#359). Read via `getAllKeys()` which falls back to `kvList()` when the index doesn't exist.
 
 These are built and updated by `updateIndexes(c, key, newText, oldText)` in:
 
