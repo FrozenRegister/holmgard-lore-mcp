@@ -71,7 +71,7 @@ export const senseEnvironmentSchema = z.object({
   entity_key: z.string().min(1),
 }))
 export const getThreadComparisonSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
-export const checkConvergenceSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1) })
+export const checkConvergenceSchema = z.object({ thread_a: z.string().min(1), thread_b: z.string().min(1), world_id: z.string().min(1) })
 
 // --- Handlers ---
 
