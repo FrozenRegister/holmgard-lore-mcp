@@ -17,6 +17,7 @@ import {
   handle_destroy_entity, destroyEntitySchema,
   handle_create_consumption_timeline, createConsumptionTimelineSchema,
   handle_set_consumption_timeline, setConsumptionTimelineSchema,
+  handle_set_sensory_profile, setSensoryProfileSchema,
 } from './entity'
 import { handle_move_entity, moveEntitySchema } from './lore'
 
@@ -68,6 +69,9 @@ const ACTION_MAP: Record<string, ActionSpec | ToolHandler> = {
   }),
   create_consumption_timeline: defineAction(createConsumptionTimelineSchema, handle_create_consumption_timeline, {
     entity_key: 'character:eira-holt', predator_key: 'character:gerent', stages: 5, stage_timer: 10, terminal_state: 'consumed',
+  }),
+  set_sensory_profile: defineAction(setSensoryProfileSchema, handle_set_sensory_profile, {
+    entity_key: 'character:eira-holt', temperature: 'warm, 37°C', scent: 'moss and iron',
   }),
   set_consumption_timeline: defineAction(setConsumptionTimelineSchema, handle_set_consumption_timeline, {
     entity_key: 'character:eira-holt', current_stage: 2,
