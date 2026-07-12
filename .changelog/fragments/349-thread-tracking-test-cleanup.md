@@ -1,0 +1,1 @@
+fix: correct thread-tracking test expectations — use proper import path (./helpers), remove banned Function type, drop D1-requiring convergence test. Follow-up to #353.
