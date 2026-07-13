@@ -1336,3 +1336,33 @@ CREATE TABLE IF NOT EXISTS broadcast_interventions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_broadcast_interventions_world ON broadcast_interventions(world_id, day);
+
+-- ── Weather lazy-population (#364) ─────────────────────────────────────────────
+-- See migration 0023.
+
+CREATE TABLE IF NOT EXISTS weather_log (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  season TEXT NOT NULL DEFAULT 'spring',
+  weather TEXT NOT NULL DEFAULT 'clear',
+  fog INTEGER NOT NULL DEFAULT 0,
+  encounter_modifier INTEGER DEFAULT NULL,
+  movement_modifier INTEGER DEFAULT NULL,
+  temperature_high REAL DEFAULT NULL,
+  temperature_low REAL DEFAULT NULL,
+  conditions TEXT DEFAULT NULL,
+  wind_speed REAL DEFAULT NULL,
+  wind_direction TEXT DEFAULT NULL,
+  precipitation_chance REAL DEFAULT NULL,
+  precipitation_type TEXT DEFAULT NULL,
+  humidity REAL DEFAULT NULL,
+  visibility TEXT DEFAULT NULL,
+  source TEXT NOT NULL DEFAULT 'narrator',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (world_id) REFERENCES worlds(id) ON DELETE CASCADE,
+  UNIQUE(world_id, day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_log_world_day ON weather_log(world_id, day);
