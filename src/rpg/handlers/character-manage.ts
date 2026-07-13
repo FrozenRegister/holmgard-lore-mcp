@@ -236,7 +236,17 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.maxHp !== undefined) { sets.push('max_hp = ?'); vals.push(a.maxHp) }
       if (a.ac !== undefined) { sets.push('ac = ?'); vals.push(a.ac) }
       if (a.level !== undefined) { sets.push('level = ?'); vals.push(a.level) }
-      if (a.stats) { sets.push('stats = ?'); vals.push(JSON.stringify(a.stats)) }
+      if (a.stats) {
+        sets.push('stats = ?'); vals.push(JSON.stringify(a.stats))
+        // #225 — recompute derived columns from the new stats so they don't
+        // go stale. Only recompute fields the caller did NOT explicitly pass,
+        // so explicit ac/perceptionBonus/stealthBonus values always win.
+        const dexMod = abilityModifier(a.stats.dex)
+        const wisMod = abilityModifier(a.stats.wis)
+        if (a.ac === undefined) { sets.push('ac = ?'); vals.push(10 + dexMod) }
+        if (a.perceptionBonus === undefined) { sets.push('perception_bonus = ?'); vals.push(wisMod) }
+        if (a.stealthBonus === undefined) { sets.push('stealth_bonus = ?'); vals.push(dexMod) }
+      }
       if (a.born !== undefined) { sets.push('born = ?'); vals.push(a.born) }
       if (a.characterClass !== undefined) { sets.push('character_class = ?'); vals.push(a.characterClass) }
       if (a.race !== undefined) { sets.push('race = ?'); vals.push(a.race) }

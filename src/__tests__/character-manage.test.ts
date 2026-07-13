@@ -1050,6 +1050,69 @@ describe('character_manage tool', () => {
     expect(char.character.stats).toEqual(updateStats)
   })
 
+  it('update with stats recomputes derived fields (ac, perception_bonus, stealth_bonus) (#225)', async () => {
+    // Create with default stats (all 10s → ac 10, perception 0, stealth 0)
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Erik',
+    })
+    // Update stats to non-default values
+    const newStats = { str: 16, dex: 16, con: 16, int: 14, wis: 12, cha: 14 }
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      stats: newStats,
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.stats).toEqual(newStats)
+    // Derived fields should be recomputed from new stats without a manual recompute_derived call
+    expect(char.character.ac).toBe(13)           // 10 + (16-10)/2 = 13
+    expect(char.character.perception_bonus).toBe(1) // (12-10)/2 = 1
+    expect(char.character.stealth_bonus).toBe(3)    // (16-10)/2 = 3
+  })
+
+  it('update with stats respects explicit ac/perceptionBonus/stealthBonus over auto-compute (#225)', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Custom',
+    })
+    const newStats = { str: 10, dex: 18, con: 14, int: 14, wis: 14, cha: 10 }
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      stats: newStats,
+      ac: 18,
+      perceptionBonus: 5,
+      stealthBonus: 7,
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    // Explicit values should win over auto-computed
+    expect(char.character.ac).toBe(18)
+    expect(char.character.perception_bonus).toBe(5)
+    expect(char.character.stealth_bonus).toBe(7)
+  })
+
+  it('update with stats recomputes derived fields from the exact issue reproduction (#225)', async () => {
+    // Exact reproduction from the issue comment
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Erik',
+    })
+    await callTool('character_manage', {
+      action: 'update',
+      characterId: created.characterId,
+      stats: { str: 16, dex: 16, con: 16, int: 14, wis: 12, cha: 14 },
+    })
+    const char = await callTool('character_manage', { action: 'get', characterId: created.characterId })
+    expect(char.character.ac).toBe(13)           // 10 + DEX mod 3
+    expect(char.character.perception_bonus).toBe(1) // WIS mod 1
+    expect(char.character.stealth_bonus).toBe(3)    // DEX mod 3
+  })
+
   it('update with characterClass field', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
