@@ -102,7 +102,7 @@ export async function handleSceneManage(env: AppBindings, args: Record<string, u
       const id = crypto.randomUUID()
       await db.prepare('INSERT INTO scenes (id, world_id, title, when_label, place_label, narration, engine_state, participants, previous_scene_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, a.worldId, a.title ?? null, a.whenLabel ?? null, a.placeLabel ?? null, a.narration, '{}', JSON.stringify(a.participants), a.previousSceneId ?? null, now).run()
-      return ok({ success: true, actionType: 'create', sceneId: id, worldId: a.worldId, title: a.title })
+      return ok({ success: true, actionType: 'create', sceneId: id, worldId: a.worldId, title: a.title, participants: a.participants })
     }
     case 'get': {
       if (!a.id) return err('"id" is required')

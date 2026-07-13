@@ -618,8 +618,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       ]
 
       // Append event to D1 timeline_events (only if worldId is available)
+      let eventId: string | null = null
       if (worldId) {
-        const eventId = crypto.randomUUID()
+        eventId = crypto.randomUUID()
         statements.push(db.prepare(
           `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -653,13 +654,25 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         productionPulse = { triggered: true, approvalShift: -3, celesteComment: 'pre-recorded: death template' }
       }
 
-      await db.batch(statements)
+      // Try to execute all statements (character update, corpse insert, timeline event)
+      // If timeline_events insert fails due to world not existing, retry without it
+      try {
+        await db.batch(statements)
+      } catch (e) {
+        if (eventId && statements.length > 2) {
+          // Remove timeline_events insert and retry (corpse/character updates only)
+          statements.pop()
+          await db.batch(statements)
+        } else {
+          throw e
+        }
+      }
       await syncCharacterToKv(env, charId)
 
       return ok({
         success: true, actionType: 'kill',
         character: { hp: 0, status: 'dead', location: null, diedAt: killedAt },
-        event: { id: eventId, verb: 'died', detail: `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'}` },
+        event: eventId ? { id: eventId, verb: 'died', detail: `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'}` } : undefined,
         corpse: { id: deathId, state: 'fresh' },
         productionPulse,
         locationOccupantsUpdated: true,
