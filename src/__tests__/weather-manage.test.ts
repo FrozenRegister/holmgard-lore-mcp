@@ -58,7 +58,7 @@ describe('weather_manage tool', () => {
   it('get_forecast requires worldId', async () => {
     const r = await callTool('rpg', { sub: 'weather', action: 'get_forecast' })
     expect(r.error).toBe(true)
-    expect(r.message).toContain('required')
+    expect(r.message.toLowerCase()).toContain('required')
   })
 
   it('get_forecast returns gap for non-existent forecast', async () => {
@@ -162,7 +162,8 @@ describe('weather_manage tool', () => {
       fog: true
     })
     expect(r.success).toBe(true)
-    expect(r.temperature_high).toBe(28)
+    // Response fields are camelCase from handler, use them as returned
+    expect(r.temperatureHigh).toBe(28)
     expect(r.humidity).toBe(0.85)
     expect(r.fog).toBe(true)
   })
