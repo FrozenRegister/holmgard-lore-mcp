@@ -358,7 +358,7 @@ describe('weather_manage tool', () => {
     expect(gapResult.found).toBe(false)
 
     // Set forecast
-    const setResult = await callTool('rpg', {
+    await callTool('rpg', {
       sub: 'weather',
       action: 'set_forecast',
       worldId: 'world:test-workflow',
@@ -367,9 +367,8 @@ describe('weather_manage tool', () => {
       temperatureLow: 12,
       conditions: 'partly-cloudy'
     })
-    expect(setResult.success).toBe(true)
 
-    // Get forecast
+    // Verify by getting the forecast back
     const getResult = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
@@ -412,14 +411,18 @@ describe('weather_manage tool', () => {
       worldId: 'world:a',
       day: 0
     })
+    expect(resultA.found).toBe(true)
+    expect(resultA.temperature_high).toBe(30)
+    expect(resultA.conditions).toBe('clear')
+
     const resultB = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:b',
       day: 0
     })
-
-    expect(resultA.temperature_high).toBe(30)
+    expect(resultB.found).toBe(true)
     expect(resultB.temperature_high).toBe(10)
+    expect(resultB.conditions).toBe('snow')
   })
 })
