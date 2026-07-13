@@ -71,7 +71,8 @@ describe('scene_manage tool', () => {
       worldId: 'world:scenes',
       title: 'Tavern Meeting',
       whenLabel: 'Evening',
-      placeLabel: 'The Broken Wheel'
+      placeLabel: 'The Broken Wheel',
+      narration: 'Adventurers gather at the tavern.'
     })
     expect(r.success).toBe(true)
     expect(r.sceneId).toBeTruthy()
@@ -85,6 +86,7 @@ describe('scene_manage tool', () => {
       action: 'create',
       worldId: 'world:scenes',
       title: 'Council',
+      narration: 'A formal council meeting begins.',
       participants: ['character:lord', 'character:advisor']
     })
     expect(r.success).toBe(true)
