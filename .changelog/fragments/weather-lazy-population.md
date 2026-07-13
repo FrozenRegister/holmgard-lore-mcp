@@ -1,0 +1,3 @@
+feat(weather): lazy-population forecast with gap pattern (#364)
+
+get_forecast now returns `found: false` + `gap` context (season, day, biome, date, recent_weather) instead of auto-generating. set_forecast accepts both new (conditions, temperatureHigh, windSpeed, etc.) and legacy (weather, fog) fields. list_forecasts unchanged. Extended weather_log table with temperature_high, temperature_low, wind_speed, wind_direction, precipitation_chance, precipitation_type, humidity, visibility columns.

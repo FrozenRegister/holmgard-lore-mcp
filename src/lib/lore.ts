@@ -15,6 +15,14 @@ export function parseKvEntry(raw: string): { text: string; meta: Record<string, 
   return { text: raw, meta: {} }
 }
 
+// Normalize a location string to a canonical key: lowercase, strip commas,
+// replace spaces/punctuation with hyphens, collapse runs, strip leading/trailing hyphens.
+// Bridges D1 free-text locations (e.g. "cave, north ridge") with KV canonical keys
+// (e.g. "cave-north-ridge") — used by #371 location normalization.
+export function normalizeLocationKey(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+}
+
 // Case-insensitive match against a KV entry's **World:** field — a freeform
 // narrative label (e.g. "Calder", "Verdant Verge") an author writes into lore
 // text, distinct from D1's `world_id` UUID FK used by the timeline engine.

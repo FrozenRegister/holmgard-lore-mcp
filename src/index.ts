@@ -43,6 +43,9 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Encounter ID' }, regionId: { type: 'string' }, characterId: { type: 'string' }, token: { type: 'object', description: '{ name: string, type: "pc"|"npc"|"enemy"|"neutral", initiative?: number, hp?: number }' }, filter: { type: 'string', enum: ['all', 'active', 'completed'] } }, required: ['action'] } },
   { sub: 'combat_action', description: 'Combat actions (attack, cast, use item). Actions: attack, cast, use_item, heal, defend, dodge, ready.',
     schema: { type: 'object', properties: { action: { type: 'string' }, encounterId: { type: 'string' }, actorId: { type: 'string' }, targetId: { type: 'string' }, weaponName: { type: 'string' }, spellName: { type: 'string' }, attackRoll: { type: 'number' }, damageRoll: { type: 'string' } }, required: ['action'] } },
+  // ── #366 — character: add find_by_name and kill ─────────────────────────
+  { sub: 'character', description: 'Character CRUD and management. Actions: create, get, list, update, delete, search, find_by_name, add_xp, get_progression, level_up, cast_spell, snapshot, activate, list_passengers, recompute_derived, kill.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, characterId: { type: 'string' }, name: { type: 'string' }, worldId: { type: 'string' }, characterClass: { type: 'string' }, race: { type: 'string' }, level: { type: 'number' }, hp: { type: 'number' }, maxHp: { type: 'number' }, ac: { type: 'number' }, stats: { type: 'object' }, query: { type: 'string', description: 'Search query for search action' }, xp: { type: 'number' }, spellName: { type: 'string' }, slotLevel: { type: 'number' }, limit: { type: 'number' }, killerId: { type: 'string' }, causeOfDeath: { type: 'string' } }, required: ['action'] } },
   { sub: 'aura', description: 'Aura and concentration management. Actions: create, get, list, remove, expire, get_affecting, concentrate, break_concentration, check_save, check_duration.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Aura instance UUID from create' }, ownerId: { type: 'string' }, targetId: { type: 'string' }, characterId: { type: 'string' }, spellName: { type: 'string' }, spellLevel: { type: 'number' }, radius: { type: 'number' } }, required: ['action'] } },
   { sub: 'secret', description: 'Secret management (hidden knowledge, backstory). Actions: create, get, list, update, delete, reveal, check_reveal.',
@@ -53,10 +56,6 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, daysToAdvance: { type: 'number' } }, required: ['action', 'worldId'] } },
   { sub: 'stealth', description: 'Stealth and perception checks (aliased to perception sub). Actions: check (alias for perception stealth_check).',
     schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, worldId: { type: 'string' }, targetId: { type: 'string' } }, required: ['action'] } },
-
-  // ── #358 — character: add search and all actual handler actions ──────────
-  { sub: 'character', description: 'Character CRUD and management. Actions: create, get, list, update, delete, search, add_xp, get_progression, level_up, cast_spell, snapshot, activate, list_passengers, recompute_derived.',
-    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, characterId: { type: 'string' }, name: { type: 'string' }, worldId: { type: 'string' }, characterClass: { type: 'string' }, race: { type: 'string' }, level: { type: 'number' }, hp: { type: 'number' }, maxHp: { type: 'number' }, query: { type: 'string', description: 'Search query for search action' }, xp: { type: 'number' }, spellName: { type: 'string' }, slotLevel: { type: 'number' }, limit: { type: 'number' } }, required: ['action'] } },
 
   // ── #360 — item: add schema with search action ───────────────────────────
   { sub: 'item', description: 'Item CRUD and search. Actions: create, get, list, update, delete, search.',
@@ -105,8 +104,9 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, partyId: { type: 'string' }, originId: { type: 'string' }, destinationId: { type: 'string' }, worldId: { type: 'string' }, speed: { type: 'string', enum: ['slow', 'normal', 'fast'] } }, required: ['action'] } },
   { sub: 'perception', description: 'Perception and stealth checks. Actions: check, stealth_check, passive_perception, group_check, oppose_stealth.',
     schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, targetId: { type: 'string' }, worldId: { type: 'string' }, dc: { type: 'number' }, bonus: { type: 'number' } }, required: ['action'] } },
-  { sub: 'scene', description: 'Scene management — narrative scenes with participants. Actions: create, get, list, update, delete, get_latest.',
-    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, worldId: { type: 'string' }, title: { type: 'string' }, whenLabel: { type: 'string' }, placeLabel: { type: 'string' }, narration: { type: 'string' }, participants: { type: 'array', items: { type: 'string' } }, previousSceneId: { type: 'string' }, limit: { type: 'number' } }, required: ['action'] } },
+  // ── #366 — scene: add state_snapshot ────────────────────────────────────
+  { sub: 'scene', description: 'Scene management — narrative scenes with participants. Actions: create, get, list, update, delete, get_latest, state_snapshot.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, worldId: { type: 'string' }, title: { type: 'string' }, whenLabel: { type: 'string' }, placeLabel: { type: 'string' }, narration: { type: 'string' }, participants: { type: 'array', items: { type: 'string' } }, previousSceneId: { type: 'string' }, limit: { type: 'number' }, sceneId: { type: 'string' }, include: { type: 'object' } }, required: ['action'] } },
   { sub: 'rest', description: 'Rest mechanics — short and long rest recovery. Actions: long_rest, short_rest.',
     schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, partyId: { type: 'string' }, healAmount: { type: 'number' } }, required: ['action'] } },
   { sub: 'scroll', description: 'Magic scroll creation and usage. Actions: create, use, identify, get_dc, get_details.',
@@ -127,6 +127,9 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, zoneTypeId: { type: 'string' }, worldId: { type: 'string' }, name: { type: 'string' }, glyph: { type: 'string' }, colorHex: { type: 'string' }, description: { type: 'string' } }, required: ['action'] } },
   { sub: 'waypoint', description: 'Waypoint registry — named map coordinates and distance matrix. Actions: register, list, get, update, delete, validate, seed_defaults, calibrate, hex_to_latlon.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, waypointId: { type: 'string' }, worldId: { type: 'string' }, name: { type: 'string' }, lat: { type: 'number' }, lon: { type: 'number' }, q: { type: 'number' }, r: { type: 'number' } }, required: ['action'] } },
+  // ── #366 — weather: lazy-population forecasts ─────────────────────────
+  { sub: 'weather', description: 'Weather forecasts per world/day. Actions: get_forecast, set_forecast, list_forecasts.',
+    schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, day: { type: 'number' }, weather: { type: 'string', enum: ['storm', 'rain', 'overcast', 'clear'] }, fog: { type: 'boolean' }, encounterModifier: { type: 'number' }, movementModifier: { type: 'number' }, season: { type: 'string' }, limit: { type: 'number' } }, required: ['action', 'worldId'] } },
 ]
 
 for (const s of SUB_SCHEMAS) {

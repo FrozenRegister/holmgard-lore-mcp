@@ -263,9 +263,41 @@ export async function handle_append_event({ c, id, args }: TypedToolContext<type
     await updateIndexes(c, entityKey, `**Thread:** ${args.thread}`, null)
   }
 
+  // #370: Auto-witness — when an event has a location, all OTHER entities at that
+  // location automatically gain knowledge of this event.
+  const autoWitnessed: string[] = []
+  if (args.location && !duplicate && d1EventId) {
+    try {
+      const locationKey = args.location.trim().toLowerCase()
+      // Find occupants at this location via D1 characters table
+      const { results: occupants } = await c.env.RPG_DB!.prepare(
+        'SELECT id, name FROM characters WHERE current_room_id = ? AND id != ?'
+      ).bind(locationKey, args.entity_id ?? '').all()
+
+      if (d1EventId) {
+        const witnessTopic = `${args.verb}${args.object ? `:${args.object}` : ''}`
+        const witnessDetail = args.detail ?? ''
+        for (const occ of occupants as Array<{ id: string; name: string }>) {
+          const knowledgeId = randomUUID()
+          try {
+            await c.env.RPG_DB!.prepare(
+              `INSERT OR IGNORE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+               VALUES (?, ?, ?, 'fact', 'witnessed', ?, ?, 90, 1)`
+            ).bind(knowledgeId, occ.id, witnessTopic, now, witnessDetail).run()
+            autoWitnessed.push(occ.id)
+          } catch {
+            // Best-effort per occupant
+          }
+        }
+      }
+    } catch {
+      // Auto-witness is best-effort
+    }
+  }
+
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Event "${newEvent.verb}" appended to "${entityKey}"${duplicate ? ' (duplicate skipped)' : ''}.` }],
-    metadata: { entity_key: entityKey, event_count: events.length, duplicate, d1_event_id: d1EventId, thread: args.thread }
+    metadata: { entity_key: entityKey, event_count: events.length, duplicate, d1_event_id: d1EventId, thread: args.thread, auto_witnessed: autoWitnessed.length > 0 ? autoWitnessed : undefined }
   }), 200)
 }
 

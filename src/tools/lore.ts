@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, getKV, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection } from '../lib/lore'
+import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection, normalizeLocationKey } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
 import { checkForConcurrentWrite } from '../lib/concurrency'
@@ -597,7 +597,9 @@ export const moveEntitySchema = z.object({ entity_key: z.string().min(1), new_lo
 
 export async function handle_move_entity({ c, id, args }: TypedToolContext<typeof moveEntitySchema>): Promise<Response> {
   const key = args.entity_key.trim().toLowerCase()
-  const newLoc = args.new_location_key.trim().toLowerCase()
+  const rawLoc = args.new_location_key.trim().toLowerCase()
+  // #371: Normalize location string to canonical key before writing
+  const newLoc = normalizeLocationKey(rawLoc)
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
 

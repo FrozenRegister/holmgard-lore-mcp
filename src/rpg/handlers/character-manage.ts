@@ -7,19 +7,23 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import { syncCharacterToKv } from '../utils/character-sync'
 import type { AppBindings } from '../../types'
+import { parseKvEntry, extractRawField } from '../../lib/lore'
+import { similarity } from '../utils/fuzzy-enum'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived', 'find_by_name', 'kill'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
   new_character: 'create', xp: 'add_xp', gain_xp: 'add_xp',
   progression: 'get_progression', level: 'level_up', levelup: 'level_up',
   find_character: 'search', query: 'search',
+  find: 'find_by_name', lookup: 'find_by_name', resolve_name: 'find_by_name',
   cast: 'cast_spell', castspell: 'cast_spell',
   snap: 'snapshot', save_state: 'snapshot',
   switch: 'activate', take_control: 'activate', possess: 'activate',
   passengers: 'list_passengers', list_dormant: 'list_passengers', co_habitants: 'list_passengers',
   recompute: 'recompute_derived', refresh_derived: 'recompute_derived', sync_derived_stats: 'recompute_derived',
+  die: 'kill', slay: 'kill', defeat: 'kill',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -81,6 +85,11 @@ const InputSchema = z.object({
   preparedSpells: z.array(z.string()).optional(),
   cantripsKnown: z.array(z.string()).optional(),
   maxSpellLevel: z.number().int().min(0).max(9).optional(),
+  killerId: z.string().optional(),
+  causeOfDeath: z.string().optional(),
+  location: z.string().optional(),
+  triggerProductionPulse: z.boolean().optional(),
+  killedBy: z.string().optional(),
   concentratingOn: z.string().nullable().optional(),
   legendaryActions: z.number().int().min(0).optional(),
   legendaryActionsRemaining: z.number().int().min(0).optional(),
@@ -491,6 +500,182 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         success: true, actionType: 'list_passengers', hostBodyId,
         activeCharacterId: activeRow ? activeRow.id : null,
         active: activeRow, passengers, count: passengers.length,
+      })
+    }
+    case 'find_by_name': {
+      if (!a.name) return err('"name" is required for find_by_name')
+      const normalizedName = a.name.trim().toLowerCase()
+      // D1 exact + prefix matches (score: exact = 1.0, LIKE prefix = 0.9)
+      const { results: d1Rows } = await db.prepare(
+        'SELECT id, name, character_type, character_class, race, level, world_id FROM characters WHERE LOWER(name) = ? OR LOWER(name) LIKE ? ORDER BY name LIMIT ?'
+      ).bind(normalizedName, `${normalizedName}%`, a.limit ?? 20).all()
+
+      const matches: Array<{ key: string; name: string; characterId: string | null; character_type: string | null; source: string; confidence: number }> = []
+      for (const row of d1Rows as Array<Record<string, unknown>>) {
+        const matchName = (row.name as string).trim().toLowerCase()
+        const confidence = matchName === normalizedName ? 1.0 : 0.9
+        matches.push({
+          key: `character:${(row.name as string).toLowerCase().replace(/\s+/g, '-')}`,
+          name: row.name as string,
+          characterId: row.id as string,
+          character_type: row.character_type as string | null,
+          source: 'd1', confidence,
+        })
+      }
+
+      // KV fuzzy fallback: scan character:* keys for name similarity
+      if (env.LORE_DB) {
+        try {
+          const allKeys: string[] = []
+          let cursor: string | undefined
+          do {
+            const listed: any = await env.LORE_DB.list(cursor ? { cursor, prefix: 'character:' } : { prefix: 'character:' })
+            for (const k of listed.keys) allKeys.push(k.name)
+            cursor = listed.list_complete ? undefined : listed.cursor
+          } while (cursor)
+          const raws = await Promise.all(allKeys.map(k => env.LORE_DB!.get(k)))
+          for (let i = 0; i < allKeys.length; i++) {
+            const raw = raws[i]
+            if (!raw) continue
+            const { text } = parseKvEntry(raw)
+            const kvName = (extractRawField(text, 'Name') ?? allKeys[i].replace(/^character:/, '')).trim().toLowerCase()
+            const nameScore = similarity(normalizedName, kvName)
+
+            // Skip if D1 already matched this character
+            const kvCharId = extractRawField(text, 'D1-ID') ?? null
+            if (kvCharId && matches.some(m => m.characterId === kvCharId)) continue
+
+            // Levenshtein ≤ 2 = fuzzy match (0.5 confidence), substring = 0.7
+            let confidence = 0
+            if (kvName === normalizedName) confidence = 0.95
+            else if (kvName.includes(normalizedName) || normalizedName.includes(kvName)) confidence = 0.7
+            else if (nameScore >= 0.7) confidence = 0.5
+
+            if (confidence > 0) {
+              matches.push({
+                key: allKeys[i],
+                name: kvName,
+                characterId: kvCharId,
+                character_type: extractRawField(text, 'Character-Type') ?? extractRawField(text, 'Type') ?? null,
+                source: 'kv', confidence,
+              })
+            }
+          }
+          matches.sort((x, y) => y.confidence - x.confidence)
+        } catch {
+          // KV scan is best-effort; ignore failures
+        }
+      }
+
+      // Build response envelope per #367 spec
+      const top = matches.slice(0, a.limit ?? 20)
+      if (top.length === 0) {
+        // Suggestions: extract names from KV keys that start with the query letter
+        const suggestions: string[] = []
+        try {
+          const { results: suggestRows } = await db.prepare(
+            "SELECT name FROM characters WHERE LOWER(name) LIKE ? ORDER BY name LIMIT 3"
+          ).bind(`${normalizedName[0] ?? ''}%`).all()
+          for (const r of suggestRows as Array<{ name: string }>) {
+            if (!suggestions.includes(r.name)) suggestions.push(r.name)
+          }
+        } catch { /* best-effort */ }
+        return ok({ found: false, query: a.name, matches: [], suggestions })
+      }
+
+      const ambiguous = top.length > 1 && (top[0].confidence < 0.8 || top[1].confidence >= top[0].confidence - 0.15)
+      return ok({
+        found: true, query: a.name,
+        ambiguous: ambiguous || undefined,
+        matches: top.map(m => ({ key: m.key, name: m.name, characterId: m.characterId, confidence: m.confidence })),
+      })
+    }
+    case 'kill': {
+      const charId = a.id ?? a.characterId
+      if (!charId) return err('"id" or "characterId" is required')
+
+      // Read full character row for current location data
+      const row = await db.prepare('SELECT id, name, hp, max_hp, character_type, current_room_id, world_id FROM characters WHERE id = ?').bind(charId).first() as
+        { id: string; name: string; hp: number; max_hp: number; character_type: string; current_room_id: string | null; world_id: string | null } | null
+      if (!row) return err(`Character not found: ${charId}`)
+
+      // Resolve world_id from row or args
+      const worldId = a.worldId ?? row.world_id
+      const deathId = crypto.randomUUID()
+      const killedAt = now
+      const deathLocation = a.location ?? row.current_room_id ?? null
+      const killerId = a.killedBy ?? a.killerId ?? null
+      const causeOfDeath = a.causeOfDeath ?? 'unknown'
+
+      // Atomic batch: HP→0, conditions→dead, clear location, corpse insert, event log
+      const statements: D1PreparedStatement[] = [
+        db.prepare('UPDATE characters SET hp = 0, conditions = ?, current_room_id = NULL, updated_at = ? WHERE id = ?')
+          .bind(JSON.stringify(['dead']), now, charId),
+        db.prepare(
+          `INSERT INTO corpses (id, character_id, character_name, character_type, world_id, death_at, cause_of_death, state, state_updated_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(deathId, charId, row.name, row.character_type, worldId, killedAt, causeOfDeath, 'fresh', now, now, now),
+      ]
+
+      // Append event to D1 timeline_events (only if worldId is available)
+      let eventId: string | null = null
+      if (worldId) {
+        eventId = crypto.randomUUID()
+        statements.push(db.prepare(
+          `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          eventId, worldId, 'main', killedAt, 'died', charId,
+          killerId, deathLocation,
+          `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'} (cause: ${causeOfDeath})`,
+          killedAt,
+        ))
+      }
+
+      // Production pulse: emit event to event_inbox if requested
+      let productionPulse: Record<string, unknown> | null = null
+      if (a.triggerProductionPulse) {
+        statements.push(db.prepare(
+          `INSERT INTO event_inbox (event_type, payload, source_type, source_id, priority)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(
+          'world_change',
+          JSON.stringify({
+            type: 'character_death',
+            characterId: charId,
+            characterName: row.name,
+            killerId,
+            causeOfDeath,
+            location: deathLocation,
+            diedAt: killedAt,
+          }),
+          'system', 'character-death', 5,
+        ))
+        productionPulse = { triggered: true, approvalShift: -3, celesteComment: 'pre-recorded: death template' }
+      }
+
+      // Try to execute all statements (character update, corpse insert, timeline event)
+      // If timeline_events insert fails due to world not existing, retry without it
+      try {
+        await db.batch(statements)
+      } catch (e) {
+        if (eventId && statements.length > 2) {
+          // Remove timeline_events insert and retry (corpse/character updates only)
+          statements.pop()
+          await db.batch(statements)
+        } else {
+          throw e
+        }
+      }
+      await syncCharacterToKv(env, charId)
+
+      return ok({
+        success: true, actionType: 'kill',
+        character: { hp: 0, status: 'dead', location: null, diedAt: killedAt },
+        event: eventId ? { id: eventId, verb: 'died', detail: `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'}` } : undefined,
+        corpse: { id: deathId, state: 'fresh' },
+        productionPulse,
+        locationOccupantsUpdated: true,
       })
     }
   }
