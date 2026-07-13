@@ -1115,4 +1115,225 @@ describe('character_manage tool', () => {
     expect(char.character.level).toBe(15)
     expect(char.character.stats).toEqual(newStats)
   })
+
+  // ── find_by_name Tests (#366) ────────────────────────────────────────────────
+
+  it('find_by_name requires name parameter', async () => {
+    const r = await callTool('character_manage', { action: 'find_by_name' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('find_by_name returns exact match', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Thorgrim Stonefist'
+    })
+    const r = await callTool('character_manage', {
+      action: 'find_by_name',
+      name: 'Thorgrim Stonefist'
+    })
+    expect(r.matches).toBeDefined()
+    expect(r.matches.length).toBeGreaterThan(0)
+    expect(r.matches[0].characterId).toBe(created.characterId)
+    expect(r.matches[0].confidence).toBe(1.0)
+  })
+
+  it('find_by_name with prefix match', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Alexander the Great'
+    })
+    const r = await callTool('character_manage', {
+      action: 'find_by_name',
+      name: 'Alexander'
+    })
+    expect(r.matches).toBeDefined()
+    const match = r.matches.find((m: any) => m.characterId === created.characterId)
+    expect(match).toBeDefined()
+    expect(match.confidence).toBeGreaterThanOrEqual(0.8)
+  })
+
+  it('find_by_name is case-insensitive', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Elara Windwhisper'
+    })
+    const r = await callTool('character_manage', {
+      action: 'find_by_name',
+      name: 'ELARA WINDWHISPER'
+    })
+    expect(r.matches.length).toBeGreaterThan(0)
+    expect(r.matches[0].characterId).toBe(created.characterId)
+  })
+
+  it('find_by_name respects limit parameter', async () => {
+    for (let i = 0; i < 5; i++) {
+      await callTool('character_manage', { action: 'create', name: `A ${i}` })
+    }
+    const r = await callTool('character_manage', {
+      action: 'find_by_name',
+      name: 'A',
+      limit: 2
+    })
+    expect(r.matches.length).toBeLessThanOrEqual(2)
+  })
+
+  it('find_by_name returns no matches for non-existent name', async () => {
+    const r = await callTool('character_manage', {
+      action: 'find_by_name',
+      name: 'NonexistentCharacterName12345'
+    })
+    expect(r.matches.length).toBe(0)
+  })
+
+  it('find_by_name supports lookup alias', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'TestChar'
+    })
+    const r = await callTool('character_manage', {
+      action: 'lookup',
+      name: 'TestChar'
+    })
+    expect(r.matches.length).toBeGreaterThan(0)
+    expect(r.matches[0].characterId).toBe(created.characterId)
+  })
+
+  // ── kill Tests (#366) ────────────────────────────────────────────────────────
+
+  it('kill requires character ID', async () => {
+    const r = await callTool('character_manage', { action: 'kill' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('required')
+  })
+
+  it('kill sets HP to 0 and adds dead condition', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Mortal',
+      hp: 50,
+      maxHp: 50
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: created.characterId
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.hp).toBe(0)
+    expect(char.character.conditions).toContain('dead')
+  })
+
+  it('kill with characterId parameter', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Doomed'
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      characterId: created.characterId
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.hp).toBe(0)
+  })
+
+  it('kill records cause of death', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Victim'
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: created.characterId,
+      causeOfDeath: 'Fell from cliff'
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('kill records killer ID', async () => {
+    const victim = await callTool('character_manage', {
+      action: 'create',
+      name: 'Victim'
+    })
+    const killer = await callTool('character_manage', {
+      action: 'create',
+      name: 'Killer'
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: victim.characterId,
+      killedBy: killer.characterId
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('kill clears current location', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Located',
+      currentRoomId: 'room:tavern-main'
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: created.characterId
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.current_room_id).toBeNull()
+  })
+
+  it('kill creates corpse record', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'To Be Slain'
+    })
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: created.characterId,
+      worldId: 'world:test'
+    })
+    expect(r.success).toBe(true)
+    expect(r.corpseId).toBeTruthy()
+  })
+
+  it('kill on non-existent character returns error', async () => {
+    const r = await callTool('character_manage', {
+      action: 'kill',
+      id: 'nonexistent'
+    })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('not found')
+  })
+
+  it('kill supports slay alias', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Slay Test'
+    })
+    const r = await callTool('character_manage', {
+      action: 'slay',
+      id: created.characterId
+    })
+    expect(r.success).toBe(true)
+
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.hp).toBe(0)
+  })
+
+  it('kill supports die alias', async () => {
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Die Test'
+    })
+    const r = await callTool('character_manage', {
+      action: 'die',
+      id: created.characterId
+    })
+    expect(r.success).toBe(true)
+  })
 })
