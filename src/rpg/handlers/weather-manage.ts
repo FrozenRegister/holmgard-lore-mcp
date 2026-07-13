@@ -144,37 +144,33 @@ export async function handleWeatherManage(env: AppBindings, args: Record<string,
       const source = a.source ?? 'narrator'
 
       const id = crypto.randomUUID()
-      try {
-        await db.prepare(
-          `INSERT INTO weather_log (id, world_id, day, season, weather, fog, encounter_modifier, movement_modifier,
-             temperature_high, temperature_low, conditions, wind_speed, wind_direction,
-             precipitation_chance, precipitation_type, humidity, visibility, source, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(world_id, day) DO UPDATE SET
-             season = excluded.season,
-             weather = excluded.weather,
-             fog = excluded.fog,
-             encounter_modifier = excluded.encounter_modifier,
-             movement_modifier = excluded.movement_modifier,
-             temperature_high = excluded.temperature_high,
-             temperature_low = excluded.temperature_low,
-             conditions = excluded.conditions,
-             wind_speed = excluded.wind_speed,
-             wind_direction = excluded.wind_direction,
-             precipitation_chance = excluded.precipitation_chance,
-             precipitation_type = excluded.precipitation_type,
-             humidity = excluded.humidity,
-             visibility = excluded.visibility,
-             source = excluded.source,
-             updated_at = excluded.updated_at`
-        ).bind(
-          id, a.worldId, day, season, conditions, fog ? 1 : 0, encounterModifier, movementModifier,
-          temperatureHigh, temperatureLow, conditions, windSpeed, windDirection,
-          precipitationChance, precipitationType, humidity, visibility, source, now, now
-        ).run()
-      } catch (e) {
-        return err(`Failed to set forecast: ${e instanceof Error ? e.message : String(e)}`)
-      }
+      await db.prepare(
+        `INSERT INTO weather_log (id, world_id, day, season, weather, fog, encounter_modifier, movement_modifier,
+           temperature_high, temperature_low, conditions, wind_speed, wind_direction,
+           precipitation_chance, precipitation_type, humidity, visibility, source, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(world_id, day) DO UPDATE SET
+           season = excluded.season,
+           weather = excluded.weather,
+           fog = excluded.fog,
+           encounter_modifier = excluded.encounter_modifier,
+           movement_modifier = excluded.movement_modifier,
+           temperature_high = excluded.temperature_high,
+           temperature_low = excluded.temperature_low,
+           conditions = excluded.conditions,
+           wind_speed = excluded.wind_speed,
+           wind_direction = excluded.wind_direction,
+           precipitation_chance = excluded.precipitation_chance,
+           precipitation_type = excluded.precipitation_type,
+           humidity = excluded.humidity,
+           visibility = excluded.visibility,
+           source = excluded.source,
+           updated_at = excluded.updated_at`
+      ).bind(
+        id, a.worldId, day, season, conditions, fog ? 1 : 0, encounterModifier, movementModifier,
+        temperatureHigh, temperatureLow, conditions, windSpeed, windDirection,
+        precipitationChance, precipitationType, humidity, visibility, source, now, now
+      ).run()
 
       return ok({
         success: true, actionType: 'set_forecast', worldId: a.worldId, day,
