@@ -612,9 +612,9 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         db.prepare('UPDATE characters SET hp = 0, conditions = ?, current_room_id = NULL, updated_at = ? WHERE id = ?')
           .bind(JSON.stringify(['dead']), now, charId),
         db.prepare(
-          `INSERT INTO corpses (id, character_id, character_name, world_id, death_at, cause_of_death, killer_id, state, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(deathId, charId, row.name, worldId, killedAt, causeOfDeath, killerId, 'fresh', now, now),
+          `INSERT INTO corpses (id, character_id, character_name, world_id, death_at, cause_of_death, state, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(deathId, charId, row.name, worldId, killedAt, causeOfDeath, 'fresh', now, now),
       ]
 
       // Append event to D1 timeline_events
