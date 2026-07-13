@@ -617,17 +617,19 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         ).bind(deathId, charId, row.name, row.character_type, worldId, killedAt, causeOfDeath, 'fresh', now, now, now),
       ]
 
-      // Append event to D1 timeline_events
-      const eventId = crypto.randomUUID()
-      statements.push(db.prepare(
-        `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        eventId, worldId, 'main', killedAt, 'died', charId,
-        killerId, deathLocation,
-        `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'} (cause: ${causeOfDeath})`,
-        killedAt,
-      ))
+      // Append event to D1 timeline_events (only if worldId is available)
+      if (worldId) {
+        const eventId = crypto.randomUUID()
+        statements.push(db.prepare(
+          `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          eventId, worldId, 'main', killedAt, 'died', charId,
+          killerId, deathLocation,
+          `Killed by ${killerId ?? 'unknown'} at ${deathLocation ?? 'unknown location'} (cause: ${causeOfDeath})`,
+          killedAt,
+        ))
+      }
 
       // Production pulse: emit event to event_inbox if requested
       let productionPulse: Record<string, unknown> | null = null
