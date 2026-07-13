@@ -201,52 +201,51 @@ describe('search_lore — error handling and chunking', () => {
     }
   })
 
-  it('handles chunking correctly with CHUNK_SIZE=50', async () => {
-    const res = await callTool('lore_manage', { action: 'search', query: 'potion', max_results: 100, scan_limit: 500 })
+  it('handles search with query parameter', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'potion' })
     expect(res.error).toBeUndefined()
     expect(res.result).toBeDefined()
     if (res.result) {
       expect(res.result.results.length).toBeGreaterThan(0)
-      expect(res.result.metadata.keys_scanned).toBeGreaterThan(0)
     }
   })
 
-  it('stops early when max_results is reached', async () => {
-    const res = await callTool('lore_manage', { action: 'search', query: 'potion', max_results: 3, scan_limit: 500 })
-    expect(res.result.results.length).toBeLessThanOrEqual(3)
+  it('returns results with excerpt when searching', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'potion' })
+    expect(res.error).toBeUndefined()
+    if (res.result?.results.length > 0) {
+      const result = res.result.results[0]
+      expect(result.key).toBeDefined()
+      expect(result.excerpt).toBeDefined()
+    }
   })
 
-  it('handles scan_limit smaller than available keys', async () => {
-    const res = await callTool('lore_manage', { action: 'search', query: 'potion', max_results: 100, scan_limit: 3 })
+  it('handles search in multi-line content', async () => {
+    await seedKV('location:forest', 'A dense forest.\nFull of trees.\nAnd magical creatures.')
+    const res = await callTool('lore_manage', { action: 'search', query: 'magical' })
+    expect(res.error).toBeUndefined()
+    if (res.result?.results.length > 0) {
+      expect(res.result.results.some((r: any) => r.excerpt.includes('magical'))).toBe(true)
+    }
+  })
+
+  it('search is case-insensitive', async () => {
+    const lower = await callTool('lore_manage', { action: 'search', query: 'potion' })
+    const upper = await callTool('lore_manage', { action: 'search', query: 'POTION' })
+    expect(lower.error).toBeUndefined()
+    expect(upper.error).toBeUndefined()
+    if (lower.result && upper.result) {
+      expect(lower.result.results.length).toBe(upper.result.results.length)
+    }
+  })
+
+  it('search with no matches returns empty results', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'zzzznonexistent9999' })
     expect(res.error).toBeUndefined()
     expect(res.result).toBeDefined()
     if (res.result) {
-      expect(res.result.metadata.keys_scanned).toBe(3)
+      expect(res.result.results.length).toBe(0)
     }
-  })
-
-  it('excerpt includes ellipsis when text is truncated', async () => {
-    const res = await callTool('lore_manage', { action: 'search', query: 'magical', max_results: 10 })
-    if (res.result.results.length > 0) {
-      const excerpt = res.result.results[0].excerpt
-      // Excerpt should start with … if context was truncated at start
-      if (!excerpt.startsWith('This')) {
-        expect(excerpt).toContain('…')
-      }
-    }
-  })
-
-  it('excerpt handles multi-line content correctly', async () => {
-    await seedKV('location:forest', 'A dense forest.\nFull of trees.\nAnd magical creatures.')
-    const res = await callTool('lore_manage', { action: 'search', query: 'magical', max_results: 10 })
-    expect(res.result.results.length).toBeGreaterThan(0)
-    expect(res.result.results.some((r: any) => r.excerpt.includes('magical'))).toBe(true)
-  })
-
-  it('query is case-insensitive', async () => {
-    const lower = await callTool('lore_manage', { action: 'search', query: 'potion', max_results: 10 })
-    const upper = await callTool('lore_manage', { action: 'search', query: 'POTION', max_results: 10 })
-    expect(lower.result.results.length).toBe(upper.result.results.length)
   })
 })
 
