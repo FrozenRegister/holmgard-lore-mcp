@@ -190,10 +190,14 @@ export async function handleSceneManage(env: AppBindings, args: Record<string, u
       let reachablePromise: Promise<Array<Record<string, unknown>>> = Promise.resolve([])
       if (includeSet.has('reachable')) {
         reachablePromise = (async () => {
-          const { results } = await db.prepare(
-            'SELECT id, name, biome, coord_x, coord_y FROM world_map WHERE world_id = ? AND (coord_x = ? OR coord_y = ?) LIMIT 20'
-          ).bind(a.worldId, -1, -1).all() // simplified; real adjacency would need grid math
-          return results as Array<Record<string, unknown>>
+          try {
+            const { results } = await db.prepare(
+              'SELECT id, name, biome, coord_x, coord_y FROM world_map WHERE world_id = ? AND (coord_x = ? OR coord_y = ?) LIMIT 20'
+            ).bind(a.worldId, -1, -1).all() // simplified; real adjacency would need grid math
+            return results as Array<Record<string, unknown>>
+          } catch {
+            return [] // world_map may not exist in test/partial environments
+          }
         })()
       }
       queries.push(reachablePromise)

@@ -398,14 +398,24 @@ describe('weather_manage tool', () => {
   })
 
   it('different worlds have independent forecasts', async () => {
-    await createWorld('world:a')
-    await createWorld('world:b')
+    const db = env.RPG_DB
+    // Use simple sequential IDs to avoid UUID issues
+    const worldId1 = `world:wxfcast${Math.random().toString(36).slice(2, 8)}`
+    const worldId2 = `world:wxfcast${Math.random().toString(36).slice(2, 8)}`
+
+    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
+      worldId1, 'Weather Test World 1', 'seed1', 100, 100, new Date().toISOString(), new Date().toISOString()
+    ).run()
+
+    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
+      worldId2, 'Weather Test World 2', 'seed2', 100, 100, new Date().toISOString(), new Date().toISOString()
+    ).run()
 
     // Set forecast for world A
     const setA = await callTool('rpg', {
       sub: 'weather',
       action: 'set_forecast',
-      worldId: 'world:a',
+      worldId: worldId1,
       day: 0,
       temperatureHigh: 30,
       conditions: 'clear'
@@ -416,7 +426,7 @@ describe('weather_manage tool', () => {
     const setB = await callTool('rpg', {
       sub: 'weather',
       action: 'set_forecast',
-      worldId: 'world:b',
+      worldId: worldId2,
       day: 0,
       temperatureHigh: 10,
       conditions: 'snow'
@@ -427,7 +437,7 @@ describe('weather_manage tool', () => {
     const resultA = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
-      worldId: 'world:a',
+      worldId: worldId1,
       day: 0
     })
     expect(resultA.conditions).toBe('clear')
@@ -435,7 +445,7 @@ describe('weather_manage tool', () => {
     const resultB = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
-      worldId: 'world:b',
+      worldId: worldId2,
       day: 0
     })
     expect(resultB.conditions).toBe('snow')
