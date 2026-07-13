@@ -42,10 +42,13 @@ describe('scene_manage tool', () => {
   // Setup helpers
   async function createWorld(worldId: string) {
     const db = env.RPG_DB
-    await db.prepare('INSERT INTO worlds (id, name, seed, created_at) VALUES (?, ?, ?, ?)').bind(
+    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
       worldId,
       `World ${worldId}`,
       'test-seed-123',
+      100,
+      100,
+      new Date().toISOString(),
       new Date().toISOString()
     ).run()
   }
