@@ -42,6 +42,25 @@ are already present in the consolidated `schema/rpg-schema.sql` base schema — 
 duplicate-column error, marks just that migration applied, and continues, so a fresh local setup doesn't abort
 partway through.
 
+## Two Test Tiers
+
+Almost all tests in `src/__tests__/*.test.ts` drive the worker end-to-end via `SELF.fetch`/`callTool` against a
+real (miniflare) KV/D1 instance — that's the source of truth for tool behavior, and it's what `pnpm test` runs
+(`vitest.config.ts`).
+
+A small second tier, `src/__tests__/*.unit.test.ts`, covers genuinely pure functions (no I/O, no bindings —
+e.g. `scoreMatch`, `countOccurrences`, `parseKvEntry`, `normalizeLocationKey`) directly, with no Workers runtime
+to boot:
+
+```bash
+pnpm test:unit          # run the fast unit tier (sub-second)
+pnpm test:unit:watch    # watch mode for the fast unit tier
+```
+
+These files are excluded from the main `vitest.config.ts` run and have their own `unit-tests` CI job, so they
+give fast feedback without duplicating the integration suite. When adding a new pure helper function, prefer a
+`*.unit.test.ts` file here over routing the test through a tool call.
+
 ## Test Suite Status
 
 ### ✅ Tests (384 passing)

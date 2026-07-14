@@ -166,7 +166,7 @@ export async function handle_get_lore_section({ c, id, args }: TypedToolContext<
   }), 200)
 }
 
-function scoreMatch(query: string, candidate: string): number {
+export function scoreMatch(query: string, candidate: string): number {
   // 1. Exact match → 1.0
   if (query === candidate) return 1.0
 
