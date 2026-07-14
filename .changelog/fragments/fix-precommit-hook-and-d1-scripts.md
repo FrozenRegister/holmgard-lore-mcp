@@ -6,3 +6,7 @@
 ### Added
 
 - `db:setup` / `db:reset` / `db:status` scripts for bootstrapping the local D1 database (`holmgard-rpg`), generating the migration list from `schema/migrations/*.sql` at runtime instead of a hardcoded (and stale) filename list.
+
+### Documentation
+
+- `docs/testing-and-linting-guide.md` now documents the pre-commit hook and the local D1 setup scripts.
