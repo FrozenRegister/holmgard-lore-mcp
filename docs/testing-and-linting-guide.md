@@ -10,6 +10,38 @@ pnpm run type-check    # Run TypeScript type checking (should pass)
 pnpm run lint          # Run ESLint (currently has pre-existing issues)
 ```
 
+## Local Development Setup
+
+### Pre-commit hook
+
+Enable the fast local gate (type-check, lint, markdown, changelog fragment) to run automatically on every commit:
+
+```powershell
+git config core.hooksPath scripts
+```
+
+This wires up `scripts/pre-commit`, which delegates to `scripts/pre-commit-validate.ps1` (Windows) / `.sh`
+(bash). Bypass in an emergency with `git commit --no-verify`. The full test suite + coverage are intentionally
+left to CI (see [Pre-Commit Validation](../CLAUDE.md#pre-commit-validation) in CLAUDE.md); pass `--with-tests`
+(`-WithTests` on Windows) to run the full suite locally when you specifically want it.
+
+### Local D1 database
+
+Bootstrap the local `holmgard-rpg` D1 database (used by `wrangler dev`; the vitest suite applies migrations
+automatically via `vitest.global-setup.ts` and doesn't need this):
+
+```bash
+pnpm run db:setup   # idempotent — creates the DB from schema/rpg-schema.sql and applies pending migrations
+pnpm run db:reset    # wipes local D1 state and re-runs db:setup
+pnpm run db:status   # shows which migrations are applied/pending locally
+```
+
+`db:setup` reads the migration filenames from `schema/migrations/*.sql` at runtime. A couple of migrations
+(currently `0012_encounter_resolution.sql` and `0021_gotland_waypoints_and_party_march.sql`) add columns that
+are already present in the consolidated `schema/rpg-schema.sql` base schema — `db:setup` detects the resulting
+duplicate-column error, marks just that migration applied, and continues, so a fresh local setup doesn't abort
+partway through.
+
 ## Test Suite Status
 
 ### ✅ Tests (384 passing)

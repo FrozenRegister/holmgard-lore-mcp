@@ -17,7 +17,10 @@
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
     "build": "wrangler deploy --dry-run --outdir dist",
-    "fix:md": "markdownlint-cli2 --fix ."
+    "fix:md": "markdownlint-cli2 --fix .",
+    "db:setup": "node scripts/d1-local-setup.mjs",
+    "db:reset": "rimraf .wrangler/state/v3/d1 && pnpm run db:setup",
+    "db:status": "wrangler d1 migrations list holmgard-rpg --local"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
