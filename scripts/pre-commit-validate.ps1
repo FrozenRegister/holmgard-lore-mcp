@@ -2,7 +2,7 @@
 # Usage: .\scripts\pre-commit-validate.ps1
 # Or add to git hook: git config core.hooksPath scripts
 #
-# Policy: this is the FAST local gate (type-check, lint, markdown, CHANGELOG).
+# Policy: this is the FAST local gate (type-check, lint, markdown, changelog fragment).
 # The full test suite + coverage run in CI (~2 min). Tests are OFF by default
 # here; pass -WithTests to run the full suite locally when you specifically want it.
 # (-SkipTests is accepted for backward compatibility and is now a no-op, since
@@ -62,19 +62,19 @@ try {
   }
   Write-Success "Markdown linting passed"
 
-  # 4. Check if CHANGELOG.md should be updated
-  Write-CheckHeader "Checking CHANGELOG.md requirement"
+  # 4. Check if a changelog fragment should be added (mirrors check-changelog CI gate)
+  Write-CheckHeader "Checking changelog fragment requirement"
   $stagedFiles = & git diff --cached --name-only
-  $requiresChangelog = $stagedFiles | Where-Object { $_ -match '(src/|docs/|wrangler|CLAUDE)' }
+  $requiresChangelog = $stagedFiles | Where-Object { $_ -match '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' }
 
   if ($requiresChangelog) {
-    if (-not ($stagedFiles | Where-Object { $_ -eq "CHANGELOG.md" })) {
-      Write-Error "CHANGELOG.md must be updated when modifying src/, docs/, or wrangler config"
-      Write-Host "  Add an entry to CHANGELOG.md under [Unreleased]"
+    if (-not ($stagedFiles | Where-Object { $_ -match '^\.changelog/fragments/.*\.md$' })) {
+      Write-Error "A changelog fragment is required when modifying src/, docs/, wrangler.jsonc, or CLAUDE.md"
+      Write-Host "  Add a file under .changelog/fragments/ (e.g. .changelog/fragments/my-feature.md)"
       exit 1
     }
   }
-  Write-Success "CHANGELOG.md check passed"
+  Write-Success "Changelog fragment check passed"
 
   # 5. Check docs requirement (mirrors check-docs CI gate)
   Write-CheckHeader "Checking docs requirement"

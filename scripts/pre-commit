@@ -1,0 +1,5 @@
+#!/bin/sh
+# Installed via: git config core.hooksPath scripts
+# Runs the fast local gate (type-check, lint, markdown, changelog fragment) before every commit.
+# Bypass in an emergency with: git commit --no-verify
+exec "$(dirname "$0")/pre-commit-validate.sh"

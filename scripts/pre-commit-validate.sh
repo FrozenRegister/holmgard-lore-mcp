@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Policy: this is the FAST local gate (type-check, lint, markdown, CHANGELOG).
+# Policy: this is the FAST local gate (type-check, lint, markdown, changelog fragment).
 # The full test suite + coverage run in CI (~2 min). Tests are OFF by default
 # here; pass --with-tests to run the full suite locally when you specifically
 # want it. (--skip-tests is accepted for backward compatibility and is a no-op,
@@ -47,20 +47,20 @@ if ! pnpm fix:md; then
 fi
 echo -e "${GREEN}✓ Markdown linting passed${RESET}"
 
-# [4/6] CHANGELOG.md requirement
+# [4/6] Changelog fragment requirement (mirrors check-changelog CI gate)
 echo ""
-echo "[4/6] Checking CHANGELOG.md requirement"
+echo "[4/6] Checking changelog fragment requirement"
 STAGED=$(git diff --cached --name-only)
-REQUIRES_CHANGELOG=$(echo "$STAGED" | grep -E '(src/|docs/|wrangler|CLAUDE)' || true)
+REQUIRES_CHANGELOG=$(echo "$STAGED" | grep -E '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' || true)
 
 if [[ -n "$REQUIRES_CHANGELOG" ]]; then
-  if ! echo "$STAGED" | grep -qx 'CHANGELOG.md'; then
-    echo -e "${RED}✗ CHANGELOG.md must be updated when modifying src/, docs/, or wrangler config${RESET}"
-    echo "  Add an entry to CHANGELOG.md under [Unreleased]"
+  if ! echo "$STAGED" | grep -q '^\.changelog/fragments/.*\.md$'; then
+    echo -e "${RED}✗ A changelog fragment is required when modifying src/, docs/, wrangler.jsonc, or CLAUDE.md${RESET}"
+    echo "  Add a file under .changelog/fragments/ (e.g. .changelog/fragments/my-feature.md)"
     exit 1
   fi
 fi
-echo -e "${GREEN}✓ CHANGELOG.md check passed${RESET}"
+echo -e "${GREEN}✓ Changelog fragment check passed${RESET}"
 
 # [5/6] Docs warning
 echo ""
