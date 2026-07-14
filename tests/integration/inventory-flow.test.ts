@@ -173,6 +173,7 @@ describe('Inventory flow integration', () => {
         location: 'market-square',
         thread: 'thread:trade',
         detail: 'Sold a gold coin to a stranger',
+        world_id: 'test-world-1',
       });
       const appendBody = await jsonBody(appendRes);
       expect(appendBody.result).toBeDefined();

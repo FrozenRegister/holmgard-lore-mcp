@@ -5,14 +5,14 @@ import { setupRpgDb } from './setup-d1'
 
 describe('append_event', () => {
   it('appends an event to an entity chronicle', async () => {
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'sedated', object: 'character:predator', thread: 'thread-alpha' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'sedated', object: 'character:predator', thread: 'thread-alpha', world_id: 'test-world-1' })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.entity_key).toBe('character:zira')
     expect(res.result.metadata.event_count).toBe(1)
     expect(res.result.metadata.duplicate).toBe(false)
   })
 
-  it('rejects invalid world_id with FK validation error', async () => {
+  it('falls back to KV when world not found in D1', async () => {
     await setupRpgDb(env.RPG_DB)
     const res = await callTool('continuity_manage', {
       action: 'append_event',
@@ -20,9 +20,9 @@ describe('append_event', () => {
       verb: 'moved',
       world_id: 'nonexistent-world-xyz',
     })
-    expect(res.error).toBeDefined()
-    expect(res.error.code).toBe(-32602)
-    expect(res.error.message).toContain('World not found')
+    // world not found in D1 falls through to KV — no error
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entity_key).toBe('character:test')
   })
 
   it('rejects invalid entity_id with FK validation error', async () => {
@@ -84,22 +84,22 @@ describe('append_event', () => {
 
   it('is idempotent within 1s for identical verb+object', async () => {
     const at = new Date().toISOString()
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at })
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at, world_id: 'test-world-1' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at, world_id: 'test-world-1' })
     expect(res.result.metadata.event_count).toBe(1)
     expect(res.result.metadata.duplicate).toBe(true)
   })
 
   it('different verbs are not deduplicated', async () => {
     const at = new Date().toISOString()
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'arrived', at })
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'departed', at })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'arrived', at, world_id: 'test-world-1' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'departed', at, world_id: 'test-world-1' })
     expect(res.result.metadata.event_count).toBe(2)
     expect(res.result.metadata.duplicate).toBe(false)
   })
 
   it('rejects missing verb', async () => {
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', world_id: 'test-world-1' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
@@ -108,6 +108,7 @@ describe('append_event', () => {
     const res = await callTool('continuity_manage', {
       action: 'append_event', entity_key: 'character:alias-test', verb: 'departed',
       date: '1264-05-01T00:00:00Z', description: 'Household begins journey', source: 'roleplay-session',
+      world_id: 'test-world-1',
     })
     expect(res.error).toBeUndefined()
     const log = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:alias-test' })
@@ -118,24 +119,24 @@ describe('append_event', () => {
 
 describe('get_event_log', () => {
   it('returns events for an entity', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'arrived', location: 'location:market' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'traded' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'arrived', location: 'location:market', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'traded', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:bob' })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.returned).toBe(2)
   })
 
   it('filters by verb', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'moved' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'rested' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'moved', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'rested', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:alice', verbs: ['moved'] })
     expect(res.result.metadata.returned).toBe(1)
     expect(res.result.events[0].verb).toBe('moved')
   })
 
   it('accepts array of entity keys', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:aa', verb: 'walked' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bb', verb: 'ran' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:aa', verb: 'walked', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bb', verb: 'ran', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: ['character:aa', 'character:bb'] })
     expect(res.result.metadata.returned).toBe(2)
   })
