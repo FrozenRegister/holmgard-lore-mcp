@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     name: 'workers',
     testTimeout: 30000, // 30s global timeout for slow miniflare tests
-    exclude: ['tests/live/**', '**/node_modules/**'],
+    exclude: ['tests/live/**', '**/node_modules/**', '**/*.unit.test.ts'],
     globalSetup: ['./vitest.global-setup.ts'],
     coverage: {
       provider: 'istanbul',
