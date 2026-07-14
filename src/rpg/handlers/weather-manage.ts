@@ -25,7 +25,10 @@ const WEATHER_CONDITIONS = ['storm', 'rain', 'overcast', 'clear'] as const
 
 const InputSchema = z.object({
   action: z.string(),
-  worldId: z.string().min(1),
+  worldId: z.string().min(1).optional(),
+  // #377 — accept snake_case world_id as an alias for camelCase worldId.
+  // Non-RPG tools use snake_case; this bridge lets callers use either.
+  world_id: z.string().min(1).optional(),
   day: z.number().int().min(0).optional(),
   season: z.string().optional(),
   // set_forecast fields (all optional — the narrator fills what they decide):
@@ -77,6 +80,9 @@ export async function handleWeatherManage(env: AppBindings, args: Record<string,
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  // #377 — normalize snake_case world_id → camelCase worldId
+  if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
+  if (!a.worldId) return err('"worldId" (or "world_id") is required')
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
   const db = env.RPG_DB!

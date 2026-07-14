@@ -18,6 +18,10 @@ const InputSchema = z.object({
   action: z.string(),
   id: z.string().optional(),
   worldId: z.string().optional(),
+  // #377 — accept snake_case world_id as an alias for camelCase worldId.
+  // Non-RPG tools (continuity_manage, world_manage) use snake_case; this
+  // bridge lets callers use either convention without translating.
+  world_id: z.string().optional(),
   name: z.string().optional(),
   seed: z.string().optional(),
   width: z.number().int().min(10).max(1000).optional(),
@@ -31,6 +35,8 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  // #377 — normalize snake_case world_id → camelCase worldId
+  if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
   const db = env.RPG_DB!
@@ -92,14 +98,20 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       return ok({ success: true, actionType: 'generate', worldId: id, name: a.name, seed, width, height, note: 'World created with seed. Tile generation is a separate process.' })
     }
     case 'get_state': {
+      // #377 — accept both camelCase worldId and snake_case world_id as aliases.
+      // The handler's Zod schema only declares worldId, so world_id is added
+      // below as a manual alias before this point (see normalization at top).
       const targetId = a.id ?? a.worldId
       if (!targetId) return err('"id" or "worldId" is required')
       const world = await db.prepare('SELECT * FROM worlds WHERE id = ?').bind(targetId).first()
-      if (!world) return err(`World not found: ${a.id}`)
+      if (!world) return err(`World not found: ${targetId}`)
+      // #377 — use targetId (not a.id) for sub-queries; a.id may be undefined
+      // when the caller passes only worldId, causing D1 to bind NULL and
+      // return empty results (the crash reported in #376).
       const [nationsRes, partiesRes, turnState] = await Promise.all([
-        db.prepare('SELECT id, name, leader FROM nations WHERE world_id = ?').bind(a.id).all(),
-        db.prepare('SELECT id, name, status FROM parties WHERE world_id = ?').bind(a.id).all(),
-        db.prepare('SELECT * FROM turn_state WHERE world_id = ?').bind(a.id).first(),
+        db.prepare('SELECT id, name, leader FROM nations WHERE world_id = ?').bind(targetId).all(),
+        db.prepare('SELECT id, name, status FROM parties WHERE world_id = ?').bind(targetId).all(),
+        db.prepare('SELECT * FROM turn_state WHERE world_id = ?').bind(targetId).first(),
       ])
       return ok({ success: true, actionType: 'get_state', world, nations: nationsRes.results, parties: partiesRes.results, turnState })
     }
