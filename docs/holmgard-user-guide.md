@@ -362,7 +362,7 @@ Narrator asks what the bandit leader does when alone:
 
 **A note on `seed`:** the `roll`/`probability` actions accept an optional `seed` string, but it is currently **cosmetic only** — it's stored alongside the calculation for record-keeping but does not make the roll reproducible. Randomness is otherwise cryptographically backed (`crypto.getRandomValues`) rather than `Math.random()`.
 
-**Known Behavior:** this dice engine is not yet used by the ad-hoc rolls in `combat_action`, `combat_manage`, `perception_manage`, `aura_manage`, `travel_manage`, or `entity_manage`'s `resolve_interaction`/`roll_encounter` — those subsystems still call `Math.random()` directly (e.g. `combat_action`'s `attack` falls back to a flat 50% coin-flip when no `attackRoll` is supplied, not an actual d20 check). Consolidating them onto this engine is tracked separately since it would be a real behavior change, not just a refactor.
+**Known Behavior:** as of #210, the dice engine is now used by `combat_action.attack` (1d20 hit check + configurable `damageExpression` for damage, with critical hit doubling), `combat_manage.death_save` (1d20, native nat-1/nat-20 logic preserved), `perception_manage` (assess/stealth_check/perception_contested all use 1d20), `aura_manage.check_save` (1d20 concentration save), and `travel_manage` (1d100 encounter flag, 1d3 loot count). The weighted loot table in `travel_manage.rollLoot` and the weighted probability/selection rolls in `entity_manage`'s `resolve_interaction`/`roll_encounter` remain `Math.random()`-based — these are weighted random choice mechanics, not die rolls, and forcing them through dice notation would be unnatural.
 
 ---
 

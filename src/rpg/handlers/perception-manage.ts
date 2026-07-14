@@ -9,6 +9,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { executeRoll } from './math-manage'
 
 const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers', 'stealth_check', 'perception_contested'] as const
 type PerceptionAction = typeof ACTIONS[number]
@@ -141,7 +142,8 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
   switch (match.matched) {
     case 'assess': {
       if (!a.observerId || !a.targetId) return err('"observerId" and "targetId" are required')
-      const roll = a.rollValue ?? Math.floor(Math.random() * 20) + 1
+      // #210 — Use the shared dice engine instead of ad-hoc Math.random().
+      const roll = a.rollValue ?? executeRoll('1d20').total
       const succeeded = roll >= a.dc
       const isCrit = roll === 20
       const descs = PERCEPTION_DESCRIPTIONS[a.perceptionType] ?? PERCEPTION_DESCRIPTIONS.sight
@@ -175,8 +177,9 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       return ok({ success: true, actionType: 'list_observers', targetId: a.targetId, observers: results, count: results.length })
     }
     case 'stealth_check': {
-      const yieldRoll = a.rollValue ?? Math.floor(Math.random() * 20) + 1
-      const predatorRoll = Math.floor(Math.random() * 20) + 1
+      // #210 — Use the shared dice engine for both sides of the opposed check.
+      const yieldRoll = a.rollValue ?? executeRoll('1d20').total
+      const predatorRoll = executeRoll('1d20').total
       const yieldMod = yieldStealthModifier({ stealthMode: a.stealthMode, coverType: a.coverType, isNight: a.isNight, partySize: a.partySize })
       const predatorMod = predatorPerceptionModifier({ distanceZone: a.distanceZone, windDirection: a.windDirection, yieldBleeding: a.yieldBleeding, yieldCookingOrFire: a.yieldCookingOrFire })
       const yieldTotal = yieldRoll + a.yieldStealthBonus + yieldMod.total
@@ -191,8 +194,9 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       })
     }
     case 'perception_contested': {
-      const observerRoll = Math.floor(Math.random() * 20) + 1
-      const actorRoll = a.rollValue ?? Math.floor(Math.random() * 20) + 1
+      // #210 — Use the shared dice engine for both sides of the contested check.
+      const observerRoll = executeRoll('1d20').total
+      const actorRoll = a.rollValue ?? executeRoll('1d20').total
       const observerTotal = observerRoll + a.observerModifier
       const actorTotal = actorRoll + a.actorModifier
       const margin = observerTotal - actorTotal

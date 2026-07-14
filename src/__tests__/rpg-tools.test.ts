@@ -632,11 +632,17 @@ describe('RPG engine tools', () => {
     })
     expect(attack.hit).toBe(true)
     expect(attack.damage).toBe(5)
+    // #210 — attack now returns attackRoll, isCrit, isFumble from the shared dice engine
+    expect(attack.attackRoll).toBe(15)
+    expect(attack.isCrit).toBe(false)
+    expect(attack.isFumble).toBe(false)
 
     const miss = await callTool('rpg', {
       sub: 'combat_action', action: 'attack', encounterId: enc.encounterId, actorId: char.characterId, targetIds: ['target-1'], attackRoll: 2,
     })
     expect(miss.hit).toBe(false)
+    expect(miss.attackRoll).toBe(2)
+    expect(miss.isFumble).toBe(false)
 
     const heal = await callTool('rpg', { sub: 'combat_action', action: 'heal', targetIds: [char.characterId], healAmount: 3 })
     expect(heal.hpChanges[char.characterId]).toBe(3)

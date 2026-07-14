@@ -6,6 +6,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { executeRoll } from './math-manage'
 
 const ACTIONS = ['create', 'get', 'list', 'remove', 'expire', 'get_affecting', 'concentrate', 'break_concentration', 'check_save', 'check_duration'] as const
 type AuraAction = typeof ACTIONS[number]
@@ -112,7 +113,8 @@ export async function handleAuraManage(env: AppBindings, args: Record<string, un
       if (!conc) return ok({ success: true, actionType: 'check_save', characterId: a.characterId, wasConcentrating: false })
       if (a.damage === undefined) return err('"damage" is required to compute the concentration save DC')
       const dc = Math.max(10, Math.floor(a.damage / 2))
-      const roll = a.saveRoll ?? Math.floor(Math.random() * 20) + 1
+      // #210 — Use the shared dice engine instead of ad-hoc Math.random().
+      const roll = a.saveRoll ?? executeRoll('1d20').total
       const maintained = roll >= dc
       if (!maintained) await breakConcentration(db, a.characterId)
       return ok({ success: true, actionType: 'check_save', characterId: a.characterId, wasConcentrating: true, spellName: conc.active_spell, dc, roll, maintained })

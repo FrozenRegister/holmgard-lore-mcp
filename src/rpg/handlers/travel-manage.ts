@@ -7,6 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { resolveEncounterCore } from './encounter-manage'
+import { executeRoll } from './math-manage'
 
 const ACTIONS = ['travel', 'loot', 'rest'] as const
 type TravelAction = typeof ACTIONS[number]
@@ -113,7 +114,10 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
       // world_map coordinates for their room_nodes (see #280's scope note:
       // full encounter.resolve requires worldId/x/y, which room_nodes itself
       // doesn't carry).
-      const hasEncounter = Math.random() < 0.15
+      // #210 — Use the shared dice engine (1d100 <= 15) instead of a flat
+      // Math.random() < 0.15. Functionally identical (15% chance), but now
+      // the roll is crypto-backed and logged to the calculations table.
+      const hasEncounter = executeRoll('1d100').total <= 15
       return ok({
         success: true, actionType: 'travel',
         arrived: true, roomId: targetRoom.id, roomName: targetRoom.name,
@@ -126,7 +130,8 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
       if (!a.roomId) return err('"roomId" is required')
       const room = await db.prepare('SELECT id, name FROM room_nodes WHERE id = ?').bind(a.roomId).first()
       if (!room) return err(`Room not found: ${a.roomId}`)
-      const count = Math.floor(Math.random() * 3) + 1
+      // #210 — Use the shared dice engine (1d3) instead of ad-hoc Math.random().
+      const count = executeRoll('1d3').total
       const found = rollLoot(count)
       await db.prepare('INSERT INTO event_logs (type, payload, timestamp) VALUES (?, ?, ?)').bind('room_search', JSON.stringify({ roomId: a.roomId, partyId: a.partyId, itemsFound: found }), now).run()
       return ok({ success: true, actionType: 'loot', roomId: a.roomId, itemsFound: found, count: found.length })

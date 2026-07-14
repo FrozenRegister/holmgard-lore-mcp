@@ -45,7 +45,7 @@ const InputSchema = z.object({
 // unpredictability buys nothing for a probability *estimate*, and the crypto
 // path would add CPU-time cost across 10,000 samples for no benefit.
 
-type RngSource = () => number
+export type RngSource = () => number
 
 function defaultCryptoUint32(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
@@ -123,7 +123,7 @@ function parseDice(expr: string): ParsedDice {
   }
 }
 
-interface RollResult {
+export interface RollResult {
   total: number
   rolls: number[]
   steps: string[]
@@ -184,7 +184,7 @@ function rollOnce(dice: ParsedDice, rawSource?: RngSource): RollResult {
   return { total, rolls, steps, critical }
 }
 
-function executeRoll(expr: string, rawSource?: RngSource): RollResult & { dice: ParsedDice } {
+export function executeRoll(expr: string, rawSource?: RngSource): RollResult & { dice: ParsedDice } {
   const dice = parseDice(expr)
   return { ...rollOnce(dice, rawSource), dice }
 }
