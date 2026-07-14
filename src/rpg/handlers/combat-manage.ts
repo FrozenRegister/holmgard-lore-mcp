@@ -7,6 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { executeRoll } from './math-manage'
 
 const ACTIONS = ['create_encounter', 'get_encounter', 'list_encounters', 'add_combatant', 'remove_combatant', 'start', 'end', 'next_turn', 'get_state', 'death_save', 'legendary_action', 'lair_action'] as const
 type CombatAction = typeof ACTIONS[number]
@@ -163,7 +164,9 @@ export async function handleCombatManage(env: AppBindings, args: Record<string, 
       if (char.hp > 0) return err('Death saves only apply to a character at 0 HP')
       const pools = char.resource_pools ? JSON.parse(char.resource_pools) : {}
       const deathSaves = pools.death_saves ?? { successes: 0, failures: 0 }
-      const roll = a.saveRoll ?? Math.floor(Math.random() * 20) + 1
+      // #210 — Use the shared dice engine instead of ad-hoc Math.random().
+      // The nat-1(=2 failures)/nat-20(=revive) logic below stays intact.
+      const roll = a.saveRoll ?? executeRoll('1d20').total
 
       let status: 'stable' | 'dying' | 'dead' | 'revived'
       if (roll === 20) {

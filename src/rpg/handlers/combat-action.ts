@@ -5,6 +5,13 @@ import { z } from 'zod'
 import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-enum'
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { executeRoll } from './math-manage'
+
+// #210 — Doubles the die count in a dice expression for critical hit damage.
+// e.g. "1d8" → "2d8", "2d6+3" → "4d6+3", "1d8!" → "2d8!"
+function doubleDiceCount(expr: string): string {
+  return expr.replace(/^(\d+)d/, (_, count) => `${parseInt(count) * 2}d`)
+}
 
 const ACTIONS = ['attack', 'apply_damage', 'heal', 'apply_condition', 'remove_condition', 'use_ability', 'get_log', 'get_turn_summary', 'dash', 'dodge', 'disengage', 'help', 'ready'] as const
 type CombatActionType = typeof ACTIONS[number]
@@ -42,6 +49,7 @@ const InputSchema = z.object({
   turnIndex: z.number().int().min(0).optional().default(0),
   attackRoll: z.number().int().optional(),
   damage: z.number().int().min(0).optional(),
+  damageExpression: z.string().optional(),
   damageType: z.string().optional(),
   healAmount: z.number().int().min(0).optional(),
   conditionName: z.string().optional(),
@@ -67,11 +75,39 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
   switch (match.matched) {
     case 'attack': {
       if (!a.actorId || !a.targetIds?.length) return err('"actorId" and "targetIds" are required')
-      const hit = a.attackRoll !== undefined ? a.attackRoll >= 10 : Math.random() > 0.5
-      const damage = hit ? (a.damage ?? Math.floor(Math.random() * 8) + 1) : 0
-      const summary = hit ? `${a.actorName ?? a.actorId} hit for ${damage} ${a.damageType ?? 'damage'}` : `${a.actorName ?? a.actorId} missed`
-      await logAction('attack', summary, { hit, attackRoll: a.attackRoll }, hit ? damage : null, null, null)
-      return ok({ success: true, actionType: 'attack', hit, damage, damageType: a.damageType, summary })
+      // #210 — Use the shared dice engine (crypto-backed RNG, critical
+      // detection) instead of a flat Math.random() > 0.5 coin-flip. When the
+      // caller supplies an explicit attackRoll, we honour it directly; otherwise
+      // we roll 1d20 via executeRoll. Hit threshold stays >= 10 (equivalent to
+      // AC 10 with no modifier), which shifts hit rate from a flat 50% to 55%.
+      const attackRollResult = a.attackRoll !== undefined
+        ? { total: a.attackRoll, rolls: [a.attackRoll], steps: [`Supplied roll: ${a.attackRoll}`], critical: a.attackRoll === 20 ? 'success' as const : a.attackRoll === 1 ? 'failure' as const : null }
+        : executeRoll('1d20')
+      const attackRoll = attackRollResult.total
+      const isCrit = attackRollResult.critical === 'success'
+      const isFumble = attackRollResult.critical === 'failure'
+      // A nat-20 always hits; a nat-1 always misses. Otherwise hit on >= 10.
+      const hit = isCrit ? true : isFumble ? false : attackRoll >= 10
+      // Damage: use the shared dice engine with a configurable expression
+      // (default 1d8). If the caller supplies an explicit damage value, use
+      // that instead. On a critical hit, double the dice (standard 5e rule)
+      // by doubling the die count in the expression (e.g. 1d8 → 2d8).
+      let damage = 0
+      let damageRoll: number | null = null
+      if (hit) {
+        if (a.damage !== undefined) {
+          damage = a.damage
+        } else {
+          const damageExpr = a.damageExpression ?? '1d8'
+          const critExpr = isCrit ? doubleDiceCount(damageExpr) : damageExpr
+          const dmgResult = executeRoll(critExpr)
+          damage = dmgResult.total
+          damageRoll = dmgResult.total
+        }
+      }
+      const summary = hit ? `${a.actorName ?? a.actorId} hit for ${damage} ${a.damageType ?? 'damage'}${isCrit ? ' (CRITICAL!)' : ''}` : `${a.actorName ?? a.actorId} missed${isFumble ? ' (FUMBLE!)' : ''}`
+      await logAction('attack', summary, { hit, attackRoll, isCrit, isFumble, damageRoll }, hit ? damage : null, null, null)
+      return ok({ success: true, actionType: 'attack', hit, attackRoll, isCrit, isFumble, damage, damageRoll, damageType: a.damageType, summary })
     }
     case 'apply_damage': {
       if (!a.targetIds?.length || a.damage === undefined) return err('"targetIds" and "damage" are required')

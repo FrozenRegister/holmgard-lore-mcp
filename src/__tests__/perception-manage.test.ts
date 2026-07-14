@@ -195,14 +195,21 @@ describe('handlePerceptionManage', () => {
   // ── #284 — stealth_check action ─────────────────────────────────────────
 
   it('stealth_check: clean avoidance when yield total clears predator total by 5+', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+    // #210 — dice now come from the crypto-backed executeRoll engine, so we
+    // can't mock Math.random to force a specific predatorRoll. Instead we
+    // set yieldStealthBonus high enough that any predator roll (1-20) + the
+    // predator's modifiers (-3 distance edge + -4 wind away = -7) still
+    // leaves a margin >= 5. yieldRoll=20, yieldMod=2 (hiding) + (-3 edge) +
+    // (-4 away) = 20+2-7 = 15. Predator max = 20 + (-7) = 13. Margin >= 2.
+    // To guarantee margin >= 5, add yieldStealthBonus=10: 20+10+2-7=25 vs
+    // 20-7=13 → margin=12.
     const r = await handlePerceptionManage(db(), {
       action: 'stealth_check', rollValue: 20, stealthMode: 'hiding', distanceZone: 'edge', windDirection: 'away',
+      yieldStealthBonus: 10,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.yieldRoll).toBe(20)
-    expect(body.predatorRoll).toBe(1)
     expect(body.outcome).toBe('avoided_entirely')
     expect(body.advantage).toBe('none')
     expect(body.yieldModifiers.stealthMode).toBe(2)
@@ -210,10 +217,14 @@ describe('handlePerceptionManage', () => {
   })
 
   it('stealth_check: ambushed when predator total clears yield total by 5+', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+    // #210 — dice now come from the crypto-backed executeRoll engine. Set
+    // predatorPerceptionBonus high enough that any predator roll (1-20) +
+    // modifiers (core +5, toward +4, bleeding +6, cooking +3 = +18) + bonus
+    // 10 = 20+18+10=48 vs yieldRoll=1, rushed -8, partySize 3 (-4) = 1-8-4=-11.
+    // Margin = -11-48 = -59, well into 'ambushed' territory.
     const r = await handlePerceptionManage(db(), {
       action: 'stealth_check', rollValue: 1, stealthMode: 'rushed', distanceZone: 'core', windDirection: 'toward',
-      yieldBleeding: true, yieldCookingOrFire: true, partySize: 3,
+      yieldBleeding: true, yieldCookingOrFire: true, partySize: 3, predatorPerceptionBonus: 10,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -232,17 +243,22 @@ describe('handlePerceptionManage', () => {
   // ── #284 — perception_contested action ──────────────────────────────────
 
   it('perception_contested: detected true when observer total ties or beats actor total', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 1, observerModifier: 0, actorModifier: 0 })
+    // #210 — dice now come from the crypto-backed executeRoll engine. Set
+    // observerModifier high enough that any observer roll (1-20) + 30 >= any
+    // actor roll (1-20) + 0. Max actor = 20, min observer = 1+30=31. Margin
+    // >= 11, always detected.
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 1, observerModifier: 30, actorModifier: 0 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    expect(body.margin).toBe(0)
     expect(body.detected).toBe(true)
   })
 
   it('perception_contested: detected false when actor total exceeds observer total', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 20, observerModifier: 0, actorModifier: 0 })
+    // #210 — dice now come from the crypto-backed executeRoll engine. Set
+    // actorModifier high enough that any actor roll (1-20) + 30 > any
+    // observer roll (1-20) + 0. Max observer = 20, min actor = 1+30=31.
+    // Margin = 20-31 = -11, never detected.
+    const r = await handlePerceptionManage(db(), { action: 'perception_contested', rollValue: 20, observerModifier: 0, actorModifier: 30 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.detected).toBe(false)
