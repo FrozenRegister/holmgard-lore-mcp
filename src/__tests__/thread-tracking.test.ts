@@ -18,6 +18,7 @@ describe('Thread tracking', () => {
         location: 'north-corridor',
         thread: 'investigation',
         detail: 'Subject proceeded northward',
+        world_id: 'test-world-1',
       })
       expect(res.error).toBeUndefined()
       expect(res.result.metadata.thread).toBe('investigation')
@@ -31,6 +32,7 @@ describe('Thread tracking', () => {
         object: 'at camp',
         location: 'base-camp',
         detail: 'Subject rested for the night',
+        world_id: 'test-world-1',
       })
       expect(res.error).toBeUndefined()
     })

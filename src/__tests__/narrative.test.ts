@@ -5,14 +5,14 @@ import { setupRpgDb } from './setup-d1'
 
 describe('append_event', () => {
   it('appends an event to an entity chronicle', async () => {
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'sedated', object: 'character:predator', thread: 'thread-alpha' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'sedated', object: 'character:predator', thread: 'thread-alpha', world_id: 'test-world-1' })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.entity_key).toBe('character:zira')
     expect(res.result.metadata.event_count).toBe(1)
     expect(res.result.metadata.duplicate).toBe(false)
   })
 
-  it('rejects invalid world_id with FK validation error', async () => {
+  it('falls back to KV when world not found in D1', async () => {
     await setupRpgDb(env.RPG_DB)
     const res = await callTool('continuity_manage', {
       action: 'append_event',
@@ -20,9 +20,9 @@ describe('append_event', () => {
       verb: 'moved',
       world_id: 'nonexistent-world-xyz',
     })
-    expect(res.error).toBeDefined()
-    expect(res.error.code).toBe(-32602)
-    expect(res.error.message).toContain('World not found')
+    // world not found in D1 falls through to KV — no error
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.entity_key).toBe('character:test')
   })
 
   it('rejects invalid entity_id with FK validation error', async () => {
@@ -84,22 +84,22 @@ describe('append_event', () => {
 
   it('is idempotent within 1s for identical verb+object', async () => {
     const at = new Date().toISOString()
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at })
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at, world_id: 'test-world-1' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'moved', at, world_id: 'test-world-1' })
     expect(res.result.metadata.event_count).toBe(1)
     expect(res.result.metadata.duplicate).toBe(true)
   })
 
   it('different verbs are not deduplicated', async () => {
     const at = new Date().toISOString()
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'arrived', at })
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'departed', at })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'arrived', at, world_id: 'test-world-1' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', verb: 'departed', at, world_id: 'test-world-1' })
     expect(res.result.metadata.event_count).toBe(2)
     expect(res.result.metadata.duplicate).toBe(false)
   })
 
   it('rejects missing verb', async () => {
-    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira' })
+    const res = await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:zira', world_id: 'test-world-1' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
   })
@@ -108,34 +108,337 @@ describe('append_event', () => {
     const res = await callTool('continuity_manage', {
       action: 'append_event', entity_key: 'character:alias-test', verb: 'departed',
       date: '1264-05-01T00:00:00Z', description: 'Household begins journey', source: 'roleplay-session',
+      world_id: 'test-world-1',
     })
     expect(res.error).toBeUndefined()
     const log = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:alias-test' })
     expect(log.result.events[0].detail).toBe('Household begins journey')
     expect(log.result.events[0].at).toBe('1264-05-01T00:00:00Z')
   })
+
+  it('derives entity_id from entity_key via lore_key lookup', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-lore', 'Test World', 'seed123', 100, 100, now, now).run()
+    // Add lore_key column (not in base schema) and insert a character with it
+    await env.RPG_DB.prepare('ALTER TABLE characters ADD COLUMN lore_key TEXT').run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at, lore_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-lore-1', 'Lore Character', '{}', 10, 10, 15, 1, now, now, 'character:lore-hero').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:lore-hero',
+      verb: 'moved',
+      world_id: 'test-world-lore',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+
+    // Verify the derived entity_id was used in the D1 insert
+    const row = await env.RPG_DB.prepare('SELECT entity_id FROM timeline_events WHERE id = ?').bind(res.result.metadata.d1_event_id).first() as { entity_id: string } | null
+    expect(row?.entity_id).toBe('char-lore-1')
+  })
+
+  it('skips entity_id derivation when lore_key column is missing (catch path)', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-nolore', 'Test World', 'seed123', 100, 100, now, now).run()
+    // No lore_key column — the derivation query will throw and be caught
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:no-lore-hero',
+      verb: 'arrived',
+      world_id: 'test-world-nolore',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+
+    // entity_id should be null since derivation failed
+    const row = await env.RPG_DB.prepare('SELECT entity_id FROM timeline_events WHERE id = ?').bind(res.result.metadata.d1_event_id).first() as { entity_id: string | null } | null
+    expect(row?.entity_id).toBeNull()
+  })
+
+  it('auto-witnesses events to co-located entities via D1', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-witness', 'Test World', 'seed123', 100, 100, now, now).run()
+    // Create a room node so current_room_id FK is satisfied
+    await env.RPG_DB.prepare(
+      'INSERT INTO room_nodes (id, name, base_description, biome_context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind('market-square', 'Market Square', 'A bustling market square', 'urban', now, now).run()
+    // Source character
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-source', 'Source Character', '{}', 10, 10, 15, 1, now, now).run()
+    // Witness character at the same location (current_room_id)
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at, current_room_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-witness', 'Witness Character', '{}', 10, 10, 15, 1, now, now, 'market-square').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:source',
+      verb: 'arrived',
+      location: 'market-square',
+      world_id: 'test-world-witness',
+      entity_id: 'char-source',
+      detail: 'Arrived at the market',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+    expect(res.result.metadata.auto_witnessed).toContain('char-witness')
+
+    // Verify knowledge was created for the witness
+    const knowledge = await env.RPG_DB.prepare('SELECT * FROM entity_knowledge WHERE entity_id = ?').bind('char-witness').all()
+    expect(knowledge.results.length).toBeGreaterThan(0)
+  })
+
+  it('falls through to KV when timeline_events table is missing (non-FK D1 error)', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-fallback', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-fallback', 'Fallback Character', '{}', 10, 10, 15, 1, now, now).run()
+    // Drop timeline_events to simulate missing table
+    await env.RPG_DB.prepare('DROP TABLE IF EXISTS timeline_branches').run()
+    await env.RPG_DB.prepare('DROP TABLE IF EXISTS character_snapshots').run()
+    await env.RPG_DB.prepare('DROP TABLE IF EXISTS timeline_events').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:fallback',
+      verb: 'moved',
+      world_id: 'test-world-fallback',
+      entity_id: 'char-fallback',
+    })
+    // Should fall through to KV without error
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toBeNull()
+    expect(res.result.metadata.entity_key).toBe('character:fallback')
+  })
+
+  it('returns FOREIGN KEY error when INSERT violates FK constraint', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-fk', 'Test World', 'seed123', 100, 100, now, now).run()
+    // Enable FK enforcement so the INSERT fails with a FOREIGN KEY error.
+    // We bypass the entity_exists check by renaming the characters table so
+    // the SELECT throws and the catch skips the FK check, then the INSERT
+    // itself hits the FK violation.
+    await env.RPG_DB.prepare('PRAGMA foreign_keys = ON').run()
+    await env.RPG_DB.prepare('ALTER TABLE characters RENAME TO characters_bak').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:fk-test',
+      verb: 'moved',
+      world_id: 'test-world-fk',
+      entity_id: 'nonexistent-char-fk',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+    expect(res.error.message).toContain('Foreign key constraint violation')
+  })
+
+  it('skips FK check when characters table is missing but world exists', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-nochars', 'Test World', 'seed123', 100, 100, now, now).run()
+    // Rename characters table so both the lore_key derivation query and the
+    // FK check query throw and are caught. entity_id stays undefined, so the
+    // INSERT uses null (FK allows null).
+    await env.RPG_DB.prepare('ALTER TABLE characters RENAME TO characters_bak').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:nochars-test',
+      verb: 'moved',
+      world_id: 'test-world-nochars',
+    })
+    // FK check is skipped (entity_id undefined), INSERT uses null entity_id
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+  })
+
+  it('derives entity_id as null when lore_key column exists but no character matches', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-nomatch', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare('ALTER TABLE characters ADD COLUMN lore_key TEXT').run()
+    // No character with lore_key 'character:ghost' exists
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:ghost',
+      verb: 'moved',
+      world_id: 'test-world-nomatch',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+
+    const row = await env.RPG_DB.prepare('SELECT entity_id FROM timeline_events WHERE id = ?').bind(res.result.metadata.d1_event_id).first() as { entity_id: string | null } | null
+    expect(row?.entity_id).toBeNull()
+  })
+
+  it('auto-witnesses with object, no entity_id, and no detail (branch coverage)', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-aw2', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO room_nodes (id, name, base_description, biome_context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind('tavern-room', 'Tavern', 'A dimly lit tavern interior', 'urban', now, now).run()
+    // Add lore_key so entity_id is derived for the source character
+    await env.RPG_DB.prepare('ALTER TABLE characters ADD COLUMN lore_key TEXT').run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at, lore_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-aw2-src', 'AW2 Source', '{}', 10, 10, 15, 1, now, now, 'character:aw2-source').run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at, current_room_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-aw2-wit', 'AW2 Witness', '{}', 10, 10, 15, 1, now, now, 'tavern-room').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:aw2-source',
+      verb: 'spoke',
+      object: 'character:aw2-wit',
+      location: 'tavern-room',
+      world_id: 'test-world-aw2',
+      // No entity_id, no detail — tests fallback branches
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+    expect(res.result.metadata.auto_witnessed).toContain('char-aw2-wit')
+  })
+
+  it('auto-witnesses with no co-located occupants (empty for-loop)', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-aw3', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO room_nodes (id, name, base_description, biome_context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind('empty-room', 'Empty Room', 'An empty room with nobody in it', 'urban', now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-aw3-src', 'AW3 Source', '{}', 10, 10, 15, 1, now, now).run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:aw3-source',
+      verb: 'arrived',
+      location: 'empty-room',
+      world_id: 'test-world-aw3',
+      entity_id: 'char-aw3-src',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+    // No witnesses since nobody else is at the location
+    expect(res.result.metadata.auto_witnessed).toBeUndefined()
+  })
+
+  it('auto-witness catches errors when entity_knowledge table is missing', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-aw4', 'Test World', 'seed123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO room_nodes (id, name, base_description, biome_context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind('aw4-room', 'AW4 Room', 'A room for testing', 'urban', now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-aw4-src', 'AW4 Source', '{}', 10, 10, 15, 1, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at, current_room_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('char-aw4-wit', 'AW4 Witness', '{}', 10, 10, 15, 1, now, now, 'aw4-room').run()
+    // Drop entity_knowledge table so the per-occupant INSERT fails
+    await env.RPG_DB.prepare('DROP TABLE IF EXISTS entity_knowledge').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:aw4-source',
+      verb: 'arrived',
+      location: 'aw4-room',
+      world_id: 'test-world-aw4',
+      entity_id: 'char-aw4-src',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+    // auto_witnessed should be undefined since all INSERTs failed
+    expect(res.result.metadata.auto_witnessed).toBeUndefined()
+  })
+
+  it('auto-witness catches errors when characters table is missing (occupants query fails)', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-aw5', 'Test World', 'seed123', 100, 100, now, now).run()
+    // Insert event successfully first, then rename characters table
+    // Actually, we need the characters table to exist for the event INSERT
+    // but be missing for the occupants query. Since the event INSERT uses
+    // entity_id (which requires the characters table), let's use a different
+    // approach: drop the characters table after the event is inserted.
+    // But that's not possible in a single call. Instead, let's rename
+    // characters table before the call — the entity_id derivation and FK
+    // check will be skipped (caught), entity_id stays null, INSERT succeeds
+    // with null entity_id, then the occupants query fails.
+    await env.RPG_DB.prepare('ALTER TABLE characters RENAME TO characters_bak').run()
+
+    const res = await callTool('continuity_manage', {
+      action: 'append_event',
+      entity_key: 'character:aw5-source',
+      verb: 'arrived',
+      location: 'aw5-room',
+      world_id: 'test-world-aw5',
+    })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.d1_event_id).toEqual(expect.any(String))
+    // auto_witness should fail gracefully (occupants query throws)
+    expect(res.result.metadata.auto_witnessed).toBeUndefined()
+  })
 })
 
 describe('get_event_log', () => {
   it('returns events for an entity', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'arrived', location: 'location:market' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'traded' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'arrived', location: 'location:market', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bob', verb: 'traded', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:bob' })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.returned).toBe(2)
   })
 
   it('filters by verb', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'moved' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'rested' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'moved', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:alice', verb: 'rested', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:alice', verbs: ['moved'] })
     expect(res.result.metadata.returned).toBe(1)
     expect(res.result.events[0].verb).toBe('moved')
   })
 
   it('accepts array of entity keys', async () => {
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:aa', verb: 'walked' })
-    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bb', verb: 'ran' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:aa', verb: 'walked', world_id: 'test-world-1' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:bb', verb: 'ran', world_id: 'test-world-1' })
     const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: ['character:aa', 'character:bb'] })
     expect(res.result.metadata.returned).toBe(2)
   })

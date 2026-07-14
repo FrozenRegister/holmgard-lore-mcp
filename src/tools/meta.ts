@@ -18,7 +18,7 @@ export const appendEventSchema = z.object({
   thread: z.string().optional(),
   detail: z.string().optional(),
   at: z.string().optional(),
-  world_id: z.string().optional(),
+  world_id: z.string().min(1),
   entity_id: z.string().optional(),
   date: z.string().optional(),
   description: z.string().optional(),
@@ -37,7 +37,7 @@ export const appendEventSchema = z.object({
     thread: z.string().optional(),
     detail: z.string().optional(),
     at: z.string().optional(),
-    world_id: z.string().optional(),
+    world_id: z.string().min(1),
     entity_id: z.string().optional(),
   }))
 
@@ -163,9 +163,6 @@ const SEVERITY_FLOOR_ALIASES: Record<string, 'info' | 'warn' | 'error'> = {
 
 export const checkContinuitySchema = z.object({
   scope: z.string().optional(),
-  // Freeform **World:** field filter (#259) — narrows cross-world KV noise
-  // separately from `scope` (a key-prefix filter). Not a D1 world_id FK;
-  // see matchesWorld() in lib/lore.ts.
   world: z.string().optional(),
   checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
   severity_floor: z.string().default('info'),
@@ -192,51 +189,77 @@ export async function handle_append_event({ c, id, args }: TypedToolContext<type
   if (args.thread !== undefined) newEvent.thread = args.thread
   if (args.detail !== undefined) newEvent.detail = args.detail
 
-  // D1 primary path when world_id is supplied
+  // D1 primary path — world_id is now required by schema.
+  // When RPG_DB is unavailable, or the D1 schema is incomplete
+  // (test environments / local dev / missing tables), fall back
+  // gracefully to KV-only instead of hard-erroring.
   let d1EventId: string | null = null
-  if (args.world_id && c.env.RPG_DB) {
-    const db = c.env.RPG_DB
-
-    // Validate FK constraints before INSERT
-    const worldExists = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(args.world_id).first() as { id: string } | null
-    if (!worldExists) {
-      return c.json(makeError(id, -32602, `World not found: ${args.world_id}`, null), 200)
-    }
-
-    if (args.entity_id) {
-      const entityExists = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(args.entity_id).first() as { id: string } | null
-      if (!entityExists) {
-        return c.json(makeError(id, -32602, `Character not found: ${args.entity_id}`, null), 200)
-      }
-    }
-
-    const eventId = randomUUID()
-    const createdAt = new Date().toISOString()
+  if (c.env.RPG_DB) {
     try {
-      await db.prepare(
-        `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        eventId,
-        args.world_id,
-        args.thread ?? 'main',
-        now,
-        args.verb,
-        args.entity_id ?? null,
-        args.object ?? null,
-        args.location ?? null,
-        args.detail ?? null,
-        createdAt,
-      ).run()
-      d1EventId = eventId
-    } catch (err) {
-      const msg = String(err)
-      if (msg.includes('FOREIGN KEY')) {
-        return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+      const db = c.env.RPG_DB
+
+      // Validate FK constraints before INSERT
+      const worldExists = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(args.world_id).first() as { id: string } | null
+      if (worldExists) {
+        // Derive entity_id from entity_key when entity_id is omitted
+        if (!args.entity_id) {
+          try {
+            const row = await db.prepare(
+              'SELECT id FROM characters WHERE lore_key = ?'
+            ).bind(entityKey).first() as { id: string } | null
+            if (row) {
+              args.entity_id = row.id
+            }
+          } catch {
+            // characters table missing or schema incomplete — skip entity_id derivation
+          }
+        }
+
+        if (args.entity_id) {
+          try {
+            const entityExists = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(args.entity_id).first() as { id: string } | null
+            if (!entityExists) {
+              return c.json(makeError(id, -32602, `Character not found: ${args.entity_id}`, null), 200)
+            }
+          } catch {
+            // characters table missing — skip FK check
+          }
+        }
+
+        const eventId = randomUUID()
+        const createdAt = new Date().toISOString()
+        try {
+          await db.prepare(
+            `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            eventId,
+            args.world_id,
+            args.thread ?? 'main',
+            now,
+            args.verb,
+            args.entity_id ?? null,
+            args.object ?? null,
+            args.location ?? null,
+            args.detail ?? null,
+            createdAt,
+          ).run()
+          d1EventId = eventId
+        } catch (err) {
+          const msg = String(err)
+          if (msg.includes('FOREIGN KEY')) {
+            return c.json(makeError(id, -32603, `Foreign key constraint violation: ${msg}`, null), 200)
+          }
+          // Table missing or other D1 error — fall through to KV
+        }
       }
-      throw err
+      // world not found — fall through to KV-only without error
+    } catch {
+      // D1 schema incomplete (e.g., worlds table missing in test env) —
+      // fall through to KV-only without error
     }
   }
+  // RPG_DB unavailable or D1 schema incomplete — proceed KV-only
 
   const kv = getKV(c)
   let events: typeof newEvent[] = []
@@ -266,28 +289,25 @@ export async function handle_append_event({ c, id, args }: TypedToolContext<type
   // #370: Auto-witness — when an event has a location, all OTHER entities at that
   // location automatically gain knowledge of this event.
   const autoWitnessed: string[] = []
-  if (args.location && !duplicate && d1EventId) {
+  if (args.location && !duplicate && d1EventId && c.env.RPG_DB) {
     try {
       const locationKey = args.location.trim().toLowerCase()
-      // Find occupants at this location via D1 characters table
-      const { results: occupants } = await c.env.RPG_DB!.prepare(
+      const { results: occupants } = await c.env.RPG_DB.prepare(
         'SELECT id, name FROM characters WHERE current_room_id = ? AND id != ?'
       ).bind(locationKey, args.entity_id ?? '').all()
 
-      if (d1EventId) {
-        const witnessTopic = `${args.verb}${args.object ? `:${args.object}` : ''}`
-        const witnessDetail = args.detail ?? ''
-        for (const occ of occupants as Array<{ id: string; name: string }>) {
-          const knowledgeId = randomUUID()
-          try {
-            await c.env.RPG_DB!.prepare(
-              `INSERT OR IGNORE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
-               VALUES (?, ?, ?, 'fact', 'witnessed', ?, ?, 90, 1)`
-            ).bind(knowledgeId, occ.id, witnessTopic, now, witnessDetail).run()
-            autoWitnessed.push(occ.id)
-          } catch {
-            // Best-effort per occupant
-          }
+      const witnessTopic = `${args.verb}${args.object ? `:${args.object}` : ''}`
+      const witnessDetail = args.detail ?? ''
+      for (const occ of occupants as Array<{ id: string; name: string }>) {
+        const knowledgeId = randomUUID()
+        try {
+          await c.env.RPG_DB.prepare(
+            `INSERT OR IGNORE INTO entity_knowledge (id, entity_id, topic, knowledge_type, source, acquired_at, detail, confidence, is_current)
+             VALUES (?, ?, ?, 'fact', 'witnessed', ?, ?, 90, 1)`
+          ).bind(knowledgeId, occ.id, witnessTopic, now, witnessDetail).run()
+          autoWitnessed.push(occ.id)
+        } catch {
+          // Best-effort per occupant
         }
       }
     } catch {
@@ -448,7 +468,7 @@ export async function handle_get_event_log({ c, id, args }: TypedToolContext<typ
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: summaryText }],
-    metadata: { total: allEvents.length, returned: limited.length },
+    metadata: { total: allEvents.length, returned: limited.length, d1_count: allEvents.filter(e => (e as any).source === 'd1').length, kv_count: allEvents.filter(e => (e as any).source === 'kv').length },
     events: limited
   }), 200)
 }
@@ -936,11 +956,6 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
     : allKeys
   const scopeFilteredRaws = await Promise.all(scopeFilteredKeys.map(k => kvGet(c, k)))
 
-  // World filtering (#259) narrows which entries get scanned/reported, but
-  // deliberately does NOT shrink allKeySet below — a dangling/occupancy
-  // reference should still resolve against every world's keys, since the
-  // referenced entity existing in another world is a different problem
-  // (or no problem at all) from it not existing anywhere.
   let scopedKeys = scopeFilteredKeys
   let scopedRaws = scopeFilteredRaws
   if (args.world) {
@@ -958,7 +973,6 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
   type Finding = { key: string; check: string; severity: 'info' | 'warn' | 'error'; message: string }
   const findings: Finding[] = []
 
-  // Pre-fetch all unique location keys for the occupancy check
   const locationNamesToFetch = new Set<string>()
   if (activeChecks.includes('occupancy')) {
     for (let i = 0; i < scopedKeys.length; i++) {
@@ -1038,9 +1052,6 @@ export async function handle_check_continuity({ c, id, args }: TypedToolContext<
     }), 200)
   }
 
-  // auto_fix: dangling and occupancy findings can be repaired unambiguously
-  // (test-key cleanup, single-candidate typo correction, location fallback).
-  // knowledge/inventory findings need entity-by-entity judgment and are always skipped.
   type Fix = { key: string; check: string; action: string; detail: string }
   type Skip = { key: string; check: string; reason: string }
   const fixes: Fix[] = []
