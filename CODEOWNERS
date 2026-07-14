@@ -1,0 +1,18 @@
+# CODEOWNERS — code review requirements by path
+# GitHub requires PR approval from listed owners before merge
+
+# Workflows and CI configuration
+.github/workflows/ @FrozenRegister
+
+# Database migrations (schema changes)
+schema/migrations/ @FrozenRegister
+schema/rpg-schema.sql @FrozenRegister
+
+# Core MCP logic and handlers
+src/index.ts @FrozenRegister
+src/rpg/ @FrozenRegister
+src/tools/ @FrozenRegister
+src/lib/ @FrozenRegister
+
+# Everything else has no specific owner requirement
+# but should still go through PR review
