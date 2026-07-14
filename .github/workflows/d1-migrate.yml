@@ -17,6 +17,11 @@ on:
     branches: [main]
     paths:
       - 'schema/migrations/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'schema/migrations/**'
+    types: [closed]
   workflow_dispatch:
 
 concurrency:
