@@ -105,6 +105,8 @@ const InputSchema = z.object({
   characterName: z.string().optional(),
   characterType: z.string().optional().default('npc'),
   worldId: z.string().optional(),
+  // #377 — accept snake_case world_id as an alias for camelCase worldId
+  world_id: z.string().optional(),
   encounterId: z.string().optional(),
   positionX: z.number().int().optional(),
   positionY: z.number().int().optional(),
@@ -152,6 +154,8 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
   const a = parsed.data
+  // #377 — normalize snake_case world_id → camelCase worldId
+  if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
   const db = env.RPG_DB!

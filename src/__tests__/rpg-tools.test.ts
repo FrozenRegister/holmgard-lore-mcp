@@ -361,6 +361,72 @@ describe('RPG engine tools', () => {
     expect(r.error).toBe(true)
   })
 
+  // ── #377 — parameter naming/casing audit ────────────────────────────────
+
+  it('rpg world get_state works with worldId only (not just id) (#376/#377)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'GetStateWorld', theme: 'fantasy' })
+    // Call get_state with only worldId (no id) — this used to crash because
+    // the handler used a.id (undefined) for sub-queries instead of targetId
+    const state = await callTool('rpg', { sub: 'world', action: 'get_state', worldId: world.worldId })
+    expect(state.success).toBe(true)
+    expect(state.world).toBeTruthy()
+    expect(state.nations).toBeDefined()
+    expect(state.parties).toBeDefined()
+  })
+
+  it('rpg world accepts snake_case world_id as alias for worldId (#377)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'SnakeCaseWorld', theme: 'fantasy' })
+    // Use world_id (snake_case) instead of worldId (camelCase)
+    const got = await callTool('rpg', { sub: 'world', action: 'get', world_id: world.worldId })
+    expect(got.success).toBe(true)
+    expect(got.world.name).toBe('SnakeCaseWorld')
+  })
+
+  it('rpg world get_state works with snake_case world_id (#377)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'SnakeStateWorld', theme: 'fantasy' })
+    const state = await callTool('rpg', { sub: 'world', action: 'get_state', world_id: world.worldId })
+    expect(state.success).toBe(true)
+    expect(state.world).toBeTruthy()
+  })
+
+  it('rpg weather accepts snake_case world_id as alias for worldId (#377)', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'WeatherSnakeWorld', theme: 'fantasy' })
+    // Use world_id (snake_case) — weather requires worldId for all actions
+    const forecast = await callTool('rpg', { sub: 'weather', action: 'get_forecast', world_id: world.worldId })
+    expect(forecast.error).toBeUndefined()
+    expect(forecast.found).toBe(false) // no forecast set yet, so gap response
+  })
+
+  it('rpg weather errors clearly when worldId is missing (#377)', async () => {
+    const r = await callTool('rpg', { sub: 'weather', action: 'get_forecast' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('worldId')
+  })
+
+  it('load_tool_schema returns corpse schema with id documented as corpse UUID (#377)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'corpse' })
+    expect(r.success).toBe(true)
+    expect(r.schema.description).toContain('corpse UUID')
+    expect(r.schema.inputSchema.properties.id.description).toContain('Corpse UUID')
+    expect(r.schema.inputSchema.properties.characterId.description).toContain('Dead character')
+    // id should NOT be in required array (create/register/list don't need it)
+    expect(r.schema.inputSchema.required).not.toContain('id')
+  })
+
+  it('load_tool_schema returns world schema with world_id alias (#377)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'world' })
+    expect(r.success).toBe(true)
+    expect(r.schema.inputSchema.properties.world_id).toBeDefined()
+    expect(r.schema.inputSchema.properties.world_id.description).toContain('alias')
+  })
+
+  it('load_tool_schema returns weather schema with world_id alias (#377)', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'weather' })
+    expect(r.success).toBe(true)
+    expect(r.schema.inputSchema.properties.world_id).toBeDefined()
+    expect(r.schema.inputSchema.properties.worldId.description).toContain('required')
+  })
+
   // ── rpg party — remaining actions ─────────────────────────────────────────
 
   it('rpg party list, update, remove_member, set_leader, delete', async () => {
