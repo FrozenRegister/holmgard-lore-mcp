@@ -93,12 +93,8 @@ describe('list_topics', () => {
   })
 
   it('uses _idx:prefix:all master index when entries are created via set_lore (#359)', async () => {
-    // When entries are written through set_lore, the _idx:prefix:all index is
-    // maintained automatically. list_topics should read from it instead of
-    // scanning all KV keys.
     await callTool('lore_manage', { action: 'set', key: 'character:idx-test-1', text: 'Test 1' })
     await callTool('lore_manage', { action: 'set', key: 'location:idx-test-2', text: 'Test 2' })
-    // Verify the master index was built
     const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
     expect(idxRaw).not.toBeNull()
     const idxKeys = JSON.parse(idxRaw!) as string[]
@@ -112,12 +108,10 @@ describe('list_topics', () => {
   })
 
   it('falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
-    // seedKV bypasses set_lore, so no index is built — getAllKeys() should
-    // fall back to kvList() transparently.
     await seedKV('fallback:key-a', 'A')
     await seedKV('fallback:key-b', 'B')
     const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
-    expect(idxRaw).toBeNull() // No index built by seedKV
+    expect(idxRaw).toBeNull()
 
     const res = await callTool('lore_manage', { action: 'list' })
     const text = res.result.content[0].text as string
@@ -247,10 +241,7 @@ describe('get_lore', () => {
   })
 
   it('auto-suggest uses _idx:prefix:all index when entries are created via set_lore (#359)', async () => {
-    // When entries are written through set_lore, the _idx:prefix:all index is
-    // maintained. get_lore auto-suggest should read from it instead of scanning.
     await callTool('lore_manage', { action: 'set', key: 'character:suggest-target', text: 'Target lore' })
-    // Query with a partial key that won't match directly but should trigger auto-suggest
     const res = await callTool('lore_manage', { action: 'get', query: 'suggest-targ' })
     expect(res.error).toBeDefined()
     expect(res.error.data.did_you_mean).toBe('character:suggest-target')
@@ -258,8 +249,6 @@ describe('get_lore', () => {
   })
 
   it('auto-suggest falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
-    // seedKV bypasses set_lore, so no index is built — auto-suggest should
-    // still work via the kvList() fallback.
     await seedKV('character:fallback-suggest', 'Fallback lore')
     const res = await callTool('lore_manage', { action: 'get', query: 'fallback-sug' })
     expect(res.error).toBeDefined()
@@ -281,7 +270,6 @@ describe('get_lore D1 redirect', () => {
   ].join('\n')
 
   it('transparently returns D1 data when entry has D1-Migrated marker', async () => {
-    // Use admin migrate endpoint — creates D1 row + KV redirect marker in one step
     await seedKV(CHAR_KEY, CHAR_LORE)
     const migrateRes = await SELF.fetch('http://example.com/admin/migrate-character', {
       method: 'POST',
@@ -302,8 +290,6 @@ describe('get_lore D1 redirect', () => {
   })
 
   it('returns stale KV text when D1 row is missing (deleted)', async () => {
-    // Seed KV with a redirect marker pointing to a nonexistent D1 row.
-    // The handler try-catches D1 errors and falls through to the KV text.
     const staleText = [
       '## D1-Migrated: true',
       '## D1-Character-ID: nonexistent-uuid-999',
@@ -385,22 +371,18 @@ describe('delete_lore', () => {
 
   it('removes the key from _idx:prefix:all on delete (#359)', async () => {
     await callTool('lore_manage', { action: 'set', key: 'character:delete-idx', text: 'To be deleted' })
-    // Verify it's in the index
     let idxRaw = await env.LORE_DB.get('_idx:prefix:all')
     expect(idxRaw).not.toBeNull()
     let idxKeys = JSON.parse(idxRaw!) as string[]
     expect(idxKeys).toContain('character:delete-idx')
 
-    // Delete it
     await callTool('lore_manage', { action: 'delete', key: 'character:delete-idx' })
 
-    // Verify it's removed from the index
     idxRaw = await env.LORE_DB.get('_idx:prefix:all')
     if (idxRaw) {
       idxKeys = JSON.parse(idxRaw) as string[]
       expect(idxKeys).not.toContain('character:delete-idx')
     }
-    // If idxRaw is null, the index was emptied and deleted — also correct
   })
 })
 
@@ -447,6 +429,12 @@ describe('search_lore', () => {
     expect(res.result.metadata.scan_limit).toBe(500)
   })
 
+  it('metadata includes match_mode and prefix (#357)', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', max_results: 10 })
+    expect(res.result.metadata.match_mode).toBe('any')
+    expect(res.result.metadata.prefix).toBeNull()
+  })
+
   it('rejects scan_limit above maximum (2001)', async () => {
     const res = await callTool('lore_manage', { action: 'search', query: 'magic', scan_limit: 2001 })
     expect(res.error).toBeDefined()
@@ -478,6 +466,88 @@ describe('search_lore', () => {
     expect(results.map(r => r.key)).toContain('character:eira-holt')
     expect(res.result.metadata.world).toBeNull()
   })
+
+  // ── #357: Tokenized-OR matching, match_mode, prefix filter ──
+
+  it('match_mode "any" (default) finds entries matching any token', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'cave sparkle', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('location:magic-cave')
+    expect(res.result.metadata.match_mode).toBe('any')
+  })
+
+  it('match_mode "any" finds entries where tokens are in different sections', async () => {
+    await seedKV('character:dispatch', '**Status:** Active\n**Dispatch:** The consumption timeline is set.')
+    const res = await callTool('lore_manage', { action: 'search', query: 'dispatch consumption', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:dispatch')
+  })
+
+  it('match_mode "all" requires all tokens to be present', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic blade', match_mode: 'all', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toEqual(['item:sword'])
+  })
+
+  it('match_mode "all" returns empty when not all tokens are present', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic dragon', match_mode: 'all', max_results: 10 })
+    expect(res.result.metadata.match_count).toBe(0)
+  })
+
+  it('match_mode "exact" requires contiguous substring (backward compatible)', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic cave', match_mode: 'exact', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('location:magic-cave')
+    const res2 = await callTool('lore_manage', { action: 'search', query: 'cave sparkle', match_mode: 'exact', max_results: 10 })
+    expect(res2.result.metadata.match_count).toBe(0)
+  })
+
+  it('relevance ranking: entries matching more tokens rank higher (#357)', async () => {
+    await seedKV('character:multi-match', 'The witch magic cave sparkle wonder')
+    await seedKV('character:single-match', 'The witch has a cat')
+    const res = await callTool('lore_manage', { action: 'search', query: 'witch magic', match_mode: 'any', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results[0].key).toBe('character:multi-match')
+    expect(results.map(r => r.key)).toContain('character:single-match')
+  })
+
+  it('prefix filter scopes search to matching keys only (#357)', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', prefix: 'character', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:witch')
+    expect(results.map(r => r.key)).not.toContain('location:magic-cave')
+    expect(results.map(r => r.key)).not.toContain('item:sword')
+    expect(res.result.metadata.prefix).toBe('character')
+  })
+
+  it('prefix filter is case-insensitive', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', prefix: 'CHARACTER', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:witch')
+  })
+
+  it('prefix filter returns empty when no keys match the prefix', async () => {
+    const res = await callTool('lore_manage', { action: 'search', query: 'magic', prefix: 'nonexistent', max_results: 10 })
+    expect(res.result.metadata.match_count).toBe(0)
+    expect(res.result.metadata.prefix).toBe('nonexistent')
+  })
+
+  it('combines prefix filter with match_mode', async () => {
+    await seedKV('character:witch-master', 'The witch has mastered magic arts and spells.')
+    const res = await callTool('lore_manage', { action: 'search', query: 'witch spells', match_mode: 'all', prefix: 'character', max_results: 10 })
+    const results = res.result.results as Array<{ key: string; excerpt: string }>
+    expect(results.map(r => r.key)).toContain('character:witch-master')
+    expect(results.map(r => r.key)).not.toContain('character:witch')
+  })
+
+  it('single-word query works the same in all match modes', async () => {
+    const anyRes = await callTool('lore_manage', { action: 'search', query: 'magic', match_mode: 'any', max_results: 10 })
+    const allRes = await callTool('lore_manage', { action: 'search', query: 'magic', match_mode: 'all', max_results: 10 })
+    const exactRes = await callTool('lore_manage', { action: 'search', query: 'magic', match_mode: 'exact', max_results: 10 })
+    expect(anyRes.result.metadata.match_count).toBe(3)
+    expect(allRes.result.metadata.match_count).toBe(3)
+    expect(exactRes.result.metadata.match_count).toBe(3)
+  })
 })
 
 describe('validate_topic_exists', () => {
@@ -508,24 +578,18 @@ describe('validate_topic_exists', () => {
   })
 
   it('uses _idx:prefix:all index when entries are created via set_lore (#359)', async () => {
-    // When entries are written through set_lore, the _idx:prefix:all index is
-    // maintained. validate_topic_exists should read from it instead of scanning.
     await callTool('lore_manage', { action: 'set', key: 'character:validate-idx', text: 'Validate test' })
-    // Verify the master index contains the key
     const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
     expect(idxRaw).not.toBeNull()
     const idxKeys = JSON.parse(idxRaw!) as string[]
     expect(idxKeys).toContain('character:validate-idx')
 
-    // Exact match should work via the index
     const res = await callTool('lore_manage', { action: 'validate', query_string: 'character:validate-idx' })
     expect(res.result.exists).toBe(true)
     expect(res.result.exact_match).toBe('character:validate-idx')
   })
 
   it('falls back to kvList when _idx:prefix:all does not exist (#359)', async () => {
-    // seedKV bypasses set_lore, so no index is built — validate should
-    // still work via the kvList() fallback.
     await seedKV('character:validate-fallback', 'Fallback validate')
     const idxRaw = await env.LORE_DB.get('_idx:prefix:all')
     expect(idxRaw).toBeNull()
@@ -578,13 +642,11 @@ describe('restore_lore', () => {
     for (let i = 1; i <= 21; i++) {
       await callTool('lore_manage', { action: 'set', key: 'restore:cap', text: `v${i}` })
     }
-    // Restore 20 times — should reach v1 (v0 was evicted)
     for (let i = 0; i < 20; i++) {
       await callTool('lore_manage', { action: 'restore', key: 'restore:cap' })
     }
     const get = await callTool('lore_manage', { action: 'get', query: 'restore:cap' })
     expect(get.result.text).toBe('v1')
-    // One more restore should report no history
     const last = await callTool('lore_manage', { action: 'restore', key: 'restore:cap' })
     expect(last.result.metadata.restored).toBe(false)
   })
@@ -676,53 +738,39 @@ describe('list_tags (#96)', () => {
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['test:tag1', 'test:tag2'] })
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['test:tag1'] })
 
-    // Test with_counts: true (line 342-343 sort branch)
     const withCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
     expect(withCounts.error).toBeUndefined()
     const sorted = withCounts.result.tags
     expect(sorted[0].count).toBeGreaterThanOrEqual(sorted[1].count)
 
-    // Test with_counts: false (line 344-345 sort branch)
     const noCounts = await callTool('continuity_manage', { action: 'list_tags', with_counts: false })
     expect(noCounts.error).toBeUndefined()
     expect(noCounts.result.tags[0].tag.localeCompare(noCounts.result.tags[1].tag)).toBeLessThanOrEqual(0)
   })
 
   it('handles JSON.parse error in tag count fetch gracefully', async () => {
-    // Seed a topic and tag it
     await seedKV('topic:corrupt', 'Corrupt topic')
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:corrupt', add: ['corrupt:tag'] })
 
-    // Corrupt the tag count entry with invalid JSON
     await env.LORE_DB.put('_tags:corrupt:tag', 'not-valid-json-array')
 
-    // Call list_tags with_counts should still succeed (catch block at line 325-326)
     const res = await callTool('continuity_manage', { action: 'list_tags', with_counts: true })
     expect(res.error).toBeUndefined()
 
-    // The corrupt tag should be in the list with count: 0 (from catch block)
     const corruptTag = res.result.tags.find((t: any) => t.tag === 'corrupt:tag')
     expect(corruptTag).toBeDefined()
     expect(corruptTag.count).toBe(0)
   })
 
   it('exercises ALL list_tags code paths for 100% coverage', async () => {
-    // Create multiple topics and tags with varying counts to exercise:
-    // - Line 315-332: for loop for each key, collected counter, continue on prefix mismatch
-    // - Line 320-330: with_counts branch split (if/else)
-    // - Line 334-335: cursor pagination
-    // - Line 342-345: sorting both branches
-
     await seedKV('topic:a', 'A')
     await seedKV('topic:b', 'B')
     await seedKV('topic:c', 'C')
 
-    // Create tags with different counts
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:a', add: ['xray:one', 'alpha:one'] })
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:b', add: ['xray:one', 'beta:one'] })
     await callTool('continuity_manage', { action: 'tag_topic', key: 'topic:c', add: ['xray:one'] })
 
-    // Test 1: with_counts=true with prefix filter (lines 318, 320-330, 342-343)
     const withCountsAndPrefix = await callTool('continuity_manage', {
       action: 'list_tags',
       with_counts: true,
@@ -732,29 +780,24 @@ describe('list_tags (#96)', () => {
     expect(withCountsAndPrefix.result.tags[0].tag).toBe('xray:one')
     expect(withCountsAndPrefix.result.tags[0].count).toBe(3)
 
-    // Test 2: with_counts=false no prefix (lines 328-330, 344-345)
     const noCounts = await callTool('continuity_manage', {
       action: 'list_tags',
       with_counts: false,
     })
     expect(noCounts.error).toBeUndefined()
-    // Tags should be sorted alphabetically
     for (let i = 0; i < noCounts.result.tags.length - 1; i++) {
       expect(noCounts.result.tags[i].tag.localeCompare(noCounts.result.tags[i + 1].tag)).toBeLessThanOrEqual(0)
     }
 
-    // Test 3: with_counts=true no prefix (lines 320-327 full execution)
     const withCounts = await callTool('continuity_manage', {
       action: 'list_tags',
       with_counts: true,
     })
     expect(withCounts.error).toBeUndefined()
-    // Tags should be sorted by count descending
     for (let i = 0; i < withCounts.result.tags.length - 1; i++) {
       expect(withCounts.result.tags[i].count).toBeGreaterThanOrEqual(withCounts.result.tags[i + 1].count)
     }
 
-    // Test 4: prefix filter that matches nothing (line 318 continue branch)
     const noMatch = await callTool('continuity_manage', {
       action: 'list_tags',
       prefix: 'nonexistent:',
@@ -762,7 +805,6 @@ describe('list_tags (#96)', () => {
     expect(noMatch.error).toBeUndefined()
     expect(noMatch.result.tags.length).toBe(0)
 
-    // Test 5: limit param to exercise loop break (line 316)
     const limited = await callTool('continuity_manage', {
       action: 'list_tags',
       limit: 1,
