@@ -230,12 +230,24 @@ describe('handleTravelManage', () => {
     expect(body.biome).toBe('forest')
   })
 
-  it('move_hex with resolveEncounter calls the encounter engine', async () => {
+  it('move_hex without resolveEncounter does not call the encounter engine', async () => {
     await createWorld()
     await createParty('party-move-3')
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'mountains', baseThreat: 50 })
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 7, r: 8, biome: 'mountains' }] })
-    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-3', worldId: WORLD, toQ: 7, toR: 8, resolveEncounter: true, includeInjuries: false })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-3', worldId: WORLD, toQ: 7, toR: 8, resolveEncounter: false })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.biome).toBe('mountains')
+    expect(body.encounter).toBeUndefined()
+  })
+
+  it('move_hex with resolveEncounter calls the encounter engine', async () => {
+    await createWorld()
+    await createParty('party-move-4')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'mountains', baseThreat: 50 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 7, r: 8, biome: 'mountains' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-4', worldId: WORLD, toQ: 7, toR: 8, resolveEncounter: true, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.biome).toBe('mountains')
