@@ -370,9 +370,8 @@ Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upg
 4. **Run the fast local gate** before pushing (type-check, lint, touched test file)
 5. **Push** to the branch: `git push -u origin feat/my-feature`
 6. **Create a PR** linking to the Issue (see [Pull Requests](#pull-requests-and-issue-linking) below) — this triggers CI
-7. **Add the `auto-merge` label** — CI will run the full suite, and the PR will auto-merge when all checks pass
 
-This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`.
+This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`. PRs must pass all required checks, including the **coverage CI job (Istanbul)** which enforces **100% patch coverage on all new code** — this is not waived or advisable.
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 
@@ -504,6 +503,6 @@ try {
 
 `pnpm test:coverage` (`@vitest/coverage-istanbul`, configured via `provider: 'istanbul'` in `vitest.config.ts`) and uploaded to Codecov by the `coverage` job in `.github/workflows/ci.yml`. The lcov report lands at `./coverage/lcov.info`. Coverage runs in CI, not as a required local step (see [Pre-Commit Validation](#pre-commit-validation)).
 
-**The enforced gate is the `coverage` CI job (Istanbul)**, not Codecov. Codecov is advisory — its `codecov/patch` check is uploaded for visibility but `fail_ci_if_error: false` means Codecov auth/rate-limit failures never block CI. The auto-merge workflow also ignores `codecov/*` check conclusions. If the `coverage` CI job passes (100% patch on new lines), the PR can merge regardless of Codecov status.
+**The enforced gate is the `coverage` CI job (Istanbul)**, not Codecov. Codecov is advisory — its `codecov/patch` check is uploaded for visibility but `fail_ci_if_error: false` means Codecov auth/rate-limit failures never block CI.
 
 **Sister repo sync**: `holmgard-lore-editor` uses the same `codecov/codecov-action@v5`. When upgrading the action version, update both repos' CI files at the same time. Coverage targets intentionally differ: this repo enforces **100% patch** (backend Worker — untested code reaches production directly); the editor uses **80% lines** (frontend UI code, enforced by Istanbul gap analysis).

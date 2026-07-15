@@ -199,7 +199,15 @@ CREATE TABLE IF NOT EXISTS characters (
   origin                         TEXT,
   -- Production Cycle (#283) — JSON stat block (days_survived, crates_claimed,
   -- etc.), see migration 0013.
-  production_state               TEXT
+  production_state               TEXT,
+  -- NPC-specific attributes (#347) — see migration 0026.
+  disposition                    TEXT CHECK (disposition IN ('hostile', 'unfriendly', 'neutral', 'friendly', 'helpful')) DEFAULT 'neutral',
+  location_key                   TEXT,
+  -- Hex map positioning (#337, #340) — see migrations 0024.
+  current_hex_q                  INTEGER,
+  current_hex_r                  INTEGER,
+  world_id                       TEXT REFERENCES worlds(id) ON DELETE SET NULL,
+  map_id                         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_characters_type ON characters(character_type);
@@ -441,7 +449,7 @@ CREATE TABLE IF NOT EXISTS parties (
   name             TEXT NOT NULL,
   description      TEXT,
   world_id         TEXT REFERENCES worlds(id) ON DELETE SET NULL,
-  status           TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'dormant', 'archived')),
+  status           TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'dormant', 'archived', 'broken')),
   current_location TEXT,
   current_quest_id TEXT REFERENCES quests(id) ON DELETE SET NULL,
   formation        TEXT NOT NULL DEFAULT 'standard',
@@ -455,6 +463,7 @@ CREATE TABLE IF NOT EXISTS parties (
   -- table rather than a second, colliding "party" concept.
   morale           INTEGER NOT NULL DEFAULT 62,
   cohesion         TEXT NOT NULL DEFAULT 'stable',
+  cohesion_score   INTEGER NOT NULL DEFAULT 50,
   watch_order      TEXT NOT NULL DEFAULT '[]',
   current_watch    TEXT,
   -- Gotland waypoint movement (#328) — see migration 0021. No FK on the
@@ -920,7 +929,9 @@ CREATE TABLE IF NOT EXISTS event_inbox (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   event_type TEXT NOT NULL CHECK (event_type IN (
     'npc_action', 'combat_update', 'world_change', 'quest_update',
-    'time_passage', 'environmental', 'system'
+    'time_passage', 'environmental', 'system', 'crate_drop', 'perimeter_contraction',
+    'audience_vote', 'production_intervention', 'predator_release', 'shelter_collapse',
+    'weather_shift', 'echo_activation'
   )),
   payload    TEXT NOT NULL,
   source_type TEXT CHECK (source_type IN ('npc', 'combat', 'world', 'system', 'scheduler')),

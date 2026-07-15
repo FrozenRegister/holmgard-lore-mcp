@@ -54,7 +54,25 @@ describe('event_manage', () => {
   it('list_types returns the known event and source types', async () => {
     const r = await callTool('rpg', { sub: 'event', action: 'list_types' })
     expect(r.eventTypes).toContain('combat_update')
+    expect(r.eventTypes).toContain('crate_drop')
     expect(r.sourceTypes).toContain('npc')
+  })
+
+  it('emit accepts custom event types (not in the closed enum)', async () => {
+    const custom = await callTool('rpg', { sub: 'event', action: 'emit', eventType: 'crate_drop', payload: { location: 'hex-1' } })
+    expect(custom.success).toBe(true)
+    expect(custom.eventType).toBe('crate_drop')
+
+    const polled = await callTool('rpg', { sub: 'event', action: 'poll', eventType: 'crate_drop' })
+    expect(polled.count).toBe(1)
+    expect(polled.events[0].event_type).toBe('crate_drop')
+  })
+
+  it('emit accepts production event types (perimeter_contraction, audience_vote, etc)', async () => {
+    const perimeter = await callTool('rpg', { sub: 'event', action: 'emit', eventType: 'perimeter_contraction', payload: {} })
+    expect(perimeter.success).toBe(true)
+    const audience = await callTool('rpg', { sub: 'event', action: 'emit', eventType: 'audience_vote', payload: {} })
+    expect(audience.success).toBe(true)
   })
 
   it('emit requires eventType and payload; ack requires id or ids', async () => {

@@ -162,4 +162,81 @@ describe('handleNpcManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
+
+  it('list requires no parameters but accepts optional worldId', async () => {
+    const r = await handleNpcManage(db(), { action: 'list' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.npcs).toBeDefined()
+  })
+
+  it('list returns all NPCs', async () => {
+    await handleNpcManage(db(), { action: 'create', name: 'NPC1' })
+    await handleNpcManage(db(), { action: 'create', name: 'NPC2' })
+    const r = await handleNpcManage(db(), { action: 'list' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.count).toBeGreaterThanOrEqual(2)
+  })
+
+  it('get requires npcId or id', async () => {
+    const r = await handleNpcManage(db(), { action: 'get' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('get returns not found for unknown npcId', async () => {
+    const r = await handleNpcManage(db(), { action: 'get', npcId: 'invalid-id' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('get returns NPC with relationships', async () => {
+    const c = await handleNpcManage(db(), { action: 'create', name: 'Paladin', level: 5 })
+    const { characterId } = JSON.parse(c.content[0].text)
+    const r = await handleNpcManage(db(), { action: 'get', npcId: characterId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.npc.name).toBe('Paladin')
+    expect(body.npc.level).toBe(5)
+  })
+
+  it('update requires npcId or id', async () => {
+    const r = await handleNpcManage(db(), { action: 'update' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('update modifies NPC state', async () => {
+    const c = await handleNpcManage(db(), { action: 'create', name: 'Rogue', disposition: 'neutral' })
+    const { characterId } = JSON.parse(c.content[0].text)
+    const r = await handleNpcManage(db(), { action: 'update', npcId: characterId, name: 'Master Rogue', disposition: 'friendly', hp: 15 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.updated).toBeGreaterThan(0)
+  })
+
+  it('assign_to_location requires npcId and location or hex coords', async () => {
+    const r = await handleNpcManage(db(), { action: 'assign_to_location', npcId: 'n1' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('assign_to_location places NPC at location_key', async () => {
+    const c = await handleNpcManage(db(), { action: 'create', name: 'Guard' })
+    const { characterId } = JSON.parse(c.content[0].text)
+    const r = await handleNpcManage(db(), { action: 'assign_to_location', npcId: characterId, locationKey: 'location:tavern' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.locationKey).toBe('location:tavern')
+  })
+
+  it('assign_to_location places NPC at hex coordinates', async () => {
+    const c = await handleNpcManage(db(), { action: 'create', name: 'Scout' })
+    const { characterId } = JSON.parse(c.content[0].text)
+    const r = await handleNpcManage(db(), { action: 'assign_to_location', npcId: characterId, hexQ: 5, hexR: 7 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hexQ).toBe(5)
+    expect(body.hexR).toBe(7)
+  })
 })

@@ -349,4 +349,291 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.results[0].roll).toBeGreaterThanOrEqual(1)
   })
+
+  // ── cohesion_check ──────────────────────────────────────────────────────
+
+  it('cohesion_check requires partyId', async () => {
+    const r = await handlePartyManage(db(), { action: 'cohesion_check' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('cohesion_check errors for a nonexistent party', async () => {
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId: 'nope' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('cohesion_check returns fracture tier (roll <= 4)', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.total).toBeLessThanOrEqual(4)
+    expect(body.tier).toBe('fracture')
+    expect(body.outcome).toBeTruthy()
+    expect(['betrayal', 'abandonment', 'violence', 'mutual']).toContain(body.fractureType)
+  })
+
+  it('cohesion_check returns strain tier (5-8)', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(0.3)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tier).toBe('strain')
+    expect(body.total).toBeGreaterThanOrEqual(5)
+    expect(body.total).toBeLessThanOrEqual(8)
+  })
+
+  it('cohesion_check returns stable tier (9-12)', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(0.55)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tier).toBe('stable')
+    expect(body.total).toBeGreaterThanOrEqual(9)
+    expect(body.total).toBeLessThanOrEqual(12)
+  })
+
+  it('cohesion_check returns strong tier (13-16)', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(0.75)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tier).toBe('strong')
+    expect(body.total).toBeGreaterThanOrEqual(13)
+    expect(body.total).toBeLessThanOrEqual(16)
+  })
+
+  it('cohesion_check returns deepened tier (roll > 16)', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(1)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.tier).toBe('deepened')
+    expect(body.total).toBeGreaterThan(16)
+  })
+
+  it('cohesion_check applies stress and cooperation modifiers', async () => {
+    const partyId = await createParty()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId, stressModifier: -5, cooperationModifier: 3 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.total).toBe(body.roll - 5 + 3)
+  })
+
+  it('cohesion_check updates party cohesion_score', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBeGreaterThanOrEqual(0)
+    expect(body.cohesionScore).toBeLessThanOrEqual(100)
+  })
+
+  it('cohesion_check weighted fracture outcomes: betrayal ~40%', async () => {
+    const partyId = await createParty()
+    let betrayalCount = 0
+    for (let i = 0; i < 100; i++) {
+      vi.spyOn(Math, 'random').mockReturnValueOnce(i / 1000) // Force fracture
+      vi.spyOn(Math, 'random').mockReturnValueOnce(i / 100 + 0.001) // Outcome random
+      const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId })
+      const body = JSON.parse(r.content[0].text)
+      if (body.fractureType === 'betrayal') betrayalCount++
+    }
+    expect(betrayalCount).toBeGreaterThan(20)
+    expect(betrayalCount).toBeLessThan(60)
+  })
+
+  // ── group_break ─────────────────────────────────────────────────────────
+
+  it('group_break requires partyId', async () => {
+    const r = await handlePartyManage(db(), { action: 'group_break' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('group_break errors for a nonexistent party', async () => {
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId: 'nope' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('group_break requires method enum', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'invalid' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('group_break sets party status to broken', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.status).toBe('broken')
+  })
+
+  it('group_break with method:abandonment records method', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'abandonment' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.method).toBe('abandonment')
+    expect(body.status).toBe('broken')
+  })
+
+  it('group_break with method:betrayal records method', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'betrayal' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.method).toBe('betrayal')
+    expect(body.status).toBe('broken')
+  })
+
+  it('group_break with method:death records method', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'death' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.method).toBe('death')
+    expect(body.status).toBe('broken')
+  })
+
+  it('group_break with method:mutual records method', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.method).toBe('mutual')
+    expect(body.status).toBe('broken')
+  })
+
+  it('group_break deletes party_members', async () => {
+    const partyId = await createParty()
+    // Verify party exists
+    const state = await handlePartyManage(db(), { action: 'get', partyId })
+    expect(JSON.parse(state.content[0].text).success).toBe(true)
+    // Break the party
+    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.status).toBe('broken')
+    // createParty() adds no members, so membersAffected reflects the empty roster
+    expect(body.membersAffected).toBe(0)
+  })
+
+  // ── cohesion_shift ──────────────────────────────────────────────────────
+
+  it('cohesion_shift requires partyId and eventType', async () => {
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('cohesion_shift errors for a nonexistent party', async () => {
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId: 'nope', eventType: 'shared_kill' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('cohesion_shift errors on an unknown eventType', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'nonsense' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('cohesion_shift shared_kill applies +8', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'shared_kill' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.cohesionScore).toBe(58)
+  })
+
+  it('cohesion_shift saved_member applies +12', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(62)
+  })
+
+  it('cohesion_shift supply_theft_discovered applies -12 and clamps', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'supply_theft_discovered' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(38)
+  })
+
+  it('cohesion_shift starvation applies -4', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'starvation' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(46)
+  })
+
+  it('cohesion_shift partner_injured applies -6', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'partner_injured' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(44)
+  })
+
+  it('cohesion_shift moral_disagreement applies -8', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'moral_disagreement' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(42)
+  })
+
+  it('cohesion_shift voluntary_share applies +5', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'voluntary_share' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(55)
+  })
+
+  it('cohesion_shift joint_discovery applies +5', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'joint_discovery' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(55)
+  })
+
+  it('cohesion_shift successful_trade applies +4', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'successful_trade' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(54)
+  })
+
+  it('cohesion_shift audience_interference applies -5', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'audience_interference' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(45)
+  })
+
+  it('cohesion_shift predator_attack applies -6', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'predator_attack' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(44)
+  })
+
+  it('cohesion_shift clamps cohesion_score to [0, 100]', async () => {
+    const partyId = await createParty()
+    // Apply multiple positive shifts to hit ceiling
+    for (let i = 0; i < 10; i++) {
+      await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+    }
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.cohesionScore).toBe(100)
+  })
+
+  it('cohesion_shift returns event note', async () => {
+    const partyId = await createParty()
+    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'shared_kill' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.note).toBeTruthy()
+  })
 })
