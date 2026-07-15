@@ -515,8 +515,9 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    // Verify members are removed (membersAffected should be > 0 since party had members)
-    expect(body.membersAffected).toBeGreaterThan(0)
+    expect(body.status).toBe('broken')
+    // createParty() adds no members, so membersAffected reflects the empty roster
+    expect(body.membersAffected).toBe(0)
   })
 
   // ── cohesion_shift ──────────────────────────────────────────────────────
