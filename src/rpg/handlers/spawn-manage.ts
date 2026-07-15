@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['spawn_character', 'spawn_encounter', 'spawn_location', 'add_to_encounter', 'list_spawned'] as const
+const ACTIONS = ['spawn_character', 'spawn_encounter', 'spawn_location', 'add_to_encounter', 'list_spawned', 'place_character'] as const
 type SpawnAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SpawnAction> = {
   character: 'spawn_character', spawn_npc: 'spawn_character', create_character: 'spawn_character',
@@ -16,6 +16,7 @@ const ALIASES: Record<string, SpawnAction> = {
   location: 'spawn_location', populate: 'spawn_location',
   add: 'add_to_encounter', join: 'add_to_encounter', insert: 'add_to_encounter',
   list: 'list_spawned', show_all: 'list_spawned',
+  place: 'place_character', place_npc: 'place_character',
 }
 
 const StatBlock = z.object({ str: z.number().default(10), dex: z.number().default(10), con: z.number().default(10), int: z.number().default(10), wis: z.number().default(10), cha: z.number().default(10) })
@@ -38,6 +39,9 @@ const InputSchema = z.object({
   position: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
   characterId: z.string().optional(),
   worldId: z.string().optional(),
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
+  mapId: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional().default(20),
 })
 
@@ -89,6 +93,15 @@ export async function handleSpawnManage(env: AppBindings, args: Record<string, u
     case 'list_spawned': {
       const { results } = await db.prepare("SELECT id, name, character_type, level, hp, max_hp FROM characters WHERE character_type IN ('npc', 'enemy') ORDER BY created_at DESC LIMIT ?").bind(a.limit).all()
       return ok({ success: true, actionType: 'list_spawned', characters: results, count: results.length })
+    }
+    case 'place_character': {
+      if (!a.characterId) return err('"characterId" is required')
+      if (a.q === undefined || a.r === undefined) return err('"q" and "r" are required')
+      const char = await db.prepare('SELECT id, name FROM characters WHERE id = ?').bind(a.characterId).first() as { id: string; name: string } | null
+      if (!char) return err(`Character not found: ${a.characterId}`)
+      await db.prepare('UPDATE characters SET current_hex_q = ?, current_hex_r = ?, map_id = ?, updated_at = ? WHERE id = ?')
+        .bind(a.q, a.r, a.mapId ?? 'main', now, a.characterId).run()
+      return ok({ success: true, actionType: 'place_character', characterId: a.characterId, name: char.name, q: a.q, r: a.r, mapId: a.mapId ?? 'main' })
     }
   }
 }

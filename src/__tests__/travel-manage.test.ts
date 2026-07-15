@@ -167,4 +167,79 @@ describe('handleTravelManage', () => {
     expect(body.encounter.threshold).toBe(100)
     expect(body.randomEncounter).toBeUndefined()
   })
+
+  // ── move_hex action (issue #337) ────────────────────────────────────
+
+  async function createParty(id: string) {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare('INSERT INTO parties (id, name, world_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, `Party ${id}`, WORLD, now, now).run()
+  }
+
+  it('move_hex requires partyId', async () => {
+    const r = await handleTravelManage(db(), { action: 'move_hex', worldId: WORLD, toQ: 0, toR: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('partyId')
+  })
+
+  it('move_hex requires worldId', async () => {
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'p1', toQ: 0, toR: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('worldId')
+  })
+
+  it('move_hex requires toQ and toR', async () => {
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'p1', worldId: WORLD })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('"toQ"')
+  })
+
+  it('move_hex returns error for unknown party', async () => {
+    await createWorld()
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'no-party', worldId: WORLD, toQ: 0, toR: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('not found')
+  })
+
+  it('move_hex moves a party to a hex with no biome row', async () => {
+    await createWorld()
+    await createParty('party-move-1')
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-1', worldId: WORLD, toQ: 10, toR: 20 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.q).toBe(10)
+    expect(body.r).toBe(20)
+    expect(body.biome).toBeNull()
+    const stored = await env.RPG_DB.prepare('SELECT current_hex_q, current_hex_r FROM parties WHERE id = ?').bind('party-move-1').first() as any
+    expect(stored.current_hex_q).toBe(10)
+    expect(stored.current_hex_r).toBe(20)
+  })
+
+  it('move_hex moves a party to a hex with biome', async () => {
+    await createWorld()
+    await createParty('party-move-2')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'forest', baseThreat: 10 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 3, r: 4, biome: 'forest' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-2', worldId: WORLD, toQ: 3, toR: 4 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.biome).toBe('forest')
+  })
+
+  it('move_hex with resolveEncounter calls the encounter engine', async () => {
+    await createWorld()
+    await createParty('party-move-3')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'mountains', baseThreat: 50 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 7, r: 8, biome: 'mountains' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-3', worldId: WORLD, toQ: 7, toR: 8, resolveEncounter: true, includeInjuries: false })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.biome).toBe('mountains')
+    expect(body.encounter).toBeDefined()
+    expect(body.encounter.threshold).toBe(50)
+  })
 })

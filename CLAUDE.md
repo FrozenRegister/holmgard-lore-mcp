@@ -164,6 +164,30 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 
 **15 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`, `restore_lore`, `batch_set_lore`, `batch_mutate`.
 
+### RPG Handlers and Actions (Cluster 3 — #337, #340, #341)
+
+**`travel-manage.ts`** — Party and character movement in dungeon/world contexts.
+- `travel` — room-graph-based movement (existing, room_nodes model)
+- `loot` — Search a room for items
+- `rest` — Short/long rest, restore HP
+- `move_hex` — **New (#337):** Hex-based party movement on world maps, updates `parties.current_hex_q/r`, optionally resolves encounters
+
+**`spawn-manage.ts`** — Character and encounter creation.
+- `spawn_character` — Generate a new NPC with random UUID
+- `spawn_encounter` — Create a tactical combat setup
+- `spawn_location` — Add a room node (dungeon location)
+- `add_to_encounter` — Place character token on tactical grid
+- `list_spawned` — Browse spawned NPCs/enemies
+- `place_character` — **New (#340):** Position existing character on hex map, updates `characters.current_hex_q/r`, requires character to already exist (unlike `spawn_character`)
+
+**`waypoint-manage.ts`** — Named locations for world-based party travel (#328, #341).
+- `register` — Add a waypoint to a world (requires `q`/`r` hex coords **and** `lat`/`lon` real-world coords)
+- `list`, `get`, `update`, `delete` — CRUD for waypoints
+- `seed_defaults` — Load Gotland waypoints for a world
+- `calibrate` — Set world geo-origin and km-per-hex scale
+- `hex_to_latlon` — Convert hex coords to real-world lat/lon (only works if world is geo-calibrated)
+- Status: #341 is largely resolved (q/r already required); `lat`/`lon` remain required per migration 0021 schema
+
 ## Documenting Discoveries (Capture Institutional Knowledge)
 
 **Whenever you uncover something about how this system works that isn't obvious from a quick read of the code, write it down.** Don't let it get lost in the chat context.

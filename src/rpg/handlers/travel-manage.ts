@@ -9,12 +9,13 @@ import type { AppBindings } from '../../types'
 import { resolveEncounterCore } from './encounter-manage'
 import { executeRoll } from './math-manage'
 
-const ACTIONS = ['travel', 'loot', 'rest'] as const
+const ACTIONS = ['travel', 'loot', 'rest', 'move_hex'] as const
 type TravelAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TravelAction> = {
   move: 'travel', go: 'travel', journey: 'travel', traverse: 'travel',
   search: 'loot', forage: 'loot', find: 'loot', gather: 'loot',
   camp: 'rest', sleep: 'rest', recover: 'rest', short_rest: 'rest', long_rest: 'rest',
+  move_hex: 'move_hex', hex_move: 'move_hex', hex_travel: 'move_hex', move_to_hex: 'move_hex',
 }
 
 const InputSchema = z.object({
@@ -35,6 +36,8 @@ const InputSchema = z.object({
   worldId: z.string().optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
+  toQ: z.number().int().optional(),
+  toR: z.number().int().optional(),
   partySize: z.number().int().min(1).optional().default(1),
   timeOfDay: z.enum(['dawn', 'dusk', 'night', 'midday', 'day']).optional(),
   noiseLevel: z.enum(['loud', 'moderate', 'silent']).optional(),
@@ -151,6 +154,20 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
         results.push({ id: char.id, hpRestored: restore, newHp })
       }
       return ok({ success: true, actionType: 'rest', restType: a.restType, characters: results, hoursElapsed: isLong ? 8 : 1 })
+    }
+    case 'move_hex': {
+      if (!a.partyId) return err('"partyId" is required')
+      if (!a.worldId) return err('"worldId" is required')
+      if (a.toQ === undefined || a.toR === undefined) return err('"toQ" and "toR" are required')
+      const party = await db.prepare('SELECT id FROM parties WHERE id = ?').bind(a.partyId).first() as { id: string } | null
+      if (!party) return err(`Party not found: ${a.partyId}`)
+      const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(a.worldId, a.toQ, a.toR).first() as { biome: string } | null
+      await db.prepare('UPDATE parties SET current_hex_q = ?, current_hex_r = ?, updated_at = ? WHERE id = ?').bind(a.toQ, a.toR, now, a.partyId).run()
+      if (a.resolveEncounter) {
+        const encounter = await resolveEncounterCore(db, { worldId: a.worldId, x: a.toQ, y: a.toR, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel, scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather, includeInjuries: a.includeInjuries, characterIds: a.characterIds })
+        return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null, encounter })
+      }
+      return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null })
     }
   }
 }
