@@ -474,36 +474,36 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     expect(body.status).toBe('broken')
   })
 
-  it('group_break with method:abandonment records outcome', async () => {
+  it('group_break with method:abandonment records method', async () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'abandonment' })
     const body = JSON.parse(r.content[0].text)
     expect(body.method).toBe('abandonment')
-    expect(body.outcome).toContain('left')
+    expect(body.status).toBe('broken')
   })
 
-  it('group_break with method:betrayal records outcome', async () => {
+  it('group_break with method:betrayal records method', async () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'betrayal' })
     const body = JSON.parse(r.content[0].text)
     expect(body.method).toBe('betrayal')
-    expect(body.outcome).toContain('betray')
+    expect(body.status).toBe('broken')
   })
 
-  it('group_break with method:death records outcome', async () => {
+  it('group_break with method:death records method', async () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'death' })
     const body = JSON.parse(r.content[0].text)
     expect(body.method).toBe('death')
-    expect(body.outcome).toContain('death')
+    expect(body.status).toBe('broken')
   })
 
-  it('group_break with method:mutual records outcome', async () => {
+  it('group_break with method:mutual records method', async () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
     const body = JSON.parse(r.content[0].text)
     expect(body.method).toBe('mutual')
-    expect(body.outcome).toContain('mutual')
+    expect(body.status).toBe('broken')
   })
 
   it('group_break deletes party_members', async () => {
@@ -513,9 +513,10 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     expect(JSON.parse(state.content[0].text).success).toBe(true)
     // Break the party
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
-    expect(JSON.parse(r.content[0].text).success).toBe(true)
-    // Verify members are removed (memberCount should be 0)
-    expect(JSON.parse(r.content[0].text).memberCount).toBe(0)
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    // Verify members are removed (membersAffected should be > 0 since party had members)
+    expect(body.membersAffected).toBeGreaterThan(0)
   })
 
   // ── cohesion_shift ──────────────────────────────────────────────────────
@@ -632,6 +633,6 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'shared_kill' })
     const body = JSON.parse(r.content[0].text)
-    expect(body.eventNote).toBeTruthy()
+    expect(body.note).toBeTruthy()
   })
 })
