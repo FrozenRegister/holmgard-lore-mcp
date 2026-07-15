@@ -509,7 +509,7 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   it('group_break deletes party_members', async () => {
     const partyId = await createParty()
     // Verify party exists
-    let state = await handlePartyManage(db(), { action: 'get', partyId })
+    const state = await handlePartyManage(db(), { action: 'get', partyId })
     expect(JSON.parse(state.content[0].text).success).toBe(true)
     // Break the party
     const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'mutual' })
