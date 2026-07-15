@@ -733,7 +733,7 @@ export const getInventorySchema = z.object({ entity_key: z.string().min(1) })
 // case-insensitive name match against characters.name for KV-authored
 // entries with no d1_id yet. Returns null on any failure (missing binding,
 // unmigrated schema, no match) — callers fall back to KV parsing.
-async function resolveEntityToCharacterId(
+export async function resolveEntityToCharacterId(
   db: D1Database | undefined, meta: Record<string, unknown>, text: string, entityKey: string,
 ): Promise<string | null> {
   if (!db) return null

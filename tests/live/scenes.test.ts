@@ -40,6 +40,9 @@ describe.skipIf(!MCP_API_KEY)('Scene Operations', () => {
     const res = await tool('scene_manage', { action: 'commit_choice', choice_id: choiceKey, entity_key: historyEntity })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/committed/)
+    // #350 — timeline_events bridge field is always present; null here since
+    // this KV-only test entity has no matching D1 character/world_id.
+    expect(res.result.timeline_event_id).toBeNull()
   })
 
   it('commit_choice state change persists', async () => {
