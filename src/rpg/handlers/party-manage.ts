@@ -40,7 +40,7 @@ import type { AppBindings } from '../../types'
 const ACTIONS = [
   'create', 'get', 'list', 'update', 'delete', 'add_member', 'remove_member', 'set_leader',
   'trust_shift', 'resolve_conflict', 'betrayal_check', 'morale_roll', 'watch_rotation',
-  'begin_march', 'get_march_status',
+  'begin_march', 'get_march_status', 'cohesion_check', 'group_break', 'cohesion_shift',
 ] as const
 type PartyAction = typeof ACTIONS[number]
 const ALIASES: Record<string, PartyAction> = {
@@ -56,6 +56,9 @@ const ALIASES: Record<string, PartyAction> = {
   watch: 'watch_rotation', assign_watch: 'watch_rotation',
   march: 'begin_march', travel_to: 'begin_march',
   march_status: 'get_march_status',
+  cohesion: 'cohesion_check', check_cohesion: 'cohesion_check',
+  break: 'group_break', fracture: 'group_break', disband: 'group_break',
+  shift: 'cohesion_shift', apply_event: 'cohesion_shift',
 } as Record<string, PartyAction>
 
 // Transcribed from the issue's "Trust Events" table. `delta` is applied to
@@ -87,6 +90,21 @@ const MORALE_EVENTS: Record<string, { delta: number; note: string }> = {
   predator_driven_off: { delta: 8, note: 'A predator killed or driven off together.' },
   yield_saved: { delta: 10, note: 'A Yield saved from death.' },
   clear_day: { delta: 2, note: 'Clear weather day with no encounters.' },
+}
+
+// Cohesion event deltas — track immediate interpersonal bond strength independently of morale
+const COHESION_EVENTS: Record<string, { delta: number; note: string }> = {
+  shared_kill: { delta: 8, note: 'Cooperation under pressure' },
+  saved_member: { delta: 12, note: 'Saved a party member from death' },
+  voluntary_share: { delta: 5, note: 'Voluntary resource sharing' },
+  joint_discovery: { delta: 5, note: 'Joint discovery of cache or mechanism' },
+  successful_trade: { delta: 4, note: 'Successful trade with another group' },
+  partner_injured: { delta: -6, note: 'Partner injured — trust strain' },
+  supply_theft_discovered: { delta: -12, note: 'Theft discovered within group' },
+  moral_disagreement: { delta: -8, note: 'Irreconcilable moral disagreement' },
+  audience_interference: { delta: -5, note: 'Production interference targeted at this group' },
+  starvation: { delta: -4, note: 'Rations below threshold' },
+  predator_attack: { delta: -6, note: 'Predator attack stress' },
 }
 
 function moraleTier(morale: number): { cohesion: string; rollModifier: number; dissolved: boolean } {
@@ -135,6 +153,12 @@ const InputSchema = z.object({
   fromWaypointId: z.string().optional(),
   fromWaypointName: z.string().optional(),
   pace: z.number().positive().optional(),
+  // cohesion_check
+  stressModifier: z.number().optional().default(0),
+  cooperationModifier: z.number().optional().default(0),
+  // group_break
+  reason: z.string().optional(),
+  method: z.enum(['abandonment', 'betrayal', 'death', 'mutual']).optional(),
 })
 
 async function getTrustMatrix(db: D1Database, partyId: string): Promise<Array<{ from_character_id: string; to_character_id: string; trust_score: number }>> {
@@ -385,6 +409,96 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         currentWaypoint: currentWaypoint ? { id: currentWaypoint.id, name: currentWaypoint.name } : null,
         targetWaypoint: targetWaypoint ? { id: targetWaypoint.id, name: targetWaypoint.name } : null,
         remainingKm: party.travel_remaining_km, pace: party.travel_pace_km_per_day,
+      })
+    }
+    case 'cohesion_check': {
+      const partyId = a.partyId ?? a.id
+      if (!partyId) return err('"partyId" or "id" is required')
+      const party = await db.prepare('SELECT cohesion_score FROM parties WHERE id = ?').bind(partyId).first() as { cohesion_score: number } | null
+      if (!party) return err(`Party not found: ${partyId}`)
+
+      const roll = Math.floor(Math.random() * 20) + 1
+      const total = roll + (a.stressModifier ?? 0) + (a.cooperationModifier ?? 0)
+
+      let tier: string, fractureType: string | null = null
+      if (total <= 4) {
+        tier = 'fracture'
+        const fractures = ['betrayal', 'abandonment', 'violence', 'mutual']
+        const weights = [0.4, 0.3, 0.2, 0.1]
+        const rand = Math.random()
+        let cumulative = 0
+        for (let i = 0; i < fractures.length; i++) {
+          cumulative += weights[i]
+          if (rand < cumulative) { fractureType = fractures[i]; break }
+        }
+      } else if (total <= 8) {
+        tier = 'strain'
+      } else if (total <= 12) {
+        tier = 'stable'
+      } else if (total <= 16) {
+        tier = 'strong'
+      } else {
+        tier = 'deepened'
+      }
+
+      const cohesionDelta = tier === 'fracture' ? -20 : tier === 'strain' ? -10 : tier === 'stable' ? 0 : tier === 'strong' ? 8 : 15
+      const newCohesion = Math.max(0, Math.min(100, party.cohesion_score + cohesionDelta))
+      await db.prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?').bind(newCohesion, now, partyId).run()
+
+      const outcomes: Record<string, string> = {
+        fracture: `Fracture — ${fractureType} (${fractureType === 'betrayal' ? '40%' : fractureType === 'abandonment' ? '30%' : fractureType === 'violence' ? '20%' : '10%'} chance)`,
+        strain: 'Argument — trust erosion, one considers leaving',
+        stable: 'Functional, not warm, pragmatic cooperation',
+        strong: 'Growing trust, mutual reliance',
+        deepened: 'Sacrifice, loyalty, bonus on next check',
+      }
+
+      return ok({
+        success: true, actionType: 'cohesion_check', partyId, roll, total,
+        modifiers: { stressModifier: a.stressModifier ?? 0, cooperationModifier: a.cooperationModifier ?? 0 },
+        tier, outcome: outcomes[tier], cohesionScore: newCohesion, fractureType,
+      })
+    }
+    case 'group_break': {
+      const partyId = a.partyId ?? a.id
+      if (!partyId) return err('"partyId" or "id" is required')
+      if (!a.method) return err('"method" is required (abandonment, betrayal, death, or mutual)')
+
+      const party = await db.prepare('SELECT id FROM parties WHERE id = ?').bind(partyId).first()
+      if (!party) return err(`Party not found: ${partyId}`)
+
+      const { results: members } = await db.prepare('SELECT character_id FROM party_members WHERE party_id = ?').bind(partyId).all() as { results: Array<{ character_id: string }> }
+
+      if (a.method === 'mutual') {
+        await db.prepare('DELETE FROM party_members WHERE party_id = ?').bind(partyId).run()
+      } else {
+        await db.prepare('DELETE FROM party_members WHERE party_id = ?').bind(partyId).run()
+      }
+
+      await db.prepare('UPDATE parties SET status = ?, updated_at = ? WHERE id = ?').bind('broken', now, partyId).run()
+
+      return ok({
+        success: true, actionType: 'group_break', partyId, method: a.method,
+        reason: a.reason ?? null, membersAffected: members.length, status: 'broken',
+      })
+    }
+    case 'cohesion_shift': {
+      const partyId = a.partyId ?? a.id
+      if (!partyId) return err('"partyId" or "id" is required')
+      if (!a.eventType) return err('"eventType" is required')
+
+      const event = COHESION_EVENTS[a.eventType]
+      if (!event) return err(`Unknown eventType: ${a.eventType}`)
+
+      const party = await db.prepare('SELECT cohesion_score FROM parties WHERE id = ?').bind(partyId).first() as { cohesion_score: number } | null
+      if (!party) return err(`Party not found: ${partyId}`)
+
+      const newCohesion = Math.max(0, Math.min(100, party.cohesion_score + event.delta))
+      await db.prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?').bind(newCohesion, now, partyId).run()
+
+      return ok({
+        success: true, actionType: 'cohesion_shift', partyId, eventType: a.eventType,
+        delta: event.delta, note: event.note, cohesionScore: newCohesion,
       })
     }
   }
