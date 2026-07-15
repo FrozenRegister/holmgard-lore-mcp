@@ -81,6 +81,8 @@ const LORE_MANAGE_SCHEMA = {
       properties: {
         action: { type: 'string', const: 'search', description: 'Full-text search across lore entries' },
         query: { type: 'string', minLength: 1, description: 'Search query string' },
+        match_mode: { type: 'string', enum: ['any', 'all', 'exact'], description: 'Match mode — "any" (default, tokenized-OR: match if any token is found), "all" (AND: all tokens must be present, not necessarily contiguous), "exact" (full contiguous substring match)' },
+        prefix: { type: 'string', minLength: 1, description: 'Key prefix filter (e.g. "character", "location") — scopes the scan to entries whose key starts with this prefix' },
         max_results: { type: 'number', minimum: 1, maximum: 50, description: 'Maximum results to return (default: 10)' },
         scan_limit: { type: 'number', minimum: 1, maximum: 2000, description: 'Maximum entries to scan (default: 500)' },
       },
