@@ -929,7 +929,9 @@ CREATE TABLE IF NOT EXISTS event_inbox (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   event_type TEXT NOT NULL CHECK (event_type IN (
     'npc_action', 'combat_update', 'world_change', 'quest_update',
-    'time_passage', 'environmental', 'system'
+    'time_passage', 'environmental', 'system', 'crate_drop', 'perimeter_contraction',
+    'audience_vote', 'production_intervention', 'predator_release', 'shelter_collapse',
+    'weather_shift', 'echo_activation'
   )),
   payload    TEXT NOT NULL,
   source_type TEXT CHECK (source_type IN ('npc', 'combat', 'world', 'system', 'scheduler')),
