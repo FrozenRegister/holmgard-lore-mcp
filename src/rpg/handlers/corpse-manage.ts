@@ -108,8 +108,9 @@ const InputSchema = z.object({
   // #377 — accept snake_case world_id as an alias for camelCase worldId
   world_id: z.string().optional(),
   encounterId: z.string().optional(),
-  positionX: z.number().int().optional(),
-  positionY: z.number().int().optional(),
+  // Axial hex coordinates (world map is a hex grid, not cartesian — see #391).
+  positionQ: z.number().int().optional(),
+  positionR: z.number().int().optional(),
   state: z.enum(DECAY_STATES).optional(),
   lootedBy: z.string().optional(),
   filter: z.enum(['all', 'fresh', 'unlooted']).optional().default('all'),
@@ -165,8 +166,8 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
     case 'create': {
       if (!a.characterId || !a.characterName) return err('"characterId" and "characterName" are required')
       const id = crypto.randomUUID()
-      await db.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, encounter_id, position_x, position_y, state, state_updated_at, harvestable_resources, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, '[]', ?, ?)`)
-        .bind(id, a.characterId, a.characterName, a.characterType, a.worldId ?? null, a.encounterId ?? null, a.positionX ?? null, a.positionY ?? null, now, now, now).run()
+      await db.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, encounter_id, position_q, position_r, state, state_updated_at, harvestable_resources, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, '[]', ?, ?)`)
+        .bind(id, a.characterId, a.characterName, a.characterType, a.worldId ?? null, a.encounterId ?? null, a.positionQ ?? null, a.positionR ?? null, now, now, now).run()
       return ok({ success: true, actionType: 'create', corpseId: id, characterName: a.characterName, state: 'fresh' })
     }
     case 'get': {
@@ -220,8 +221,8 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
         ? snapshotBody.inventory.map(i => ({ itemName: i.item_name, category: i.category, quantity: i.quantity }))
         : []
       const id = crypto.randomUUID()
-      await db.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, encounter_id, position_x, position_y, state, state_updated_at, harvestable_resources, created_at, updated_at, death_at, cause_of_death, decomposition_stage, preserve_inventory_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, '[]', ?, ?, ?, ?, 'fresh', ?)`)
-        .bind(id, a.characterId, a.characterName, a.characterType, a.worldId ?? null, a.encounterId ?? null, a.positionX ?? null, a.positionY ?? null, now, now, now, deathAt, a.causeOfDeath ?? null, JSON.stringify(snapshot)).run()
+      await db.prepare(`INSERT INTO corpses (id, character_id, character_name, character_type, world_id, encounter_id, position_q, position_r, state, state_updated_at, harvestable_resources, created_at, updated_at, death_at, cause_of_death, decomposition_stage, preserve_inventory_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, '[]', ?, ?, ?, ?, 'fresh', ?)`)
+        .bind(id, a.characterId, a.characterName, a.characterType, a.worldId ?? null, a.encounterId ?? null, a.positionQ ?? null, a.positionR ?? null, now, now, now, deathAt, a.causeOfDeath ?? null, JSON.stringify(snapshot)).run()
       return ok({
         success: true, actionType: 'register', corpseId: id, characterName: a.characterName,
         deathAt, causeOfDeath: a.causeOfDeath ?? null, inventorySnapshot: snapshot, decompositionStage: 'fresh',
@@ -244,9 +245,9 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
       })
     }
     case 'scavenge_check': {
-      if (!a.worldId || a.positionX === undefined || a.positionY === undefined) return err('"worldId", "positionX", and "positionY" are required')
-      const { results } = await db.prepare('SELECT id, decomposition_stage FROM corpses WHERE world_id = ? AND position_x = ? AND position_y = ? AND recovered = 0')
-        .bind(a.worldId, a.positionX, a.positionY).all() as { results: Array<{ id: string; decomposition_stage: string }> }
+      if (!a.worldId || a.positionQ === undefined || a.positionR === undefined) return err('"worldId", "positionQ", and "positionR" are required')
+      const { results } = await db.prepare('SELECT id, decomposition_stage FROM corpses WHERE world_id = ? AND position_q = ? AND position_r = ? AND recovered = 0')
+        .bind(a.worldId, a.positionQ, a.positionR).all() as { results: Array<{ id: string; decomposition_stage: string }> }
       let totalAttraction = 0
       const breakdown: Array<{ corpseId: string; stage: string; attractionPercent: number }> = []
       for (const c of results) {
@@ -255,7 +256,7 @@ export async function handleCorpseManage(env: AppBindings, args: Record<string, 
         breakdown.push({ corpseId: c.id, stage: stage.name, attractionPercent: stage.scavengerAttraction })
       }
       return ok({
-        success: true, actionType: 'scavenge_check', worldId: a.worldId, positionX: a.positionX, positionY: a.positionY,
+        success: true, actionType: 'scavenge_check', worldId: a.worldId, positionQ: a.positionQ, positionR: a.positionR,
         corpseCount: results.length, totalScavengerAttractionPercent: totalAttraction,
         productionInterventionRecommended: results.length >= 3, corpses: breakdown,
       })

@@ -28,14 +28,14 @@ const InputSchema = z.object({
   roomId: z.string().optional(),
   characterIds: z.array(z.string()).optional().default([]),
   // #280 — encounter.resolve integration. room_nodes (this handler's own
-  // location model) has no world_id/x/y at all, so resolveEncounter can only
-  // call the full engine when the caller also supplies worldId/x/y for the
+  // location model) has no world_id/q/r at all, so resolveEncounter can only
+  // call the full engine when the caller also supplies worldId/q/r for the
   // world_map-side location matching this room; otherwise it falls back to
   // the pre-existing flat 15% flag.
   resolveEncounter: z.boolean().optional().default(false),
   worldId: z.string().optional(),
-  x: z.number().int().optional(),
-  y: z.number().int().optional(),
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
   toQ: z.number().int().optional(),
   toR: z.number().int().optional(),
   partySize: z.number().int().min(1).optional().default(1),
@@ -99,9 +99,9 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
       }
       await db.prepare('UPDATE room_nodes SET visited_count = visited_count + 1, last_visited_at = ?, updated_at = ? WHERE id = ?').bind(now, now, targetRoom.id).run()
 
-      if (a.resolveEncounter && a.worldId && a.x !== undefined && a.y !== undefined) {
+      if (a.resolveEncounter && a.worldId && a.q !== undefined && a.r !== undefined) {
         const encounter = await resolveEncounterCore(db, {
-          worldId: a.worldId, x: a.x, y: a.y, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
+          worldId: a.worldId, q: a.q, r: a.r, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
           scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather,
           includeInjuries: a.includeInjuries, characterIds: a.characterIds,
         })
@@ -115,7 +115,7 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
 
       // Legacy flat-chance flag — preserved for callers that don't track
       // world_map coordinates for their room_nodes (see #280's scope note:
-      // full encounter.resolve requires worldId/x/y, which room_nodes itself
+      // full encounter.resolve requires worldId/q/r, which room_nodes itself
       // doesn't carry).
       // #210 — Use the shared dice engine (1d100 <= 15) instead of a flat
       // Math.random() < 0.15. Functionally identical (15% chance), but now
@@ -164,7 +164,7 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
       const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(a.worldId, a.toQ, a.toR).first() as { biome: string } | null
       await db.prepare('UPDATE parties SET current_hex_q = ?, current_hex_r = ?, updated_at = ? WHERE id = ?').bind(a.toQ, a.toR, now, a.partyId).run()
       if (a.resolveEncounter) {
-        const encounter = await resolveEncounterCore(db, { worldId: a.worldId, x: a.toQ, y: a.toR, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel, scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather, includeInjuries: a.includeInjuries, characterIds: a.characterIds })
+        const encounter = await resolveEncounterCore(db, { worldId: a.worldId, q: a.toQ, r: a.toR, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel, scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather, includeInjuries: a.includeInjuries, characterIds: a.characterIds })
         return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null, encounter })
       }
       return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null })

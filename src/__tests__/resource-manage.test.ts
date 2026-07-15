@@ -21,6 +21,11 @@ describe('handleResourceManage', () => {
     await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, 'Test World', 'abc123', width, height, now, now).run()
   }
 
+  async function seedHex(worldId: string, q: number, r: number) {
+    await env.RPG_DB.prepare("INSERT INTO hexes (q, r, map_id, terrain, world_id, updated_at) VALUES (?, ?, 'main', 'plains', ?, datetime('now'))")
+      .bind(q, r, worldId).run()
+  }
+
   it('returns guiding error for unknown action', async () => {
     const r = await handleResourceManage(db(), { action: 'zap' })
     expect(r.content[0].text).toContain('zap')
@@ -42,11 +47,11 @@ describe('handleResourceManage', () => {
 
   it('crate_drop generates contents respecting day availability and explicit coordinates', async () => {
     await createWorld()
-    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 0, itemCount: 3, x: 10, y: 20 })
+    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 0, itemCount: 3, q: 10, r: 20 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    expect(body.x).toBe(10)
-    expect(body.y).toBe(20)
+    expect(body.q).toBe(10)
+    expect(body.r).toBe(20)
     expect(body.contents).toHaveLength(3)
     expect(body.day).toBe(0)
   })
@@ -57,14 +62,14 @@ describe('handleResourceManage', () => {
     // At day 30, the weapon pool is [Survival Knife, Bear Spray, Improvised
     // Spear] in table order — a near-1 roll exhausts every weight but the
     // last, landing on Improvised Spear via the post-loop fallback.
-    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 30, itemCount: 1, categoryBias: 'weapon', x: 1, y: 1 })
+    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 30, itemCount: 1, categoryBias: 'weapon', q: 1, r: 1 })
     const body = JSON.parse(r.content[0].text)
     expect(body.contents[0].name).toBe('Improvised Spear')
   })
 
   it('crate_drop biases contents toward a requested category', async () => {
     await createWorld()
-    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 30, itemCount: 5, categoryBias: 'medical', x: 1, y: 1 })
+    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 30, itemCount: 5, categoryBias: 'medical', q: 1, r: 1 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     for (const item of body.contents) expect(item.category).toBe('medical')
@@ -73,32 +78,48 @@ describe('handleResourceManage', () => {
   it('crate_drop falls back to the unfiltered pool when the biased category has nothing available yet', async () => {
     await createWorld()
     // "intel" items all have minDay >= 15, so day 0 forces the fallback path.
-    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 0, itemCount: 1, categoryBias: 'intel', x: 1, y: 1 })
+    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 0, itemCount: 1, categoryBias: 'intel', q: 1, r: 1 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.contents).toHaveLength(1)
   })
 
-  it('crate_drop picks a random position within world bounds and avoids nearby characters when possible', async () => {
-    await createWorld(WORLD, 50, 50)
+  it('crate_drop picks a real hex on the map and avoids nearby characters when possible', async () => {
+    await createWorld()
+    await seedHex(WORLD, 0, 0)
+    await seedHex(WORLD, 40, 40)
     const r = await handleResourceManage(db(), {
-      action: 'crate_drop', worldId: WORLD, day: 0, avoidPositions: [{ x: 5, y: 5 }], minDistance: 3,
+      action: 'crate_drop', worldId: WORLD, day: 0, avoidPositions: [{ q: 0, r: 0 }], minDistance: 3,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    expect(body.x).toBeGreaterThanOrEqual(0)
-    expect(body.y).toBeGreaterThanOrEqual(0)
+    // The only hex clearing minDistance from (0,0) is (40,40).
+    expect(body.q).toBe(40)
+    expect(body.r).toBe(40)
   })
 
-  it('crate_drop falls back to an unfiltered random position after repeated avoidance failures', async () => {
-    await createWorld(WORLD, 2, 2)
-    // A tiny world with a huge minDistance makes every candidate "too
-    // close" — exercises the 20-attempt exhaustion fallback branch.
+  it('crate_drop falls back to the first candidate when every hex is within minDistance of an avoided position', async () => {
+    await createWorld()
+    await seedHex(WORLD, 0, 0)
+    await seedHex(WORLD, 1, 1)
+    // Every seeded hex is within a huge minDistance of (0,0) — exercises the
+    // "no candidate clears the filter" fallback branch.
     const r = await handleResourceManage(db(), {
-      action: 'crate_drop', worldId: WORLD, day: 0, avoidPositions: [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: 1, y: 1 }], minDistance: 100,
+      action: 'crate_drop', worldId: WORLD, day: 0, avoidPositions: [{ q: 0, r: 0 }], minDistance: 100,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
+    expect(typeof body.q).toBe('number')
+    expect(typeof body.r).toBe('number')
+  })
+
+  it('crate_drop falls back to the map origin when the world has no hexes yet', async () => {
+    await createWorld()
+    const r = await handleResourceManage(db(), { action: 'crate_drop', worldId: WORLD, day: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.q).toBe(0)
+    expect(body.r).toBe(0)
   })
 
   // ── consume ──────────────────────────────────────────────────────────────

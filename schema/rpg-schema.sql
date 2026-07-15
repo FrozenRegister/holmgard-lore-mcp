@@ -453,8 +453,6 @@ CREATE TABLE IF NOT EXISTS parties (
   current_location TEXT,
   current_quest_id TEXT REFERENCES quests(id) ON DELETE SET NULL,
   formation        TEXT NOT NULL DEFAULT 'standard',
-  position_x       INTEGER,
-  position_y       INTEGER,
   current_poi      TEXT,
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL,
@@ -482,7 +480,6 @@ CREATE TABLE IF NOT EXISTS parties (
 
 CREATE INDEX IF NOT EXISTS idx_parties_status   ON parties(status);
 CREATE INDEX IF NOT EXISTS idx_parties_world    ON parties(world_id);
-CREATE INDEX IF NOT EXISTS idx_parties_position ON parties(position_x, position_y);
 CREATE INDEX IF NOT EXISTS idx_parties_travel_status ON parties(world_id, travel_status);
 
 -- Party Trust & Betrayal (#285) — see migration 0013.
@@ -770,8 +767,10 @@ CREATE TABLE IF NOT EXISTS corpses (
   cr                   REAL,
   world_id             TEXT,
   region_id            TEXT,
-  position_x           INTEGER,
-  position_y           INTEGER,
+  -- Axial hex coordinates matching the world map (hexes.q/r,
+  -- characters/parties.current_hex_q/r) — see migration 0029.
+  position_q           INTEGER,
+  position_r           INTEGER,
   encounter_id         TEXT,
   state                TEXT NOT NULL DEFAULT 'fresh' CHECK (state IN ('fresh', 'decaying', 'skeletal', 'gone')),
   state_updated_at     TEXT NOT NULL,
@@ -797,7 +796,7 @@ CREATE TABLE IF NOT EXISTS corpses (
 );
 
 CREATE INDEX IF NOT EXISTS idx_corpses_encounter      ON corpses(encounter_id);
-CREATE INDEX IF NOT EXISTS idx_corpses_world_position ON corpses(world_id, position_x, position_y);
+CREATE INDEX IF NOT EXISTS idx_corpses_world_position ON corpses(world_id, position_q, position_r);
 CREATE INDEX IF NOT EXISTS idx_corpses_state          ON corpses(state);
 CREATE INDEX IF NOT EXISTS idx_corpses_character      ON corpses(character_id);
 CREATE INDEX IF NOT EXISTS idx_corpses_decomposition_stage ON corpses(decomposition_stage);
@@ -1299,8 +1298,9 @@ CREATE TABLE IF NOT EXISTS crate_drops (
   id          TEXT PRIMARY KEY,
   world_id    TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
   day         INTEGER NOT NULL,
-  x           INTEGER NOT NULL,
-  y           INTEGER NOT NULL,
+  -- Axial hex coordinates matching the world map — see migration 0031.
+  q           INTEGER NOT NULL,
+  r           INTEGER NOT NULL,
   contents    TEXT NOT NULL,
   claimed     INTEGER NOT NULL DEFAULT 0,
   claimed_by  TEXT,

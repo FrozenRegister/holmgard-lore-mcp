@@ -19,22 +19,19 @@ Every map-shaped table and every map-shaped client data structure in this projec
 - **Hex↔pixel** (for SVG rendering) lives server-side in `src/rpg/handlers/world-map.ts` (`hexToPixel`, `hexCorners`, ~lines 196-211) and matches the standard Red Blob Games pointy-top formulas.
 - **Hex↔lat/lon** (for real-world-anchored campaigns, e.g. Gotland) lives server-side in `src/rpg/utils/geo-transform.ts` (`hexToLatLon`/`latLonToHex`), calibrated per-world via `world_state.geo_origin_lat/lon` + `geo_km_per_hex`. The client has an independent, simpler version for Earth-derived maps in `hexmap-utils.ts:143-164` (`axialToLatLon`/`latLonToAxial`) — these are **not the same formula** and are not meant to interoperate; the server one is precise per-world calibration for gameplay (waypoints, party marches), the client one is a fixed-scale approximation for rendering pre-generated Earth data.
 
-### The one place `x`/`y` params secretly mean `q`/`r`
+### `x`/`y` naming that secretly (or actually) meant `q`/`r` — fixed 2026-07-15
 
-`src/rpg/handlers/encounter-manage.ts:351` resolves biome for an encounter check with:
+Three places in the live hex-world model used `x`/`y` naming or storage despite operating entirely within the axial hex system. All three are now fixed (migrations 0029-0031, plus code renames):
 
-```ts
-const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
-  .bind(worldId, x, y).first()
-```
-
-The function signature and every caller (`travel-manage.ts`, `encounter-manage.ts`'s own `check` action) name these parameters `x`/`y`, but they are bound directly to the `hexes` table's `q`/`r` columns. **This is a naming artifact, not a second coordinate system** — `worldId/x/y` in the encounter-resolution path has always meant "world, q, r." This matters for Cluster 3 (see the companion plan doc): the "tile-coordinate" framing in #337/#340/#341 reads as if a genuinely separate Cartesian grid needs to be introduced, when the underlying D1 tables it would need to read/write (`hexes`, `landmarks`, `parties.current_hex_q/r`) are already hex-axial. The fix is to stop calling the params `x`/`y` and wire the handlers to the existing hex tables — not to add a parallel coordinate system.
+1. **`encounter-manage.ts`'s `resolveEncounterCore`, and its `resolve`/`check` actions** — the function signature and every caller (`travel-manage.ts`) used to name these parameters `x`/`y` while binding them directly to the `hexes` table's `q`/`r` columns. This was a naming artifact, not a second coordinate system, but it was exactly the kind of thing that risks a future caller passing genuinely cartesian values by mistake. Renamed `x`/`y` → `q`/`r` throughout `EncounterResolveInput`/`EncounterResolveResult`, the MCP schema, and both call sites in `travel-manage.ts` (the `travel` action's optional `resolveEncounter` integration, and `move_hex`'s encounter check).
+2. **`corpses.position_x`/`position_y`** — a genuinely used pair (written by `create`/`register`, read by `scavenge_check`'s exact-position match), but cartesian while every other world-position column (`characters`/`parties.current_hex_q/r`) is axial hex. Renamed to `position_q`/`position_r` (migration 0029); `corpse-manage.ts`'s `positionX`/`positionY` params became `positionQ`/`positionR`.
+3. **`crate_drops.x`/`y`** — the deeper bug of the three. `resource-manage.ts`'s `crate_drop` action generated positions via `Math.random() * worlds.width/height` with a Euclidean `Math.hypot` distance check for `avoidPositions` — a fully rectangular-cartesian placement model with no relationship to the actual axial hex world. A crate's `x`/`y` never corresponded to any real hex on the map (there is no width/height-to-axial-hex mapping established anywhere in this codebase). Renamed the table to `q`/`r` (migration 0031) and rewrote placement to pick from real rows in `hexes` for that `world_id`, using a proper axial hex-distance formula for the avoidance check, falling back to the map origin `(0,0)` only when the world has no hexes yet.
 
 ### Where a *real*, intentionally separate Cartesian grid does exist
 
 `combat_map` (`src/rpg/handlers/combat-map.ts`) is a **square tactical grid** for turn-based combat encounters — `x`/`y` integer coordinates stored as JSON keys inside `battlefield.grid_data` (no typed D1 columns at all). This is by design: D&D-style tactical combat grids are conventionally square, not hex, and nothing in the codebase or docs suggests unifying it with the hex world map. Treat `combat_map` as out of scope for any hex-coordinate migration.
 
-`parties.position_x`/`position_y` (INTEGER, added in migration `0001_initial.sql`) are **dead** cartesian columns — no code references them (confirmed by grep across `party-manage.ts`). Migration `0021_gotland_waypoints_and_party_march.sql`'s header comment (lines 38-40) explicitly calls this out and defers dropping them as "a separate, out-of-scope cleanup decision." They predate `parties.current_hex_q`/`current_hex_r` (also migration 0021), which is the live hex-position column pair actually written by `party-manage.ts:416` on `begin_march`/arrival.
+`parties.position_x`/`position_y` (INTEGER, added in migration `0001_initial.sql`) were **dead** cartesian columns — confirmed zero code references. Migration `0021_gotland_waypoints_and_party_march.sql`'s header comment (lines 38-40) flagged this and deferred dropping them as "a separate, out-of-scope cleanup decision." **That cleanup is now done** — migration `0030_drop_party_cartesian_position.sql` drops both columns. `parties.current_hex_q`/`current_hex_r` (migration 0021) remains the live hex-position column pair, written by `party-manage.ts` on `begin_march`/arrival and by `travel-manage.ts`'s `move_hex`.
 
 ## 2. Backend D1 schema (source of truth for hex world data)
 
@@ -71,7 +68,13 @@ CREATE TABLE waypoints (
 current_waypoint_id, travel_target_waypoint_id, travel_remaining_km,
 travel_pace_km_per_day, travel_status,
 current_hex_q INTEGER, current_hex_r INTEGER   -- live hex position
--- position_x, position_y INTEGER              -- DEAD, migration 0001, unreferenced
+-- position_x, position_y dropped in migration 0030 (were DEAD, migration 0001, unreferenced)
+
+-- corpses / crate_drops (relevant columns only) — renamed from x/y to q/r
+-- in migrations 0029/0031; see "x/y naming that secretly (or actually)
+-- meant q/r" above.
+corpses.position_q INTEGER, corpses.position_r INTEGER
+crate_drops.q INTEGER NOT NULL, crate_drops.r INTEGER NOT NULL
 ```
 
 `hexes`/`landmarks` is a **single-table, column-level split of ownership**, not a KV/D1-style split — the editor's push endpoints (`/admin/map/push-hexes`, `/admin/map/push-landmarks`) and the RPG engine's write paths (`world_map.patch`/`batch`/`suggest_poi`/`update_poi`) both write to the same rows but touch disjoint column sets. This was the root cause of a real bug (`docs/issues/HIGH-map-push-insert-or-replace-wipes-rpg-columns.md`, #321): the editor's `INSERT OR REPLACE` push used to null out the RPG-owned columns on every ordinary editor sync. Fixed via `ON CONFLICT DO UPDATE` that only touches the columns each route owns — a pattern any future map-table write path must follow.
