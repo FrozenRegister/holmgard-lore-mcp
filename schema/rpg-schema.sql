@@ -6,12 +6,23 @@
 
 -- ── World / Geography ────────────────────────────────────────────────────────
 
+-- Narrative-namespace parent (#308 Phase 1). Additive/non-breaking: worlds remain the
+-- spatial-grid source of truth; universe_id lets multiple worlds share one narrative
+-- container for future cross-world queries. See migration 0032.
+CREATE TABLE IF NOT EXISTS universes (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT,
+  created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS worlds (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   seed        TEXT NOT NULL,
   width       INTEGER NOT NULL,
   height      INTEGER NOT NULL,
+  universe_id TEXT REFERENCES universes(id),
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -1205,6 +1216,7 @@ CREATE TABLE IF NOT EXISTS timeline_events (
   detail        TEXT,
   is_canonical  INTEGER NOT NULL DEFAULT 0,
   branch_id     TEXT,
+  universe_id   TEXT REFERENCES universes(id),
   created_at    TEXT NOT NULL,
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
   FOREIGN KEY(entity_id) REFERENCES characters(id) ON DELETE SET NULL
@@ -1258,6 +1270,7 @@ CREATE TABLE IF NOT EXISTS production_calendar (
   triggered     INTEGER NOT NULL DEFAULT 0,
   triggered_at  TEXT,
   resolved      INTEGER NOT NULL DEFAULT 0,
+  universe_id   TEXT,
   UNIQUE(world_id, day, event_type)
 );
 
@@ -1278,6 +1291,7 @@ CREATE TABLE IF NOT EXISTS resource_inventory (
   expires_on_day     INTEGER,
   spoiled            INTEGER NOT NULL DEFAULT 0,
   acquired_day       INTEGER,
+  universe_id        TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -1304,6 +1318,7 @@ CREATE TABLE IF NOT EXISTS crate_drops (
   contents    TEXT NOT NULL,
   claimed     INTEGER NOT NULL DEFAULT 0,
   claimed_by  TEXT,
+  universe_id TEXT,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -1330,6 +1345,7 @@ CREATE TABLE IF NOT EXISTS broadcast_votes (
   options      TEXT,
   result       TEXT,
   resolved     INTEGER NOT NULL DEFAULT 0,
+  universe_id  TEXT,
   created_at   TEXT NOT NULL,
   resolved_at  TEXT
 );
@@ -1343,6 +1359,7 @@ CREATE TABLE IF NOT EXISTS broadcast_interventions (
   intervention_type    TEXT NOT NULL,
   target_character_id  TEXT,
   details              TEXT,
+  universe_id          TEXT,
   created_at           TEXT NOT NULL
 );
 
