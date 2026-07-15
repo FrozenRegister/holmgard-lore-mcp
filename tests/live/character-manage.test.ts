@@ -108,4 +108,20 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     expect(getRes.character.perception_bonus).toBe(3) // (16-10)/2
     expect(getRes.character.stealth_bonus).toBe(1) // (12-10)/2
   })
+
+  it('move_to_location and move_to_tile set position independently, dual-mode (#313)', async () => {
+    const charId = await createChar({ name: `Mover ${uid()}` })
+
+    const locRes = parseResult(await tool('character_manage', { action: 'move_to_location', characterId: charId, locationKey: 'location:linwood-estate' }))
+    expect(locRes.success).toBe(true)
+
+    const tileRes = parseResult(await tool('character_manage', { action: 'move_to_tile', characterId: charId, q: 52, r: 28 }))
+    expect(tileRes.success).toBe(true)
+    expect(tileRes.mapId).toBe('main')
+
+    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    expect(getRes.character.location_key).toBe('location:linwood-estate')
+    expect(getRes.character.current_hex_q).toBe(52)
+    expect(getRes.character.current_hex_r).toBe(28)
+  })
 })
