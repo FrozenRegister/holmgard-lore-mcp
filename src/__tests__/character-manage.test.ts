@@ -1410,4 +1410,106 @@ describe('character_manage tool', () => {
       expect(r.success).toBe(true)
     }
   })
+
+  // ── move_to_location / move_to_tile (#313) ────────────────────────────────
+
+  it('move_to_location requires id or characterId', async () => {
+    const r = await callTool('character_manage', { action: 'move_to_location', locationKey: 'location:linwood-estate' })
+    expect(r.error).toBe(true)
+  })
+
+  it('move_to_location requires locationKey', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Catherine Vance' })
+    const r = await callTool('character_manage', { action: 'move_to_location', id: created.characterId })
+    expect(r.error).toBe(true)
+  })
+
+  it('move_to_location on non-existent character returns error', async () => {
+    const r = await callTool('character_manage', { action: 'move_to_location', id: 'nonexistent', locationKey: 'location:helsinki' })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('not found')
+  })
+
+  it('move_to_location sets location_key', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Catherine Vance' })
+    const r = await callTool('character_manage', {
+      action: 'move_to_location', id: created.characterId, locationKey: 'location:helsinki-technate',
+    })
+    expect(r.success).toBe(true)
+    expect(r.locationKey).toBe('location:helsinki-technate')
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.location_key).toBe('location:helsinki-technate')
+  })
+
+  it('move_to_location supports characterId parameter and relocate/set_location aliases', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Alias Test' })
+    const r1 = await callTool('character_manage', {
+      action: 'relocate', characterId: created.characterId, locationKey: 'location:a',
+    })
+    expect(r1.success).toBe(true)
+    const r2 = await callTool('character_manage', {
+      action: 'set_location', characterId: created.characterId, locationKey: 'location:b',
+    })
+    expect(r2.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.location_key).toBe('location:b')
+  })
+
+  it('move_to_tile requires id or characterId', async () => {
+    const r = await callTool('character_manage', { action: 'move_to_tile', q: 5, r: 5 })
+    expect(r.error).toBe(true)
+  })
+
+  it('move_to_tile requires q and r', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
+    const r = await callTool('character_manage', { action: 'move_to_tile', id: created.characterId })
+    expect(r.error).toBe(true)
+  })
+
+  it('move_to_tile on non-existent character returns error', async () => {
+    const r = await callTool('character_manage', { action: 'move_to_tile', id: 'nonexistent', q: 1, r: 1 })
+    expect(r.error).toBe(true)
+    expect(r.message).toContain('not found')
+  })
+
+  it('move_to_tile sets hex coordinates and defaults mapId to main', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
+    const r = await callTool('character_manage', {
+      action: 'move_to_tile', id: created.characterId, q: 52, r: 28,
+    })
+    expect(r.success).toBe(true)
+    expect(r.q).toBe(52)
+    expect(r.r).toBe(28)
+    expect(r.mapId).toBe('main')
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.current_hex_q).toBe(52)
+    expect(char.character.current_hex_r).toBe(28)
+    expect(char.character.map_id).toBe('main')
+  })
+
+  it('move_to_tile accepts an explicit mapId and supports move_to_hex/place_on_map aliases', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
+    const r1 = await callTool('character_manage', {
+      action: 'move_to_hex', characterId: created.characterId, q: 1, r: 1, mapId: 'gotland',
+    })
+    expect(r1.success).toBe(true)
+    expect(r1.mapId).toBe('gotland')
+    const r2 = await callTool('character_manage', {
+      action: 'place_on_map', characterId: created.characterId, q: 2, r: 2,
+    })
+    expect(r2.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.current_hex_q).toBe(2)
+    expect(char.character.current_hex_r).toBe(2)
+  })
+
+  it('move_to_location and move_to_tile do not clear each other — a character can be dual-mode', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Dual Mode Yield' })
+    await callTool('character_manage', { action: 'move_to_location', id: created.characterId, locationKey: 'location:linwood-estate' })
+    await callTool('character_manage', { action: 'move_to_tile', id: created.characterId, q: 10, r: 10 })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.location_key).toBe('location:linwood-estate')
+    expect(char.character.current_hex_q).toBe(10)
+    expect(char.character.current_hex_r).toBe(10)
+  })
 })

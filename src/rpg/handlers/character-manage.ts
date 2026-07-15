@@ -10,7 +10,7 @@ import type { AppBindings } from '../../types'
 import { parseKvEntry, extractRawField } from '../../lib/lore'
 import { similarity } from '../utils/fuzzy-enum'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived', 'find_by_name', 'kill'] as const
+const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived', 'find_by_name', 'kill', 'move_to_location', 'move_to_tile'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,
@@ -24,6 +24,8 @@ const ALIASES: Record<string, CharAction> = {
   passengers: 'list_passengers', list_dormant: 'list_passengers', co_habitants: 'list_passengers',
   recompute: 'recompute_derived', refresh_derived: 'recompute_derived', sync_derived_stats: 'recompute_derived',
   die: 'kill', slay: 'kill', defeat: 'kill',
+  relocate: 'move_to_location', set_location: 'move_to_location',
+  move_to_hex: 'move_to_tile', place_on_map: 'move_to_tile',
 } as Record<string, CharAction>
 
 const XP_TABLE: Record<number, number> = {
@@ -108,6 +110,14 @@ const InputSchema = z.object({
   capturedBy: z.enum(['system', 'timeline_event', 'manual']).optional(),
   eventId: z.string().optional(),
   stateJson: z.record(z.unknown()).optional(),
+  // move_to_location / move_to_tile (#313) — location_key and the hex/map
+  // fields are independent, matching spawn-manage.ts's place_character:
+  // setting one does not clear the other, so a character can be dual-mode
+  // (narrative location + tactical hex position) per #313's own rule table.
+  locationKey: z.string().optional(),
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
+  mapId: z.string().optional(),
 })
 
 function parseChar(row: Record<string, unknown>) {
@@ -687,6 +697,28 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         productionPulse,
         locationOccupantsUpdated: true,
       })
+    }
+    case 'move_to_location': {
+      const charId = a.id ?? a.characterId
+      if (!charId) return err('"id" or "characterId" is required')
+      if (!a.locationKey) return err('"locationKey" is required')
+      const existing = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(charId).first()
+      if (!existing) return err(`Character not found: ${charId}`)
+      await db.prepare('UPDATE characters SET location_key = ?, updated_at = ? WHERE id = ?')
+        .bind(a.locationKey, now, charId).run()
+      await syncCharacterToKv(env, charId)
+      return ok({ success: true, actionType: 'move_to_location', characterId: charId, locationKey: a.locationKey })
+    }
+    case 'move_to_tile': {
+      const charId = a.id ?? a.characterId
+      if (!charId) return err('"id" or "characterId" is required')
+      if (a.q === undefined || a.r === undefined) return err('"q" and "r" are required')
+      const existing = await db.prepare('SELECT id FROM characters WHERE id = ?').bind(charId).first()
+      if (!existing) return err(`Character not found: ${charId}`)
+      await db.prepare('UPDATE characters SET current_hex_q = ?, current_hex_r = ?, map_id = ?, updated_at = ? WHERE id = ?')
+        .bind(a.q, a.r, a.mapId ?? 'main', now, charId).run()
+      await syncCharacterToKv(env, charId)
+      return ok({ success: true, actionType: 'move_to_tile', characterId: charId, q: a.q, r: a.r, mapId: a.mapId ?? 'main' })
     }
   }
 }
