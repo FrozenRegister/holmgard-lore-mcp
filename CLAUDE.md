@@ -370,9 +370,8 @@ Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upg
 4. **Run the fast local gate** before pushing (type-check, lint, touched test file)
 5. **Push** to the branch: `git push -u origin feat/my-feature`
 6. **Create a PR** linking to the Issue (see [Pull Requests](#pull-requests-and-issue-linking) below) — this triggers CI
-7. **Add the `auto-merge` label** — CI will run the full suite, and the PR will auto-merge when all checks pass
 
-This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`.
+This workflow ensures CI always runs (full Node 20 + 22 matrix, 100% patch coverage) before code reaches `main`. PRs must pass all required checks, including the **coverage CI job (Istanbul)** which enforces **100% patch coverage on all new code** — this is not waived or advisable.
 
 **"Single blue line"** — A linear git history with no branching or merge commits. When viewing the git graph in VS Code or on GitHub, all commits flow in a straight line (`*` symbols stacked vertically, no `|` branches). This is achieved by rebasing feature branches onto the target branch before merging, keeping history clean and readable. If you see branching in the graph, rebase to linearize it: `git rebase main && git push origin branch-name --force`.
 
