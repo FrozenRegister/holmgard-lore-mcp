@@ -32,8 +32,8 @@ export default defineConfig({
           // error is caught and swallowed — no real Slack message is sent)
           SLACK_WEBHOOK_URL: 'http://127.0.0.1:0/slack',
         },
-        // Local AI mock — returns { response: "AI response mock" } for run() calls.
-        ai: { binding: 'AI' },
+        // AI binding is intentionally omitted — agent-manage is the only handler
+        // that uses it, and the test suite doesn't test agent-manage.
       },
     }),
   ],
