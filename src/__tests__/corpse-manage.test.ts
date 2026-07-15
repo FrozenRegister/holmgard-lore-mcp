@@ -39,7 +39,7 @@ describe('handleCorpseManage', () => {
   })
 
   it('create inserts a new corpse', async () => {
-    const r = await handleCorpseManage(db(), { action: 'create', characterId: 'c1', characterName: 'Dead Goblin', characterType: 'enemy', worldId: 'w1', positionX: 5, positionY: 3 })
+    const r = await handleCorpseManage(db(), { action: 'create', characterId: 'c1', characterName: 'Dead Goblin', characterType: 'enemy', worldId: 'w1', positionQ: 5, positionR: 3 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.state).toBe('fresh')
@@ -244,7 +244,7 @@ describe('handleCorpseManage', () => {
 
   // ── #288 — scavenge_check ────────────────────────────────────────────────
 
-  it('scavenge_check requires worldId, positionX, and positionY', async () => {
+  it('scavenge_check requires worldId, positionQ, and positionR', async () => {
     const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
@@ -252,7 +252,7 @@ describe('handleCorpseManage', () => {
 
   it('scavenge_check reports zero attraction for an empty tile', async () => {
     await createWorld()
-    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionX: 5, positionY: 5 })
+    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionQ: 5, positionR: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.corpseCount).toBe(0)
@@ -263,11 +263,11 @@ describe('handleCorpseManage', () => {
   it('scavenge_check stacks attraction across multiple corpses and recommends intervention at 3+', async () => {
     await createWorld()
     for (const id of ['c-a', 'c-b', 'c-c']) {
-      const reg = await handleCorpseManage(db(), { action: 'register', characterId: id, characterName: id, worldId: WORLD, positionX: 10, positionY: 10 })
+      const reg = await handleCorpseManage(db(), { action: 'register', characterId: id, characterName: id, worldId: WORLD, positionQ: 10, positionR: 10 })
       const { corpseId } = JSON.parse(reg.content[0].text)
       await handleCorpseManage(db(), { action: 'decompose', id: corpseId, hoursSinceDeath: 30 }) // bloat, 25% each
     }
-    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionX: 10, positionY: 10 })
+    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionQ: 10, positionR: 10 })
     const body = JSON.parse(r.content[0].text)
     expect(body.corpseCount).toBe(3)
     expect(body.totalScavengerAttractionPercent).toBe(75)
@@ -276,11 +276,11 @@ describe('handleCorpseManage', () => {
 
   it('scavenge_check excludes recovered corpses', async () => {
     await createWorld()
-    const reg = await handleCorpseManage(db(), { action: 'register', characterId: 'c-d', characterName: 'c-d', worldId: WORLD, positionX: 20, positionY: 20 })
+    const reg = await handleCorpseManage(db(), { action: 'register', characterId: 'c-d', characterName: 'c-d', worldId: WORLD, positionQ: 20, positionR: 20 })
     const { corpseId } = JSON.parse(reg.content[0].text)
     await handleCorpseManage(db(), { action: 'decompose', id: corpseId, hoursSinceDeath: 30 })
     await handleCorpseManage(db(), { action: 'recover', id: corpseId })
-    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionX: 20, positionY: 20 })
+    const r = await handleCorpseManage(db(), { action: 'scavenge_check', worldId: WORLD, positionQ: 20, positionR: 20 })
     const body = JSON.parse(r.content[0].text)
     expect(body.corpseCount).toBe(0)
   })

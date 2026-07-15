@@ -30,7 +30,7 @@ describe('handleEncounterManage', () => {
 
   // ── resolve / check ─────────────────────────────────────────────────────
 
-  it('resolve requires worldId, x, and y', async () => {
+  it('resolve requires worldId, q, and r', async () => {
     const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
@@ -38,7 +38,7 @@ describe('handleEncounterManage', () => {
 
   it('resolve returns encounter: false when threshold is 0 (no biome threat, no zones, no modifiers)', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.encounter).toBe(false)
@@ -49,7 +49,7 @@ describe('handleEncounterManage', () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.encounter).toBe(true)
@@ -60,7 +60,7 @@ describe('handleEncounterManage', () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
     expect(body.encounterType).toBeNull()
@@ -73,7 +73,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'unreachable', minThreat: 90 })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
     expect(body.encounterType).toBeNull()
@@ -87,7 +87,7 @@ describe('handleEncounterManage', () => {
       action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther', aggression: 'hunting', description: 'A giant panther stalks.',
     })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
     expect(body.encounterType).toBe('predator')
@@ -103,7 +103,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, characterIds: ['char-1'] })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, characterIds: ['char-1'] })
     const body = JSON.parse(r.content[0].text)
     expect(body.injuries).toHaveLength(1)
     const injury = body.injuries[0]
@@ -123,7 +123,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.injuries).toHaveLength(1)
     expect(body.injuries[0].characterId).toBeNull()
@@ -136,7 +136,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.injuries).toEqual([])
   })
@@ -147,7 +147,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'environmental', description: 'A rockslide.' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounterType).toBe('environmental')
     expect(body.injuries).toEqual([])
@@ -169,7 +169,7 @@ describe('handleEncounterManage', () => {
     })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'leonar', description: 'A displaced Leonar hunts at the edge of its former range.' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
     expect(body.predator).toBe('leonar')
@@ -188,7 +188,7 @@ describe('handleEncounterManage', () => {
     })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.displaced).toBe(false)
     expect(body.displacedBy).toBeNull()
@@ -201,7 +201,7 @@ describe('handleEncounterManage', () => {
     // requiresCore but no zone at this point matches 'silverback' at all.
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'silverback', requiresCore: true })
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false })
     const body = JSON.parse(r.content[0].text)
     expect(body.encounter).toBe(true)
     expect(body.predator).toBe('silverback')
@@ -212,7 +212,7 @@ describe('handleEncounterManage', () => {
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'deadly_ground', baseThreat: 100 })
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, characterIds: ['char-1'] })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, characterIds: ['char-1'] })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.actionType).toBe('check')
@@ -229,7 +229,7 @@ describe('handleEncounterManage', () => {
 
   it('check applies the dawn/dusk time modifier (+5)', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, timeOfDay: 'dawn' })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, timeOfDay: 'dawn' })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.time).toBe(5)
     expect(body.threshold).toBe(5)
@@ -237,7 +237,7 @@ describe('handleEncounterManage', () => {
 
   it('check applies the midday time modifier (-5, clamped to 0 threshold)', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, timeOfDay: 'midday' })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, timeOfDay: 'midday' })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.time).toBe(-5)
     expect(body.threshold).toBe(0)
@@ -245,44 +245,44 @@ describe('handleEncounterManage', () => {
 
   it('check applies the loud noise modifier (+8)', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, noiseLevel: 'loud' })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, noiseLevel: 'loud' })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.noise).toBe(8)
   })
 
   it('check sums multiple distinct scent modifiers', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, scentModifiers: ['blood', 'cooking'] })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, scentModifiers: ['blood', 'cooking'] })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.scent).toBe(25)
   })
 
   it('check applies +2 threat per party member beyond the first', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, partySize: 4 })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, partySize: 4 })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.partySize).toBe(6)
   })
 
   it('check applies +10 when every party member is injured', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, partyInjuries: ['bleeding', 'concussed'] })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, partyInjuries: ['bleeding', 'concussed'] })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.partyInjured).toBe(10)
   })
 
   it('check does not apply the injured-party modifier when at least one member is uninjured', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, partyInjuries: ['none', 'bleeding'] })
+    const r = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, partyInjuries: ['none', 'bleeding'] })
     const body = JSON.parse(r.content[0].text)
     expect(body.modifiers.partyInjured).toBeUndefined()
   })
 
   it('check applies weather modifiers (rain -5, fog +3)', async () => {
     await createWorld()
-    const rain = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, weather: 'rain' })
+    const rain = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, weather: 'rain' })
     expect(JSON.parse(rain.content[0].text).modifiers.weather).toBe(-5)
-    const fog = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, x: 5, y: 5, weather: 'fog' })
+    const fog = await handleEncounterManage(db(), { action: 'check', worldId: WORLD, q: 5, r: 5, weather: 'fog' })
     expect(JSON.parse(fog.content[0].text).modifiers.weather).toBe(3)
   })
 
@@ -419,7 +419,7 @@ describe('handleEncounterManage', () => {
     await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }] })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {
-      action: 'resolve', worldId: WORLD, x: 5, y: 5,
+      action: 'resolve', worldId: WORLD, q: 5, r: 5,
       stealthCheck: true, yieldStealthRoll: 20, stealthMode: 'hiding', distanceZone: 'edge', windDirection: 'away',
     })
     const body = JSON.parse(r.content[0].text)
@@ -437,7 +437,7 @@ describe('handleEncounterManage', () => {
     await createWorld()
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {
-      action: 'check', worldId: WORLD, x: 5, y: 5,
+      action: 'check', worldId: WORLD, q: 5, r: 5,
       stealthCheck: true, yieldStealthRoll: 3, stealthMode: 'active', distanceZone: 'unknown', windDirection: 'none',
     })
     const body = JSON.parse(r.content[0].text)
@@ -450,7 +450,7 @@ describe('handleEncounterManage', () => {
     await createWorld()
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {
-      action: 'resolve', worldId: WORLD, x: 5, y: 5,
+      action: 'resolve', worldId: WORLD, q: 5, r: 5,
       stealthCheck: true, yieldStealthRoll: 1, stealthMode: 'rushed', distanceZone: 'core', windDirection: 'toward', yieldBleeding: true,
     })
     const body = JSON.parse(r.content[0].text)
@@ -470,7 +470,7 @@ describe('handleEncounterManage', () => {
     await handleEncounterManage(db(), { action: 'add_type', worldId: WORLD, category: 'predator', predatorName: 'giant_panther' })
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const r = await handleEncounterManage(db(), {
-      action: 'resolve', worldId: WORLD, x: 5, y: 5, includeInjuries: false,
+      action: 'resolve', worldId: WORLD, q: 5, r: 5, includeInjuries: false,
       stealthCheck: true, yieldStealthRoll: 1,
     })
     const body = JSON.parse(r.content[0].text)
@@ -482,7 +482,7 @@ describe('handleEncounterManage', () => {
 
   it('resolve without stealthCheck omits stealthResult entirely', async () => {
     await createWorld()
-    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, x: 5, y: 5 })
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
     const body = JSON.parse(r.content[0].text)
     expect(body.stealthResult).toBeUndefined()
   })

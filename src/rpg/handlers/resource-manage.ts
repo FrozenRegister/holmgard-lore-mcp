@@ -238,11 +238,11 @@ const InputSchema = z.object({
   ownerType: z.enum(OWNER_TYPES).optional(),
   ownerId: z.string().optional(),
   day: z.number().int().min(0).optional().default(0),
-  // crate_drop
+  // crate_drop — axial hex coordinates (q, r), matching the world map.
   itemCount: z.number().int().min(1).max(10).optional().default(3),
-  x: z.number().int().optional(),
-  y: z.number().int().optional(),
-  avoidPositions: z.array(z.object({ x: z.number().int(), y: z.number().int() })).optional().default([]),
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
+  avoidPositions: z.array(z.object({ q: z.number().int(), r: z.number().int() })).optional().default([]),
   minDistance: z.number().min(0).optional().default(3),
   categoryBias: z.enum(['medical', 'food', 'tools', 'weapon', 'intel']).optional(),
   // consume
@@ -262,6 +262,12 @@ function biomeKey(name: string): string {
   return name.toLowerCase().trim().replace(/\s+/g, '_')
 }
 
+// Axial hex distance (number of hex steps), NOT Euclidean — matches the
+// formula used in world-map.ts/combat-map.ts for the same world model.
+function hexDistance(q1: number, r1: number, q2: number, r2: number): number {
+  return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2
+}
+
 export async function handleResourceManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
@@ -274,7 +280,7 @@ export async function handleResourceManage(env: AppBindings, args: Record<string
   switch (match.matched) {
     case 'crate_drop': {
       if (!a.worldId) return err('"worldId" is required')
-      const world = await db.prepare('SELECT width, height FROM worlds WHERE id = ?').bind(a.worldId).first() as { width: number; height: number } | null
+      const world = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(a.worldId).first()
       if (!world) return err(`World not found: ${a.worldId}`)
 
       const available = CRATE_TABLE.filter(item => item.minDay <= a.day && (!a.categoryBias || item.category === a.categoryBias))
@@ -286,24 +292,33 @@ export async function handleResourceManage(env: AppBindings, args: Record<string
       const contents: CrateItem[] = []
       for (let i = 0; i < a.itemCount; i++) contents.push(weightedPick(pool))
 
-      let x = a.x
-      let y = a.y
-      if (x === undefined || y === undefined) {
-        for (let attempt = 0; attempt < 20; attempt++) {
-          const tryX = Math.floor(Math.random() * world.width)
-          const tryY = Math.floor(Math.random() * world.height)
-          const tooClose = a.avoidPositions.some(p => Math.hypot(p.x - tryX, p.y - tryY) < a.minDistance)
-          if (!tooClose) { x = tryX; y = tryY; break }
+      let q = a.q
+      let r = a.r
+      if (q === undefined || r === undefined) {
+        // Pick from real hexes on this world's map — a crate position must
+        // correspond to an actual hex, not an arbitrary axial coordinate
+        // (unlike a rectangular grid, axial q/r has no width/height bounding
+        // box to sample uniformly within).
+        const { results: candidates } = await db.prepare('SELECT q, r FROM hexes WHERE world_id = ? ORDER BY RANDOM() LIMIT 20')
+          .bind(a.worldId).all() as { results: Array<{ q: number; r: number }> }
+        for (const c of candidates) {
+          const tooClose = a.avoidPositions.some(p => hexDistance(p.q, p.r, c.q, c.r) < a.minDistance)
+          if (!tooClose) { q = c.q; r = c.r; break }
         }
-        if (x === undefined || y === undefined) { x = Math.floor(Math.random() * world.width); y = Math.floor(Math.random() * world.height) }
+        if (q === undefined || r === undefined) {
+          // No candidate cleared minDistance (or the world has no hexes yet)
+          // — fall back to the first candidate, or the map origin.
+          q = candidates[0]?.q ?? 0
+          r = candidates[0]?.r ?? 0
+        }
       }
 
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO crate_drops (id, world_id, day, x, y, contents, claimed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)')
-        .bind(id, a.worldId, a.day, x, y, JSON.stringify(contents.map(c => ({ name: c.name, category: c.category, note: c.note }))), now, now).run()
+      await db.prepare('INSERT INTO crate_drops (id, world_id, day, q, r, contents, claimed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)')
+        .bind(id, a.worldId, a.day, q, r, JSON.stringify(contents.map(c => ({ name: c.name, category: c.category, note: c.note }))), now, now).run()
 
       return ok({
-        success: true, actionType: 'crate_drop', crateId: id, worldId: a.worldId, day: a.day, x, y,
+        success: true, actionType: 'crate_drop', crateId: id, worldId: a.worldId, day: a.day, q, r,
         contents: contents.map(c => ({ name: c.name, category: c.category, note: c.note })),
         contentsHint: contents.map(c => c.category).join(', '),
       })

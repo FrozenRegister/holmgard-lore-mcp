@@ -113,5 +113,8 @@ All three should update `CLAUDE.md`'s architecture section (new actions on `trav
 ## What this plan deliberately does not do
 
 - **Does not touch `combat_map`** — that's an intentionally separate square tactical grid (see architecture doc §1); Cluster 3 is about the *world* map, not the *combat* map.
-- **Does not drop `parties.position_x/position_y`** — dead but out of scope here, per migration 0021's own note; a separate small cleanup PR.
-- **Does not rename `resolveEncounterCore`'s `x`/`y` parameters** in this pass, to avoid scope creep into a function with several existing call sites — noted as a follow-up cleanup in the architecture doc, not bundled into Cluster 3.
+
+**Update (2026-07-15):** the two follow-up cleanups noted below at the time this plan was written have since been done, prompted by issue #391 review — see the architecture doc's "x/y naming that secretly (or actually) meant q/r" section:
+- ~~Does not drop `parties.position_x/position_y`~~ — dropped in migration `0030_drop_party_cartesian_position.sql`.
+- ~~Does not rename `resolveEncounterCore`'s `x`/`y` parameters~~ — renamed to `q`/`r` throughout `encounter-manage.ts` and its `travel-manage.ts` call sites.
+- Additionally found and fixed in the same pass: `corpses.position_x/position_y` (renamed to `position_q/position_r`, migration `0029`) and `crate_drops.x/y` (renamed to `q/r` and re-derived from real `hexes` rows instead of a `Math.random() * width/height` rectangular placement, migration `0031`) — neither was known at the time this plan was written.

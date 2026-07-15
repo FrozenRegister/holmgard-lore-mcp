@@ -1,0 +1,3 @@
+### Fixes
+- Eliminated stray cartesian (x/y) coordinate references from the hex-axial world model. `corpses.position_x/position_y` and `crate_drops.x/y` renamed to `position_q/position_r` and `q/r` respectively (migrations 0029, 0031); `parties.position_x/position_y` (dead since migration 0001) dropped (migration 0030); `encounter-manage.ts`'s `resolveEncounterCore` and its `travel-manage.ts` call sites renamed `x`/`y` params to `q`/`r`.
+- `crate_drop` positions are now drawn from real rows in the `hexes` table for the target world, using proper axial hex distance for the `avoidPositions` check, instead of `Math.random() * worlds.width/height` with Euclidean distance — the previous placement never corresponded to an actual hex on the map.

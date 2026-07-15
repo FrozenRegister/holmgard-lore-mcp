@@ -54,8 +54,8 @@ const AGGRESSIONS = ['curious', 'hunting', 'territorial', 'starving', 'fleeing']
 const InputSchema = z.object({
   action: z.string(),
   worldId: z.string().optional(),
-  x: z.number().int().optional(),
-  y: z.number().int().optional(),
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
   partySize: z.number().int().min(1).optional().default(1),
   timeOfDay: z.enum(['dawn', 'dusk', 'night', 'midday', 'day']).optional(),
   noiseLevel: z.enum(['loud', 'moderate', 'silent']).optional(),
@@ -229,8 +229,8 @@ function computeInfectionStage(severity: string, hoursSinceInjury: number, treat
 
 export interface EncounterResolveInput {
   worldId: string
-  x: number
-  y: number
+  q: number
+  r: number
   partySize?: number
   timeOfDay?: string
   noiseLevel?: string
@@ -284,8 +284,8 @@ export interface EncounterInjuryResult {
 
 export interface EncounterResolveResult {
   worldId: string
-  x: number
-  y: number
+  q: number
+  r: number
   encounter: boolean
   roll: number
   threshold: number
@@ -305,11 +305,11 @@ export interface EncounterResolveResult {
 
 // Core resolution logic, shared by handleEncounterManage's resolve/check
 // actions and travel-manage.ts's optional resolveEncounter integration (#280
-// — travel operates on room_nodes, which has no world_id/x/y at all, so
-// callers wanting an encounter roll on travel must supply worldId/x/y
+// — travel operates on room_nodes, which has no world_id/q/r at all, so
+// callers wanting an encounter roll on travel must supply worldId/q/r
 // explicitly; see travel-manage.ts for the fallback when they don't).
 export async function resolveEncounterCore(db: D1Database, input: EncounterResolveInput): Promise<EncounterResolveResult> {
-  const { worldId, x, y } = input
+  const { worldId, q, r } = input
   const partySize = input.partySize ?? 1
   const partyInjuries = input.partyInjuries ?? ['none']
   const scentModifiers = input.scentModifiers ?? []
@@ -338,17 +338,17 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
     // confrontation at all — skip the threat roll entirely rather than
     // rolling a threshold check nobody needs.
     if (outcome === 'avoided_entirely' || outcome === 'tense_moment') {
-      return { worldId, x, y, encounter: false, roll: 0, threshold: 0, modifiers: {}, confrontationAvoided: true, stealthResult }
+      return { worldId, q, r, encounter: false, roll: 0, threshold: 0, modifiers: {}, confrontationAvoided: true, stealthResult }
     }
   }
 
-  const zones = await resolveZonesAt(db, worldId, x, y)
+  const zones = await resolveZonesAt(db, worldId, q, r)
   const { zoneThreat, dominant } = resolveZoneThreat(zones)
 
   const registry = await getBiomeRegistry(db, worldId)
   // #320 — the RPG engine's terrain grid is now the hex-axial `hexes` table
-  // (unified with the map editor, #308/#319); x/y here are hex q/r coordinates.
-  const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(worldId, x, y).first() as { biome: string } | null
+  // (unified with the map editor, #308/#319).
+  const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(worldId, q, r).first() as { biome: string } | null
   const biomeBase = hex ? (registry.get(hex.biome)?.baseThreat ?? 0) : 0
 
   const { total: modifierTotal, breakdown } = computeModifiers({
@@ -360,7 +360,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const triggered = roll <= threshold
 
   if (input.lightweight || !triggered) {
-    return { worldId, x, y, encounter: triggered, roll, threshold, modifiers: breakdown, stealthResult }
+    return { worldId, q, r, encounter: triggered, roll, threshold, modifiers: breakdown, stealthResult }
   }
 
   const { results: allTypes } = await db.prepare('SELECT * FROM encounter_types WHERE world_id = ? AND min_threat <= ?').bind(worldId, threshold).all() as
@@ -368,7 +368,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
 
   if (allTypes.length === 0) {
     return {
-      worldId, x, y, encounter: true, roll, threshold, modifiers: breakdown, encounterType: null, stealthResult,
+      worldId, q, r, encounter: true, roll, threshold, modifiers: breakdown, encounterType: null, stealthResult,
       message: 'Encounter triggered but no encounter_types are registered for this threshold — use encounter.add_type to register some, or lower an existing type\'s minThreat.',
     }
   }
@@ -417,7 +417,7 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   }
 
   return {
-    worldId, x, y, encounter: true, roll, threshold, modifiers: breakdown,
+    worldId, q, r, encounter: true, roll, threshold, modifiers: breakdown,
     encounterType: selected.category, predator: selected.predator_name, aggression: selected.aggression,
     threatLevel: selectedZone?.threatLevel ?? null,
     displaced: isDisplaced, displacedBy,
@@ -438,10 +438,10 @@ export async function handleEncounterManage(env: AppBindings, args: Record<strin
   switch (match.matched) {
     case 'resolve':
     case 'check': {
-      if (!a.worldId || a.x === undefined || a.y === undefined) return err('"worldId", "x", and "y" are required')
+      if (!a.worldId || a.q === undefined || a.r === undefined) return err('"worldId", "q", and "r" are required')
 
       const result = await resolveEncounterCore(db, {
-        worldId: a.worldId, x: a.x, y: a.y, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
+        worldId: a.worldId, q: a.q, r: a.r, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
         scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather,
         includeInjuries: match.matched === 'resolve' && a.includeInjuries, characterIds: a.characterIds,
         lightweight: match.matched === 'check',
@@ -452,7 +452,7 @@ export async function handleEncounterManage(env: AppBindings, args: Record<strin
       })
 
       if (match.matched === 'check') {
-        return ok({ success: true, actionType: 'check', worldId: result.worldId, x: result.x, y: result.y, encounter: result.encounter, roll: result.roll, threshold: result.threshold, modifiers: result.modifiers, confrontationAvoided: result.confrontationAvoided, stealthResult: result.stealthResult })
+        return ok({ success: true, actionType: 'check', worldId: result.worldId, q: result.q, r: result.r, encounter: result.encounter, roll: result.roll, threshold: result.threshold, modifiers: result.modifiers, confrontationAvoided: result.confrontationAvoided, stealthResult: result.stealthResult })
       }
       return ok({ success: true, actionType: 'resolve', ...result })
     }
