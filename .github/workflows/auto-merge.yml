@@ -64,6 +64,33 @@ jobs:
               }
             }
 
+            // GITHUB_TOKEN-driven merges don't trigger other workflows'
+            // push/pull_request listeners either (the same anti-recursion
+            // behavior noted above for closing-keyword automation) — so
+            // d1-migrate.yml's own push/pull_request triggers never fire for
+            // PRs this job merges, and pending schema/migrations/**.sql files
+            // silently never reach production. Dispatch it directly, the same
+            // way ci.yml/pr-quality.yml already dispatch *this* workflow
+            // rather than relying on workflow_run chaining. Best-effort: a
+            // dispatch failure must never fail the merge job, since the merge
+            // itself already succeeded.
+            async function dispatchMigrationsIfNeeded(prNumber) {
+              try {
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+                })
+                const touchesMigrations = files.some(f => f.filename.startsWith('schema/migrations/'))
+                if (!touchesMigrations) return
+                await github.rest.actions.createWorkflowDispatch({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  workflow_id: 'd1-migrate.yml', ref: 'main',
+                })
+                console.log(`PR #${prNumber}: touched schema/migrations/** — dispatched D1 Migrate (Production)`)
+              } catch (e) {
+                console.log(`PR #${prNumber}: could not dispatch D1 Migrate: ${e.message}`)
+              }
+            }
+
             async function tryMerge(prNumber, headSha, headRef) {
               // Fetch all check runs for this commit (excludes this job itself by name)
               const { data } = await github.rest.checks.listForRef({
@@ -137,6 +164,7 @@ jobs:
               }
 
               await closeLinkedIssues(prNumber, prBody)
+              await dispatchMigrationsIfNeeded(prNumber)
 
               // Delete the source branch now that it's merged — best-effort;
               // a missing headRef (shouldn't happen), a protected branch, or
