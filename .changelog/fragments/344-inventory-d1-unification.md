@@ -1,0 +1,2 @@
+### Features
+- `entity_manage.get_inventory` now reads from the D1 rpg inventory (`inventory_items`/`items`) when it can resolve the `entity_key` to a real D1 character — via the KV entry's `meta.d1_id` (set by character-D1 sync) or, failing that, an exact case-insensitive name match. D1 is treated as fully authoritative once a character resolves (including zero-item inventories), rather than falling back to possibly-stale KV markdown. Entities with no matching D1 character keep working exactly as before via the existing KV `**Inventory:**`/`**Items:**` parsing.

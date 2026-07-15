@@ -1,6 +1,7 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
+import { setupRpgDb } from './setup-d1'
 
 describe('sense_environment', () => {
   it('shows all details for high-perception entity', async () => {
@@ -178,6 +179,74 @@ rope×1
     const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:uses-items-field' })
     expect(res.result.items).toHaveLength(2)
     expect(res.result.items.find((i: { item: string }) => i.item === 'lantern').quantity).toBe(1)
+  })
+
+  // ── #344 — D1 unification ────────────────────────────────────────────────
+
+  describe('D1 resolution', () => {
+    beforeEach(async () => {
+      await setupRpgDb(env.RPG_DB)
+    })
+
+    async function seedD1Character(id: string, name: string) {
+      const now = new Date().toISOString()
+      await env.RPG_DB.prepare(
+        `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at)
+         VALUES (?, ?, '{}', 10, 10, 10, 1, ?, ?)`
+      ).bind(id, name, now, now).run()
+    }
+
+    async function seedItem(itemId: string, name: string, weight = 1, value = 5) {
+      const now = new Date().toISOString()
+      await env.RPG_DB.prepare(
+        `INSERT INTO items (id, name, type, weight, value, created_at, updated_at) VALUES (?, ?, 'gear', ?, ?, ?, ?)`
+      ).bind(itemId, name, weight, value, now, now).run()
+    }
+
+    it('reads from D1 inventory_items when the KV entry carries meta.d1_id', async () => {
+      await seedD1Character('char-1', 'Adebayo')
+      await seedItem('item-1', 'Emergency Ration')
+      await env.RPG_DB.prepare('INSERT INTO inventory_items (character_id, item_id, quantity) VALUES (?, ?, ?)').bind('char-1', 'item-1', 2).run()
+      await env.LORE_DB.put('character:adebayo', JSON.stringify({ text: '**Status:** alive', meta: { version: 1, d1_id: 'char-1' } }))
+
+      const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:adebayo' })
+      expect(res.result.source).toBe('d1')
+      expect(res.result.character_id).toBe('char-1')
+      expect(res.result.items).toHaveLength(1)
+      expect(res.result.items[0].item).toBe('Emergency Ration')
+      expect(res.result.items[0].quantity).toBe(2)
+    })
+
+    it('trusts D1 as authoritative even when D1 has zero items and KV text describes some', async () => {
+      await seedD1Character('char-2', 'Empty Pockets')
+      await env.LORE_DB.put('character:empty-pockets', JSON.stringify({
+        text: '**Inventory:** stale-sword×1', meta: { version: 1, d1_id: 'char-2' },
+      }))
+
+      const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:empty-pockets' })
+      expect(res.result.source).toBe('d1')
+      expect(res.result.items).toHaveLength(0)
+    })
+
+    it('falls back to name match when meta.d1_id is absent but the KV name matches a D1 character', async () => {
+      await seedD1Character('char-3', 'Kavissa')
+      await seedItem('item-2', 'Leather Purse')
+      await env.RPG_DB.prepare('INSERT INTO inventory_items (character_id, item_id, quantity) VALUES (?, ?, ?)').bind('char-3', 'item-2', 1).run()
+      await seedKV('character:kavissa-2', '**Name:** Kavissa')
+
+      const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:kavissa-2' })
+      expect(res.result.source).toBe('d1')
+      expect(res.result.items[0].item).toBe('Leather Purse')
+    })
+
+    it('falls back to KV parsing when no D1 character matches by id or name', async () => {
+      await seedD1Character('char-4', 'Someone Else')
+      await seedKV('character:merchant-no-match', '**Inventory:** sword×1')
+
+      const res = await callTool('entity_manage', { action: 'get_inventory', entity_key: 'character:merchant-no-match' })
+      expect(res.result.source).toBe('kv')
+      expect(res.result.items[0].item).toBe('sword')
+    })
   })
 })
 

@@ -725,12 +725,63 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
 
 export const getInventorySchema = z.object({ entity_key: z.string().min(1) })
 
+// #344 — resolve a KV entity_key to a D1 characters.id, so get_inventory can
+// read the D1 rpg inventory (source of truth per #344's own decided
+// direction) instead of parsing free-text KV markdown. Two lookup paths:
+// meta.d1_id (set by syncCharacterToKv/migrate-kv-to-d1-bulk when a
+// character was created via D1) takes priority; falling back to an exact
+// case-insensitive name match against characters.name for KV-authored
+// entries with no d1_id yet. Returns null on any failure (missing binding,
+// unmigrated schema, no match) — callers fall back to KV parsing.
+async function resolveEntityToCharacterId(
+  db: D1Database | undefined, meta: Record<string, unknown>, text: string, entityKey: string,
+): Promise<string | null> {
+  if (!db) return null
+  try {
+    if (typeof meta.d1_id === 'string' && meta.d1_id) return meta.d1_id
+    const nameGuess = extractRawField(text, 'Name') ?? entityKey.replace(/^character:/, '').replace(/-/g, ' ')
+    const row = await db.prepare('SELECT id FROM characters WHERE LOWER(name) = ?').bind(nameGuess.trim().toLowerCase()).first() as { id: string } | null
+    return row?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function handle_get_inventory({ c, id, args }: TypedToolContext<typeof getInventorySchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
-  const { text } = parseKvEntry(raw)
+  const { text, meta } = parseKvEntry(raw)
+
+  // #344 — D1 first. If this entity_key resolves to a real D1 character,
+  // trust D1's inventory_items rows fully (including "zero items") rather
+  // than falling back to possibly-stale KV markdown — the whole point of
+  // unifying on D1 is that D1 becomes authoritative once a character has one.
+  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
+  if (characterId) {
+    try {
+      const { results } = await c.env.RPG_DB!.prepare(
+        `SELECT ii.item_id, ii.quantity, ii.equipped, ii.slot, i.name, i.type, i.weight, i.value
+         FROM inventory_items ii JOIN items i ON ii.item_id = i.id
+         WHERE ii.character_id = ? ORDER BY ii.equipped DESC, i.name`
+      ).bind(characterId).all()
+      const rows = results as Array<{ item_id: string; quantity: number; equipped: number; slot: string | null; name: string; type: string; weight: number | null; value: number | null }>
+      const items = rows.map(r => ({
+        item: r.name, quantity: r.quantity, condition: null as string | null,
+        item_id: r.item_id, type: r.type, weight: r.weight, value: r.value, equipped: !!r.equipped, slot: r.slot,
+      }))
+      return c.json(makeResult(id, {
+        content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}" (D1): ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
+        metadata: { retrieved: 1, written: 0 },
+        entity_key: entityKey, items, raw_inventory: null, source: 'd1', character_id: characterId,
+      }), 200)
+    } catch {
+      // D1 query failed after a successful resolve (e.g. inventory_items/items
+      // missing on an unmigrated schema) — fall through to KV parsing below.
+    }
+  }
+
   // Multi-line format: **Inventory:** alone on its line, items on following lines
   // Must check this first — extractRawField's \s*$ can swallow \n and grab only the first item
   let invRaw: string | null = null
@@ -763,7 +814,7 @@ export async function handle_get_inventory({ c, id, args }: TypedToolContext<typ
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
     metadata: { retrieved: 1, written: 0 },
-    entity_key: entityKey, items, raw_inventory: invRaw ?? null
+    entity_key: entityKey, items, raw_inventory: invRaw ?? null, source: 'kv',
   }), 200)
 }
 

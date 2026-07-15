@@ -95,6 +95,35 @@ describe.skipIf(!MCP_API_KEY)('Direct-Read Tools', () => {
   })
 })
 
+describe.skipIf(!MCP_API_KEY)('get_inventory D1 unification (#344)', () => {
+  let characterId: string, itemId: string, entityKey: string
+
+  beforeAll(async () => {
+    const name = `Live Inv D1 ${uid()}`
+    const createRes = await tool('character_manage', { action: 'create', name })
+    characterId = createRes.result.characterId
+    entityKey = `character:${name.toLowerCase().replace(/\s+/g, '-')}`
+
+    const itemRes = await tool('rpg', { sub: 'item', action: 'create', name: `Emergency Ration ${uid()}`, type: 'consumable', weight: 0.5, value: 5 })
+    itemId = itemRes.result.itemId
+
+    await tool('rpg', { sub: 'inventory', action: 'add', characterId, itemId, quantity: 2 })
+  })
+
+  afterAll(async () => {
+    await tool('character_manage', { action: 'delete', characterId })
+    await tool('rpg', { sub: 'item', action: 'delete', id: itemId })
+  })
+
+  it('reads the D1-added item through the KV entity_key (auto-synced meta.d1_id)', async () => {
+    const res = await tool('entity_manage', { action: 'get_inventory', entity_key: entityKey })
+    expect(res.error).toBeUndefined()
+    expect(res.result.source).toBe('d1')
+    expect(res.result.character_id).toBe(characterId)
+    expect(res.result.items.some((i: { item: string; quantity: number }) => i.quantity === 2)).toBe(true)
+  })
+})
+
 describe.skipIf(!MCP_API_KEY)('Entity Generation and Encounters', () => {
   let archetypeKey: string, encounterLoc: string, archetypeEntityKey: string
 
