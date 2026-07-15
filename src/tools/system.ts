@@ -221,7 +221,9 @@ export async function handle_validate_topic_exists({ c, id, args }: TypedToolCon
 }
 
 /**
- * @deprecated This O(n) KV full-table scan is a known performance limitation.
+ * Tokenized-OR KV search with relevance ranking and match_mode support (#357).
+ *
+ * The O(n) KV full-table scan remains a known performance limitation.
  * It will be replaced by D1 SQL with FTS5 full-text search during D1 migration.
  * See: https://github.com/FrozenRegister/holmgard-lore-mcp/issues/11
  */
@@ -230,20 +232,37 @@ export const searchLoreSchema = z.object({
   // Freeform **World:** field filter (#259) — narrows cross-world KV noise.
   // Not a D1 world_id FK; see matchesWorld() in lib/lore.ts.
   world: z.string().optional(),
+  // Key prefix filter (e.g. "character", "location") — scopes the scan to
+  // entries whose key starts with this prefix, avoiding irrelevant entries.
+  prefix: z.string().optional(),
+  // Match mode: "any" (default, tokenized-OR), "all" (AND — all tokens must
+  // match, not necessarily contiguous), "exact" (full contiguous substring).
+  match_mode: z.enum(['any', 'all', 'exact']).default('any'),
   max_results: z.number().min(1).max(50).default(10),
   scan_limit: z.number().int().min(1).max(2000).default(500),
 })
 
 export async function handle_search_lore({ c, id, args }: TypedToolContext<typeof searchLoreSchema>): Promise<Response> {
   try {
-    const { query: queryArg, world, max_results, scan_limit } = args
+    const { query: queryArg, world, prefix, match_mode, max_results, scan_limit } = args
     const searchQuery = queryArg.toLowerCase()
-    const allKeys = (await kvList(c)).slice(0, scan_limit)
-    const results: Array<{ key: string; excerpt: string }> = []
+    const tokens = searchQuery.split(/\s+/).filter(t => t.length > 0)
+
+    // Get keys, optionally filtered by prefix using the maintained index
+    let allKeys = await kvList(c)
+    if (prefix) {
+      const prefixLower = prefix.toLowerCase()
+      allKeys = allKeys.filter(k => k.startsWith(prefixLower))
+    }
+    allKeys = allKeys.slice(0, scan_limit)
+
+    // Results include a relevance score for ranking
+    const scoredResults: Array<{ key: string; excerpt: string; score: number }> = []
     const CHUNK_SIZE = 50
 
     for (let chunkStart = 0; chunkStart < allKeys.length; chunkStart += CHUNK_SIZE) {
-      if (results.length >= max_results) break
+      // Collect all matches from this chunk before checking max_results,
+      // so we can sort by relevance and keep the top N across all chunks scanned.
       const chunkKeys = allKeys.slice(chunkStart, chunkStart + CHUNK_SIZE)
 
       // Use sequential gets with individual error handling to avoid TaskGroup
@@ -258,25 +277,80 @@ export async function handle_search_lore({ c, id, args }: TypedToolContext<typeo
       }
 
       for (let i = 0; i < chunkKeys.length; i++) {
-        if (results.length >= max_results) break
         const raw = chunkRaws[i]
         if (!raw) continue
         const key = chunkKeys[i]
         const { text } = parseKvEntry(raw)
         if (world && !matchesWorld(text, world)) continue
         const lowerText = text.toLowerCase()
-        const idx = lowerText.indexOf(searchQuery)
-        if (idx === -1) continue
 
-        const start = Math.max(0, idx - 30)
-        const end = Math.min(text.length, idx + searchQuery.length + 50)
+        // Determine match based on match_mode
+        let matched = false
+        let matchIdx = -1
+        let matchLen = searchQuery.length
+        let tokenMatchCount = 0
+
+        if (match_mode === 'exact') {
+          // Current behavior: full contiguous substring match
+          matchIdx = lowerText.indexOf(searchQuery)
+          matched = matchIdx !== -1
+          if (matched) tokenMatchCount = 1
+        } else if (match_mode === 'all') {
+          // All tokens must be present (not necessarily contiguous)
+          let allFound = true
+          let firstIdx = -1
+          for (const token of tokens) {
+            const idx = lowerText.indexOf(token)
+            if (idx === -1) { allFound = false; break }
+            if (firstIdx === -1 || idx < firstIdx) firstIdx = idx
+          }
+          matched = allFound
+          if (matched) {
+            matchIdx = firstIdx
+            tokenMatchCount = tokens.length
+            matchLen = tokens[0].length
+          }
+        } else {
+          // "any" mode (default): tokenized-OR — match if any token is found
+          let firstIdx = -1
+          for (const token of tokens) {
+            const idx = lowerText.indexOf(token)
+            if (idx !== -1) {
+              tokenMatchCount++
+              if (firstIdx === -1 || idx < firstIdx) {
+                firstIdx = idx
+                matchLen = token.length
+              }
+            }
+          }
+          matched = tokenMatchCount > 0
+          if (matched) matchIdx = firstIdx
+        }
+
+        if (!matched) continue
+
+        // Relevance score: ratio of matched tokens to total tokens.
+        // For "exact" mode, score is 1.0 (full query matched).
+        // For "all" mode, score is 1.0 (all tokens matched).
+        // For "any" mode, score is tokenMatchCount / tokens.length.
+        const score = match_mode === 'exact' || match_mode === 'all'
+          ? 1.0
+          : tokens.length > 0 ? tokenMatchCount / tokens.length : 1.0
+
+        // Build excerpt around the first match position
+        const start = Math.max(0, matchIdx - 30)
+        const end = Math.min(text.length, matchIdx + matchLen + 50)
         let excerpt = text.slice(start, end)
         if (start > 0) excerpt = '…' + excerpt
         if (end < text.length) excerpt = excerpt + '…'
 
-        results.push({ key, excerpt })
+        scoredResults.push({ key, excerpt, score })
       }
     }
+
+    // Sort by relevance score (descending), then by key for stable ordering
+    scoredResults.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key))
+    const results = scoredResults.slice(0, max_results).map(({ key, excerpt }) => ({ key, excerpt }))
 
     const summaryText = results.length > 0
       ? results.map(r => `${r.key}: "${r.excerpt}"`).join('\n')
@@ -284,7 +358,15 @@ export async function handle_search_lore({ c, id, args }: TypedToolContext<typeo
 
     return c.json(makeResult(id, {
       content: [{ type: 'text', text: summaryText }],
-      metadata: { query: queryArg, world: world ?? null, match_count: results.length, keys_scanned: allKeys.length, scan_limit },
+      metadata: {
+        query: queryArg,
+        world: world ?? null,
+        prefix: prefix ?? null,
+        match_mode,
+        match_count: results.length,
+        keys_scanned: allKeys.length,
+        scan_limit,
+      },
       results
     }), 200)
   } catch (e) {
