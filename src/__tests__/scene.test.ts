@@ -129,6 +129,33 @@ describe('commit_choice — timeline_events bridge (#350)', () => {
     expect(res.error).toBeUndefined()
     expect(res.result.timeline_event_id).toBeNull()
   })
+
+  it('returns null timeline_event_id (no error) when meta.d1_id points to a nonexistent D1 character', async () => {
+    await seedKV('choice:stale-id-choice', '**Outcome-Seed:** Dangling reference.')
+    await env.LORE_DB.put('character:stale-id', JSON.stringify({
+      text: '**Status:** Idle', meta: { version: 1, d1_id: 'char-does-not-exist' },
+    }))
+
+    const res = await callTool('scene_manage', { action: 'commit_choice', choice_id: 'choice:stale-id-choice', entity_key: 'character:stale-id' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.timeline_event_id).toBeNull()
+  })
+
+  it('records a "chose" event with null location_id when the entity has no Location field', async () => {
+    await seedWorld('world-bridge-2')
+    await seedD1Character('char-bridge-2', 'Locationless Hero', 'world-bridge-2')
+    await seedKV('choice:no-location-choice', '**Outcome-Seed:** Wanders in the void.')
+    await env.LORE_DB.put('character:locationless-hero', JSON.stringify({
+      text: '**Status:** Idle', meta: { version: 1, d1_id: 'char-bridge-2' },
+    }))
+
+    const res = await callTool('scene_manage', { action: 'commit_choice', choice_id: 'choice:no-location-choice', entity_key: 'character:locationless-hero' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.timeline_event_id).toBeTruthy()
+
+    const row = await env.RPG_DB.prepare('SELECT location_id FROM timeline_events WHERE id = ?').bind(res.result.timeline_event_id).first() as Record<string, unknown>
+    expect(row.location_id).toBeNull()
+  })
 })
 
 describe('get_choice_history', () => {

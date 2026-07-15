@@ -127,29 +127,30 @@ export async function handle_commit_choice({ c, id, args }: TypedToolContext<typ
   // KV choice commit above has already succeeded and must never be blocked
   // or errored by a D1/timeline problem. See gameplan on #350.
   let timelineEventId: string | null = null
-  if (c.env.RPG_DB) {
-    try {
-      const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, entityMeta, entityText, entityKey)
-      if (characterId) {
-        const charRow = await c.env.RPG_DB.prepare('SELECT world_id FROM characters WHERE id = ?').bind(characterId).first() as { world_id: string | null } | null
-        if (charRow?.world_id) {
-          const locationRef = extractRawField(entityText, 'Location')
-          const eventId = randomUUID()
-          await c.env.RPG_DB.prepare(
-            `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(
-            eventId, charRow.world_id, 'main', now, 'chose', characterId, choiceId,
-            locationRef ? locationRef.trim().toLowerCase() : null,
-            `Committed choice "${choiceId}" for "${entityKey}".${stateChange ? ` State → ${stateChange}.` : ''}`,
-            now,
-          ).run()
-          timelineEventId = eventId
-        }
+  try {
+    // resolveEntityToCharacterId returns null immediately when c.env.RPG_DB
+    // is undefined, so no separate binding check is needed here (mirrors
+    // get_inventory's #344 usage of the same helper).
+    const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, entityMeta, entityText, entityKey)
+    if (characterId) {
+      const charRow = await c.env.RPG_DB!.prepare('SELECT world_id FROM characters WHERE id = ?').bind(characterId).first() as { world_id: string | null } | null
+      if (charRow?.world_id) {
+        const locationRef = extractRawField(entityText, 'Location')
+        const eventId = randomUUID()
+        await c.env.RPG_DB!.prepare(
+          `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          eventId, charRow.world_id, 'main', now, 'chose', characterId, choiceId,
+          locationRef ? locationRef.trim().toLowerCase() : null,
+          `Committed choice "${choiceId}" for "${entityKey}".${stateChange ? ` State → ${stateChange}.` : ''}`,
+          now,
+        ).run()
+        timelineEventId = eventId
       }
-    } catch {
-      // best-effort bridge write — skip silently, never error the choice commit
     }
+  } catch {
+    // best-effort bridge write — skip silently, never error the choice commit
   }
 
   return c.json(makeResult(id, {
