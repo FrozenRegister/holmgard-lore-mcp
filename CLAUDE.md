@@ -167,12 +167,14 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 ### RPG Handlers and Actions (Cluster 3 — #337, #340, #341)
 
 **`travel-manage.ts`** — Party and character movement in dungeon/world contexts.
+
 - `travel` — room-graph-based movement (existing, room_nodes model)
 - `loot` — Search a room for items
 - `rest` — Short/long rest, restore HP
 - `move_hex` — **New (#337):** Hex-based party movement on world maps, updates `parties.current_hex_q/r`, optionally resolves encounters
 
 **`spawn-manage.ts`** — Character and encounter creation.
+
 - `spawn_character` — Generate a new NPC with random UUID
 - `spawn_encounter` — Create a tactical combat setup
 - `spawn_location` — Add a room node (dungeon location)
@@ -181,6 +183,7 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 - `place_character` — **New (#340):** Position existing character on hex map, updates `characters.current_hex_q/r`, requires character to already exist (unlike `spawn_character`)
 
 **`waypoint-manage.ts`** — Named locations for world-based party travel (#328, #341).
+
 - `register` — Add a waypoint to a world (requires `q`/`r` hex coords **and** `lat`/`lon` real-world coords)
 - `list`, `get`, `update`, `delete` — CRUD for waypoints
 - `seed_defaults` — Load Gotland waypoints for a world
