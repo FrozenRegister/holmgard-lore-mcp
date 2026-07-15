@@ -9,7 +9,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const EVENT_TYPES = ['npc_action', 'combat_update', 'world_change', 'quest_update', 'time_passage', 'environmental', 'system'] as const
+const KNOWN_EVENT_TYPES = ['npc_action', 'combat_update', 'world_change', 'quest_update', 'time_passage', 'environmental', 'system', 'crate_drop', 'perimeter_contraction', 'audience_vote', 'production_intervention', 'predator_release', 'shelter_collapse', 'weather_shift', 'echo_activation'] as const
 const SOURCE_TYPES = ['npc', 'combat', 'world', 'system', 'scheduler'] as const
 
 const ACTIONS = ['emit', 'poll', 'ack', 'list_types'] as const
@@ -23,7 +23,7 @@ const ALIASES: Record<string, EventAction> = {
 
 const InputSchema = z.object({
   action: z.string(),
-  eventType: z.enum(EVENT_TYPES).optional(),
+  eventType: z.string().optional(),
   payload: z.record(z.unknown()).optional(),
   sourceType: z.enum(SOURCE_TYPES).optional(),
   sourceId: z.string().optional(),
@@ -70,7 +70,7 @@ export async function handleEventManage(env: AppBindings, args: Record<string, u
       return ok({ success: true, actionType: 'ack', acked: ids.length })
     }
     case 'list_types': {
-      return ok({ success: true, actionType: 'list_types', eventTypes: EVENT_TYPES, sourceTypes: SOURCE_TYPES })
+      return ok({ success: true, actionType: 'list_types', eventTypes: KNOWN_EVENT_TYPES, sourceTypes: SOURCE_TYPES, note: 'eventType accepts any string; these are known types but custom types are permitted' })
     }
   }
 }
