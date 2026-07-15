@@ -503,6 +503,6 @@ try {
 
 `pnpm test:coverage` (`@vitest/coverage-istanbul`, configured via `provider: 'istanbul'` in `vitest.config.ts`) and uploaded to Codecov by the `coverage` job in `.github/workflows/ci.yml`. The lcov report lands at `./coverage/lcov.info`. Coverage runs in CI, not as a required local step (see [Pre-Commit Validation](#pre-commit-validation)).
 
-**The enforced gate is the `coverage` CI job (Istanbul)**, not Codecov. Codecov is advisory — its `codecov/patch` check is uploaded for visibility but `fail_ci_if_error: false` means Codecov auth/rate-limit failures never block CI. The auto-merge workflow also ignores `codecov/*` check conclusions. If the `coverage` CI job passes (100% patch on new lines), the PR can merge regardless of Codecov status.
+**The enforced gate is the `coverage` CI job (Istanbul)**, not Codecov. Codecov is advisory — its `codecov/patch` check is uploaded for visibility but `fail_ci_if_error: false` means Codecov auth/rate-limit failures never block CI.
 
 **Sister repo sync**: `holmgard-lore-editor` uses the same `codecov/codecov-action@v5`. When upgrading the action version, update both repos' CI files at the same time. Coverage targets intentionally differ: this repo enforces **100% patch** (backend Worker — untested code reaches production directly); the editor uses **80% lines** (frontend UI code, enforced by Istanbul gap analysis).
