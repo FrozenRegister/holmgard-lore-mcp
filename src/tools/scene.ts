@@ -1,11 +1,13 @@
 // src/tools/scene.ts
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractRawField, normalizeWeight } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys } from '../lib/indexes'
 import { handleMathManage } from '../rpg/handlers/math-manage'
+import { resolveEntityToCharacterId } from './entity'
 import type { TypedToolContext, HonoCtx } from './types'
 
 export const activateSceneSchema = z.object({ scene_key: z.string().min(1) })
@@ -118,11 +120,43 @@ export async function handle_commit_choice({ c, id, args }: TypedToolContext<typ
   await appendChangelog(c, entityKey, entityVersion)
   loreDB[entityKey] = newEntityText
 
+  // #350 — narrow bridge: a committed choice is a discrete, queryable fact,
+  // so mirror it into D1 timeline_events (making it visible to `rpg scene
+  // state_snapshot`'s existing events aggregation) whenever the KV entity
+  // resolves to a real D1 character with a world_id. Best-effort only — the
+  // KV choice commit above has already succeeded and must never be blocked
+  // or errored by a D1/timeline problem. See gameplan on #350.
+  let timelineEventId: string | null = null
+  if (c.env.RPG_DB) {
+    try {
+      const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, entityMeta, entityText, entityKey)
+      if (characterId) {
+        const charRow = await c.env.RPG_DB.prepare('SELECT world_id FROM characters WHERE id = ?').bind(characterId).first() as { world_id: string | null } | null
+        if (charRow?.world_id) {
+          const locationRef = extractRawField(entityText, 'Location')
+          const eventId = randomUUID()
+          await c.env.RPG_DB.prepare(
+            `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            eventId, charRow.world_id, 'main', now, 'chose', characterId, choiceId,
+            locationRef ? locationRef.trim().toLowerCase() : null,
+            `Committed choice "${choiceId}" for "${entityKey}".${stateChange ? ` State → ${stateChange}.` : ''}`,
+            now,
+          ).run()
+          timelineEventId = eventId
+        }
+      }
+    } catch {
+      // best-effort bridge write — skip silently, never error the choice commit
+    }
+  }
+
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Choice "${choiceId}" committed for "${entityKey}".${stateChange ? ` State → ${stateChange}.` : ''} ${nextChoices.length} new choice(s) unlocked.` }],
     metadata: { retrieved: 2, written: 1 },
     choice_id: choiceId, entity_key: entityKey, outcome_seed: outcomeSeed,
-    state_change: stateChange ?? null, next_choices: nextChoices
+    state_change: stateChange ?? null, next_choices: nextChoices, timeline_event_id: timelineEventId
   }), 200)
 }
 

@@ -287,6 +287,15 @@ Player chooses "Negotiate":
   → Triggers dialogue with bandit leader, reputation changes, quest updates
 ```
 
+**Known Behavior (#350):** `commit_choice` additionally writes a best-effort `"chose"` row to D1
+`timeline_events` whenever `entity_key` resolves to a real D1 character with a `world_id` set (via
+the same `meta.d1_id` / name-match lookup `get_inventory` uses). The response's `timeline_event_id`
+field carries the new event's id, or `null` when no D1 character/world_id could be resolved — this
+is silent and never blocks or errors the KV choice commit itself. `scene_manage` (this KV-backed
+tool) and the D1-backed `rpg scene` sub remain otherwise separate systems; this is a narrow bridge
+for committed-choice visibility only, not a full unification — see the open architecture question
+on #350.
+
 ---
 
 ### 10. **AI Agent Tools** (Semi-Autonomous NPCs)

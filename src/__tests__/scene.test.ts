@@ -63,6 +63,74 @@ describe('commit_choice', () => {
   })
 })
 
+// #350 — narrow bridge: a committed choice mirrors into D1 timeline_events
+// when the KV entity resolves to a real D1 character with a world_id.
+describe('commit_choice — timeline_events bridge (#350)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  async function seedWorld(worldId: string) {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(worldId, worldId, 'seed', 10, 10, now, now).run()
+  }
+
+  async function seedD1Character(id: string, name: string, worldId: string | null) {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, world_id, created_at, updated_at)
+       VALUES (?, ?, '{}', 10, 10, 10, 1, ?, ?, ?)`
+    ).bind(id, name, worldId, now, now).run()
+  }
+
+  it('writes a "chose" timeline_events row when the entity resolves to a D1 character with world_id', async () => {
+    await seedWorld('world-bridge-1')
+    await seedD1Character('char-bridge-1', 'Bridge Hero', 'world-bridge-1')
+    await env.LORE_DB.put('choice:bridge-quest', JSON.stringify({
+      text: '**Outcome-Seed:** The bridge holds.\n**State-Change:** Crossed', meta: { version: 1 },
+    }))
+    await env.LORE_DB.put('character:bridge-hero', JSON.stringify({
+      text: '**Status:** Idle\n**Location:** location:riverbank', meta: { version: 1, d1_id: 'char-bridge-1' },
+    }))
+
+    const res = await callTool('scene_manage', { action: 'commit_choice', choice_id: 'choice:bridge-quest', entity_key: 'character:bridge-hero' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.timeline_event_id).toBeTruthy()
+
+    const row = await env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(res.result.timeline_event_id).first() as Record<string, unknown>
+    expect(row.world_id).toBe('world-bridge-1')
+    expect(row.verb).toBe('chose')
+    expect(row.entity_id).toBe('char-bridge-1')
+    expect(row.object_entity).toBe('choice:bridge-quest')
+    expect(row.location_id).toBe('location:riverbank')
+    expect(row.detail).toContain('choice:bridge-quest')
+    expect(row.detail).toContain('Crossed')
+  })
+
+  it('returns null timeline_event_id (no error) when the entity has no matching D1 character', async () => {
+    await seedKV('choice:unbridged', '**Outcome-Seed:** Nothing links this one.')
+    await seedKV('character:no-d1-match', '**Status:** Idle')
+
+    const res = await callTool('scene_manage', { action: 'commit_choice', choice_id: 'choice:unbridged', entity_key: 'character:no-d1-match' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.timeline_event_id).toBeNull()
+  })
+
+  it('returns null timeline_event_id (no error) when the resolved D1 character has no world_id', async () => {
+    await seedD1Character('char-worldless', 'Worldless', null)
+    await env.LORE_DB.put('choice:worldless-choice', JSON.stringify({ text: '**Outcome-Seed:** Adrift.', meta: { version: 1 } }))
+    await env.LORE_DB.put('character:worldless', JSON.stringify({
+      text: '**Status:** Idle', meta: { version: 1, d1_id: 'char-worldless' },
+    }))
+
+    const res = await callTool('scene_manage', { action: 'commit_choice', choice_id: 'choice:worldless-choice', entity_key: 'character:worldless' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.timeline_event_id).toBeNull()
+  })
+})
+
 describe('get_choice_history', () => {
   it('parses Choice-History into structured entries', async () => {
     await seedKV('character:veteran', '**Choice-History:** choice:join-guild@2024-01-01T00:00:00.000Z, choice:betray-ally@2024-06-01T00:00:00.000Z')
