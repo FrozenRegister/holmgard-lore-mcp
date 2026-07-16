@@ -2,6 +2,23 @@ import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, pars
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
+import { handle_get_event_log, handle_taxonomy_list, handle_taxonomy_set, handle_taxonomy_delete } from '../tools/meta'
+
+// #311 — the four `if (!c.env.RPG_DB)` D1-unavailable guards added/touched by
+// this issue can't be exercised through callTool/SELF.fetch: the miniflare
+// test worker always has RPG_DB bound (configured in wrangler.test.jsonc), so
+// there's no request-level way to make the binding disappear. Calling the
+// handler functions directly with a hand-built context is the only way to
+// reach the guards' true branch — no existing test in this repo does this,
+// but it's the narrowest option that doesn't change production behavior.
+function mockNoDbCtx(args: unknown): any {
+  return {
+    c: { env: {}, json: (body: unknown) => body } as any,
+    id: 1,
+    args,
+    isAuthenticated: true,
+  }
+}
 
 describe('append_event', () => {
   it('appends an event to an entity chronicle', async () => {
@@ -537,6 +554,33 @@ describe('taxonomy_list / taxonomy_set / taxonomy_delete (#311)', () => {
     const res = await callTool('continuity_manage', { action: 'taxonomy_delete', verb: 'no-such-verb-9999' })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
+  })
+})
+
+describe('#311 — D1-unavailable guards', () => {
+  it('get_event_log errors on tier filter when RPG_DB unavailable', async () => {
+    const res: any = await handle_get_event_log(mockNoDbCtx({ entity_key: 'character:x', tier: 'high', limit: 50 }))
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+    expect(res.error.message).toContain('D1 database unavailable')
+  })
+
+  it('taxonomy_list errors when RPG_DB unavailable', async () => {
+    const res: any = await handle_taxonomy_list(mockNoDbCtx({}))
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+  })
+
+  it('taxonomy_set errors when RPG_DB unavailable', async () => {
+    const res: any = await handle_taxonomy_set(mockNoDbCtx({ verb: 'x', tier: 'high', category: 'narrative' }))
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+  })
+
+  it('taxonomy_delete errors when RPG_DB unavailable', async () => {
+    const res: any = await handle_taxonomy_delete(mockNoDbCtx({ verb: 'x' }))
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
   })
 })
 
