@@ -361,4 +361,108 @@ describe('handleTimeManage', () => {
     const body = JSON.parse((await handleTimeManage(db(), { action: 'get_date', world_id: 'w-existing' })).content[0].text)
     expect(body.current_date).toBe('2190-03-01')
   })
+
+  // ── set_owner / get_owner / advance ownership guard (#312) ──────────────────
+
+  it('get_owner requires world_id', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_owner' })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('get_owner returns null for a world with no owner claimed', async () => {
+    await seedWorld('w-owner-none', '2184-01-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_owner', world_id: 'w-owner-none' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.time_owner).toBeNull()
+    expect(body.time_owner_since).toBeNull()
+  })
+
+  it('get_owner errors when world_state does not exist', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'get_owner', world_id: 'no-such-world' })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('set_owner requires world_id', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'set_owner', owner: 'archisector' })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('set_owner requires owner (undefined is rejected, null is allowed)', async () => {
+    await seedWorld('w-owner-req', '2184-01-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-owner-req' })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('set_owner errors when world_state does not exist', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'set_owner', world_id: 'no-such-world', owner: 'archisector' })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('set_owner claims the clock and get_owner reflects it', async () => {
+    await seedWorld('w-owner-claim', '2184-01-01')
+    const setBody = JSON.parse((await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-owner-claim', owner: 'archisector' })).content[0].text)
+    expect(setBody.success).toBe(true)
+    expect(setBody.time_owner).toBe('archisector')
+    expect(setBody.time_owner_since).toBeTruthy()
+
+    const getBody = JSON.parse((await handleTimeManage(db(), { action: 'get_owner', world_id: 'w-owner-claim' })).content[0].text)
+    expect(getBody.time_owner).toBe('archisector')
+    expect(getBody.time_owner_since).toBe(setBody.time_owner_since)
+  })
+
+  it('set_owner releases the clock when owner is null', async () => {
+    await seedWorld('w-owner-release', '2184-01-01')
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-owner-release', owner: 'archisector' })
+    const releaseBody = JSON.parse((await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-owner-release', owner: null })).content[0].text)
+    expect(releaseBody.success).toBe(true)
+    expect(releaseBody.time_owner).toBeNull()
+    expect(releaseBody.time_owner_since).toBeNull()
+  })
+
+  it('advance without an owner proceeds unguarded regardless of who holds the clock (backward compatible)', async () => {
+    await seedWorld('w-advance-noowner', '2184-01-01')
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-advance-noowner', owner: 'archisector' })
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-advance-noowner', by: '1 day' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.new_date).toBe('2184-01-02')
+  })
+
+  it('advance with an owner implicitly claims the clock when unclaimed', async () => {
+    await seedWorld('w-advance-claim', '2184-01-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-advance-claim', by: '1 day', owner: 'archisector' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.time_owner).toBe('archisector')
+
+    const ownerBody = JSON.parse((await handleTimeManage(db(), { action: 'get_owner', world_id: 'w-advance-claim' })).content[0].text)
+    expect(ownerBody.time_owner).toBe('archisector')
+  })
+
+  it('advance with the same owner that already holds the clock succeeds', async () => {
+    await seedWorld('w-advance-same', '2184-01-01')
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-advance-same', owner: 'calder-architect' })
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-advance-same', by: '1 month', owner: 'calder-architect' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.time_owner).toBe('calder-architect')
+  })
+
+  it('advance with a different owner than the current holder is rejected', async () => {
+    await seedWorld('w-advance-conflict', '2184-01-01')
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-advance-conflict', owner: 'archisector' })
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-advance-conflict', by: '1 month', owner: 'calder-architect' })).content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('archisector')
+
+    // Clock must not have moved.
+    const dateBody = JSON.parse((await handleTimeManage(db(), { action: 'get_date', world_id: 'w-advance-conflict' })).content[0].text)
+    expect(dateBody.current_date).toBe('2184-01-01')
+  })
+
+  it('advance after releasing ownership can be claimed by a different owner', async () => {
+    await seedWorld('w-advance-handoff', '2184-01-01')
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-advance-handoff', owner: 'archisector' })
+    await handleTimeManage(db(), { action: 'set_owner', world_id: 'w-advance-handoff', owner: null })
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-advance-handoff', by: '1 month', owner: 'calder-architect' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.time_owner).toBe('calder-architect')
+  })
 })

@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS world_state (
   geo_origin_lat        REAL,
   geo_origin_lon        REAL,
   geo_km_per_hex        REAL,
+  -- Agent-ownership clock lock (#312) — see migration 0036.
+  time_owner            TEXT,
+  time_owner_since      TEXT,
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 

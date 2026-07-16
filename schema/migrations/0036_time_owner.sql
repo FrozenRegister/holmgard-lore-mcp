@@ -1,0 +1,22 @@
+-- #312: agent-ownership guard on time.advance to prevent clock divergence
+-- between narrator agents sharing the same world's timeline.
+--
+-- Original issue proposed a `time_mode` ('narrative'|'tactical') column,
+-- framed around a hypothetical dungeon-scroller agent taking over combat
+-- rounds. Narrator Q&A on #312 established the real situation: there is no
+-- tactical-combat agent. Two narrative-mode agents — Archisector (early
+-- eras: Velrosa, the Slime-Girl's spread, the Isle of Dissolution) and the
+-- Calder Architect (later eras: boardroom politics, Judicial Council,
+-- patrimoine claims) — both call this MCP against the same world's timeline
+-- at different granularities (hours/days/consumption-stage ticks vs.
+-- quarters/sessions/legal timelines). A narrative/tactical binary doesn't
+-- describe that split; a simple ownership lock does.
+--
+-- Scoped to `world_state` (not `universes`, despite #308 Phase 1 adding that
+-- table) because `time.advance` already operates on `world_id` and loads a
+-- `world_state` row for it — that's the actual resource being mutated.
+-- `universes` currently has no MCP CRUD surface to create a universe row or
+-- link a world to one (#308 Phase 1 was schema-only), so gating on
+-- universe_id would make this feature unusable without hand-run SQL.
+ALTER TABLE world_state ADD COLUMN time_owner TEXT;
+ALTER TABLE world_state ADD COLUMN time_owner_since TEXT;

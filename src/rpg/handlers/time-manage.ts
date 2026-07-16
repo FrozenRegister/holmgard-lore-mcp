@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
 
-const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to'] as const
+const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
 type TimeAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TimeAction> = {
   set:      'set_date',
@@ -21,6 +21,10 @@ const ALIASES: Record<string, TimeAction> = {
   events:   'get_timeline',
   jump:     'jump_to',
   goto:     'jump_to',
+  claim:    'set_owner',
+  lock:     'set_owner',
+  owner:    'get_owner',
+  who_owns: 'get_owner',
 }
 
 const InputSchema = z.object({
@@ -39,6 +43,10 @@ const InputSchema = z.object({
   thread:       z.string().optional(),
   mode:         z.enum(['observe', 'play']).optional(),
   limit:        z.number().int().min(1).max(500).optional(),
+  // #312 — agent-ownership clock lock. Identifies the calling agent (e.g.
+  // "archisector", "calder-architect") so `advance` can guard against a
+  // different agent moving the same world's clock underneath it.
+  owner:        z.string().nullable().optional(),
 })
 
 // ── Date arithmetic helpers ───────────────────────────────────────────────────
@@ -252,19 +260,40 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       if (!parsed_by) return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
 
       const ws = await db
-        .prepare('SELECT "current_date" FROM world_state WHERE world_id = ?')
+        .prepare('SELECT "current_date", time_owner FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first() as { current_date: string } | null
+        .first() as { current_date: string; time_owner: string | null } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
+
+      // #312 — ownership guard. Only enforced when the caller identifies itself
+      // via "owner"; callers that don't pass it (existing behavior) advance
+      // unguarded, same as before this feature existed. An identified caller
+      // is rejected if a *different* owner currently holds the clock, and
+      // implicitly claims ownership if nobody currently holds it.
+      const identifiedOwner = a.owner ?? null
+      if (identifiedOwner !== null && ws.time_owner !== null && ws.time_owner !== identifiedOwner) {
+        return err(
+          `World clock for "${a.world_id}" is owned by "${ws.time_owner}" — cannot advance as "${identifiedOwner}". ` +
+          `Coordinate with that agent, or release ownership via rpg{sub:"time", action:"set_owner", world_id:"${a.world_id}", owner:null}.`,
+        )
+      }
+      const willClaim = identifiedOwner !== null && ws.time_owner === null
 
       const oldDate = ws.current_date
       const newDate = addToDate(oldDate, parsed_by.amount, parsed_by.unit)
       const now = new Date().toISOString()
 
-      await db
-        .prepare('UPDATE world_state SET "current_date" = ?, last_advanced_at = ? WHERE world_id = ?')
-        .bind(newDate, now, a.world_id)
-        .run()
+      if (willClaim) {
+        await db
+          .prepare('UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ? WHERE world_id = ?')
+          .bind(newDate, now, identifiedOwner, now, a.world_id)
+          .run()
+      } else {
+        await db
+          .prepare('UPDATE world_state SET "current_date" = ?, last_advanced_at = ? WHERE world_id = ?')
+          .bind(newDate, now, a.world_id)
+          .run()
+      }
 
       const chars = await db
         .prepare('SELECT id, name, born FROM characters WHERE born IS NOT NULL')
@@ -292,6 +321,7 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         by: a.by,
         days_elapsed: dateDiff(oldDate, newDate),
         birthdays_triggered: birthdaysTriggered,
+        time_owner: willClaim ? identifiedOwner : ws.time_owner,
       })
     }
 
@@ -336,6 +366,33 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         result.constraint = `Must be consistent with the event that follows at ${(afterRow as Record<string, unknown>).event_at}`
       }
       return ok(result)
+    }
+
+    // #312 — explicit ownership control, alongside the implicit-claim-on-advance
+    // path above. set_owner lets a caller claim the clock ahead of a session
+    // (or release it by passing owner: null) without needing to advance time
+    // to do so.
+    case 'set_owner': {
+      if (!a.world_id) return err('"world_id" is required')
+      if (a.owner === undefined) return err('"owner" is required (pass null to release ownership)')
+      const existing = await db.prepare('SELECT world_id FROM world_state WHERE world_id = ?').bind(a.world_id).first()
+      if (!existing) return err(`No world_state found for world_id: ${a.world_id}`)
+      const since = a.owner === null ? null : new Date().toISOString()
+      await db
+        .prepare('UPDATE world_state SET time_owner = ?, time_owner_since = ? WHERE world_id = ?')
+        .bind(a.owner, since, a.world_id)
+        .run()
+      return ok({ success: true, actionType: 'set_owner', world_id: a.world_id, time_owner: a.owner, time_owner_since: since })
+    }
+
+    case 'get_owner': {
+      if (!a.world_id) return err('"world_id" is required')
+      const row = await db
+        .prepare('SELECT time_owner, time_owner_since FROM world_state WHERE world_id = ?')
+        .bind(a.world_id)
+        .first() as { time_owner: string | null; time_owner_since: string | null } | null
+      if (!row) return err(`No world_state found for world_id: ${a.world_id}`)
+      return ok({ success: true, actionType: 'get_owner', world_id: a.world_id, time_owner: row.time_owner, time_owner_since: row.time_owner_since })
     }
   }
 }
