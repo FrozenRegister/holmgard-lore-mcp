@@ -124,4 +124,35 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     expect(getRes.character.current_hex_q).toBe(52)
     expect(getRes.character.current_hex_r).toBe(28)
   })
+
+  it('create defaults death_mode to instant, update sets staged dissolution fields (#314)', async () => {
+    const charId = await createChar({ name: `Dissolving ${uid()}` })
+
+    const defaultRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    expect(defaultRes.character.death_mode).toBe('instant')
+
+    const updateRes = parseResult(await tool('character_manage', {
+      action: 'update', characterId: charId,
+      deathMode: 'staged', dissolutionStage: 2, dissolutionStages: 5, dissolutionTerminal: 'consumed',
+    }))
+    expect(updateRes.success).toBe(true)
+
+    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    expect(getRes.character.death_mode).toBe('staged')
+    expect(getRes.character.dissolution_stage).toBe(2)
+    expect(getRes.character.dissolution_stages).toBe(5)
+    expect(getRes.character.dissolution_terminal).toBe('consumed')
+  })
+
+  it('combat_action.attack rejects a staged-dissolution target (#314)', async () => {
+    const attackerId = await createChar({ name: `Attacker ${uid()}` })
+    const targetId = await createChar({ name: `StagedTarget ${uid()}` })
+    await tool('character_manage', { action: 'update', characterId: targetId, deathMode: 'staged' })
+
+    const attackRes = parseResult(await tool('rpg', {
+      sub: 'combat_action', action: 'attack', actorId: attackerId, targetIds: [targetId], attackRoll: 15, damage: 5,
+    }))
+    expect(attackRes.error).toBe(true)
+    expect(attackRes.message).toContain('staged-dissolution')
+  })
 })

@@ -182,6 +182,16 @@ Narrator resolves Aldric's attack:
                   target: "bandit_1", attack_roll: 18 })
 ```
 
+**Known Behavior (#314):** Characters have a `death_mode` field — `"instant"` (default) for
+normal combat death, or `"staged"` for a narrator-controlled multi-stage dissolution process
+(Mycelium integration, parasitic assimilation, dispatch protocols, etc.) that unfolds over hours,
+days, or weeks. `combat_action`'s `attack` action **rejects outright** (no roll, no damage) when
+any target has `death_mode: "staged"` — staged characters are non-combatants and must not be
+attacked by a tactical/combat agent. Set/inspect the fields via `character_manage`'s `update`
+action: `deathMode`, `dissolutionStage`, `dissolutionStages`, `dissolutionTerminal`,
+`dissolutionId`. There's no fixed stage-name enum or assumed stage count — different staged
+mechanisms can coexist across characters with their own stage counts and terminal states.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)

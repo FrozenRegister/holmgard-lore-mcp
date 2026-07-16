@@ -218,7 +218,13 @@ CREATE TABLE IF NOT EXISTS characters (
   current_hex_q                  INTEGER,
   current_hex_r                  INTEGER,
   world_id                       TEXT REFERENCES worlds(id) ON DELETE SET NULL,
-  map_id                         TEXT
+  map_id                         TEXT,
+  -- Death speed (#314) — see migration 0034.
+  death_mode                     TEXT NOT NULL CHECK(death_mode IN ('instant', 'staged')) DEFAULT 'instant',
+  dissolution_stage              INTEGER,
+  dissolution_stages             INTEGER,
+  dissolution_terminal           TEXT,
+  dissolution_id                 TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_characters_type ON characters(character_type);

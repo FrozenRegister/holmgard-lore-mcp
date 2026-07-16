@@ -427,6 +427,47 @@ describe('character_manage tool', () => {
     expect(char.character.world_id).toBe('world:calder')
   })
 
+  it('create defaults death_mode to instant', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Default Death Mode' })
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.death_mode).toBe('instant')
+    expect(char.character.dissolution_stage).toBeNull()
+  })
+
+  it('update sets death_mode and dissolution fields (#314)', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Subject Test' })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      deathMode: 'staged',
+      dissolutionStage: 3,
+      dissolutionStages: 6,
+      dissolutionTerminal: 'mycelium-integrated',
+      dissolutionId: 'consumption-timeline-42',
+    })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.death_mode).toBe('staged')
+    expect(char.character.dissolution_stage).toBe(3)
+    expect(char.character.dissolution_stages).toBe(6)
+    expect(char.character.dissolution_terminal).toBe('mycelium-integrated')
+    expect(char.character.dissolution_id).toBe('consumption-timeline-42')
+  })
+
+  it('update can revert death_mode back to instant and clear dissolution_terminal', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Reverted' })
+    await callTool('character_manage', {
+      action: 'update', id: created.characterId, deathMode: 'staged', dissolutionTerminal: 'mycelium-integrated',
+    })
+    const r = await callTool('character_manage', {
+      action: 'update', id: created.characterId, deathMode: 'instant', dissolutionTerminal: null,
+    })
+    expect(r.success).toBe(true)
+    const char = await callTool('character_manage', { action: 'get', id: created.characterId })
+    expect(char.character.death_mode).toBe('instant')
+    expect(char.character.dissolution_terminal).toBeNull()
+  })
+
   it('update modifies character properties', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
