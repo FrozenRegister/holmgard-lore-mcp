@@ -50,6 +50,17 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
     expect(res.result.biomes).toEqual([])
     expect(res.result.count).toBe(0)
   })
+
+  it('tools/list advertises tier on get_event_log and the taxonomy_* actions (#311)', async () => {
+    const res = await rpc('tools/list')
+    const continuityManage = res.result.tools.find((t: { name: string }) => t.name === 'continuity_manage')
+    const branches = continuityManage.inputSchema.oneOf as Array<{ properties: { action: { const: string } } }>
+    const getEventLogBranch = branches.find(b => b.properties.action.const === 'get_event_log')
+    expect((getEventLogBranch!.properties as Record<string, unknown>).tier).toBeDefined()
+    expect(branches.some(b => b.properties.action.const === 'taxonomy_list')).toBe(true)
+    expect(branches.some(b => b.properties.action.const === 'taxonomy_set')).toBe(true)
+    expect(branches.some(b => b.properties.action.const === 'taxonomy_delete')).toBe(true)
+  })
 })
 
 describe.skipIf(!MCP_API_KEY)('Basic Tools', () => {
@@ -89,5 +100,11 @@ describe.skipIf(!MCP_API_KEY)('Basic Tools', () => {
       ],
     })
     expect(res.error).toBeUndefined()
+  })
+
+  it('taxonomy_list (#311) — read-only smoke check against the seeded event_verb_taxonomy', async () => {
+    const res = await tool('continuity_manage', { action: 'taxonomy_list', tier: 'high' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.verbs.every((v: { tier: string }) => v.tier === 'high')).toBe(true)
   })
 })

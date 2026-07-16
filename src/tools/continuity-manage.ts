@@ -6,6 +6,9 @@ import {
   handle_canonize, canonizeSchema,
   handle_migrate_events, migrateEventsSchema,
   handle_recent_changes, recentChangesSchema,
+  handle_taxonomy_list, taxonomyListSchema,
+  handle_taxonomy_set, taxonomySetSchema,
+  handle_taxonomy_delete, taxonomyDeleteSchema,
   handle_tag_topic, tagTopicSchema,
   handle_find_by_tag, findByTagSchema,
   handle_list_tags, listTagsSchema,
@@ -34,6 +37,15 @@ const ACTION_MAP: Record<string, ActionSpec | ToolHandler> = {
   }),
   recent_changes: defineAction(recentChangesSchema, handle_recent_changes, {
     key_prefix: 'character', limit: 20
+  }),
+  taxonomy_list: defineAction(taxonomyListSchema, handle_taxonomy_list, {
+    tier: 'high'
+  }),
+  taxonomy_set: defineAction(taxonomySetSchema, handle_taxonomy_set, {
+    verb: 'consumed', tier: 'high', category: 'narrative', description: 'Entity fully consumed/absorbed'
+  }),
+  taxonomy_delete: defineAction(taxonomyDeleteSchema, handle_taxonomy_delete, {
+    verb: 'consumed'
   }),
   // PR 2: Typed setup/continuity handlers
   tag_topic: defineAction(tagTopicSchema, handle_tag_topic, {

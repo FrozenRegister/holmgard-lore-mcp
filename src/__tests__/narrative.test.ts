@@ -456,6 +456,90 @@ describe('get_event_log', () => {
   })
 })
 
+describe('get_event_log — tier filter (#311)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind('test-world-tier', 'Test World Tier', 'seed', 10, 10, now, now).run()
+  })
+
+  it('filters events by a single tier', async () => {
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:tier-test', verb: 'killed', world_id: 'test-world-tier' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:tier-test', verb: 'attacked', world_id: 'test-world-tier' })
+    const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:tier-test', world_id: 'test-world-tier', tier: 'high' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.returned).toBe(1)
+    expect(res.result.events[0].verb).toBe('killed')
+  })
+
+  it('accepts comma-separated tiers', async () => {
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:tier-test-2', verb: 'killed', world_id: 'test-world-tier' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:tier-test-2', verb: 'wounded', world_id: 'test-world-tier' })
+    await callTool('continuity_manage', { action: 'append_event', entity_key: 'character:tier-test-2', verb: 'moved', world_id: 'test-world-tier' })
+    const res = await callTool('continuity_manage', { action: 'get_event_log', entity_key: 'character:tier-test-2', world_id: 'test-world-tier', tier: 'high,medium' })
+    expect(res.result.metadata.returned).toBe(2)
+    const verbs = res.result.events.map((e: { verb: string }) => e.verb).sort()
+    expect(verbs).toEqual(['killed', 'wounded'])
+  })
+})
+
+describe('taxonomy_list / taxonomy_set / taxonomy_delete (#311)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  it('lists seeded verbs filtered by tier', async () => {
+    const res = await callTool('continuity_manage', { action: 'taxonomy_list', tier: 'high' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.count).toBeGreaterThan(0)
+    expect(res.result.verbs.every((v: { tier: string }) => v.tier === 'high')).toBe(true)
+    expect(res.result.verbs.some((v: { verb: string }) => v.verb === 'killed')).toBe(true)
+  })
+
+  it('lists seeded verbs filtered by category', async () => {
+    const res = await callTool('continuity_manage', { action: 'taxonomy_list', category: 'production' })
+    expect(res.result.verbs.every((v: { category: string }) => v.category === 'production')).toBe(true)
+  })
+
+  it('lists all verbs with no filter', async () => {
+    const res = await callTool('continuity_manage', { action: 'taxonomy_list' })
+    expect(res.result.metadata.count).toBeGreaterThanOrEqual(63)
+  })
+
+  it('creates a new verb via taxonomy_set', async () => {
+    const res = await callTool('continuity_manage', { action: 'taxonomy_set', verb: 'ritualized', tier: 'medium', category: 'narrative', description: 'A ceremony was performed' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.updated).toBe(false)
+    const list = await callTool('continuity_manage', { action: 'taxonomy_list', category: 'narrative' })
+    expect(list.result.verbs.some((v: { verb: string }) => v.verb === 'ritualized')).toBe(true)
+  })
+
+  it('updates an existing verb via taxonomy_set', async () => {
+    await callTool('continuity_manage', { action: 'taxonomy_set', verb: 'observed', tier: 'medium', category: 'narrative' })
+    const res = await callTool('continuity_manage', { action: 'taxonomy_set', verb: 'observed', tier: 'high', category: 'narrative' })
+    expect(res.result.metadata.updated).toBe(true)
+    const list = await callTool('continuity_manage', { action: 'taxonomy_list', tier: 'high' })
+    expect(list.result.verbs.some((v: { verb: string }) => v.verb === 'observed')).toBe(true)
+  })
+
+  it('deletes a verb via taxonomy_delete', async () => {
+    await callTool('continuity_manage', { action: 'taxonomy_set', verb: 'temp-verb', tier: 'low', category: 'narrative' })
+    const res = await callTool('continuity_manage', { action: 'taxonomy_delete', verb: 'temp-verb' })
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.deleted).toBe(true)
+    const list = await callTool('continuity_manage', { action: 'taxonomy_list' })
+    expect(list.result.verbs.some((v: { verb: string }) => v.verb === 'temp-verb')).toBe(false)
+  })
+
+  it('returns error deleting a nonexistent verb', async () => {
+    const res = await callTool('continuity_manage', { action: 'taxonomy_delete', verb: 'no-such-verb-9999' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
 describe('recent_changes', () => {
   it('returns recent write operations', async () => {
     await callTool('lore_manage', { action: 'set', key: 'character:testperson', text: 'Test' })

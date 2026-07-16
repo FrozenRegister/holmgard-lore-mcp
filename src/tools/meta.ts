@@ -54,7 +54,30 @@ export const getEventLogSchema = z.object({
   until: z.string().optional(),
   thread: z.string().optional(),
   verbs: z.array(z.string()).optional(),
+  // #311 — comma-separated tier filter (e.g. "high" or "high,medium"), joins
+  // against event_verb_taxonomy. Additive to the existing `verbs` filter.
+  tier: z.string().optional(),
   limit: z.number().int().min(1).max(500).default(50),
+})
+
+// #311 — event_verb_taxonomy CRUD, exposed as continuity_manage actions since
+// they support get_event_log's `tier` filter and share its timeline_events
+// domain, even though the originating issue framed them as an `rpg{sub:"event"}`
+// surface (that dispatcher turned out to own an unrelated event_inbox queue).
+export const taxonomyListSchema = z.object({
+  tier: z.enum(['high', 'medium', 'low']).optional(),
+  category: z.string().optional(),
+})
+
+export const taxonomySetSchema = z.object({
+  verb: z.string().min(1),
+  tier: z.enum(['high', 'medium', 'low']),
+  category: z.string().min(1),
+  description: z.string().optional(),
+})
+
+export const taxonomyDeleteSchema = z.object({
+  verb: z.string().min(1),
 })
 
 export const recentChangesSchema = z.object({
@@ -459,6 +482,21 @@ export async function handle_get_event_log({ c, id, args }: TypedToolContext<typ
     allEvents = allEvents.filter(e => verbSet.has(e.verb.toLowerCase()))
   }
 
+  // #311 — tier filter joins against event_verb_taxonomy. Requires D1: the
+  // taxonomy is D1-only, so unlike other get_event_log filters (which degrade
+  // gracefully to KV-only) an explicit tier request without RPG_DB errors
+  // rather than silently returning unfiltered results.
+  if (args.tier) {
+    if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable — tier filtering requires event_verb_taxonomy', null), 200)
+    const tiers = args.tier.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    const placeholders = tiers.map(() => '?').join(',')
+    const { results } = await c.env.RPG_DB.prepare(
+      `SELECT verb FROM event_verb_taxonomy WHERE tier IN (${placeholders})`
+    ).bind(...tiers).all() as { results: Array<{ verb: string }> }
+    const tierVerbSet = new Set(results.map(r => r.verb.toLowerCase()))
+    allEvents = allEvents.filter(e => tierVerbSet.has(e.verb.toLowerCase()))
+  }
+
   allEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
   const limited = allEvents.slice(0, args.limit)
 
@@ -470,6 +508,52 @@ export async function handle_get_event_log({ c, id, args }: TypedToolContext<typ
     content: [{ type: 'text', text: summaryText }],
     metadata: { total: allEvents.length, returned: limited.length, d1_count: allEvents.filter(e => (e as any).source === 'd1').length, kv_count: allEvents.filter(e => (e as any).source === 'kv').length },
     events: limited
+  }), 200)
+}
+
+type TaxonomyRow = { verb: string; tier: string; category: string; description: string | null; created_at: string }
+
+export async function handle_taxonomy_list({ c, id, args }: TypedToolContext<typeof taxonomyListSchema>): Promise<Response> {
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+  const parts: string[] = ['SELECT * FROM event_verb_taxonomy WHERE 1=1']
+  const binds: unknown[] = []
+  if (args.tier) { parts.push('AND tier = ?'); binds.push(args.tier) }
+  if (args.category) { parts.push('AND category = ?'); binds.push(args.category) }
+  parts.push('ORDER BY tier, category, verb')
+  const { results } = await c.env.RPG_DB.prepare(parts.join(' ')).bind(...binds).all() as { results: TaxonomyRow[] }
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `${results.length} verb(s) in taxonomy.` }],
+    metadata: { count: results.length },
+    verbs: results
+  }), 200)
+}
+
+export async function handle_taxonomy_set({ c, id, args }: TypedToolContext<typeof taxonomySetSchema>): Promise<Response> {
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+  const verb = args.verb.trim().toLowerCase()
+  const existing = await c.env.RPG_DB.prepare('SELECT verb FROM event_verb_taxonomy WHERE verb = ?').bind(verb).first() as { verb: string } | null
+  if (existing) {
+    await c.env.RPG_DB.prepare('UPDATE event_verb_taxonomy SET tier = ?, category = ?, description = ? WHERE verb = ?')
+      .bind(args.tier, args.category, args.description ?? null, verb).run()
+  } else {
+    await c.env.RPG_DB.prepare('INSERT INTO event_verb_taxonomy (verb, tier, category, description, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(verb, args.tier, args.category, args.description ?? null, new Date().toISOString()).run()
+  }
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Verb "${verb}" set to tier "${args.tier}" (${args.category}).` }],
+    metadata: { verb, tier: args.tier, category: args.category, updated: !!existing }
+  }), 200)
+}
+
+export async function handle_taxonomy_delete({ c, id, args }: TypedToolContext<typeof taxonomyDeleteSchema>): Promise<Response> {
+  if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'D1 database unavailable', null), 200)
+  const verb = args.verb.trim().toLowerCase()
+  const existing = await c.env.RPG_DB.prepare('SELECT verb FROM event_verb_taxonomy WHERE verb = ?').bind(verb).first() as { verb: string } | null
+  if (!existing) return c.json(makeError(id, -32602, `Verb not found in taxonomy: ${verb}`, null), 200)
+  await c.env.RPG_DB.prepare('DELETE FROM event_verb_taxonomy WHERE verb = ?').bind(verb).run()
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Verb "${verb}" removed from taxonomy.` }],
+    metadata: { verb, deleted: true }
   }), 200)
 }
 
