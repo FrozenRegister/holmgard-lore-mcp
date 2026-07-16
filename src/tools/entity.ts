@@ -568,11 +568,31 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
+
+  // #411 — mirror the KV stage advance into D1's characters.dissolution_stage
+  // when this entity is also a "staged" character (#314). Per Archisector's
+  // explicit requirement on #411: a manual sync between advance_stage (KV,
+  // what she actually calls) and dissolution_stage (D1, what the
+  // combat_action.attack staged-rejection guard reads) is a continuity break
+  // waiting to happen — narration says one stage, the combat guard sees
+  // another. This keeps them in lockstep with no workflow change for the
+  // caller; only fires for a character whose death_mode is already 'staged'.
+  let d1Mirrored = false
+  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
+  if (characterId && c.env.RPG_DB) {
+    const charRow = await c.env.RPG_DB.prepare('SELECT death_mode FROM characters WHERE id = ?').bind(characterId).first() as { death_mode: string } | null
+    if (charRow?.death_mode === 'staged') {
+      await c.env.RPG_DB.prepare('UPDATE characters SET dissolution_stage = ?, updated_at = ? WHERE id = ?')
+        .bind(newStage, now, characterId).run()
+      d1Mirrored = true
+    }
+  }
+
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}` }],
     metadata: { retrieved: 1, written: 1 },
     entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
-    is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true
+    is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true, d1_mirrored: d1Mirrored
   }), 200)
 }
 
