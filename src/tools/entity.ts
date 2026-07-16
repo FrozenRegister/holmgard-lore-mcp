@@ -23,10 +23,24 @@ export async function handle_resolve_interaction({ c, id, args }: TypedToolConte
   if (!rawB) return c.json(makeError(id, -32602, `Entity "${keyB}" not found`, null), 200)
 
   const { text: textA, meta: metaA } = parseKvEntry(rawA)
-  const { text: textB } = parseKvEntry(rawB)
+  const { text: textB, meta: metaB } = parseKvEntry(rawB)
 
-  const w1Raw = extractFieldFromText(textA, 'Weight-1')
-  const w2Raw = extractFieldFromText(textB, 'Weight-2')
+  // #410 — D1 entity_attributes is the primary source of truth for interaction
+  // weights when a row exists; falls back to KV markdown parsing (the original
+  // behavior) so entities with no D1 attributes yet keep working unchanged.
+  const [charIdA, charIdB] = await Promise.all([
+    resolveEntityToCharacterId(c.env.RPG_DB, metaA, textA, keyA),
+    resolveEntityToCharacterId(c.env.RPG_DB, metaB, textB, keyB),
+  ])
+  const [attrsA, attrsB] = await Promise.all([
+    resolveEntityAttributes(c.env.RPG_DB, keyA, charIdA),
+    resolveEntityAttributes(c.env.RPG_DB, keyB, charIdB),
+  ])
+
+  const w1FromD1 = attrsA?.['weight-1']
+  const w2FromD1 = attrsB?.['weight-2']
+  const w1Raw = typeof w1FromD1 === 'number' ? w1FromD1 : extractFieldFromText(textA, 'Weight-1')
+  const w2Raw = typeof w2FromD1 === 'number' ? w2FromD1 : extractFieldFromText(textB, 'Weight-2')
 
   if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field (got: ${JSON.stringify(w1Raw)})`, null), 200)
   if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field (got: ${JSON.stringify(w2Raw)})`, null), 200)
@@ -55,7 +69,10 @@ export async function handle_resolve_interaction({ c, id, args }: TypedToolConte
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `${actionType}: ${success ? 'SUCCESS' : 'FAILURE'} (roll ${roll.toFixed(3)} vs P=${probability.toFixed(3)}) — delta_value: ${delta_value}` }],
-    metadata: { entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1, weight_2: w2, weight_1_raw: w1Raw, weight_2_raw: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000 },
+    metadata: {
+      entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1, weight_2: w2, weight_1_raw: w1Raw, weight_2_raw: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000,
+      weight_1_source: typeof w1FromD1 === 'number' ? 'd1' : 'kv', weight_2_source: typeof w2FromD1 === 'number' ? 'd1' : 'kv',
+    },
     success,
     delta_value
   }), 200)
@@ -100,7 +117,7 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
 
-  const { text } = parseKvEntry(raw)
+  const { text, meta } = parseKvEntry(raw)
 
   // Scan ALL numeric fields — no early exit
   type ParsedField = { originalName: string; value: number }
@@ -203,6 +220,20 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
     'patience': 'Patience',
   }
 
+  // #410 — D1 entity_attributes is the primary source of truth; any field present
+  // there overrides (or adds to) what markdown parsing found in the loop above,
+  // per the issue's "D1 becomes primary source of truth ... falls back to KV".
+  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, key)
+  const d1Attrs = await resolveEntityAttributes(c.env.RPG_DB, key, characterId)
+  const d1Keys = new Set(d1Attrs ? Object.keys(d1Attrs) : [])
+  if (d1Attrs) {
+    for (const [attrKey, attrValue] of Object.entries(d1Attrs)) {
+      if (typeof attrValue === 'number') {
+        parsedFields.set(attrKey, { originalName: CANONICAL_NAMES[attrKey] ?? attrKey, value: attrValue })
+      }
+    }
+  }
+
   const weightingTable: FieldWeight[] = entityRole === 'actor' ? ACTOR_WEIGHTS : SUBJECT_VECTORS[vector]
 
   const presentEntries: Array<{ fw: FieldWeight; field: ParsedField }> = []
@@ -228,7 +259,8 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
       fields_analyzed: [],
       missing_fields: weightingTable.map(fw => CANONICAL_NAMES[fw.field] ?? fw.field),
       breakdown: [],
-      projected_yield: 'No quantifiable metrics found. Entity cannot be evaluated mechanically.'
+      projected_yield: 'No quantifiable metrics found. Entity cannot be evaluated mechanically.',
+      d1_attributes_used: d1Keys.size > 0,
     }), 200)
   }
 
@@ -236,7 +268,7 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   const totalPresentWeight = presentEntries.reduce((sum, { fw }) => sum + fw.weight, 0)
 
   type BreakdownEntry = {
-    field: string; raw_value: number; weight: number; effective_value: number; note?: string; contribution: number
+    field: string; raw_value: number; weight: number; effective_value: number; note?: string; contribution: number; source: 'd1' | 'kv'
   }
 
   const breakdown: BreakdownEntry[] = []
@@ -261,6 +293,7 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
       weight: Math.round(redistributedWeight * 1000) / 1000,
       effective_value: Math.round(effectiveValue * 1000) / 1000,
       contribution,
+      source: d1Keys.has(fw.field) ? 'd1' : 'kv',
     }
     if (isInverted) entry.note = `INVERTED: (1.0 - ${rawValue})`
     breakdown.push(entry)
@@ -351,6 +384,7 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
     missing_fields: missingFields,
     breakdown,
     projected_yield: projectedYield,
+    d1_attributes_used: d1Keys.size > 0,
   }), 200)
 }
 
@@ -704,8 +738,8 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
   if (!rawA) return c.json(makeError(id, -32602, `Entity "${keyA}" not found`, null), 200)
   if (!rawB) return c.json(makeError(id, -32602, `Entity "${keyB}" not found`, null), 200)
 
-  const { text: textA } = parseKvEntry(rawA)
-  const { text: textB } = parseKvEntry(rawB)
+  const { text: textA, meta: metaA } = parseKvEntry(rawA)
+  const { text: textB, meta: metaB } = parseKvEntry(rawB)
   const constraints: string[] = []
   let riskScore = 0
 
@@ -718,8 +752,19 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
     if (sizeRatio > 5) { constraints.push(`Size ratio ${sizeRatio}: entity_a far exceeds entity_b capacity`); riskScore += 2 }
   }
 
-  const _w1A = extractFieldFromText(textA, 'Weight-1')
-  const _w2B = extractFieldFromText(textB, 'Weight-2')
+  // #410 — D1 entity_attributes takes priority over KV markdown for Weight-1/
+  // Weight-2, same fallback rule as resolve_interaction and analyze_utility.
+  const [charIdA, charIdB] = await Promise.all([
+    resolveEntityToCharacterId(c.env.RPG_DB, metaA, textA, keyA),
+    resolveEntityToCharacterId(c.env.RPG_DB, metaB, textB, keyB),
+  ])
+  const [attrsA, attrsB] = await Promise.all([
+    resolveEntityAttributes(c.env.RPG_DB, keyA, charIdA),
+    resolveEntityAttributes(c.env.RPG_DB, keyB, charIdB),
+  ])
+
+  const _w1A = attrsA?.['weight-1'] ?? extractFieldFromText(textA, 'Weight-1')
+  const _w2B = attrsB?.['weight-2'] ?? extractFieldFromText(textB, 'Weight-2')
   const w1A = typeof _w1A === 'number' ? normalizeWeight(_w1A) : null
   const w2B = typeof _w2B === 'number' ? normalizeWeight(_w2B) : null
   if (w1A !== null && w1A < 0.2) { constraints.push(`Weight-1 too low (${w1A.toFixed(2)}): entity_a lacks drive`); riskScore++ }
@@ -739,7 +784,8 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
     content: [{ type: 'text', text: `Compatibility of "${keyA}" × "${keyB}" for "${interactionType}": ${compatible ? 'COMPATIBLE' : 'INCOMPATIBLE'} (risk: ${riskLevel}). ${constraints.length} constraint(s).` }],
     metadata: { retrieved: 2, written: 0 },
     entity_a: keyA, entity_b: keyB, interaction_type: interactionType,
-    compatible, risk_level: riskLevel, risk_score: riskScore, size_ratio: sizeRatio, constraints
+    compatible, risk_level: riskLevel, risk_score: riskScore, size_ratio: sizeRatio, constraints,
+    weight_1_source: attrsA?.['weight-1'] !== undefined ? 'd1' : 'kv', weight_2_source: attrsB?.['weight-2'] !== undefined ? 'd1' : 'kv',
   }), 200)
 }
 
@@ -765,6 +811,105 @@ export async function resolveEntityToCharacterId(
   } catch {
     return null
   }
+}
+
+// #410 — read an entity's D1-backed interaction attributes (Weight-1, Weight-2,
+// Tenderness-Index, Cortisol-Level, or any campaign-defined numeric field), keyed
+// by whichever identity the row was written under: lore_key (Archisector's
+// character:guard-1 style) or character_id (Calder's D1 UUIDs, resolved via
+// resolveEntityToCharacterId). Returns null — not {} — when no row exists, so
+// callers can tell "D1 has nothing" apart from "D1 has an empty attribute set"
+// and fall back to KV markdown parsing. Same defensive try/catch as
+// resolveEntityToCharacterId: an unbound RPG_DB or a not-yet-migrated schema
+// (tests that never call setupRpgDb) degrades to the KV-only behavior that
+// predates #410, not an error.
+export async function resolveEntityAttributes(
+  db: D1Database | undefined, loreKey: string, characterId: string | null,
+): Promise<Record<string, number> | null> {
+  if (!db) return null
+  try {
+    const row = await db.prepare(
+      'SELECT attributes FROM entity_attributes WHERE lore_key = ? OR (character_id IS NOT NULL AND character_id = ?) LIMIT 1'
+    ).bind(loreKey, characterId ?? '').first() as { attributes: string } | null
+    if (!row) return null
+    const parsed = JSON.parse(row.attributes) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, number>
+    return null
+  } catch {
+    return null
+  }
+}
+
+export const getEntityAttributesSchema = z.object({ entity_key: z.string().min(1) })
+
+export async function handle_get_entity_attributes({ c, id, args }: TypedToolContext<typeof getEntityAttributesSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
+  const raw = await kvGet(c, entityKey)
+  if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+  const { text, meta } = parseKvEntry(raw)
+  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
+  const attributes = await resolveEntityAttributes(c.env.RPG_DB, entityKey, characterId)
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: attributes ? `${Object.keys(attributes).length} D1 attribute(s) found for "${entityKey}".` : `No D1 attributes for "${entityKey}" — resolve_interaction/analyze_utility fall back to KV markdown parsing.` }],
+    entity_key: entityKey, character_id: characterId, source: attributes ? 'd1' : 'none', attributes: attributes ?? {},
+  }), 200)
+}
+
+export const setEntityAttributesSchema = z.object({
+  entity_key: z.string().min(1),
+  attributes: z.record(z.string(), z.number()).refine(a => Object.keys(a).length > 0, 'attributes must have at least one field'),
+  merge: z.boolean().default(true),
+})
+
+// #410 — write path for D1-backed interaction attributes. entity_key must
+// already exist in KV (same identity-entry-point requirement as every other
+// entity_manage action) but the D1 row it writes is dual-keyed: lore_key is
+// always the entity_key, and character_id is opportunistically resolved and
+// stored alongside it so Calder's UUID-keyed lookups find the same row without
+// requiring a second write. merge:true (default) folds the given attributes
+// into whatever's already there — set a subset without clobbering the rest;
+// merge:false replaces the stored attribute set wholesale.
+export async function handle_set_entity_attributes({ c, id, args }: TypedToolContext<typeof setEntityAttributesSchema>): Promise<Response> {
+  const entityKey = args.entity_key.trim().toLowerCase()
+  const raw = await kvGet(c, entityKey)
+  if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
+
+  // RPG_DB is always bound in production and tests (see character-manage.ts's
+  // identical `env.RPG_DB!` convention) — unlike the read paths above, which
+  // treat a missing binding as "fall back to KV" via resolveEntityAttributes'
+  // own guard, a write has nowhere else to go, so this trusts the binding.
+  const db = c.env.RPG_DB!
+
+  const { text, meta } = parseKvEntry(raw)
+  const characterId = await resolveEntityToCharacterId(db, meta, text, entityKey)
+
+  const existing = await db.prepare('SELECT id, attributes FROM entity_attributes WHERE lore_key = ?').bind(entityKey).first() as { id: string; attributes: string } | null
+
+  let finalAttributes = args.attributes
+  if (args.merge && existing) {
+    try {
+      const prev = JSON.parse(existing.attributes) as Record<string, number>
+      finalAttributes = { ...prev, ...args.attributes }
+    } catch {
+      // Corrupt stored JSON — fall through and overwrite with the new attributes rather than fail the write.
+    }
+  }
+
+  const now = new Date().toISOString()
+  if (existing) {
+    await db.prepare('UPDATE entity_attributes SET attributes = ?, character_id = COALESCE(?, character_id), updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(finalAttributes), characterId, now, existing.id).run()
+  } else {
+    await db.prepare('INSERT INTO entity_attributes (id, lore_key, character_id, attributes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), entityKey, characterId, JSON.stringify(finalAttributes), now, now).run()
+  }
+
+  return c.json(makeResult(id, {
+    content: [{ type: 'text', text: `Set ${Object.keys(args.attributes).length} attribute(s) on "${entityKey}"${characterId ? ` (linked to D1 character ${characterId})` : ''}.` }],
+    entity_key: entityKey, character_id: characterId, merged: args.merge && !!existing, attributes: finalAttributes,
+  }), 200)
 }
 
 export async function handle_get_inventory({ c, id, args }: TypedToolContext<typeof getInventorySchema>): Promise<Response> {
