@@ -89,6 +89,16 @@ Narrator checks a player's current inventory:
   → { name: "Aldric", inventory: ["longsword", "rope", "healing_potion"] }
 ```
 
+**Known Behavior (#398):** `character_manage`'s `kill` action now auto-removes the dying character
+from every party they belonged to and returns a `partyUpdates` array (`{ partyId,
+remainingMembers, archived, soloSurvivorId }` per party) — no need to manually call party cleanup
+after a death. If a party reaches 0 members it's auto-archived (`status: "archived"`); if exactly
+1 member remains, that character's id is surfaced as `soloSurvivorId` for the narrator to act on.
+This does **not** call `rpg{sub:"party", action:"group_break"}` despite that being named in the
+original issue — `group_break` fully disbands a party (removes *every* member) regardless of
+`method`, so calling it per-death would incorrectly evict every living member over one character's
+death. The party-membership cleanup here only ever removes the one dead character's own row.
+
 ---
 
 ### 3. **World & Location Mapping** (Geography & Exploration)
@@ -124,6 +134,12 @@ finds a route across every pair in the seeded 4-waypoint set, including
 Fårösund — apparently via the free ferry crossing — so the shipped seed data
 has no real example of an unroutable pair; the `not_precomputed`/`no_route_found`
 paths are exercised by unit tests against synthetic fixture data instead.
+
+**Known Behavior (#399):** `waypoint.register`'s `lat`/`lon` are only required for a world that
+has been geo-calibrated via `waypoint.calibrate`. A purely grid/hex world that never calibrates
+can register a waypoint with just `q`/`r` — `lat`/`lon` are stored as `null` rather than forcing
+callers to fabricate placeholder coordinates. For a calibrated world, `lat`/`lon` remain required
+on `register` (dropping real geo data silently would be worse than requiring it).
 
 **Example Use:**
 ```

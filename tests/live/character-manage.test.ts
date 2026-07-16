@@ -155,4 +155,20 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     expect(attackRes.error).toBe(true)
     expect(attackRes.message).toContain('staged-dissolution')
   })
+
+  it('kill removes the dead character from their party and archives it once empty (#398)', async () => {
+    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Kill Party World ${uid()}`, theme: 'fantasy' }))
+    const worldId = worldRes.worldId
+    const partyRes = parseResult(await tool('rpg', { sub: 'party', action: 'create', name: `Solo Party ${uid()}`, worldId }))
+    const partyId = partyRes.partyId
+    const doomedId = await createChar({ name: `Last One ${uid()}` })
+    await tool('rpg', { sub: 'party', action: 'add_member', partyId, characterId: doomedId })
+
+    const killRes = parseResult(await tool('character_manage', { action: 'kill', id: doomedId }))
+    expect(killRes.success).toBe(true)
+    expect(killRes.partyUpdates).toEqual([{ partyId, remainingMembers: 0, archived: true, soloSurvivorId: null }])
+
+    const partyAfter = parseResult(await tool('rpg', { sub: 'party', action: 'get', partyId }))
+    expect(partyAfter.party.status).toBe('archived')
+  })
 })

@@ -50,8 +50,8 @@ export interface WaypointRow {
   name: string
   q: number
   r: number
-  lat: number
-  lon: number
+  lat: number | null
+  lon: number | null
   kind: string
 }
 
@@ -97,17 +97,27 @@ export async function handleWaypointManage(env: AppBindings, args: Record<string
   switch (match.matched) {
     case 'register': {
       if (!a.worldId || !a.name) return err('"worldId" and "name" are required')
-      if (a.lat === undefined || a.lon === undefined) return err('"lat" and "lon" are required')
       if (a.q === undefined || a.r === undefined) return err('"q" and "r" are required')
       const world = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(a.worldId).first()
       if (!world) return err(`World not found: ${a.worldId}`)
+      // #399 — lat/lon are only required for a world that has been geo-calibrated
+      // (waypoint.calibrate). A purely grid/hex world has no meaningful geo
+      // origin, so forcing placeholder lat/lon values there would store
+      // fabricated data that looks real. For a calibrated world, lat/lon stay
+      // required — dropping real geo data silently would be worse.
+      const origin = await getGeoOrigin(db, a.worldId)
+      if (origin && (a.lat === undefined || a.lon === undefined)) {
+        return err('"lat" and "lon" are required for a geo-calibrated world')
+      }
       const existing = await db.prepare('SELECT id FROM waypoints WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
       if (existing) return err(`Waypoint "${a.name}" already exists for this world`)
       const id = crypto.randomUUID()
       const kind = a.kind ?? 'settlement'
+      const lat = a.lat ?? null
+      const lon = a.lon ?? null
       await db.prepare('INSERT INTO waypoints (id, world_id, name, q, r, lat, lon, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.name, a.q, a.r, a.lat, a.lon, kind, now, now).run()
-      return ok({ success: true, actionType: 'register', waypointId: id, worldId: a.worldId, name: a.name, q: a.q, r: a.r, lat: a.lat, lon: a.lon, kind })
+        .bind(id, a.worldId, a.name, a.q, a.r, lat, lon, kind, now, now).run()
+      return ok({ success: true, actionType: 'register', waypointId: id, worldId: a.worldId, name: a.name, q: a.q, r: a.r, lat, lon, kind })
     }
     case 'list': {
       if (!a.worldId) return err('"worldId" is required')

@@ -1,0 +1,4 @@
+### character_manage.kill: auto-remove dead members from their parties (#398)
+
+- `kill` now removes the dying character from every party they belonged to and returns a `partyUpdates` array (`{ partyId, remainingMembers, archived, soloSurvivorId }`). A party auto-archives (`status: "archived"`) once its last member dies; a party with exactly one member remaining surfaces that character's id as `soloSurvivorId`.
+- Deliberately does **not** call `rpg{sub:"party", action:"group_break"}` despite that being the mechanism named in the original issue text — `group_break` fully disbands a party (removes every member, marks it `broken`) regardless of `method`, so wiring it per-death would have incorrectly evicted every living party member over one character's death. This closes the actual gap (Step 4 of #306) without that side effect.

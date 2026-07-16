@@ -40,12 +40,38 @@ describe('handleWaypointManage', () => {
     expect(body.error).toBe(true)
   })
 
-  it('register requires lat and lon', async () => {
+  // #399 — lat/lon are only required for a geo-calibrated world; a purely
+  // grid/hex world (never calls waypoint.calibrate) can register without them.
+  it('register succeeds without lat/lon on a non-geo-calibrated world', async () => {
     await createWorld()
+    const r = await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', q: 0, r: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.lat).toBeNull()
+    expect(body.lon).toBeNull()
+
+    const got = JSON.parse((await handleWaypointManage(db(), { action: 'get', worldId: WORLD, name: 'Visby' })).content[0].text)
+    expect(got.waypoint.lat).toBeNull()
+    expect(got.waypoint.lon).toBeNull()
+  })
+
+  it('register requires lat and lon on a geo-calibrated world', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6349, originLon: 18.2948, kmPerHex: 1 })
     const r = await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', q: 0, r: 0 })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('lat')
+  })
+
+  it('register still accepts lat/lon on a geo-calibrated world', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6349, originLon: 18.2948, kmPerHex: 1 })
+    const r = await handleWaypointManage(db(), { action: 'register', worldId: WORLD, name: 'Visby', lat: 57.6349, lon: 18.2948, q: 0, r: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.lat).toBe(57.6349)
+    expect(body.lon).toBe(18.2948)
   })
 
   it('register requires q and r', async () => {
