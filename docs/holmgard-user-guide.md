@@ -223,6 +223,17 @@ aliases matching the issue's proposed naming — no new mechanics, same actions.
 on #315: driver switching is narrator discretion (a story beat), not a mechanical action-cost or
 contested roll — there was no tactical grid use case to design a contest DC for.
 
+**Known Behavior (#411):** `entity_manage`'s `advance_stage` action now mirrors its KV
+`State-Stage` advance into D1's `characters.dissolution_stage` whenever the entity resolves (via
+`meta.d1_id`, or a case-insensitive name match — see `resolveEntityToCharacterId`) to a character
+whose `death_mode` is already `"staged"` (#314). The response gains a `d1_mirrored: boolean`
+field. This closes a real drift risk: `combat_action.attack`'s staged-rejection guard reads D1's
+`dissolution_stage`, but narrators track stage progression through KV via `advance_stage` — without
+the mirror, the two could disagree about which stage a character is on. No workflow change for the
+caller; the mirror only fires for characters already marked `staged`, and only on `advance_stage`
+(not `batch_stage`, which advances a whole location's entities at once and wasn't part of this
+fix's scope).
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)

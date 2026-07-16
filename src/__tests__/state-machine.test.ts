@@ -1,6 +1,7 @@
 import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
+import { setupRpgDb } from './setup-d1'
 
 describe('advance_state_stage', () => {
   it('increments State-Stage and writes back', async () => {
@@ -53,6 +54,56 @@ describe('advance_state_stage', () => {
     expect(lore.result.text).not.toContain('Stage-2-of-4')
     // Stage-Timer decremented
     expect(lore.result.text).toContain('Stage-Timer: 2')
+  })
+})
+
+// #411 — advance_stage mirrors the new stage into D1's characters.dissolution_stage
+// for entities that are also "staged" characters (#314), so combat_action.attack's
+// staged-rejection guard (which reads D1) never drifts behind the narrator's KV
+// State-Stage advances.
+describe('advance_state_stage — D1 dissolution_stage mirror (#411)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  async function seedStagedCharacter(name: string, dissolutionStage: number): Promise<string> {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, name, '{}', 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, 'staged', dissolutionStage, 5, 'consumed', now, now).run()
+    return id
+  }
+
+  it('mirrors the new State-Stage into dissolution_stage for a staged character resolved by name', async () => {
+    const characterId = await seedStagedCharacter('Mirror Test Subject', 3)
+    await seedKV('character:mirror-test-subject', '**State-Stage:** 3\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:mirror-test-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.new_stage).toBe(4)
+    expect(res.result.d1_mirrored).toBe(true)
+
+    const row = await env.RPG_DB.prepare('SELECT dissolution_stage FROM characters WHERE id = ?').bind(characterId).first() as { dissolution_stage: number }
+    expect(row.dissolution_stage).toBe(4)
+  })
+
+  it('does not mirror for an entity with no matching D1 character', async () => {
+    await seedKV('character:no-d1-row', '**State-Stage:** 1\n**State-Total:** 5\n**Stage-Timer:** 1')
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:no-d1-row' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.d1_mirrored).toBe(false)
+  })
+
+  it('does not mirror for a D1 character whose death_mode is still instant', async () => {
+    await seedStagedCharacter('Instant Mode Subject', 0)
+    await env.RPG_DB.prepare("UPDATE characters SET death_mode = 'instant' WHERE name = ?").bind('Instant Mode Subject').run()
+    await seedKV('character:instant-mode-subject', '**State-Stage:** 1\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:instant-mode-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.d1_mirrored).toBe(false)
   })
 })
 
