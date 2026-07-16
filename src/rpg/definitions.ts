@@ -7,7 +7,7 @@ const SUB_VALUES = [
   'strategy', 'turn', 'spatial', 'world_map', 'batch', 'travel',
   'perception', 'scene', 'rest', 'scroll', 'event', 'drama', 'time', 'timeline',
   'biome', 'encounter', 'production', 'resource', 'broadcast', 'zone_type',
-  'waypoint', 'stealth', 'weather',
+  'waypoint', 'stealth', 'weather', 'conflict_type',
 ]
 
 export const rpgToolDefinitions: any[] = [

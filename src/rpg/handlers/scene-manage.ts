@@ -13,7 +13,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'get_latest', 'state_snapshot'] as const
+const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'get_latest', 'state_snapshot', 'set_conflict_type', 'get_conflict_type'] as const
 type SceneAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SceneAction> = {
   ...CRUD_ALIASES,
@@ -24,6 +24,9 @@ const ALIASES: Record<string, SceneAction> = {
   remove: 'delete', close: 'delete', end_scene: 'delete',
   latest: 'get_latest', current: 'get_latest', active: 'get_latest',
   snapshot: 'state_snapshot', scene_state: 'state_snapshot', brief: 'state_snapshot',
+  // #316 — conflict-type routing
+  conflict_type: 'set_conflict_type', set_conflict: 'set_conflict_type',
+  get_conflict: 'get_conflict_type', conflict_type_get: 'get_conflict_type',
 } as Record<string, SceneAction>
 
 const InputSchema = z.object({
@@ -41,6 +44,8 @@ const InputSchema = z.object({
   locationKey: z.string().optional(),
   include: z.array(z.enum(['occupants', 'weather', 'events', 'threads', 'environment', 'setups', 'reachable'])).optional(),
   name: z.string().optional(),
+  // #316 — conflict-type routing
+  conflictTypeId: z.string().nullable().optional(),
 })
 
 // Helper to get occupants at a location from D1 characters table (normalized location_key).
@@ -271,6 +276,30 @@ export async function handleSceneManage(env: AppBindings, args: Record<string, u
         environment: includeSet.has('environment') ? environment : undefined,
         open_setups: includeSet.has('setups') ? setups : undefined,
       })
+    }
+    // #316 — conflict-type routing. Set/clear (null) which conflict_types
+    // row a scene is tagged with; server-side this is just a labeled FK —
+    // actually routing between agents is a convention the caller(s) honor,
+    // this MCP can't enforce it.
+    case 'set_conflict_type': {
+      if (!a.id) return err('"id" is required')
+      if (a.conflictTypeId === undefined) return err('"conflictTypeId" is required (pass null to clear)')
+      const scene = await db.prepare('SELECT id FROM scenes WHERE id = ?').bind(a.id).first()
+      if (!scene) return err(`Scene not found: ${a.id}`)
+      if (a.conflictTypeId !== null) {
+        const conflictType = await db.prepare('SELECT id FROM conflict_types WHERE id = ?').bind(a.conflictTypeId).first()
+        if (!conflictType) return err(`Conflict type not found: ${a.conflictTypeId}`)
+      }
+      await db.prepare('UPDATE scenes SET conflict_type_id = ? WHERE id = ?').bind(a.conflictTypeId, a.id).run()
+      return ok({ success: true, actionType: 'set_conflict_type', sceneId: a.id, conflictTypeId: a.conflictTypeId })
+    }
+    case 'get_conflict_type': {
+      if (!a.id) return err('"id" is required')
+      const scene = await db.prepare('SELECT conflict_type_id FROM scenes WHERE id = ?').bind(a.id).first() as { conflict_type_id: string | null } | null
+      if (!scene) return err(`Scene not found: ${a.id}`)
+      if (!scene.conflict_type_id) return ok({ success: true, actionType: 'get_conflict_type', sceneId: a.id, conflictTypeId: null, conflictType: null })
+      const conflictType = await db.prepare('SELECT * FROM conflict_types WHERE id = ?').bind(scene.conflict_type_id).first()
+      return ok({ success: true, actionType: 'get_conflict_type', sceneId: a.id, conflictTypeId: scene.conflict_type_id, conflictType })
     }
   }
 }

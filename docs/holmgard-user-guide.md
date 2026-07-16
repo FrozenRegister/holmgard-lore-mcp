@@ -316,6 +316,13 @@ tool) and the D1-backed `rpg scene` sub remain otherwise separate systems; this 
 for committed-choice visibility only, not a full unification — see the open architecture question
 on #350.
 
+**Known Behavior (#316):** The D1-backed `rpg scene` sub can tag a scene with a `conflict_type`
+(`set_conflict_type`/`get_conflict_type` actions) from the global `conflict_types` taxonomy
+(`rpg{sub:"conflict_type"}` — seeded `physical`/`social`/`hybrid`, runtime-extensible). Each type
+has a `resolver` (`combat`/`drama`/`both`) indicating which agent should act on the scene — but
+this MCP only records that label; it cannot enforce which agent actually resolves a scene. Routing
+is a convention the calling agent(s) honor, the same way #312's time-mode coordination works.
+
 ---
 
 ### 10. **AI Agent Tools** (Semi-Autonomous NPCs)
