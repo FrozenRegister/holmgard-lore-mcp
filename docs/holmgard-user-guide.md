@@ -234,6 +234,22 @@ caller; the mirror only fires for characters already marked `staged`, and only o
 (not `batch_stage`, which advances a whole location's entities at once and wasn't part of this
 fix's scope).
 
+**Known Behavior (#410):** `resolve_interaction`, `analyze_utility`, and `get_compatibility` now
+read entity interaction attributes (Weight-1, Weight-2, Tenderness-Index, Cortisol-Level, or any
+campaign-defined numeric field) from a D1-backed `entity_attributes` table first, falling back to
+KV lore markdown parsing when no row exists — so nothing that worked before #410 stops working,
+but a D1 row now wins over conflicting KV text. Two new `entity_manage` actions manage that table:
+`get_attributes` (read) and `set_attributes` (write; `merge: true` by default folds new fields into
+the existing set instead of replacing it wholesale). A row is dual-keyed by `lore_key` (Archisector's
+`character:guard-1` style) and an opportunistically-resolved `character_id` (Calder's D1 UUIDs, via
+the same `resolveEntityToCharacterId` used by #344/#411) — `set_attributes` only requires the KV
+`entity_key`, and stores whichever identity axis resolves. `analyze_utility`'s response gains
+`d1_attributes_used: boolean` and each `breakdown` entry gains `source: 'd1' | 'kv'`;
+`resolve_interaction`'s metadata and `get_compatibility`'s response both gain
+`weight_1_source`/`weight_2_source`. Populating D1 rows from existing KV lore is a campaign-side
+migration, not automatic — per the issue's own non-goals, #410 does not backfill or change the
+underlying interaction-probability formula (still the 70% ceiling, binary-outcome model).
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)

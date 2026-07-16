@@ -18,6 +18,8 @@ import {
   handle_create_consumption_timeline, createConsumptionTimelineSchema,
   handle_set_consumption_timeline, setConsumptionTimelineSchema,
   handle_set_sensory_profile, setSensoryProfileSchema,
+  handle_get_entity_attributes, getEntityAttributesSchema,
+  handle_set_entity_attributes, setEntityAttributesSchema,
 } from './entity'
 import { handle_move_entity, moveEntitySchema } from './lore'
 
@@ -75,6 +77,12 @@ const ACTION_MAP: Record<string, ActionSpec | ToolHandler> = {
   }),
   set_consumption_timeline: defineAction(setConsumptionTimelineSchema, handle_set_consumption_timeline, {
     entity_key: 'character:eira-holt', current_stage: 2,
+  }),
+  get_attributes: defineAction(getEntityAttributesSchema, handle_get_entity_attributes, {
+    entity_key: 'character:eira-holt',
+  }),
+  set_attributes: defineAction(setEntityAttributesSchema, handle_set_entity_attributes, {
+    entity_key: 'character:eira-holt', attributes: { 'weight-1': 0.3, 'weight-2': 0.15 },
   }),
 }
 

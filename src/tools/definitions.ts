@@ -424,6 +424,31 @@ const ENTITY_MANAGE_SCHEMA = {
       },
       additionalProperties: false,
     },
+    {
+      type: 'object',
+      required: ['action', 'entity_key'],
+      properties: {
+        action: { type: 'string', const: 'get_attributes', description: "Get an entity's D1-backed interaction attributes (Weight-1, Weight-2, or any campaign-defined numeric field)" },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action', 'entity_key', 'attributes'],
+      properties: {
+        action: { type: 'string', const: 'set_attributes', description: "Set an entity's D1-backed interaction attributes; becomes the primary source of truth over KV markdown for resolve_interaction/analyze_utility/get_compatibility" },
+        entity_key: { type: 'string', minLength: 1, description: 'Entity lore key' },
+        attributes: {
+          type: 'object',
+          additionalProperties: { type: 'number' },
+          minProperties: 1,
+          description: 'Arbitrary numeric attributes, e.g. {"weight-1": 0.3, "tenderness-index": 0.7} — campaigns own their own attribute schema',
+        },
+        merge: { type: 'boolean', description: 'Merge into existing attributes (default: true) vs. replace wholesale' },
+      },
+      additionalProperties: false,
+    },
   ],
 }
 
@@ -861,7 +886,7 @@ export const toolDefinitions: ToolDefinition[] = [
     name: 'entity_manage',
     title: 'Entity Manage',
     version: '1.0.0',
-    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, set_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, create_consumption_timeline, set_consumption_timeline, list_active_threads, resolve_interaction',
+    description: 'Entity lifecycle — generate, move, inventory, encounters, consumption timelines, and interaction resolution. Actions: generate, move, roll_encounter, advance_stage, batch_stage, get_inventory, transfer_item, get_sensory_profile, set_sensory_profile, get_compatibility, analyze_utility, map_integration, list_consumption_timelines, create_consumption_timeline, set_consumption_timeline, list_active_threads, resolve_interaction, get_attributes, set_attributes',
     inputSchema: ENTITY_MANAGE_SCHEMA,
   },
   {
