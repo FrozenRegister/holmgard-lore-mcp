@@ -33,7 +33,15 @@ setSchemaIndex([...toolDefinitions, mathManageSchemaDoc].map((t: any) => ({ name
 // #339 — register rpg sub-level schemas so load_tool_schema({ toolName: "rpg", sub: "corpse" }) works.
 // These are static documentation schemas describing each sub's parameters,
 // extracted from their Zod InputSchema definitions.
-const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<string, unknown> }> = [
+// #404 (Tier 1) — a sub-level alias (same handler, different name a narrator
+// might reach for) reuses its canonical entry's description/schema via
+// `aliasOf` instead of hand-copying them — the exact copy-paste fragility
+// that made "stealth"'s old duplicated entry drift from "perception"'s.
+type SubSchemaEntry =
+  | { sub: string; description: string; schema: Record<string, unknown> }
+  | { sub: string; aliasOf: string }
+
+const SUB_SCHEMAS: SubSchemaEntry[] = [
   // ── Already registered (kept as-is) ──────────────────────────────────────
   { sub: 'corpse', description: 'Corpse ecology — decomposition, scavenging, looting, psychological impact. Actions: create, get, list, loot, decay, generate_loot, delete, register, decompose, scavenge_check, loot_corpse, recover, get_state, psychological_impact. NOTE: "id" is the corpse UUID (primary key of the corpses table), NOT a character ID. "characterId" is the dead character\'s UUID (required for create/register). "looterCharacterId" and "observerCharacterId" are living characters acting on the corpse. See docs/parameter-naming-conventions.md for the full cross-tool reference.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Corpse UUID (primary key of corpses table). Required for get/loot/decay/decompose/loot_corpse/recover/get_state/psychological_impact. NOT a character ID — use "characterId" for the dead character.' }, characterId: { type: 'string', description: 'Dead character\'s UUID. Required for create/register. Stored in corpses.character_id.' }, characterName: { type: 'string', description: 'Dead character\'s name. Required for create/register.' }, worldId: { type: 'string', description: 'World UUID. Accepts snake_case "world_id" as alias. Required for scavenge_check.' }, world_id: { type: 'string', description: 'Snake_case alias for worldId (cross-tool compatibility with non-RPG tools).' }, hoursSinceDeath: { type: 'number', description: 'Override computed elapsed time (decompose only)' }, looterCharacterId: { type: 'string', description: 'Character UUID of the looter (loot_corpse only)' }, observerCharacterId: { type: 'string', description: 'Character UUID of the observer (psychological_impact only)' }, recoveryType: { type: 'string', enum: ['memorial_package', 'warning_display', 'trophy_recovery', 'research_recovery'] }, relationship: { type: 'string', enum: ['stranger', 'party_member', 'betrayed_them', 'saved_them'] } }, required: ['action'] } },
@@ -46,6 +54,8 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
   // ── #366 — character: add find_by_name and kill ─────────────────────────
   { sub: 'character', description: 'Character CRUD and management. Actions: create, get, list, update, delete, search, find_by_name, add_xp, get_progression, level_up, cast_spell, snapshot, activate, list_passengers, recompute_derived, kill.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, characterId: { type: 'string' }, name: { type: 'string' }, worldId: { type: 'string' }, characterClass: { type: 'string' }, race: { type: 'string' }, level: { type: 'number' }, hp: { type: 'number' }, maxHp: { type: 'number' }, ac: { type: 'number' }, stats: { type: 'object' }, query: { type: 'string', description: 'Search query for search action' }, xp: { type: 'number' }, spellName: { type: 'string' }, slotLevel: { type: 'number' }, limit: { type: 'number' }, killerId: { type: 'string' }, causeOfDeath: { type: 'string' } }, required: ['action'] } },
+  // #404 (Tier 1) — plural alias.
+  { sub: 'characters', aliasOf: 'character' },
   { sub: 'aura', description: 'Aura and concentration management. Actions: create, get, list, remove, expire, get_affecting, concentrate, break_concentration, check_save, check_duration.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Aura instance UUID from create' }, ownerId: { type: 'string' }, targetId: { type: 'string' }, characterId: { type: 'string' }, spellName: { type: 'string' }, spellLevel: { type: 'number' }, radius: { type: 'number' } }, required: ['action'] } },
   { sub: 'secret', description: 'Secret management (hidden knowledge, backstory). Actions: create, get, list, update, delete, reveal, check_reveal.',
@@ -54,8 +64,7 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string', description: 'Note UUID (noteId) from create' }, worldId: { type: 'string' }, type: { type: 'string', enum: ['plot_thread', 'canonical_moment', 'npc_voice', 'foreshadowing', 'session_log'] }, content: { type: 'string' }, visibility: { type: 'string', enum: ['dm_only', 'player_visible'] } }, required: ['action'] } },
   { sub: 'production', description: 'Production cycle — advance_day, perimeter, extraction. Actions: advance_day, get_state, set_state, list_events.',
     schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, daysToAdvance: { type: 'number' } }, required: ['action', 'worldId'] } },
-  { sub: 'stealth', description: 'Stealth and perception checks (aliased to perception sub). Actions: check (alias for perception stealth_check).',
-    schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, worldId: { type: 'string' }, targetId: { type: 'string' } }, required: ['action'] } },
+  { sub: 'stealth', aliasOf: 'perception' },
 
   // ── #360 — item: add schema with search action ───────────────────────────
   { sub: 'item', description: 'Item CRUD and search. Actions: create, get, list, update, delete, search.',
@@ -84,6 +93,8 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, characterId: { type: 'string' }, worldId: { type: 'string' }, recipeName: { type: 'string' }, materials: { type: 'array', items: { type: 'string' } }, complexity: { type: 'string', enum: ['trivial', 'easy', 'moderate', 'hard', 'extreme'] } }, required: ['action'] } },
   { sub: 'npc', description: 'NPC generation and behavior. Actions: generate, get, list, update, delete, react, get_dialogue.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, worldId: { type: 'string' }, archetype: { type: 'string' }, personality: { type: 'string' }, role: { type: 'string' }, disposition: { type: 'string' } }, required: ['action'] } },
+  // #404 (Tier 1) — descriptive alias for dialogue/reaction actions.
+  { sub: 'npc_dialogue', aliasOf: 'npc' },
   { sub: 'session', description: 'Session management and state tracking. Actions: create, get, list, end, get_summary, save_checkpoint.',
     schema: { type: 'object', properties: { action: { type: 'string' }, id: { type: 'string' }, sessionId: { type: 'string' }, worldId: { type: 'string' }, name: { type: 'string' } }, required: ['action'] } },
   { sub: 'combat_map', description: 'Combat map grid and positioning. Actions: create, get, place_token, move_token, remove_token, get_adjacent, measure_distance.',
@@ -98,6 +109,8 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
     schema: { type: 'object', properties: { action: { type: 'string' }, originId: { type: 'string' }, targetId: { type: 'string' }, radius: { type: 'number' }, worldId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, required: ['action'] } },
   { sub: 'world_map', description: 'World map generation and hex grid. Actions: generate, get_hex, get_region, list_regions, set_hex, get_map.',
     schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, regionId: { type: 'string' }, biome: { type: 'string' }, width: { type: 'number' }, height: { type: 'number' } }, required: ['action'] } },
+  // #404 (Tier 1) — shorter alias.
+  { sub: 'maps', aliasOf: 'world_map' },
   { sub: 'batch', description: 'Batch operations — bulk create/update/delete across handlers. Actions: create_many, update_many, delete_many, get_many.',
     schema: { type: 'object', properties: { action: { type: 'string' }, operations: { type: 'array', items: { type: 'object' } }, worldId: { type: 'string' }, entityType: { type: 'string' } }, required: ['action'] } },
   { sub: 'travel', description: 'Travel and journey management. Actions: begin, advance, get_status, arrive, check_encounter, rest.',
@@ -137,7 +150,12 @@ const SUB_SCHEMAS: Array<{ sub: string; description: string; schema: Record<stri
 ]
 
 for (const s of SUB_SCHEMAS) {
-  registerRpgSubSchema(s.sub, s.description, s.schema)
+  if ('aliasOf' in s) {
+    const canonical = SUB_SCHEMAS.find((c): c is Extract<SubSchemaEntry, { schema: unknown }> => 'schema' in c && c.sub === s.aliasOf)
+    if (canonical) registerRpgSubSchema(s.sub, canonical.description, canonical.schema)
+  } else {
+    registerRpgSubSchema(s.sub, s.description, s.schema)
+  }
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────

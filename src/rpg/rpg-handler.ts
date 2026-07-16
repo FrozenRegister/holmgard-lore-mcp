@@ -5,6 +5,7 @@ import type { ToolHandler } from '../tools/types'
 import { makeError, makeResult } from '../lib/rpc'
 import type { AppBindings } from '../types'
 import type { McpResponse } from './utils/response'
+import { resolveAlias } from './action-aliases'
 
 import { handleMathManage } from './handlers/math-manage'
 import { handleWorldManage } from './handlers/world-manage'
@@ -55,6 +56,8 @@ const SUB_MAP: Record<string, RpgFn> = {
   math:          handleMathManage,
   world:         handleWorldManage,
   character:     handleCharacterManage,
+  // #404 — plural alias; narrators reach for either form interchangeably.
+  characters:    handleCharacterManage,
   party:         handlePartyManage,
   quest:         handleQuestManage,
   item:          handleItemManage,
@@ -66,6 +69,9 @@ const SUB_MAP: Record<string, RpgFn> = {
   aura:          handleAuraManage,
   improvisation: handleImprovisationManage,
   npc:           handleNpcManage,
+  // #404 — descriptive alias; narrators reach for this when they specifically
+  // mean dialogue/reaction actions rather than NPC CRUD.
+  npc_dialogue:  handleNpcManage,
   session:       handleSessionManage,
   combat:        handleCombatManage,
   combat_action: handleCombatAction,
@@ -75,6 +81,8 @@ const SUB_MAP: Record<string, RpgFn> = {
   turn:          handleTurnManage,
   spatial:       handleSpatialManage,
   world_map:     handleWorldMap,
+  // #404 — shorter alias for world_map.
+  maps:          handleWorldMap,
   batch:         handleBatchManage,
   travel:        handleTravelManage,
   perception:    handlePerceptionManage,
@@ -113,6 +121,17 @@ export const handle_rpg: ToolHandler = async ({ c, id, args }) => {
     return c.json(makeError(id, -32602, `Unknown sub "${sub}"`, null), 200)
   }
 
-  const result = await fn(c.env, rest as Record<string, unknown>)
+  // #404 (Tier 2) — some actions live on a different sub than the one a
+  // caller naturally reaches for (character.place_character really means
+  // spawn.place_character). Rewrite {sub, action} to the canonical pair
+  // before dispatch; the target handler never sees the alias. Every alias
+  // target is a real SUB_MAP entry by construction (see action-aliases.ts),
+  // so the resolved sub is always resolvable.
+  const restArgs = rest as Record<string, unknown>
+  const requestedAction = restArgs.action
+  const resolved = typeof requestedAction === 'string' ? resolveAlias(sub, requestedAction) : { sub, action: requestedAction }
+  const targetFn = resolved.sub === sub ? fn : SUB_MAP[resolved.sub]!
+
+  const result = await targetFn(c.env, { ...restArgs, action: resolved.action })
   return c.json(makeResult(id, result), 200)
 }
