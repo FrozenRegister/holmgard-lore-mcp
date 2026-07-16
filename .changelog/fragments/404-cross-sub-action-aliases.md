@@ -1,0 +1,5 @@
+### rpg: cross-sub action aliases (#404)
+
+- **Tier 1 (sub-level aliases):** `characters` → `character`, `maps` → `world_map`, `npc_dialogue` → `npc` — same handler, alternate name. `src/index.ts`'s `SUB_SCHEMAS` registry now supports an `aliasOf` entry that reuses the canonical sub's description/schema instead of hand-copying it; the pre-existing `stealth` → `perception` alias was migrated to this pattern too, fixing the exact copy-paste-drift risk the issue called out.
+- **Tier 2 (action-level aliases):** a new `src/rpg/action-aliases.ts` transparently rewrites `{sub, action}` to its canonical pair before dispatch in `rpg-handler.ts`: `character.place_character` / `party.place_character` → `spawn.place_character`; `character.move_hex` / `world_map.move_hex` → `travel.move_hex`. The target handler never sees the alias.
+- Tier 3 (`availableOn` hints on unknown-action errors) is explicitly deferred — the issue itself frames it as "future — meta-tool enhancement," and it requires a genuinely new capability (a cross-handler action-name registry) beyond what Tiers 1–2 needed.

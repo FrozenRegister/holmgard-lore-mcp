@@ -8,6 +8,8 @@ const SUB_VALUES = [
   'perception', 'scene', 'rest', 'scroll', 'event', 'drama', 'time', 'timeline',
   'biome', 'encounter', 'production', 'resource', 'broadcast', 'zone_type',
   'waypoint', 'stealth', 'weather', 'conflict_type',
+  // #404 (Tier 1) — sub-level aliases (same handler, different name).
+  'characters', 'maps', 'npc_dialogue',
 ]
 
 export const rpgToolDefinitions: any[] = [
