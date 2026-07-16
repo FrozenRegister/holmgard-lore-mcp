@@ -50,6 +50,18 @@ vDesc('cohabitation resolution (#315)', () => {
     expect(r).toEqual({ hostBodyId: 'host-2', driverId: 'gen-2', isCohabitating: true })
   })
 
+  it('tie-breaks on most-recently-updated when more than one row in the group is active', async () => {
+    // `activate` only ever deactivates sibling passenger rows, never the host's
+    // own row (see character-manage.ts's `activate`) — so it's reachable for
+    // both the host and a passenger to show active=1 simultaneously. The most
+    // recently updated one wins.
+    await seedChar('host-3b', 'Katerina 3b', {}, { active: 1, updatedAt: '2184-01-01T00:00:00.000Z' })
+    await seedChar('pass-3b', 'Passenger 3b', {}, { hostBodyId: 'host-3b', active: 1, updatedAt: '2184-01-02T00:00:00.000Z' })
+
+    const r = await resolveCohabitation(db(), 'host-3b')
+    expect(r).toEqual({ hostBodyId: 'host-3b', driverId: 'pass-3b', isCohabitating: true })
+  })
+
   it('falls back to the host row when nobody in the group is active', async () => {
     await seedChar('host-3', 'Katerina 3', {}, { active: 0, updatedAt: '2184-01-01T00:00:00.000Z' })
     await seedChar('pass-3', 'Passenger 3', {}, { hostBodyId: 'host-3', active: 0, updatedAt: '2184-01-01T00:00:00.000Z' })
