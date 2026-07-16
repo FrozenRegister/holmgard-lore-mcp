@@ -1012,6 +1012,17 @@ CREATE INDEX IF NOT EXISTS idx_narrative_notes_status  ON narrative_notes(status
 CREATE INDEX IF NOT EXISTS idx_narrative_notes_created ON narrative_notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_narrative_notes_entity  ON narrative_notes(entity_id, entity_type);
 
+-- Conflict type taxonomy (#316) — global, not per-world. Seed data (physical/
+-- social/hybrid) lives in migration 0035, not here (this file has no INSERT
+-- statements by convention — see event_verb_taxonomy above).
+CREATE TABLE IF NOT EXISTS conflict_types (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  resolver    TEXT NOT NULL CHECK(resolver IN ('combat', 'drama', 'both')),
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS scenes (
   id               TEXT PRIMARY KEY,
   world_id         TEXT NOT NULL,
@@ -1023,6 +1034,8 @@ CREATE TABLE IF NOT EXISTS scenes (
   participants     TEXT NOT NULL DEFAULT '[]',
   previous_scene_id TEXT,
   created_at       TEXT NOT NULL,
+  -- (#316) — see migration 0035.
+  conflict_type_id TEXT REFERENCES conflict_types(id),
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 

@@ -47,6 +47,7 @@ import { handleProductionManage } from './handlers/production-manage'
 import { handleResourceManage } from './handlers/resource-manage'
 import { handleBroadcastManage } from './handlers/broadcast-manage'
 import { handleWeatherManage } from './handlers/weather-manage'
+import { handleConflictTypeManage } from './handlers/conflict-type-manage'
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
@@ -97,6 +98,7 @@ const SUB_MAP: Record<string, RpgFn> = {
   resource:      handleResourceManage,
   broadcast:     handleBroadcastManage,
   weather:       handleWeatherManage,
+  conflict_type: handleConflictTypeManage,
 }
 
 export const handle_rpg: ToolHandler = async ({ c, id, args }) => {

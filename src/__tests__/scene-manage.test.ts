@@ -470,4 +470,70 @@ describe('scene_manage tool', () => {
     })
     expect(r.success).toBe(true)
   })
+
+  // ── Conflict-Type Routing Tests (#316) ──────────────────────────────────────
+
+  it('get_conflict_type returns null for a scene with no conflict type set', async () => {
+    await createWorld('world:conflict')
+    const created = await callTool('rpg', { sub: 'scene', action: 'create', worldId: 'world:conflict', title: 'Neutral', narration: 'Nothing tagged yet.' })
+    const r = await callTool('rpg', { sub: 'scene', action: 'get_conflict_type', id: created.sceneId })
+    expect(r.success).toBe(true)
+    expect(r.conflictTypeId).toBeNull()
+    expect(r.conflictType).toBeNull()
+  })
+
+  it('set_conflict_type tags a scene as physical and get_conflict_type reflects it', async () => {
+    await createWorld('world:conflict')
+    const created = await callTool('rpg', { sub: 'scene', action: 'create', worldId: 'world:conflict', title: 'Courtyard', narration: 'Predator sighted.' })
+    const setRes = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: created.sceneId, conflictTypeId: 'physical' })
+    expect(setRes.success).toBe(true)
+    expect(setRes.conflictTypeId).toBe('physical')
+
+    const getRes = await callTool('rpg', { sub: 'scene', action: 'get_conflict_type', id: created.sceneId })
+    expect(getRes.conflictTypeId).toBe('physical')
+    expect(getRes.conflictType.resolver).toBe('combat')
+  })
+
+  it('set_conflict_type can clear a scene back to null', async () => {
+    await createWorld('world:conflict')
+    const created = await callTool('rpg', { sub: 'scene', action: 'create', worldId: 'world:conflict', title: 'Boardroom', narration: 'A vote begins.' })
+    await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: created.sceneId, conflictTypeId: 'social' })
+    const clearRes = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: created.sceneId, conflictTypeId: null })
+    expect(clearRes.success).toBe(true)
+    expect(clearRes.conflictTypeId).toBeNull()
+  })
+
+  it('set_conflict_type rejects an unknown conflict type id', async () => {
+    await createWorld('world:conflict')
+    const created = await callTool('rpg', { sub: 'scene', action: 'create', worldId: 'world:conflict', title: 'Odd', narration: 'A weird scene.' })
+    const r = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: created.sceneId, conflictTypeId: 'nonexistent-type' })
+    expect(r.error).toBe(true)
+  })
+
+  it('set_conflict_type rejects a nonexistent scene', async () => {
+    const r = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: 'nonexistent-scene-id', conflictTypeId: 'physical' })
+    expect(r.error).toBe(true)
+  })
+
+  it('set_conflict_type requires conflictTypeId', async () => {
+    await createWorld('world:conflict')
+    const created = await callTool('rpg', { sub: 'scene', action: 'create', worldId: 'world:conflict', title: 'Missing Field', narration: 'No type given.' })
+    const r = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', id: created.sceneId })
+    expect(r.error).toBe(true)
+  })
+
+  it('get_conflict_type rejects a nonexistent scene', async () => {
+    const r = await callTool('rpg', { sub: 'scene', action: 'get_conflict_type', id: 'nonexistent-scene-id' })
+    expect(r.error).toBe(true)
+  })
+
+  it('set_conflict_type requires id', async () => {
+    const r = await callTool('rpg', { sub: 'scene', action: 'set_conflict_type', conflictTypeId: 'physical' })
+    expect(r.error).toBe(true)
+  })
+
+  it('get_conflict_type requires id', async () => {
+    const r = await callTool('rpg', { sub: 'scene', action: 'get_conflict_type' })
+    expect(r.error).toBe(true)
+  })
 })
