@@ -118,6 +118,15 @@ const InputSchema = z.object({
   q: z.number().int().optional(),
   r: z.number().int().optional(),
   mapId: z.string().optional(),
+  // Death speed (#314) — staged dissolution fields, valid on `update` only.
+  // No fixed stage-name enum or stage-count assumption: different staged
+  // mechanisms (Mycelium integration, parasitic assimilation, dispatch
+  // protocols) can coexist across characters with their own stage counts.
+  deathMode: z.enum(['instant', 'staged']).optional(),
+  dissolutionStage: z.number().int().min(0).optional(),
+  dissolutionStages: z.number().int().min(1).optional(),
+  dissolutionTerminal: z.string().nullable().optional(),
+  dissolutionId: z.string().nullable().optional(),
 })
 
 function parseChar(row: Record<string, unknown>) {
@@ -292,6 +301,11 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.perceptionBonus !== undefined) { sets.push('perception_bonus = ?'); vals.push(a.perceptionBonus) }
       if (a.stealthBonus !== undefined) { sets.push('stealth_bonus = ?'); vals.push(a.stealthBonus) }
       if (a.worldId !== undefined) { sets.push('world_id = ?'); vals.push(a.worldId) }
+      if (a.deathMode !== undefined) { sets.push('death_mode = ?'); vals.push(a.deathMode) }
+      if (a.dissolutionStage !== undefined) { sets.push('dissolution_stage = ?'); vals.push(a.dissolutionStage) }
+      if (a.dissolutionStages !== undefined) { sets.push('dissolution_stages = ?'); vals.push(a.dissolutionStages) }
+      if (a.dissolutionTerminal !== undefined) { sets.push('dissolution_terminal = ?'); vals.push(a.dissolutionTerminal) }
+      if (a.dissolutionId !== undefined) { sets.push('dissolution_id = ?'); vals.push(a.dissolutionId) }
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
       // Sync D1 character to KV as markdown projection

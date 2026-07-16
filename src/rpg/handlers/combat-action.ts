@@ -75,6 +75,17 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
   switch (match.matched) {
     case 'attack': {
       if (!a.actorId || !a.targetIds?.length) return err('"actorId" and "targetIds" are required')
+      // #314 — staged-dissolution characters are non-combatants: Mycelium
+      // integration, parasitic assimilation, dispatch protocols, etc. are
+      // narrator-only processes. Reject the whole attack outright rather
+      // than silently resolving a damage roll against someone the scroller
+      // must not touch.
+      const { results: stagedTargets } = await db.prepare(
+        `SELECT id, name FROM characters WHERE id IN (${a.targetIds.map(() => '?').join(',')}) AND death_mode = 'staged'`
+      ).bind(...a.targetIds).all() as { results: Array<{ id: string; name: string }> }
+      if (stagedTargets.length > 0) {
+        return err(`Cannot attack staged-dissolution character(s): ${stagedTargets.map(t => t.name).join(', ')}`)
+      }
       // #210 — Use the shared dice engine (crypto-backed RNG, critical
       // detection) instead of a flat Math.random() > 0.5 coin-flip. When the
       // caller supplies an explicit attackRoll, we honour it directly; otherwise

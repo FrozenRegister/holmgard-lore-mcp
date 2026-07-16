@@ -45,6 +45,31 @@ describe('Dice engine consolidation (#210)', () => {
     expect(result.dice.modifier).toBe(3)
   })
 
+  // ── combat_action.attack: staged-dissolution targets (#314) ─────────────
+
+  it('rejects an attack against a staged-dissolution target', async () => {
+    const attacker = await callTool('rpg', { sub: 'character', action: 'create', name: 'Attacker' })
+    const target = await callTool('rpg', { sub: 'character', action: 'create', name: 'Subject Twelve' })
+    await callTool('rpg', { sub: 'character', action: 'update', id: target.characterId, deathMode: 'staged' })
+    const r = await callTool('rpg', {
+      sub: 'combat_action', action: 'attack',
+      actorId: attacker.characterId, targetIds: [target.characterId], attackRoll: 15, damage: 5,
+    })
+    expect(r.error).toBeDefined()
+    expect(r.message).toContain('Subject Twelve')
+  })
+
+  it('allows an attack against an instant-death (default) target', async () => {
+    const attacker = await callTool('rpg', { sub: 'character', action: 'create', name: 'Attacker2' })
+    const target = await callTool('rpg', { sub: 'character', action: 'create', name: 'Normal Target' })
+    const r = await callTool('rpg', {
+      sub: 'combat_action', action: 'attack',
+      actorId: attacker.characterId, targetIds: [target.characterId], attackRoll: 15, damage: 5,
+    })
+    expect(r.success).toBe(true)
+    expect(r.hit).toBe(true)
+  })
+
   // ── combat_action.attack: critical hit / fumble / damageExpression ──────
 
   it('attack with attackRoll=20 is a critical hit that always hits', async () => {
