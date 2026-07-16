@@ -228,4 +228,54 @@ describe('Combat depth', () => {
     const r = await callTool('rpg', { sub: 'combat_action', action: 'apply_damage', targetIds: [char.characterId], damage: 12 })
     expect(r.concentrationChecks[char.characterId]).toBeUndefined()
   })
+
+  // ── #315 — co-habitating targets share one HP pool on the host body ─────────
+
+  it('apply_damage aimed at a passenger consciousness lands on the shared host body HP, not a separate field', async () => {
+    const host = await callTool('rpg', { sub: 'character', action: 'create', name: 'Host Body', hp: 30, maxHp: 30 })
+    const passenger = await callTool('rpg', {
+      sub: 'character', action: 'create', name: 'Passenger Consciousness', hp: 30, maxHp: 30,
+      hostBodyId: host.characterId, active: true,
+    })
+
+    const r = await callTool('rpg', { sub: 'combat_action', action: 'apply_damage', targetIds: [passenger.characterId], damage: 12 })
+    expect(r.hpChanges[passenger.characterId]).toBe(-12)
+
+    const hostAfter = await callTool('rpg', { sub: 'character', action: 'get', characterId: host.characterId })
+    const passengerAfter = await callTool('rpg', { sub: 'character', action: 'get', characterId: passenger.characterId })
+    expect(hostAfter.character.hp).toBe(18)
+    // The passenger's own hp column is untouched — the damage never lands there.
+    expect(passengerAfter.character.hp).toBe(30)
+  })
+
+  it('heal aimed at a passenger consciousness restores the shared host body HP, not a separate field', async () => {
+    const host = await callTool('rpg', { sub: 'character', action: 'create', name: 'Host Body 2', hp: 10, maxHp: 30 })
+    const passenger = await callTool('rpg', {
+      sub: 'character', action: 'create', name: 'Passenger Consciousness 2', hp: 10, maxHp: 30,
+      hostBodyId: host.characterId, active: false,
+    })
+
+    const r = await callTool('rpg', { sub: 'combat_action', action: 'heal', targetIds: [passenger.characterId], healAmount: 5 })
+    expect(r.hpChanges[passenger.characterId]).toBe(5)
+
+    const hostAfter = await callTool('rpg', { sub: 'character', action: 'get', characterId: host.characterId })
+    const passengerAfter = await callTool('rpg', { sub: 'character', action: 'get', characterId: passenger.characterId })
+    expect(hostAfter.character.hp).toBe(15)
+    expect(passengerAfter.character.hp).toBe(10)
+  })
+
+  it('apply_damage/heal against a nonexistent targetId are a harmless no-op', async () => {
+    const dmgRes = await callTool('rpg', { sub: 'combat_action', action: 'apply_damage', targetIds: ['no-such-character'], damage: 5 })
+    expect(dmgRes.hpChanges).toEqual({})
+    const healRes = await callTool('rpg', { sub: 'combat_action', action: 'heal', targetIds: ['no-such-character'], healAmount: 5 })
+    expect(healRes.hpChanges).toEqual({})
+  })
+
+  it('apply_damage/heal on a solo (non-co-habitating) character are unaffected', async () => {
+    const solo = await callTool('rpg', { sub: 'character', action: 'create', name: 'Solo Fighter', hp: 20, maxHp: 20 })
+    const dmgRes = await callTool('rpg', { sub: 'combat_action', action: 'apply_damage', targetIds: [solo.characterId], damage: 5 })
+    expect(dmgRes.hpChanges[solo.characterId]).toBe(-5)
+    const healRes = await callTool('rpg', { sub: 'combat_action', action: 'heal', targetIds: [solo.characterId], healAmount: 2 })
+    expect(healRes.hpChanges[solo.characterId]).toBe(2)
+  })
 })

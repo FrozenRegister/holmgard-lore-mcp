@@ -6,6 +6,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { executeRoll } from './math-manage'
+import { resolveCohabitation } from '../utils/cohabitation'
 
 // #210 — Doubles the die count in a dice expression for critical hit damage.
 // e.g. "1d8" → "2d8", "2d6+3" → "4d6+3", "1d8!" → "2d8!"
@@ -125,7 +126,13 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
       const hpChanges: Record<string, number> = {}
       const concentrationChecks: Record<string, number> = {}
       for (const targetId of a.targetIds) {
-        const char = await db.prepare('SELECT hp, resistances, vulnerabilities, immunities, concentrating_on FROM characters WHERE id = ?').bind(targetId).first() as
+        // #315 — a co-habitating body has one shared HP pool on the host row.
+        // Damage aimed at a passenger consciousness's own character id must
+        // still land on the host, not a separate (stale) hp field on the
+        // passenger's row. Solo characters resolve to themselves — no change.
+        const resolution = await resolveCohabitation(db, targetId)
+        const hostId = resolution?.hostBodyId ?? targetId
+        const char = await db.prepare('SELECT hp, resistances, vulnerabilities, immunities, concentrating_on FROM characters WHERE id = ?').bind(hostId).first() as
           { hp: number; resistances: string | null; vulnerabilities: string | null; immunities: string | null; concentrating_on: string | null } | null
         if (char) {
           const immunities: string[] = char.immunities ? JSON.parse(char.immunities) : []
@@ -137,7 +144,7 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
           else if (a.damageType && vulnerabilities.includes(a.damageType)) effectiveDamage = effectiveDamage * 2
 
           const newHp = Math.max(0, char.hp - effectiveDamage)
-          await db.prepare('UPDATE characters SET hp = ? WHERE id = ?').bind(newHp, targetId).run()
+          await db.prepare('UPDATE characters SET hp = ? WHERE id = ?').bind(newHp, hostId).run()
           hpChanges[targetId] = newHp - char.hp
           if (char.concentrating_on && effectiveDamage > 0) concentrationChecks[targetId] = Math.max(10, Math.floor(effectiveDamage / 2))
         }
@@ -150,10 +157,13 @@ export async function handleCombatAction(env: AppBindings, args: Record<string, 
       if (!a.targetIds?.length || a.healAmount === undefined) return err('"targetIds" and "healAmount" are required')
       const hpChanges: Record<string, number> = {}
       for (const targetId of a.targetIds) {
-        const char = await db.prepare('SELECT hp, max_hp FROM characters WHERE id = ?').bind(targetId).first() as { hp: number; max_hp: number } | null
+        // #315 — same shared-HP-pool redirection as apply_damage.
+        const resolution = await resolveCohabitation(db, targetId)
+        const hostId = resolution?.hostBodyId ?? targetId
+        const char = await db.prepare('SELECT hp, max_hp FROM characters WHERE id = ?').bind(hostId).first() as { hp: number; max_hp: number } | null
         if (char) {
           const newHp = Math.min(char.max_hp, char.hp + a.healAmount)
-          await db.prepare('UPDATE characters SET hp = ? WHERE id = ?').bind(newHp, targetId).run()
+          await db.prepare('UPDATE characters SET hp = ? WHERE id = ?').bind(newHp, hostId).run()
           hpChanges[targetId] = newHp - char.hp
         }
       }

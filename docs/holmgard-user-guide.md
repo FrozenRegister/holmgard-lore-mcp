@@ -192,6 +192,21 @@ action: `deathMode`, `dissolutionStage`, `dissolutionStages`, `dissolutionTermin
 `dissolutionId`. There's no fixed stage-name enum or assumed stage count — different staged
 mechanisms can coexist across characters with their own stage counts and terminal states.
 
+**Known Behavior (#315):** Co-habitating characters (multiple consciousnesses sharing one
+physical body — see `character_manage`'s `host_body_id`/`active` fields from #226) now resolve
+correctly through `drama_manage` and `combat_action`. `drama_manage`'s ability checks
+(`roll_ability`, `opposed_check`, `group_check`, `social_combat`, `dramatic_conflict`) split
+stats when the referenced character id is (or belongs to) a co-habitation group: physical
+abilities (`str`/`dex`/`con`) always resolve from the host body, mental abilities
+(`int`/`wis`/`cha`) resolve from whichever consciousness currently has `active = 1` (the
+"driver"), and the reported character name follows the driver. `combat_action`'s `apply_damage`
+and `heal` redirect to the host body's shared HP pool when aimed at a passenger consciousness's
+own character id, rather than mutating a separate (and narratively meaningless) `hp` field on
+that row. `character_manage`'s `activate`/`list_passengers` gained `set_driver`/`get_driver`
+aliases matching the issue's proposed naming — no new mechanics, same actions. Per narrator Q&A
+on #315: driver switching is narrator discretion (a story beat), not a mechanical action-cost or
+contested roll — there was no tactical grid use case to design a contest DC for.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)

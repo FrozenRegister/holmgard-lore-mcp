@@ -8,6 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleMathManage } from './math-manage'
 import { handleEventManage } from './event-manage'
+import { resolveEffectiveStats } from '../utils/cohabitation'
 
 const ACTIONS = ['roll_ability', 'opposed_check', 'group_check', 'social_combat', 'dramatic_conflict'] as const
 type DramaAction = typeof ACTIONS[number]
@@ -85,13 +86,16 @@ function getScore(stats: Stats, ability: string): number {
   return stats[key] ?? 10
 }
 
+// #315 — co-habitation-aware stat resolution. When `id` is (or belongs to) a
+// co-habitating character (see #226 Phase 2's host_body_id/active model),
+// physical abilities (str/dex/con) resolve from the host body, mental
+// abilities (int/wis/cha) resolve from whichever consciousness is currently
+// driving, and the display name follows the driver. Non-co-habitating
+// characters resolve to themselves unchanged.
 async function fetchCharD1(db: D1Database, id: string): Promise<CharRow | null> {
-  const row = await db
-    .prepare('SELECT id, name, stats FROM characters WHERE id = ?')
-    .bind(id)
-    .first() as { id: string; name: string; stats: string } | null
-  if (!row) return null
-  return { id: row.id, name: row.name, stats: JSON.parse(row.stats) as Stats }
+  const resolved = await resolveEffectiveStats(db, id)
+  if (!resolved) return null
+  return { id, name: resolved.name, stats: resolved.stats }
 }
 
 async function rollD20Once(env: AppBindings): Promise<{ roll: number; isNat1: boolean; isNat20: boolean }> {
