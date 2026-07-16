@@ -1394,3 +1394,15 @@ CREATE TABLE IF NOT EXISTS weather_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_weather_log_world_day ON weather_log(world_id, day);
+
+-- ── Event Verb Taxonomy (#311) ──────────────────────────────────────────────
+-- D1-backed signal tiering for get_event_log's `tier` filter. See migration
+-- 0033 for the seed data provenance (narrator Q&A on issue #311).
+
+CREATE TABLE IF NOT EXISTS event_verb_taxonomy (
+  verb        TEXT PRIMARY KEY,
+  tier        TEXT NOT NULL CHECK(tier IN ('high', 'medium', 'low')),
+  category    TEXT NOT NULL,
+  description TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);

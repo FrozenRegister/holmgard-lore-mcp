@@ -258,6 +258,16 @@ Narrator checks what changed in the world:
        "A mysterious stranger arrived at the inn" ]
 ```
 
+**Known Behavior (#311):** `continuity_manage[get_event_log]` accepts an optional `tier` param
+(e.g. `"high"` or `"high,medium"`) that filters events against the D1 `event_verb_taxonomy` table
+instead of (or alongside) an explicit `verbs` list — useful when a second agent generates high
+event volume and you only want the narratively significant ones. Requires D1: unlike this tool's
+other filters, an explicit `tier` request **errors** rather than silently returning unfiltered
+results if `RPG_DB` is unavailable. The taxonomy itself is runtime-mutable via three new actions —
+`taxonomy_list`, `taxonomy_set` (upsert, no code deploy needed to classify a new verb),
+`taxonomy_delete` — so either narrator agent can extend the seeded 63-verb list as new
+domain-specific vocabulary comes up in actual sessions.
+
 ---
 
 ### 9. **Scene & Narrative Tools** (Structuring the Story)

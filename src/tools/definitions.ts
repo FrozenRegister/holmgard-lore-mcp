@@ -659,7 +659,39 @@ const CONTINUITY_MANAGE_SCHEMA = {
         until: { type: 'string', description: 'ISO datetime — only return events before this time' },
         thread: { type: 'string', description: 'Filter by thread' },
         verbs: { type: 'array', items: { type: 'string' }, description: 'Filter by verb list' },
+        tier: { type: 'string', description: 'Filter by signal tier from event_verb_taxonomy — "high", or comma-separated e.g. "high,medium". Requires D1 (errors if RPG_DB unavailable).' },
         limit: { type: 'number', minimum: 1, maximum: 500, description: 'Max events to return (default: 50)' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action'],
+      properties: {
+        action: { type: 'string', const: 'taxonomy_list', description: 'List event verbs and their signal tier/category, optionally filtered' },
+        tier: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Filter by tier' },
+        category: { type: 'string', description: 'Filter by category (e.g. combat, narrative, social, production)' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action', 'verb', 'tier', 'category'],
+      properties: {
+        action: { type: 'string', const: 'taxonomy_set', description: 'Upsert a verb into the event taxonomy (runtime-updatable, no code deploy needed)' },
+        verb: { type: 'string', minLength: 1, description: 'The event verb to classify' },
+        tier: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Signal tier' },
+        category: { type: 'string', minLength: 1, description: 'Category, e.g. combat, narrative, social, production' },
+        description: { type: 'string', description: 'Optional human-readable note on this verb' },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['action', 'verb'],
+      properties: {
+        action: { type: 'string', const: 'taxonomy_delete', description: 'Remove a verb from the event taxonomy' },
+        verb: { type: 'string', minLength: 1, description: 'The event verb to remove' },
       },
       additionalProperties: false,
     },
@@ -850,7 +882,7 @@ export const toolDefinitions: ToolDefinition[] = [
     name: 'continuity_manage',
     title: 'Continuity Manage',
     version: '1.0.0',
-    description: 'Continuity tracking — events, tags, bookmarks, world diff, setups, goals, and continuity checks. Actions: append_event, get_event_log, recent_changes, tag_topic, find_by_tag, list_tags, bookmark_state, world_diff, plant_setup, pay_off_setup, list_unpaid_setups, set_goal, check_continuity',
+    description: 'Continuity tracking — events, tags, bookmarks, world diff, setups, goals, and continuity checks. Actions: append_event, get_event_log, taxonomy_list, taxonomy_set, taxonomy_delete, recent_changes, tag_topic, find_by_tag, list_tags, bookmark_state, world_diff, plant_setup, pay_off_setup, list_unpaid_setups, set_goal, check_continuity',
     inputSchema: CONTINUITY_MANAGE_SCHEMA,
   },
   // RPG engine tools (Mnehmos port + meta)
