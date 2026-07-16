@@ -105,9 +105,10 @@ CREATE INDEX IF NOT EXISTS idx_node_networks_world  ON node_networks(world_id);
 
 -- biome_context has no CHECK constraint (#290) — validated at the
 -- application layer against the per-world dynamic biome registry
--- (biome-manage.ts's getBiomeRegistry), same pattern as world_map.ts's
--- tiles.biome. See migration 0015 for the table-rebuild history (SQLite
--- can't drop a CHECK constraint in place).
+-- (biome-manage.ts's getBiomeRegistry), same pattern the now-retired
+-- square-grid tiles.biome used (see #322 — tiles/structures dropped in
+-- migration 0038). See migration 0015 for the table-rebuild history
+-- (SQLite can't drop a CHECK constraint in place).
 CREATE TABLE IF NOT EXISTS room_nodes (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 100),
@@ -258,40 +259,6 @@ CREATE TABLE IF NOT EXISTS character_snapshots (
 CREATE INDEX IF NOT EXISTS idx_character_snapshots_char_time ON character_snapshots(character_id, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_character_snapshots_event ON character_snapshots(event_id);
 CREATE INDEX IF NOT EXISTS idx_character_snapshots_captured_by ON character_snapshots(captured_by);
-
--- ── World geography (depends on worlds only) ─────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS tiles (
-  id          TEXT PRIMARY KEY,
-  world_id    TEXT NOT NULL,
-  x           INTEGER NOT NULL,
-  y           INTEGER NOT NULL,
-  biome       TEXT NOT NULL,
-  elevation   INTEGER NOT NULL,
-  moisture    INTEGER NOT NULL,
-  temperature INTEGER NOT NULL,
-  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
-  UNIQUE(world_id, x, y)
-);
-
-CREATE TABLE IF NOT EXISTS structures (
-  id          TEXT PRIMARY KEY,
-  world_id    TEXT NOT NULL,
-  region_id   TEXT,
-  name        TEXT NOT NULL,
-  type        TEXT NOT NULL,
-  x           INTEGER NOT NULL,
-  y           INTEGER NOT NULL,
-  population  INTEGER NOT NULL,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL,
-  metadata    TEXT,
-  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
-);
-
--- Zone/territory shapes (#276) — see migration 0011. metadata JSON reused,
--- no new column; this partial index keeps zone-bearing lookups fast.
-CREATE INDEX IF NOT EXISTS idx_structures_zone ON structures(world_id) WHERE json_extract(metadata, '$.zone') IS NOT NULL;
 
 -- Dynamic per-world biome registry (#274) — see migration 0010 for the
 -- rollout notes on why spatial_manage's room_nodes.biome_context CHECK
