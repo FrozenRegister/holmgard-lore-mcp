@@ -13,12 +13,13 @@ describe('handleDramaManage', () => {
   const db = () => ({ RPG_DB: env.RPG_DB } as any)
   const now = new Date().toISOString()
 
-  async function seedChar(id: string, name: string, stats: Record<string, number> = {}) {
+  async function seedChar(id: string, name: string, stats: Record<string, number> = {}, opts: { hostBodyId?: string | null; active?: number; hp?: number; maxHp?: number; updatedAt?: string } = {}) {
     const s = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...stats }
+    const updatedAt = opts.updatedAt ?? now
     await env.RPG_DB.prepare(
-      `INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, name, JSON.stringify(s), 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, now, now).run()
+      `INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, host_body_id, active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, name, JSON.stringify(s), opts.hp ?? 10, opts.maxHp ?? 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, opts.hostBodyId ?? null, opts.active ?? 1, now, updatedAt).run()
   }
 
   // ---------------------------------------------------------------------------
@@ -331,5 +332,71 @@ describe('handleDramaManage', () => {
     })
     const body = JSON.parse(r.content[0].text) as { success: boolean }
     expect(body.success).toBe(true)
+  })
+
+  // ---------------------------------------------------------------------------
+  // co-habitation stat resolution (#315) — Katerina Sloane hosting the Fork
+  // (Cordelia Keel) and the General (Bellona Keel); physical stats always from
+  // the host body, mental stats from whoever is currently driving (active=1).
+  // ---------------------------------------------------------------------------
+
+  it('roll_ability: a mental check on the host id uses the active passenger\'s score, not the host\'s own', async () => {
+    await seedChar('kat-host', 'Katerina Sloane', { cha: 12 }, { updatedAt: now })
+    // General is driving (active, more recently updated than the host row).
+    await seedChar('kat-general', 'Bellona Keel', { cha: 18 }, { hostBodyId: 'kat-host', active: 1, updatedAt: '2184-01-02T00:00:00.000Z' })
+    await seedChar('kat-fork', 'Cordelia Keel', { cha: 15 }, { hostBodyId: 'kat-host', active: 0, updatedAt: now })
+
+    const r = await handleDramaManage(db(), { action: 'roll_ability', character: 'kat-host', ability: 'cha' })
+    const body = JSON.parse(r.content[0].text) as { success: boolean; character: string; score: number }
+    expect(body.success).toBe(true)
+    expect(body.character).toBe('Bellona Keel')
+    expect(body.score).toBe(18)
+  })
+
+  it('roll_ability: a physical check on the host id always uses the host\'s own score, even while a passenger drives', async () => {
+    await seedChar('kat-host2', 'Katerina Sloane 2', { str: 12 }, { updatedAt: now })
+    await seedChar('kat-general2', 'Bellona Keel 2', { str: 20 }, { hostBodyId: 'kat-host2', active: 1, updatedAt: '2184-01-02T00:00:00.000Z' })
+
+    const r = await handleDramaManage(db(), { action: 'roll_ability', character: 'kat-host2', ability: 'str' })
+    const body = JSON.parse(r.content[0].text) as { success: boolean; character: string; score: number }
+    expect(body.success).toBe(true)
+    // Name still follows the driver (the General is "speaking"/acting) but the
+    // physical score is Katerina's own body, not the General's.
+    expect(body.character).toBe('Bellona Keel 2')
+    expect(body.score).toBe(12)
+  })
+
+  it('roll_ability: calling directly on the passenger\'s own id resolves the same group', async () => {
+    await seedChar('kat-host3', 'Katerina Sloane 3', { cha: 12 }, { updatedAt: now })
+    await seedChar('kat-general3', 'Bellona Keel 3', { cha: 18 }, { hostBodyId: 'kat-host3', active: 1, updatedAt: '2184-01-02T00:00:00.000Z' })
+
+    const r = await handleDramaManage(db(), { action: 'roll_ability', character: 'kat-general3', ability: 'cha' })
+    const body = JSON.parse(r.content[0].text) as { success: boolean; character: string; score: number }
+    expect(body.character).toBe('Bellona Keel 3')
+    expect(body.score).toBe(18)
+  })
+
+  it('opposed_check: co-habitating driver resolves correctly against a solo opponent', async () => {
+    await seedChar('kat-host4', 'Katerina Sloane 4', { cha: 12 }, { updatedAt: now })
+    await seedChar('kat-fork4', 'Cordelia Keel 4', { cha: 18 }, { hostBodyId: 'kat-host4', active: 1, updatedAt: '2184-01-02T00:00:00.000Z' })
+    await seedChar('rival', 'Rival Diplomat', { cha: 10 })
+
+    const r = await handleDramaManage(db(), {
+      action: 'opposed_check', character_a: 'kat-host4', ability_a: 'cha', character_b: 'rival', ability_b: 'cha',
+    })
+    const body = JSON.parse(r.content[0].text) as { success: boolean; a: { character: string; score: number }; b: { character: string; score: number } }
+    expect(body.success).toBe(true)
+    expect(body.a.character).toBe('Cordelia Keel 4')
+    expect(body.a.score).toBe(18)
+    expect(body.b.character).toBe('Rival Diplomat')
+    expect(body.b.score).toBe(10)
+  })
+
+  it('roll_ability: a solo (non-co-habitating) character is unaffected by cohabitation resolution', async () => {
+    await seedChar('solo-char', 'Plain Villager', { cha: 14 })
+    const r = await handleDramaManage(db(), { action: 'roll_ability', character: 'solo-char', ability: 'cha' })
+    const body = JSON.parse(r.content[0].text) as { success: boolean; character: string; score: number }
+    expect(body.character).toBe('Plain Villager')
+    expect(body.score).toBe(14)
   })
 })
