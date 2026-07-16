@@ -278,6 +278,19 @@ results if `RPG_DB` is unavailable. The taxonomy itself is runtime-mutable via t
 `taxonomy_delete` — so either narrator agent can extend the seeded 63-verb list as new
 domain-specific vocabulary comes up in actual sessions.
 
+**Known Behavior (#312):** `rpg{sub:"time"}`'s `advance` action accepts an optional `owner`
+param — a caller self-identifier string (e.g. `"archisector"`, `"calder-architect"`) — that
+guards against two narrator agents advancing the same world's clock underneath each other. If
+the world's clock is unowned, an identified caller implicitly claims it (`time_owner` on
+`world_state`); if owned by a *different* identified caller, `advance` is rejected with no state
+change. `set_owner` (pass `owner: null` to release) and `get_owner` manage this explicitly.
+**Callers that omit `owner` advance unguarded, same as before this existed** — the lock is
+opt-in, not enforced globally, since most existing callers (including all pre-#312 tests) never
+identify themselves. This exists for the real dual-agent case confirmed via narrator Q&A:
+Archisector (early eras, hours/days/consumption-stage ticks) and the Calder Architect (later
+eras, quarters/Judicial-Council sessions) both call this MCP against the same world's timeline —
+not a hypothetical narrative-vs-tactical split.
+
 ---
 
 ### 9. **Scene & Narrative Tools** (Structuring the Story)
