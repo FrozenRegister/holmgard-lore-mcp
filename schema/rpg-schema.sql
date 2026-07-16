@@ -57,14 +57,17 @@ CREATE TABLE IF NOT EXISTS world_state (
 -- Gotland waypoint registry + precomputed pairwise distances (#328) — see
 -- migration 0021. Mechanism is generic/reusable by any world; actual named
 -- places are only seeded into a world that opts in via waypoint.seed_defaults.
+-- lat/lon nullable (#399) — required only for worlds that have called
+-- waypoint.calibrate; a purely grid/hex world has no meaningful geo origin.
+-- See migration 0037.
 CREATE TABLE IF NOT EXISTS waypoints (
   id         TEXT PRIMARY KEY,
   world_id   TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
   q          INTEGER NOT NULL,
   r          INTEGER NOT NULL,
-  lat        REAL NOT NULL,
-  lon        REAL NOT NULL,
+  lat        REAL,
+  lon        REAL,
   kind       TEXT NOT NULL DEFAULT 'settlement',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

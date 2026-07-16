@@ -703,6 +703,34 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       }
       await syncCharacterToKv(env, charId)
 
+      // #398 (Step 4 of #306, deferred when #306 shipped) — auto-remove the
+      // dead character from any parties they belonged to. NOTE: this does
+      // NOT call the existing `group_break` action despite #398's text
+      // naming it — group_break fully disbands a party (removes EVERY
+      // member, marks status 'broken') regardless of `method`, with no
+      // single-member-removal mode. Calling it per #398's literal wording
+      // would incorrectly evict every living party member over one
+      // character's death. Instead this removes just the dead character's
+      // own party_members row(s) and reports the resulting state per party.
+      const { results: deadMemberships } = await db.prepare(
+        'SELECT party_id FROM party_members WHERE character_id = ?'
+      ).bind(charId).all() as { results: Array<{ party_id: string }> }
+
+      const partyUpdates: Array<{ partyId: string; remainingMembers: number; archived: boolean; soloSurvivorId: string | null }> = []
+      for (const { party_id: partyId } of deadMemberships) {
+        await db.prepare('DELETE FROM party_members WHERE party_id = ? AND character_id = ?').bind(partyId, charId).run()
+        const { results: remaining } = await db.prepare('SELECT character_id FROM party_members WHERE party_id = ?').bind(partyId).all() as { results: Array<{ character_id: string }> }
+        let archived = false
+        if (remaining.length === 0) {
+          await db.prepare('UPDATE parties SET status = ?, updated_at = ? WHERE id = ?').bind('archived', now, partyId).run()
+          archived = true
+        }
+        partyUpdates.push({
+          partyId, remainingMembers: remaining.length, archived,
+          soloSurvivorId: remaining.length === 1 ? remaining[0].character_id : null,
+        })
+      }
+
       return ok({
         success: true, actionType: 'kill',
         character: { hp: 0, status: 'dead', location: null, diedAt: killedAt },
@@ -710,6 +738,7 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
         corpse: { id: deathId, state: 'fresh' },
         productionPulse,
         locationOccupantsUpdated: true,
+        partyUpdates,
       })
     }
     case 'move_to_location': {

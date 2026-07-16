@@ -1452,6 +1452,84 @@ describe('character_manage tool', () => {
     }
   })
 
+  // ── kill: party auto-removal (#398, Step 4 of #306) ───────────────────────
+
+  it('kill with no party memberships returns an empty partyUpdates array', async () => {
+    const created = await callTool('character_manage', { action: 'create', name: 'Lone Wolf' })
+    const r = await callTool('character_manage', { action: 'kill', id: created.characterId })
+    expect(r.success).toBe(true)
+    expect(r.partyUpdates).toEqual([])
+  })
+
+  it('kill removes the dead character from their party without disbanding it when others remain', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Kill Party World', theme: 'fantasy' })
+    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Trio', worldId: world.worldId })
+    const alive1 = await callTool('character_manage', { action: 'create', name: 'Alive One' })
+    const alive2 = await callTool('character_manage', { action: 'create', name: 'Alive Two' })
+    const doomed = await callTool('character_manage', { action: 'create', name: 'Doomed Member' })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: alive1.characterId })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: alive2.characterId })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+
+    const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
+    expect(r.success).toBe(true)
+    expect(r.partyUpdates).toEqual([
+      { partyId: party.partyId, remainingMembers: 2, archived: false, soloSurvivorId: null },
+    ])
+
+    const got = await callTool('rpg', { sub: 'party', action: 'get', partyId: party.partyId })
+    expect(got.party.status).toBe('active')
+    const memberIds = got.party.members.map((m: { character_id: string }) => m.character_id)
+    expect(memberIds).toEqual(expect.arrayContaining([alive1.characterId, alive2.characterId]))
+    expect(memberIds).not.toContain(doomed.characterId)
+  })
+
+  it('kill flags a solo survivor when exactly one member remains', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Solo Survivor World', theme: 'fantasy' })
+    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Duo', worldId: world.worldId })
+    const survivor = await callTool('character_manage', { action: 'create', name: 'Survivor' })
+    const doomed = await callTool('character_manage', { action: 'create', name: 'Doomed Duo Member' })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: survivor.characterId })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+
+    const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
+    expect(r.partyUpdates).toEqual([
+      { partyId: party.partyId, remainingMembers: 1, archived: false, soloSurvivorId: survivor.characterId },
+    ])
+  })
+
+  it('kill archives a party when the dying character was its last member', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Last Member World', theme: 'fantasy' })
+    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Solo Party', worldId: world.worldId })
+    const doomed = await callTool('character_manage', { action: 'create', name: 'Last One' })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+
+    const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
+    expect(r.partyUpdates).toEqual([
+      { partyId: party.partyId, remainingMembers: 0, archived: true, soloSurvivorId: null },
+    ])
+
+    const got = await callTool('rpg', { sub: 'party', action: 'get', partyId: party.partyId })
+    expect(got.party.status).toBe('archived')
+  })
+
+  it('kill removes the dead character from every party they belonged to', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Multi Party World', theme: 'fantasy' })
+    const partyA = await callTool('rpg', { sub: 'party', action: 'create', name: 'Party A', worldId: world.worldId })
+    const partyB = await callTool('rpg', { sub: 'party', action: 'create', name: 'Party B', worldId: world.worldId })
+    const other = await callTool('character_manage', { action: 'create', name: 'Other Member' })
+    const doomed = await callTool('character_manage', { action: 'create', name: 'Double Booked' })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyA.partyId, characterId: other.characterId })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyA.partyId, characterId: doomed.characterId })
+    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyB.partyId, characterId: doomed.characterId })
+
+    const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
+    expect(r.partyUpdates.length).toBe(2)
+    const byPartyId = Object.fromEntries(r.partyUpdates.map((u: { partyId: string; archived: boolean }) => [u.partyId, u.archived]))
+    expect(byPartyId[partyA.partyId]).toBe(false)
+    expect(byPartyId[partyB.partyId]).toBe(true)
+  })
+
   // ── move_to_location / move_to_tile (#313) ────────────────────────────────
 
   it('move_to_location requires id or characterId', async () => {
