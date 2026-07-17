@@ -254,4 +254,75 @@ describe('handleTravelManage', () => {
     expect(body.encounter).toBeDefined()
     expect(body.encounter.threshold).toBe(50)
   })
+
+  // ── move_hex mode-aware passability (#429) ────────────────────────────
+
+  it('move_hex defaults mode to foot with effective speed at the biome baseline', async () => {
+    await createWorld()
+    await createParty('party-move-5')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'grass_429', movementCost: 1.0 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 1, r: 1, biome: 'grass_429' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-5', worldId: WORLD, toQ: 1, toR: 1 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.mode).toBe('foot')
+    expect(body.effectiveSpeedKmPerDay).toBe(5)
+  })
+
+  it('move_hex to a hex with no biome row is unrestricted regardless of mode', async () => {
+    await createWorld()
+    await createParty('party-move-6')
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-6', worldId: WORLD, toQ: 99, toR: 99, mode: 'aircraft' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.mode).toBe('aircraft')
+    expect(body.effectiveSpeedKmPerDay).toBe(600)
+  })
+
+  it('move_hex uses a mode-specific cost override when present', async () => {
+    await createWorld()
+    await createParty('party-move-7')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'heath_429', movementCost: 1.0, modeCosts: { horse: 2.0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 2, r: 2, biome: 'heath_429' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-7', worldId: WORLD, toQ: 2, toR: 2, mode: 'horse' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(35 / 2.0)
+  })
+
+  it('move_hex falls back to movementCost when the mode has no override', async () => {
+    await createWorld()
+    await createParty('party-move-8')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'sand_429', movementCost: 2.0, modeCosts: { horse: 4.0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 3, r: 3, biome: 'sand_429' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-8', worldId: WORLD, toQ: 3, toR: 3, mode: 'car' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(400 / 2.0)
+  })
+
+  it('move_hex rejects a mode blocked by a 0.0 cost override (impassable) and does not move the party', async () => {
+    await createWorld()
+    await createParty('party-move-9')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'river_429', movementCost: 2.0, modeCosts: { carriage: 0, car: 0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 4, r: 4, biome: 'river_429' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-9', worldId: WORLD, toQ: 4, toR: 4, mode: 'car' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('impassable')
+    const stored = await env.RPG_DB.prepare('SELECT current_hex_q, current_hex_r FROM parties WHERE id = ?').bind('party-move-9').first() as any
+    expect(stored.current_hex_q).toBeNull()
+    expect(stored.current_hex_r).toBeNull()
+  })
+
+  it('move_hex allows foot/horse across the same river hex that blocks carriage/car', async () => {
+    await createWorld()
+    await createParty('party-move-10')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'river_429b', movementCost: 2.0, modeCosts: { carriage: 0, car: 0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 5, r: 5, biome: 'river_429b' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-10', worldId: WORLD, toQ: 5, toR: 5, mode: 'foot' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(5 / 2.0)
+  })
 })

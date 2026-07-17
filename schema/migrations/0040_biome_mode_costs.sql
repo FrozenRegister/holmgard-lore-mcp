@@ -1,0 +1,11 @@
+-- #429 — per-mode movement cost overrides on the existing per-world biome
+-- registry (migration 0010, #274). Deliberately NOT a hardcoded
+-- travel_mode_x_biome matrix keyed by fixed biome names (beach/dune/glade/...)
+-- — biomes are dynamic per-world data specifically so a new world can define
+-- whatever terrain it needs without a source change, and a hardcoded matrix
+-- would only ever apply to worlds using those exact names. mode_costs is a
+-- JSON object ({"horse": 0.5, "carriage": 0.0, ...}) using the SAME cost
+-- semantics as the existing movement_cost column (higher = slower, 0.0 =
+-- impassable) — a mode with no entry falls back to movement_cost, so every
+-- existing biome/world is unaffected until a narrator opts a mode in.
+ALTER TABLE biomes ADD COLUMN mode_costs TEXT NOT NULL DEFAULT '{}';

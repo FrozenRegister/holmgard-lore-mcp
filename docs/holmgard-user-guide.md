@@ -301,6 +301,28 @@ matching `party-manage.ts`'s `morale_roll` precedent (report `dissolved: true`, 
 decide), the follow-up soft-kill call is still a separate, explicit `character_manage.kill`. Scoped
 to `advance_stage` only, not `process_stage_batch` — same scope discipline as #411's D1 mirror.
 
+**Known Behavior (#429):** `rpg{sub:"travel"}`'s `move_hex` action accepts an optional `mode`
+(`foot`/`horse`/`carriage`/`car`/`aircraft`, defaults `foot`) and now enforces terrain passability —
+previously it moved the party to any hex regardless of biome. Passability and speed come from the
+destination hex's biome (the existing per-world dynamic registry from `rpg{sub:"biome"}`, #274), via
+a new optional `modeCosts` field on `biome.register`/`biome.update` — a JSON object of per-mode cost
+overrides using the *same semantics* as the pre-existing `movementCost` field (higher = slower,
+`0` = impassable; **not** the inverse speed-fraction convention some proposals use). A mode absent
+from `modeCosts` falls back to `movementCost`, so every existing biome/world is unaffected until a
+narrator opts a mode in. `move_hex` returns `effectiveSpeedKmPerDay` (mode's base km/day ÷ effective
+cost) and rejects the move with an error (party position unchanged) when the effective cost is `0`
+for the requested mode. Deliberately **no hardcoded biome-name matrix and no river-depth-threshold
+system** — biomes are per-world freeform data (a Gotland world's `pine`/`marsh`/`ravine` don't exist
+on an Accord States world), and there is no real depth data anywhere to hang meter thresholds on
+(`hexes.moisture` is a generic 0–100 terrain-generation value, not literal water depth; the old
+`rivers` table is dead — square-grid coordinates, zero code references, retired before the hex-grid
+rewrite). Rivers are modeled the same way as any other terrain: a narrator registers a `river`-style
+biome with per-mode costs (e.g. `carriage`/`car` → `0`, `foot`/`horse` → a slower-but-passable value)
+— no new schema, no fabricated numbers. Consumables tracking is out of scope, per the issue's own
+scope note. Mode base speeds (`TRAVEL_MODE_BASE_SPEED_KM_PER_DAY` in `travel-manage.ts`) are
+hardcoded game-balance constants, not per-world narrative data — reused by `world_map.distance`
+(#430) for multi-hex ETA estimates.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
