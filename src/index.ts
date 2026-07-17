@@ -13,7 +13,7 @@ import { toolRegistry } from './tools/registry'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
-import { setToolIndex, setSchemaIndex, registerRpgSubSchema } from './rpg/registry'
+import { setToolIndex, setSchemaIndex, registerRpgSubSchema, registerRpgAlias } from './rpg/registry'
 import { mathManageSchemaDoc } from './rpg/definitions'
 import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
@@ -107,9 +107,49 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
     schema: { type: 'object', properties: { action: { type: 'string' }, encounterId: { type: 'string' }, characterId: { type: 'string' }, initiative: { type: 'number' }, worldId: { type: 'string' } }, required: ['action'] } },
   { sub: 'spatial', description: 'Spatial queries — adjacency, range, line of sight. Actions: get_neighbors, get_in_radius, check_line_of_sight, get_distance, get_path.',
     schema: { type: 'object', properties: { action: { type: 'string' }, originId: { type: 'string' }, targetId: { type: 'string' }, radius: { type: 'number' }, worldId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, required: ['action'] } },
-  { sub: 'world_map', description: 'World map generation and hex grid. Actions: generate, get_hex, get_region, list_regions, set_hex, get_map.',
-    schema: { type: 'object', properties: { action: { type: 'string' }, worldId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, regionId: { type: 'string' }, biome: { type: 'string' }, width: { type: 'number' }, height: { type: 'number' } }, required: ['action'] } },
-  // #404 (Tier 1) — shorter alias.
+  // #423 — rewritten to match the actual hex-axial handler (world-map.ts),
+  // rewritten for #320/#308-Phase-2 from a square-grid model this schema still
+  // described until now. Coordinates are hex-axial q,r, not square x,y.
+  { sub: 'world_map', description: 'Hex world map — hex tiles, landmarks, zones, POIs, SVG export. Actions: overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg. Aliases: update/update_tiles/update_hexes/modify→patch, tiles/get_tiles/get_hexes/hex_data→hexes, bulk/bulk_import/import_hexes→batch, search_poi/get_poi→find_poi, render/ascii/view→preview, svg/export_svg/map_svg→render_svg. Coordinates are hex-axial q,r (not square x,y).',
+    schema: { type: 'object', properties: {
+      action: { type: 'string' },
+      worldId: { type: 'string', description: 'World UUID (required for most actions)' },
+      mapId: { type: 'string', description: 'Map identifier (default "main")' },
+      q: { type: 'integer', description: 'Hex-axial column coordinate' },
+      r: { type: 'integer', description: 'Hex-axial row coordinate' },
+      width: { type: 'integer', description: 'Viewport width in hexes (hexes/preview/overview)' },
+      height: { type: 'integer', description: 'Viewport height in hexes (hexes/preview/overview)' },
+      hexes: { type: 'array', items: { type: 'object', properties: {
+        q: { type: 'integer' }, r: { type: 'integer' },
+        biome: { type: 'string' }, elevation: { type: 'integer' },
+        moisture: { type: 'integer' }, temperature: { type: 'integer' },
+      } }, description: 'Hex tile array for patch/batch actions' },
+      validateBiomes: { type: 'boolean', description: 'Validate biomes against registry (batch, default true)' },
+      regionId: { type: 'string', description: 'Region UUID (region/overview)' },
+      query: { type: 'string', description: 'Search query or POI name' },
+      structureType: { type: 'string', description: 'Landmark category' },
+      structureId: { type: 'string', description: 'Landmark UUID (update_poi only)' },
+      name: { type: 'string', description: 'Landmark name' },
+      radius: { type: 'number', description: 'Zone circle radius in hexes' },
+      polygon: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: 'Zone polygon as [q,r] pairs' },
+      ringInner: { type: 'number', description: 'Zone ring inner radius' },
+      ringOuter: { type: 'number', description: 'Zone ring outer radius' },
+      ringPoints: { type: 'integer', description: 'Zone ring point count' },
+      zoneType: { type: 'string', description: 'Zone type from zone_type registry' },
+      predatorRef: { type: 'string', description: 'Entity lore key for zone predator' },
+      threatLevel: { type: 'number', description: 'Threat level 0-100' },
+      dominanceRank: { type: 'integer' },
+      renderWidth: { type: 'integer', description: 'SVG viewport width in hexes (1-200)' },
+      renderHeight: { type: 'integer', description: 'SVG viewport height in hexes (1-200)' },
+      showStructures: { type: 'boolean' },
+      showZones: { type: 'boolean' },
+      showPerimeter: { type: 'boolean' },
+      gridLabels: { type: 'boolean' },
+      highlight: { type: 'array', items: { type: 'object', properties: {
+        q: { type: 'number' }, r: { type: 'number' }, label: { type: 'string' }, color: { type: 'string' },
+      } } },
+    }, required: ['action'] } },
+  // #404 (Tier 1) — shorter alias. Inherits the corrected schema above automatically.
   { sub: 'maps', aliasOf: 'world_map' },
   { sub: 'batch', description: 'Batch operations — bulk create/update/delete across handlers. Actions: create_many, update_many, delete_many, get_many.',
     schema: { type: 'object', properties: { action: { type: 'string' }, operations: { type: 'array', items: { type: 'object' } }, worldId: { type: 'string' }, entityType: { type: 'string' } }, required: ['action'] } },
@@ -158,6 +198,7 @@ for (const s of SUB_SCHEMAS) {
     // not a runtime condition to guard against.
     const canonical = SUB_SCHEMAS.find((c): c is Extract<SubSchemaEntry, { schema: unknown }> => 'schema' in c && c.sub === s.aliasOf)!
     registerRpgSubSchema(s.sub, canonical.description, canonical.schema)
+    registerRpgAlias(s.sub, s.aliasOf)
   } else {
     registerRpgSubSchema(s.sub, s.description, s.schema)
   }

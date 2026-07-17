@@ -8,11 +8,11 @@ import type { McpResponse } from './utils/response'
 
 import { handle_rpg } from './rpg-handler'
 import { handleSearchTools, setToolIndex } from './handlers/search-tools'
-import { handleLoadToolSchema, setSchemaIndex, registerRpgSubSchema } from './handlers/load-tool-schema'
+import { handleLoadToolSchema, setSchemaIndex, registerRpgSubSchema, registerRpgAlias } from './handlers/load-tool-schema'
 import { handleAgentManage } from './handlers/agent-manage'
 import { handleCharacterManage } from './handlers/character-manage'
 
-export { setToolIndex, setSchemaIndex, registerRpgSubSchema }
+export { setToolIndex, setSchemaIndex, registerRpgSubSchema, registerRpgAlias }
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
