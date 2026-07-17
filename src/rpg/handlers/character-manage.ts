@@ -6,6 +6,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 
 import { ok, err, type McpResponse } from '../utils/response'
 import { syncCharacterToKv } from '../utils/character-sync'
+import { applyDynamicFields } from '../utils/dynamic-fields'
 import type { AppBindings } from '../../types'
 import { parseKvEntry, extractRawField } from '../../lib/lore'
 import { similarity } from '../utils/fuzzy-enum'
@@ -36,6 +37,12 @@ const XP_TABLE: Record<number, number> = {
 const levelFromXp = (xp: number) => Object.entries(XP_TABLE).reverse().find(([, req]) => xp >= req)?.[0] ?? '1'
 
 const abilityModifier = (score: number): number => Math.floor((score - 10) / 2)
+
+// #425 — columns update's `fields` passthrough must never touch, regardless
+// of blacklist/whitelist status of anything else: identity, audit timestamps,
+// and world ownership (changing world_id through a generic backfill is a
+// data-integrity foot-gun distinct from "this column has no explicit param yet").
+const CHARACTER_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
 const StatsSchema = z.object({ str: z.number().default(10), dex: z.number().default(10), con: z.number().default(10), int: z.number().default(10), wis: z.number().default(10), cha: z.number().default(10) })
 
@@ -127,6 +134,9 @@ const InputSchema = z.object({
   dissolutionStages: z.number().int().min(1).optional(),
   dissolutionTerminal: z.string().nullable().optional(),
   dissolutionId: z.string().nullable().optional(),
+  // #425 — arbitrary D1 column passthrough, valid on `update` only. See
+  // src/rpg/utils/dynamic-fields.ts for the blacklist/injection-safety design.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 function parseChar(row: Record<string, unknown>) {
@@ -306,11 +316,19 @@ export async function handleCharacterManage(env: AppBindings, args: Record<strin
       if (a.dissolutionStages !== undefined) { sets.push('dissolution_stages = ?'); vals.push(a.dissolutionStages) }
       if (a.dissolutionTerminal !== undefined) { sets.push('dissolution_terminal = ?'); vals.push(a.dissolutionTerminal) }
       if (a.dissolutionId !== undefined) { sets.push('dissolution_id = ?'); vals.push(a.dissolutionId) }
+      // #425 — arbitrary column passthrough for D1 columns with no explicit
+      // param above yet (e.g. migration-0003's alias/age/gender/orientation/
+      // weight_1/weight_2/perception_float/thread_id/state_stage/
+      // state_stage_timer/kv_origin, or production_state from 0013).
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, CHARACTER_FIELDS_BLACKLIST, sets, vals)
       vals.push(charId)
       await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
       // Sync D1 character to KV as markdown projection
       await syncCharacterToKv(env, charId)
-      return ok({ success: true, actionType: 'update', characterId: charId })
+      return ok({
+        success: true, actionType: 'update', characterId: charId,
+        ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
+      })
     }
     case 'delete': {
       const charId = a.id ?? a.characterId

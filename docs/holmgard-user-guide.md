@@ -263,6 +263,29 @@ alias actions (e.g. `update`/`modify` → `patch`, `tiles`/`hex_data` → `hexes
 "npc_dialogue":"npc"}`) alongside the base schema, so the sub-name-vs-alias distinction — previously
 invisible in the flat `sub` enum — is discoverable without reading source.
 
+**Known Behavior (#425):** `character`, `world`, `party`, `secret`, and `quest`'s `update` actions,
+plus a new `production.update_state` action, now accept an optional `fields` object — arbitrary
+D1 column key-value pairs forwarded straight to the SQL `UPDATE ... SET` clause, blacklisted rather
+than whitelisted (only `id`/`created_at`/`updated_at` and each table's ownership column, e.g.
+`world_id`, are protected). This closes a real gap audited across the codebase: every one of these
+handlers hardcoded an explicit Zod whitelist of updatable columns, so a migration that added a new
+column left it permanently unreachable through MCP until someone remembered to also touch the
+handler. Found on `characters` (9 columns from migration `0003` plus `production_state`, the worst
+case — the single most-migrated table in the schema), `worlds.universe_id`, `world_state`'s
+`production_mood`/`era`/`tick_speed` (zero writers anywhere — `world_state` has no single owning
+handler, split across `time-manage.ts`/`production-manage.ts`, hence the new `production.update_state`
+action rather than extending an existing `update`), five `parties` columns, most of `secrets`, and
+`quests.rewards`/`prerequisites` (already declared in the Zod schema but never wired into the
+`update` case — fixed directly as first-class params, not via `fields`, since Zod already validated
+them). Response gains `fields_applied`/`fields_rejected` (the latter with a `reason`:
+`'blacklisted'` or `'invalid column name'`) whenever `fields` is passed. An explicit param always
+wins over the same key in `fields` — the passthrough entry is silently skipped, not an error. Column
+names are validated against a strict snake_case shape (`^[a-z][a-z0-9_]*$`) before being interpolated
+into the SQL text — that's the actual SQL-injection boundary, since identifiers can't be parameterized
+as `?` bindings the way values can; D1 is the final type validator for the values themselves (a
+bad-typed value surfaces as a D1 error, not a schema mismatch caught here). Shared implementation:
+`src/rpg/utils/dynamic-fields.ts`'s `applyDynamicFields()`.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)

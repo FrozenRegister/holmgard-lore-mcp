@@ -6,6 +6,14 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { applyDynamicFields } from '../utils/dynamic-fields'
+
+// #425 — id/created_at/updated_at are always protected from the `fields`
+// passthrough; world_id ownership changes go through their own workflow, not
+// a generic backfill. (rewards/prerequisites were already declared in this
+// handler's own Zod schema but never wired into the update case — fixed
+// directly below, not via fields, since they're first-class params.)
+const QUEST_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
 const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'complete', 'fail', 'add_objective', 'complete_objective'] as const
 type QuestAction = typeof ACTIONS[number]
@@ -37,6 +45,8 @@ const InputSchema = z.object({
   objectiveIndex: z.number().int().min(0).optional(),
   objective: ObjectiveSchema.optional(),
   filter: z.enum(['active', 'completed', 'failed', 'all']).optional().default('all'),
+  // #425 — arbitrary D1 column passthrough, valid on `update` only.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 export async function handleQuestManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -78,10 +88,18 @@ export async function handleQuestManage(env: AppBindings, args: Record<string, u
       if (a.description !== undefined) { sets.push('description = ?'); vals.push(a.description) }
       if (a.status) { sets.push('status = ?'); vals.push(a.status) }
       if (a.objectives) { sets.push('objectives = ?'); vals.push(JSON.stringify(a.objectives)) }
+      // #425 — rewards/prerequisites were already declared in InputSchema but
+      // never wired into this case; fixed alongside the general fields gap.
+      if (a.rewards) { sets.push('rewards = ?'); vals.push(JSON.stringify(a.rewards)) }
+      if (a.prerequisites) { sets.push('prerequisites = ?'); vals.push(JSON.stringify(a.prerequisites)) }
       if (a.giver) { sets.push('giver = ?'); vals.push(a.giver) }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, QUEST_FIELDS_BLACKLIST, sets, vals)
       vals.push(qId)
       await db.prepare(`UPDATE quests SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', questId: qId })
+      return ok({
+        success: true, actionType: 'update', questId: qId,
+        ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
+      })
     }
     case 'delete': {
       const qId = a.id ?? a.questId

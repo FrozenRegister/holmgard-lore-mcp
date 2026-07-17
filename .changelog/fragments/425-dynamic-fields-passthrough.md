@@ -1,0 +1,7 @@
+### Arbitrary D1 column passthrough for update actions (#425)
+
+- New shared helper `src/rpg/utils/dynamic-fields.ts` (`applyDynamicFields`): a blacklist-based, injection-safe (strict snake_case column-name validation) passthrough for D1 `UPDATE ... SET` clauses. An explicit param always wins over the same key in `fields`.
+- Wired into `character.update`, `world.update`, `party.update`, `secret.update`, `quest.update`, and a new `production.update_state` action (`world_state` has no single owning handler, so this is a new entry point rather than an extension of an existing `update`).
+- Fixes a real, audited gap: every one of these handlers hardcoded a narrow Zod whitelist that silently orphaned migration-added columns. Worst case: `characters` — 9 columns from migration `0003` plus `production_state`, with zero writers anywhere. Also fixes `worlds.universe_id`, `world_state.production_mood`/`era`/`tick_speed` (zero writers), five `parties` columns, most of `secrets`, and `quests.rewards`/`prerequisites` (already Zod-declared but never wired into `update` — fixed as first-class params).
+- Response gains `fields_applied`/`fields_rejected` (with a `reason`) whenever `fields` is passed.
+- #425's own motivating example (Subject #12's `death_mode` backfill) was already fixed by #314 — corrected via an issue comment before implementation started, same treatment as #424's stale premise.

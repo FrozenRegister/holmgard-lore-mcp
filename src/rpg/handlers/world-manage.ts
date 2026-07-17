@@ -9,6 +9,11 @@ import type { AppBindings } from '../../types'
 import { seedDefaultBiomes } from './biome-manage'
 import { seedDefaultZoneTypes } from './zone-type-manage'
 import { seedWorldState } from './time-manage'
+import { applyDynamicFields } from '../utils/dynamic-fields'
+
+// #425 — worlds.universe_id (migration 0032) has had no update path since it
+// was added; `update` only ever touched name/seed. See dynamic-fields.ts.
+const WORLD_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at'] as const
 
 const ACTIONS = ['create', 'get', 'list', 'delete', 'update', 'generate', 'get_state'] as const
 type WorldAction = typeof ACTIONS[number]
@@ -29,6 +34,8 @@ const InputSchema = z.object({
   landRatio: z.number().min(0.1).max(0.9).optional(),
   environment: z.record(z.unknown()).optional(),
   theme: z.string().optional(),
+  // #425 — arbitrary D1 column passthrough, valid on `update` only.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 export async function handleWorldManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -80,9 +87,13 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       const vals: unknown[] = [now]
       if (a.name) { sets.push('name = ?'); vals.push(a.name) }
       if (a.environment) { sets.push('seed = ?'); vals.push(JSON.stringify(a.environment)) }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, WORLD_FIELDS_BLACKLIST, sets, vals)
       vals.push(targetId)
       await db.prepare(`UPDATE worlds SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', worldId: targetId })
+      return ok({
+        success: true, actionType: 'update', worldId: targetId,
+        ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
+      })
     }
     case 'generate': {
       if (!a.name) return err('"name" is required for generate')

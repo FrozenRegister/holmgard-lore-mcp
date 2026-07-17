@@ -36,6 +36,11 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import { getWaypoint, getWaypointDistance } from './waypoint-manage'
 import type { AppBindings } from '../../types'
+import { applyDynamicFields } from '../utils/dynamic-fields'
+
+// #425 — formation/current_location/current_quest_id/current_poi/last_played_at
+// have no update path anywhere (not even at create). See dynamic-fields.ts.
+const PARTY_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
 const ACTIONS = [
   'create', 'get', 'list', 'update', 'delete', 'add_member', 'remove_member', 'set_leader',
@@ -159,6 +164,8 @@ const InputSchema = z.object({
   // group_break
   reason: z.string().optional(),
   method: z.enum(['abandonment', 'betrayal', 'death', 'mutual']).optional(),
+  // #425 — arbitrary D1 column passthrough, valid on `update` only.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 async function getTrustMatrix(db: D1Database, partyId: string): Promise<Array<{ from_character_id: string; to_character_id: string; trust_score: number }>> {
@@ -210,9 +217,13 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       if (a.name) { sets.push('name = ?'); vals.push(a.name) }
       if (a.description) { sets.push('description = ?'); vals.push(a.description) }
       if (a.status) { sets.push('status = ?'); vals.push(a.status) }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, PARTY_FIELDS_BLACKLIST, sets, vals)
       vals.push(a.id)
       await db.prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', id: a.id })
+      return ok({
+        success: true, actionType: 'update', id: a.id,
+        ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
+      })
     }
     case 'delete': {
       if (!a.id) return err('"id" is required')
