@@ -3,7 +3,7 @@ import { describe } from './helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
-import { handleTravelManage } from '../rpg/handlers/travel-manage'
+import { handleTravelManage, fordingCost } from '../rpg/handlers/travel-manage'
 import { handleBiomeManage } from '../rpg/handlers/biome-manage'
 import { handleWorldMap } from '../rpg/handlers/world-map'
 
@@ -324,5 +324,87 @@ describe('handleTravelManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.effectiveSpeedKmPerDay).toBe(5 / 2.0)
+  })
+
+  // ── fordingCost pure function (#431) ────────────────────────────────
+
+  it('fordingCost returns null when water_depth is null (no fording rule)', () => {
+    expect(fordingCost(null, 'foot')).toBeNull()
+  })
+
+  it('fordingCost always returns null for aircraft regardless of depth', () => {
+    expect(fordingCost(0.3, 'aircraft')).toBeNull()
+    expect(fordingCost(5.0, 'aircraft')).toBeNull()
+  })
+
+  it('fordingCost — shallow (<=0.6m): foot/horse fordable at half speed, no swim risk', () => {
+    expect(fordingCost(0.6, 'foot')).toEqual({ cost: 2.0, swimRisk: false })
+    expect(fordingCost(0, 'horse')).toEqual({ cost: 2.0, swimRisk: false })
+  })
+
+  it('fordingCost — medium (0.6-1.2m): foot/horse fordable at half speed, with swim risk', () => {
+    expect(fordingCost(0.8, 'foot')).toEqual({ cost: 2.0, swimRisk: true })
+    expect(fordingCost(1.2, 'horse')).toEqual({ cost: 2.0, swimRisk: true })
+  })
+
+  it('fordingCost — deep (>1.2m): impassable for every surface mode', () => {
+    expect(fordingCost(1.3, 'foot')).toEqual({ cost: 0, swimRisk: false })
+    expect(fordingCost(1.3, 'horse')).toEqual({ cost: 0, swimRisk: false })
+    expect(fordingCost(1.3, 'carriage')).toEqual({ cost: 0, swimRisk: false })
+    expect(fordingCost(1.3, 'car')).toEqual({ cost: 0, swimRisk: false })
+  })
+
+  it('fordingCost — carriage/car are always impassable at any positive depth', () => {
+    expect(fordingCost(0.1, 'carriage')).toEqual({ cost: 0, swimRisk: false })
+    expect(fordingCost(0.1, 'car')).toEqual({ cost: 0, swimRisk: false })
+  })
+
+  // ── move_hex water_depth integration (#431) ─────────────────────────
+
+  it('move_hex ignores water_depth when null even on a costly biome', async () => {
+    await createWorld()
+    await createParty('party-move-11')
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'marsh_431', movementCost: 2.0 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 6, r: 6, biome: 'marsh_431' }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-11', worldId: WORLD, toQ: 6, toR: 6, mode: 'foot' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(5 / 2.0)
+    expect(body.swimRisk).toBeUndefined()
+  })
+
+  it('move_hex water_depth overrides a permissive biome cost and blocks carriage', async () => {
+    await createWorld()
+    await createParty('party-move-12')
+    // Biome itself has no mode override (would normally be fully passable),
+    // but an explicit water_depth on this specific hex still blocks carriage.
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'grass_431', movementCost: 1.0 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 7, r: 7, biome: 'grass_431', waterDepth: 1.5 }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-12', worldId: WORLD, toQ: 7, toR: 7, mode: 'carriage' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('water too deep to ford')
+  })
+
+  it('move_hex reports swimRisk for a medium-depth foot crossing', async () => {
+    await createWorld()
+    await createParty('party-move-13')
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 8, r: 8, biome: 'grass', waterDepth: 0.9 }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-13', worldId: WORLD, toQ: 8, toR: 8, mode: 'foot' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.swimRisk).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(5 / 2.0)
+  })
+
+  it('move_hex ignores water_depth entirely for aircraft', async () => {
+    await createWorld()
+    await createParty('party-move-14')
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 9, r: 9, biome: 'grass', waterDepth: 5.0 }] })
+    const r = await handleTravelManage(db(), { action: 'move_hex', partyId: 'party-move-14', worldId: WORLD, toQ: 9, toR: 9, mode: 'aircraft' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.effectiveSpeedKmPerDay).toBe(600)
+    expect(body.swimRisk).toBeUndefined()
   })
 })

@@ -324,6 +324,9 @@ const HexPatch = z.object({
   elevation: z.number().int().optional().default(0),
   moisture: z.number().int().optional().default(50),
   temperature: z.number().int().optional().default(15),
+  // #431 — explicit per-hex fording depth in meters. null/omitted = no
+  // fording rule for this hex (defers to the biome's own movement cost).
+  waterDepth: z.number().min(0).nullable().optional().default(null),
 })
 
 const InputSchema = z.object({
@@ -406,12 +409,13 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
       let updated = 0
       for (const hex of a.hexes) {
         await db.prepare(
-          `INSERT INTO hexes (q, r, map_id, biome, elevation, moisture, temperature, world_id, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO hexes (q, r, map_id, biome, elevation, moisture, temperature, water_depth, world_id, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(q, r, map_id) DO UPDATE SET
              biome = excluded.biome, elevation = excluded.elevation, moisture = excluded.moisture,
-             temperature = excluded.temperature, world_id = excluded.world_id, updated_at = excluded.updated_at`
-        ).bind(hex.q, hex.r, a.mapId, hex.biome, hex.elevation, hex.moisture, hex.temperature, a.worldId, now).run()
+             temperature = excluded.temperature, water_depth = excluded.water_depth,
+             world_id = excluded.world_id, updated_at = excluded.updated_at`
+        ).bind(hex.q, hex.r, a.mapId, hex.biome, hex.elevation, hex.moisture, hex.temperature, hex.waterDepth, a.worldId, now).run()
         updated++
       }
       return ok({ success: true, actionType: 'patch', worldId: a.worldId, mapId: a.mapId, hexesUpdated: updated })
@@ -455,12 +459,13 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
             const chunk = validHexes.slice(i, i + 100)
             await db.batch(chunk.map(h =>
               db.prepare(
-                `INSERT INTO hexes (q, r, map_id, biome, elevation, moisture, temperature, world_id, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `INSERT INTO hexes (q, r, map_id, biome, elevation, moisture, temperature, water_depth, world_id, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(q, r, map_id) DO UPDATE SET
                    biome = excluded.biome, elevation = excluded.elevation, moisture = excluded.moisture,
-                   temperature = excluded.temperature, world_id = excluded.world_id, updated_at = excluded.updated_at`
-              ).bind(h.q, h.r, a.mapId, h.biome, h.elevation, h.moisture, h.temperature, a.worldId, now)
+                   temperature = excluded.temperature, water_depth = excluded.water_depth,
+                   world_id = excluded.world_id, updated_at = excluded.updated_at`
+              ).bind(h.q, h.r, a.mapId, h.biome, h.elevation, h.moisture, h.temperature, h.waterDepth, a.worldId, now)
             ))
           }
         } catch (e) {

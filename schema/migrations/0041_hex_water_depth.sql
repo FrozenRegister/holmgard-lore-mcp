@@ -1,0 +1,12 @@
+-- #431 — water_depth on the hex-axial `hexes` table (the issue's proposed
+-- `hex_tiles` name is stale; hexes has been the live table since migration
+-- 0019/#320). Layered ALONGSIDE #429's per-mode biome cost overrides, not a
+-- replacement: a biome-registered "river" already expresses coarse
+-- passability (carriage/car blocked, foot/horse slower) without needing any
+-- per-hex data. water_depth is for when a narrator wants the finer-grained,
+-- explicit fording table from #429/#431 on a specific hex — when set, it
+-- takes precedence over the biome's cost for that hex (a concrete physical
+-- fact is more authoritative than an abstract per-biome default). NULL (the
+-- default) means "no explicit fording rule" and defers entirely to biome
+-- cost, so every existing hex/world is unaffected until a narrator opts in.
+ALTER TABLE hexes ADD COLUMN water_depth REAL DEFAULT NULL;
