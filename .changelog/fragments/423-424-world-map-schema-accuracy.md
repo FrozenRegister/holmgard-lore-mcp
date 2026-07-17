@@ -1,0 +1,5 @@
+### Fix stale world_map schema and surface rpg alias map (#423, #424)
+
+- `world_map`'s `SUB_SCHEMAS` entry (`src/index.ts`) previously advertised square-grid actions (`generate`, `get_hex`, `set_hex`, `get_map`) and `x`/`y` coordinates that don't exist in the runtime handler — a drift dating back to #320's hex-axial rewrite that the schema-advertisement layer never followed. Replaced with the real 12 actions, `q`/`r` coordinates, and the handler's actual alias set (#423).
+- `load_tool_schema({toolName:"rpg"})`'s no-`sub` response now includes an `aliases` map (`maps→world_map`, `stealth→perception`, `characters→character`, `npc_dialogue→npc`), built from the same `aliasOf` entries already in `SUB_SCHEMAS`, so the alias-vs-canonical distinction is discoverable without reading source (#424, Option B from the issue).
+- #424's core premise — "`maps` isn't in `SUB_VALUES`" — was already false at filing time, fixed 19 hours earlier by #404; see the issue comment for the full analysis. Closing it via this PR rather than leaving it open on a stale claim.

@@ -27,6 +27,19 @@ let _schemaIndex: Record<string, ToolSchema> | null = null
 // Built incrementally — only populated for subs that opt in.
 let _rpgSubSchemaIndex: Record<string, ToolSchema> | null = null
 
+// #424 — sub→canonical alias map for the "rpg" tool (e.g. "maps" → "world_map"),
+// populated alongside registerRpgSubSchema for every `{ sub, aliasOf }` entry in
+// index.ts's SUB_SCHEMAS array. Surfaced in load_tool_schema({toolName:"rpg"})'s
+// no-sub response so the aliasOf pattern is discoverable without already
+// knowing an alias exists — previously the only way to learn "maps" resolves
+// to "world_map" was reading source or guessing.
+let _rpgAliasIndex: Record<string, string> | null = null
+
+export function registerRpgAlias(aliasSub: string, canonicalSub: string): void {
+  if (!_rpgAliasIndex) _rpgAliasIndex = {}
+  _rpgAliasIndex[aliasSub] = canonicalSub
+}
+
 export function setSchemaIndex(tools: Array<{ name: string; inputSchema: unknown; description: string }>) {
   _schemaIndex = Object.fromEntries(
     tools.map(t => [t.name, { name: t.name, description: t.description, inputSchema: t.inputSchema }]),
@@ -80,6 +93,12 @@ export async function handleLoadToolSchema(_env: AppBindings, args: Record<strin
   const schema = _schemaIndex[toolName]
 
   if (schema) {
+    // #424 — the "rpg" tool's no-sub schema is the natural place to advertise
+    // aliasOf shortcuts (maps→world_map, stealth→perception, etc.) since that's
+    // exactly where a caller already looks to see the full `sub` enum.
+    if (toolName === 'rpg' && _rpgAliasIndex) {
+      return ok({ success: true, toolName, schema, aliases: _rpgAliasIndex })
+    }
     return ok({ success: true, toolName, schema })
   }
 

@@ -250,6 +250,19 @@ the same `resolveEntityToCharacterId` used by #344/#411) — `set_attributes` on
 migration, not automatic — per the issue's own non-goals, #410 does not backfill or change the
 underlying interaction-probability formula (still the 70% ceiling, binary-outcome model).
 
+**Known Behavior (#423, #424):** the `rpg` sub-schema for `world_map` (`load_tool_schema({toolName:
+"rpg", sub: "world_map"})`, and its `maps` alias) previously described a square-grid model — actions
+`generate`/`get_hex`/`get_region`/`list_regions`/`set_hex`/`get_map` with `x`/`y` coordinates — that
+never existed at runtime; the handler was rewritten to hex-axial `q`/`r` coordinates and 12 different
+actions (`overview`, `region`, `hexes`, `patch`, `batch`, `preview`, `find_poi`, `suggest_poi`,
+`update_poi`, `query_zone`, `list_zones`, `render_svg`) back in #320, but the schema-advertisement
+layer was never updated to match (#423). The schema now reflects the real handler, including its
+alias actions (e.g. `update`/`modify` → `patch`, `tiles`/`hex_data` → `hexes`, `svg`/`export_svg` →
+`render_svg`). Separately (#424), `load_tool_schema({toolName: "rpg"})` with no `sub` now returns an
+`aliases` map (`{"maps":"world_map","stealth":"perception","characters":"character",
+"npc_dialogue":"npc"}`) alongside the base schema, so the sub-name-vs-alias distinction — previously
+invisible in the flat `sub` enum — is discoverable without reading source.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
