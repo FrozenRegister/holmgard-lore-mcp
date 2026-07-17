@@ -3,7 +3,7 @@ import { describe } from './helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
-import { handleBiomeManage, DEFAULT_BIOMES, seedDefaultBiomes, getBiomeRegistry } from '../rpg/handlers/biome-manage'
+import { handleBiomeManage, DEFAULT_BIOMES, seedDefaultBiomes, getBiomeRegistry, effectiveMovementCost } from '../rpg/handlers/biome-manage'
 
 describe('handleBiomeManage', () => {
   beforeEach(async () => {
@@ -356,5 +356,69 @@ describe('handleBiomeManage', () => {
     const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
     expect(registry.get('forest')?.baseThreat).toBe(0)
     expect(registry.get('limestone_karst')?.baseThreat).toBe(20)
+  })
+
+  // ── per-mode movement cost overrides (#429) ────────────────────────────
+
+  it('register defaults modeCosts to an empty object', async () => {
+    await createWorld()
+    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'grass_429' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.modeCosts).toEqual({})
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    expect(registry.get('grass_429')?.modeCosts).toEqual({})
+  })
+
+  it('register stores explicit modeCosts', async () => {
+    await createWorld()
+    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'river_429', movementCost: 2.0, modeCosts: { carriage: 0, car: 0, horse: 3.0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.modeCosts).toEqual({ carriage: 0, car: 0, horse: 3.0 })
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    expect(registry.get('river_429')?.modeCosts).toEqual({ carriage: 0, car: 0, horse: 3.0 })
+  })
+
+  it('update shallow-merges modeCosts without clobbering pre-existing modes', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleBiomeManage(db(), {
+      action: 'register', worldId: WORLD, name: 'river_429b', modeCosts: { carriage: 0, horse: 3.0 },
+    })).content[0].text)
+    const r = await handleBiomeManage(db(), { action: 'update', id: created.biomeId, modeCosts: { car: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.modeCosts).toEqual({ carriage: 0, horse: 3.0, car: 0 })
+    const fetched = JSON.parse((await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text)
+    expect(JSON.parse(fetched.biome.mode_costs)).toEqual({ carriage: 0, horse: 3.0, car: 0 })
+  })
+
+  it('update can overwrite a specific mode while leaving others intact', async () => {
+    await createWorld()
+    const created = JSON.parse((await handleBiomeManage(db(), {
+      action: 'register', worldId: WORLD, name: 'heath_429', modeCosts: { horse: 2.0 },
+    })).content[0].text)
+    await handleBiomeManage(db(), { action: 'update', id: created.biomeId, modeCosts: { horse: 5.0 } })
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    expect(registry.get('heath_429')?.modeCosts).toEqual({ horse: 5.0 })
+  })
+
+  it('effectiveMovementCost falls back to movementCost when the mode has no override', () => {
+    const entry = { movementCost: 1.5, modeCosts: { horse: 3.0 } }
+    expect(effectiveMovementCost(entry, 'foot')).toBe(1.5)
+    expect(effectiveMovementCost(entry, 'horse')).toBe(3.0)
+  })
+
+  it('effectiveMovementCost defaults to 1.0 for an undefined biome entry (unregistered biome)', () => {
+    expect(effectiveMovementCost(undefined, 'foot')).toBe(1.0)
+  })
+
+  it('getBiomeRegistry tolerates a malformed mode_costs value by treating it as empty', async () => {
+    await createWorld()
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind('biome-malformed', WORLD, 'malformed_429', '?', 'terrain', '#888888', 1.0, 0, 'not-json', now, now).run()
+    const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
+    expect(registry.get('malformed_429')?.modeCosts).toEqual({})
   })
 })

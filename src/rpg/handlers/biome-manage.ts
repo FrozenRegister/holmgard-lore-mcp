@@ -41,6 +41,12 @@ const InputSchema = z.object({
   // narrator opts in.
   baseThreat: z.number().min(0).max(100).optional(),
   description: z.string().optional(),
+  // #429 — per-travel-mode cost overrides, same semantics as movementCost
+  // (higher = slower, 0 = impassable). A mode absent from this object falls
+  // back to movementCost — every existing biome/world is unaffected until a
+  // narrator opts a mode in. On `update`, this is shallow-merged into the
+  // existing object (one mode can be set without clobbering the others).
+  modeCosts: z.record(z.string(), z.number().min(0)).optional(),
 })
 
 // The 15 biomes previously hardcoded across world_map.ts's BIOME_GLYPHS map
@@ -84,10 +90,32 @@ export async function seedDefaultBiomes(db: D1Database, worldId: string): Promis
 }
 
 /** Used by world_map.ts and encounter-manage.ts. A world with zero registered biomes is treated as unrestricted (backward compatible). */
-export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number; baseThreat: number }>> {
-  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost, base_threat FROM biomes WHERE world_id = ?').bind(worldId).all() as
-    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number; base_threat: number }> }
-  return new Map(results.map(r => [r.name, { glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost, baseThreat: r.base_threat }]))
+export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number; baseThreat: number; modeCosts: Record<string, number> }>> {
+  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost, base_threat, mode_costs FROM biomes WHERE world_id = ?').bind(worldId).all() as
+    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number; base_threat: number; mode_costs: string }> }
+  return new Map(results.map(r => [r.name, {
+    glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost, baseThreat: r.base_threat,
+    modeCosts: parseModeCosts(r.mode_costs),
+  }]))
+}
+
+// mode_costs is NOT NULL DEFAULT '{}' at the schema level — the only failure
+// mode this guards against is direct DB corruption (malformed JSON), not a
+// missing/null value.
+function parseModeCosts(raw: string): Record<string, number> {
+  try {
+    return JSON.parse(raw) as Record<string, number>
+  } catch {
+    return {}
+  }
+}
+
+// #429 — a mode absent from a biome's mode_costs falls back to movementCost
+// (the pre-existing, mode-agnostic cost). Shared by travel-manage.ts (move_hex
+// passability) and world-map.ts (distance/pathfind terrain cost).
+export function effectiveMovementCost(entry: { movementCost: number; modeCosts: Record<string, number> } | undefined, mode: string): number {
+  if (!entry) return 1.0
+  return entry.modeCosts[mode] ?? entry.movementCost
 }
 
 export async function handleBiomeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -112,12 +140,13 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
       const movementCost = a.movementCost ?? 1.0
       const category = a.category ?? 'terrain'
       const baseThreat = a.baseThreat ?? 0
+      const modeCosts = a.modeCosts ?? {}
       const existing = await db.prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
       if (existing) return err(`Biome "${a.name}" already exists for this world`)
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.name, glyph, category, colorHex, movementCost, baseThreat, a.description ?? null, now, now).run()
-      return ok({ success: true, actionType: 'register', biomeId: id, worldId: a.worldId, name: a.name, glyph, category, colorHex, movementCost, baseThreat })
+      await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, a.worldId, a.name, glyph, category, colorHex, movementCost, baseThreat, JSON.stringify(modeCosts), a.description ?? null, now, now).run()
+      return ok({ success: true, actionType: 'register', biomeId: id, worldId: a.worldId, name: a.name, glyph, category, colorHex, movementCost, baseThreat, modeCosts })
     }
     case 'list': {
       if (!a.worldId) return err('"worldId" is required')
@@ -136,7 +165,7 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
     case 'update': {
       const targetId = a.id ?? a.biomeId
       if (!targetId) return err('"id" or "biomeId" is required')
-      const existing = await db.prepare('SELECT id FROM biomes WHERE id = ?').bind(targetId).first()
+      const existing = await db.prepare('SELECT id, mode_costs FROM biomes WHERE id = ?').bind(targetId).first() as { id: string; mode_costs: string } | null
       if (!existing) return err(`Biome not found: ${targetId}`)
       const sets: string[] = ['updated_at = ?']
       const vals: unknown[] = [now]
@@ -152,9 +181,14 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
       if (a.movementCost !== undefined) { sets.push('movement_cost = ?'); vals.push(a.movementCost) }
       if (a.baseThreat !== undefined) { sets.push('base_threat = ?'); vals.push(a.baseThreat) }
       if (a.description !== undefined) { sets.push('description = ?'); vals.push(a.description) }
+      let mergedModeCosts: Record<string, number> | undefined
+      if (a.modeCosts !== undefined) {
+        mergedModeCosts = { ...parseModeCosts(existing.mode_costs), ...a.modeCosts }
+        sets.push('mode_costs = ?'); vals.push(JSON.stringify(mergedModeCosts))
+      }
       vals.push(targetId)
       await db.prepare(`UPDATE biomes SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', biomeId: targetId })
+      return ok({ success: true, actionType: 'update', biomeId: targetId, ...(mergedModeCosts ? { modeCosts: mergedModeCosts } : {}) })
     }
     case 'delete': {
       const targetId = a.id ?? a.biomeId

@@ -8,6 +8,18 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { resolveEncounterCore } from './encounter-manage'
 import { executeRoll } from './math-manage'
+import { getBiomeRegistry, effectiveMovementCost } from './biome-manage'
+
+// #429 — transport modes for hex-grid travel. Base speeds are game-balance
+// constants (not narrative/world data), so hardcoding them here is fine —
+// unlike biome names, "how fast does a car go" isn't something a world's
+// narrator needs to redefine per-campaign. Reused by world_map.distance
+// (#430) for multi-hex ETA estimates.
+export const TRAVEL_MODES = ['foot', 'horse', 'carriage', 'car', 'aircraft'] as const
+export type TravelMode = typeof TRAVEL_MODES[number]
+export const TRAVEL_MODE_BASE_SPEED_KM_PER_DAY: Record<TravelMode, number> = {
+  foot: 5, horse: 35, carriage: 25, car: 400, aircraft: 600,
+}
 
 const ACTIONS = ['travel', 'loot', 'rest', 'move_hex'] as const
 type TravelAction = typeof ACTIONS[number]
@@ -45,6 +57,9 @@ const InputSchema = z.object({
   partyInjuries: z.array(z.string()).optional().default(['none']),
   weather: z.enum(['clear', 'rain', 'snow', 'fog']).optional(),
   includeInjuries: z.boolean().optional().default(true),
+  // #429 — transport mode for move_hex. Defaults to foot, matching every
+  // existing caller's implicit assumption before this field existed.
+  mode: z.enum(TRAVEL_MODES).optional().default('foot'),
 })
 
 const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
@@ -162,12 +177,26 @@ export async function handleTravelManage(env: AppBindings, args: Record<string, 
       const party = await db.prepare('SELECT id FROM parties WHERE id = ?').bind(a.partyId).first() as { id: string } | null
       if (!party) return err(`Party not found: ${a.partyId}`)
       const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(a.worldId, a.toQ, a.toR).first() as { biome: string } | null
+
+      // #429 — mode-aware passability. A hex with no registered biome (or a
+      // world with no biome registry at all) stays unrestricted, matching
+      // getBiomeRegistry's existing backward-compatible fallback.
+      let cost = 1.0
+      if (hex?.biome) {
+        const registry = await getBiomeRegistry(db, a.worldId)
+        cost = effectiveMovementCost(registry.get(hex.biome), a.mode)
+        if (cost <= 0) {
+          return err(`Hex (${a.toQ}, ${a.toR}) — biome "${hex.biome}" is impassable for mode "${a.mode}"`)
+        }
+      }
+      const effectiveSpeedKmPerDay = TRAVEL_MODE_BASE_SPEED_KM_PER_DAY[a.mode] / cost
+
       await db.prepare('UPDATE parties SET current_hex_q = ?, current_hex_r = ?, updated_at = ? WHERE id = ?').bind(a.toQ, a.toR, now, a.partyId).run()
       if (a.resolveEncounter) {
         const encounter = await resolveEncounterCore(db, { worldId: a.worldId, q: a.toQ, r: a.toR, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel, scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather, includeInjuries: a.includeInjuries, characterIds: a.characterIds })
-        return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null, encounter })
+        return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null, mode: a.mode, effectiveSpeedKmPerDay, encounter })
       }
-      return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null })
+      return ok({ success: true, actionType: 'move_hex', partyId: a.partyId, q: a.toQ, r: a.toR, biome: hex?.biome ?? null, mode: a.mode, effectiveSpeedKmPerDay })
     }
   }
 }
