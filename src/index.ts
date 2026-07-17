@@ -110,7 +110,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
   // #423 — rewritten to match the actual hex-axial handler (world-map.ts),
   // rewritten for #320/#308-Phase-2 from a square-grid model this schema still
   // described until now. Coordinates are hex-axial q,r, not square x,y.
-  { sub: 'world_map', description: 'Hex world map — hex tiles, landmarks, zones, POIs, SVG export. Actions: overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg. Aliases: update/update_tiles/update_hexes/modify→patch, tiles/get_tiles/get_hexes/hex_data→hexes, bulk/bulk_import/import_hexes→batch, search_poi/get_poi→find_poi, render/ascii/view→preview, svg/export_svg/map_svg→render_svg. Coordinates are hex-axial q,r (not square x,y).',
+  { sub: 'world_map', description: 'Hex world map — hex tiles, landmarks, zones, POIs, SVG export, distance/pathfinding (#430). Actions: overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg, distance, pathfind. Aliases: update/update_tiles/update_hexes/modify→patch, tiles/get_tiles/get_hexes/hex_data→hexes, bulk/bulk_import/import_hexes→batch, search_poi/get_poi→find_poi, render/ascii/view→preview, svg/export_svg/map_svg→render_svg, dist/get_distance→distance, route/find_path/navigate/find_route→pathfind. Coordinates are hex-axial q,r (not square x,y). distance/pathfind report straightLineKm/totalKm/totalDays only when the world is geo-calibrated via waypoint.calibrate — otherwise those fields are null with an explanatory note, though hexDistance/path/terrainBreakdown hex counts are always accurate.',
     schema: { type: 'object', properties: {
       action: { type: 'string' },
       worldId: { type: 'string', description: 'World UUID (required for most actions)' },
@@ -149,6 +149,10 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
       highlight: { type: 'array', items: { type: 'object', properties: {
         q: { type: 'number' }, r: { type: 'number' }, label: { type: 'string' }, color: { type: 'string' },
       } } },
+      from: { type: 'object', properties: { q: { type: 'integer' }, r: { type: 'integer' } }, description: 'Origin hex for distance/pathfind (#430)' },
+      to: { type: 'object', properties: { q: { type: 'integer' }, r: { type: 'integer' } }, description: 'Destination hex for distance/pathfind (#430)' },
+      mode: { type: 'string', enum: ['foot', 'horse', 'carriage', 'car', 'aircraft'], description: 'Transport mode for distance/pathfind (#430). Defaults to foot. Same per-hex cost model as travel.move_hex (#429/#431).' },
+      avoid: { type: 'array', items: { type: 'string' }, description: 'pathfind only (#430). Biome names or zone_type values to route around — matched against each world\'s own dynamic registries, not a fixed list.' },
     }, required: ['action'] } },
   // #404 (Tier 1) — shorter alias. Inherits the corrected schema above automatically.
   { sub: 'maps', aliasOf: 'world_map' },

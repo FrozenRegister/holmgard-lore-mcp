@@ -22,10 +22,15 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
-import { getBiomeRegistry } from './biome-manage'
+import { getBiomeRegistry, effectiveMovementCost } from './biome-manage'
 import { getZoneTypeRegistry } from './zone-type-manage'
+import { TRAVEL_MODES, TRAVEL_MODE_BASE_SPEED_KM_PER_DAY, fordingCost } from './travel-manage'
+import { getGeoOrigin } from './waypoint-manage'
 
-const ACTIONS = ['overview', 'region', 'hexes', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones', 'render_svg'] as const
+// #430 — distance/pathfind. Reuses #429's mode base speeds and #429/#431's
+// per-hex effective cost (biome cost, overridden by an explicit water_depth
+// fording rule when set) rather than reimplementing terrain math.
+const ACTIONS = ['overview', 'region', 'hexes', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones', 'render_svg', 'distance', 'pathfind'] as const
 type WorldMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldMapAction> = {
   summary: 'overview', world_view: 'overview',
@@ -40,6 +45,8 @@ const ALIASES: Record<string, WorldMapAction> = {
   zone_query: 'query_zone', check_zone: 'query_zone',
   zones: 'list_zones', get_zones: 'list_zones',
   svg: 'render_svg', export_svg: 'render_svg', map_svg: 'render_svg',
+  dist: 'distance', get_distance: 'distance',
+  route: 'pathfind', find_path: 'pathfind', navigate: 'pathfind', find_route: 'pathfind',
 }
 
 // #276 — zone shape math (circle/polygon/ring) shared by query_zone, list_zones,
@@ -56,6 +63,40 @@ function hexDistance(q1: number, r1: number, q2: number, r2: number): number {
   const dq = q1 - q2; const dr = r1 - r2
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2
 }
+
+// #430 — cube-coordinate rounding for hexLine below. See
+// https://www.redblobgames.com/grids/hexagons/#rounding
+function cubeRound(x: number, y: number, z: number): [number, number, number] {
+  let rx = Math.round(x); let ry = Math.round(y); let rz = Math.round(z)
+  const dx = Math.abs(rx - x); const dy = Math.abs(ry - y); const dz = Math.abs(rz - z)
+  if (dx > dy && dx > dz) rx = -ry - rz
+  else if (dy > dz) ry = -rx - rz
+  else rz = -rx - ry
+  return [rx, ry, rz]
+}
+
+// #430 — every hex on the straight axial line between two cells (inclusive
+// of both endpoints), via cube-coordinate linear interpolation + rounding.
+// See https://www.redblobgames.com/grids/hexagons/#line-drawing. Used by
+// `distance` for terrain-composition estimates along the direct route.
+function hexLine(q1: number, r1: number, q2: number, r2: number): Array<[number, number]> {
+  const n = hexDistance(q1, r1, q2, r2)
+  const points: Array<[number, number]> = []
+  const x1 = q1; const z1 = r1; const y1 = -x1 - z1
+  const x2 = q2; const z2 = r2; const y2 = -x2 - z2
+  for (let i = 0; i <= n; i++) {
+    const t = n === 0 ? 0 : i / n
+    const x = x1 + (x2 - x1) * t
+    const y = y1 + (y2 - y1) * t
+    const z = z1 + (z2 - z1) * t
+    const [rx, , rz] = cubeRound(x, y, z)
+    points.push([rx, rz])
+  }
+  return points
+}
+
+// #430 — axial hex neighbor offsets (pointy-top, all 6 directions).
+const HEX_DIRECTIONS: ReadonlyArray<[number, number]> = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]
 
 // Polygon zone shapes are defined by (q, r) vertices and tested with
 // standard ray-casting over that plane — this is unchanged from the square
@@ -362,6 +403,11 @@ const InputSchema = z.object({
   highlight: z.array(z.object({
     q: z.number(), r: z.number(), label: z.string().optional(), color: z.string().optional(),
   })).optional().default([]),
+  // #430 — distance/pathfind.
+  from: z.object({ q: z.number().int(), r: z.number().int() }).optional(),
+  to: z.object({ q: z.number().int(), r: z.number().int() }).optional(),
+  mode: z.enum(TRAVEL_MODES).optional().default('foot'),
+  avoid: z.array(z.string()).optional().default([]),
 })
 
 export async function handleWorldMap(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -623,6 +669,191 @@ export async function handleWorldMap(env: AppBindings, args: Record<string, unkn
         success: true, actionType: 'render_svg', worldId: a.worldId, svg,
         dimensions: { width, height },
         hexCount, structureCount, zoneCount,
+      })
+    }
+    case 'distance': {
+      if (!a.worldId || !a.from || !a.to) return err('"worldId", "from", and "to" are required')
+      const steps = hexDistance(a.from.q, a.from.r, a.to.q, a.to.r)
+      const origin = await getGeoOrigin(db, a.worldId)
+      let straightLineKm: number | null = null
+      if (origin) {
+        const [x1, y1] = hexToPixel(a.from.q, a.from.r, origin.kmPerHex)
+        const [x2, y2] = hexToPixel(a.to.q, a.to.r, origin.kmPerHex)
+        straightLineKm = Math.round(Math.hypot(x2 - x1, y2 - y1) * 100) / 100
+      }
+
+      const line = hexLine(a.from.q, a.from.r, a.to.q, a.to.r)
+      const qs = line.map(([q]) => q); const rs = line.map(([, r]) => r)
+      const { results: hexRows } = await db.prepare(
+        'SELECT q, r, biome, water_depth FROM hexes WHERE world_id = ? AND q >= ? AND q <= ? AND r >= ? AND r <= ?'
+      ).bind(a.worldId, Math.min(...qs), Math.max(...qs), Math.min(...rs), Math.max(...rs)).all() as
+        { results: Array<{ q: number; r: number; biome: string | null; water_depth: number | null }> }
+      const hexMap = new Map(hexRows.map(h => [`${h.q},${h.r}`, h]))
+      const registry = await getBiomeRegistry(db, a.worldId)
+
+      const terrainBreakdown: Record<string, { hexes: number; km: number | null }> = {}
+      const warnings: string[] = []
+      let totalCost = 0
+      let costSamples = 0
+      let blocked = false
+      // Skip index 0 — the origin hex itself isn't "entered" during travel.
+      for (let i = 1; i < line.length; i++) {
+        const [q, r] = line[i]
+        const row = hexMap.get(`${q},${r}`)
+        const biomeName = row?.biome ?? null
+        let cost = biomeName ? effectiveMovementCost(registry.get(biomeName), a.mode) : 1.0
+        const ford = fordingCost(row?.water_depth ?? null, a.mode)
+        if (ford) cost = ford.cost
+        if (cost <= 0) {
+          blocked = true
+          warnings.push(`Hex (${q}, ${r})${biomeName ? ` — biome "${biomeName}"` : ''} is impassable for mode "${a.mode}" along the direct line. Use pathfind for a routable path.`)
+        }
+        totalCost += cost
+        costSamples++
+        const label = biomeName ?? 'unknown'
+        if (!terrainBreakdown[label]) terrainBreakdown[label] = { hexes: 0, km: null }
+        terrainBreakdown[label].hexes++
+      }
+      if (origin && straightLineKm !== null && costSamples > 0) {
+        const kmPerStep = straightLineKm / costSamples
+        for (const label of Object.keys(terrainBreakdown)) {
+          terrainBreakdown[label].km = Math.round(terrainBreakdown[label].hexes * kmPerStep * 100) / 100
+        }
+      }
+
+      const avgCost = costSamples > 0 ? totalCost / costSamples : 1.0
+      const baseSpeed = TRAVEL_MODE_BASE_SPEED_KM_PER_DAY[a.mode]
+      const estimatedTravelDays = (origin && straightLineKm !== null && !blocked && avgCost > 0)
+        ? Math.round((straightLineKm / (baseSpeed / avgCost)) * 100) / 100
+        : null
+
+      return ok({
+        success: true, actionType: 'distance', worldId: a.worldId, from: a.from, to: a.to, mode: a.mode,
+        hexDistance: steps, straightLineKm, estimatedTravelDays, terrainBreakdown, warnings,
+        ...(origin ? {} : { note: 'World is not geo-calibrated (waypoint.calibrate) — straightLineKm/estimatedTravelDays are unavailable; hexDistance and terrainBreakdown hex counts are still accurate.' }),
+      })
+    }
+    case 'pathfind': {
+      if (!a.worldId || !a.from || !a.to) return err('"worldId", "from", and "to" are required')
+      const MAX_NODES = 5000
+      const directDist = hexDistance(a.from.q, a.from.r, a.to.q, a.to.r)
+      // Search-space bound: pad the from/to bounding box generously enough
+      // to allow real detours around obstacles without loading an entire
+      // large world's hex table into memory.
+      const pad = Math.min(Math.max(directDist, 5), 40)
+      const qMin = Math.min(a.from.q, a.to.q) - pad; const qMax = Math.max(a.from.q, a.to.q) + pad
+      const rMin = Math.min(a.from.r, a.to.r) - pad; const rMax = Math.max(a.from.r, a.to.r) + pad
+
+      const { results: hexRows } = await db.prepare(
+        'SELECT q, r, biome, water_depth FROM hexes WHERE world_id = ? AND q >= ? AND q <= ? AND r >= ? AND r <= ?'
+      ).bind(a.worldId, qMin, qMax, rMin, rMax).all() as
+        { results: Array<{ q: number; r: number; biome: string | null; water_depth: number | null }> }
+      const hexMap = new Map(hexRows.map(h => [`${h.q},${h.r}`, h]))
+      const registry = await getBiomeRegistry(db, a.worldId)
+
+      // One query for the whole search (not resolveZonesAt's per-point
+      // query) — zonesAt below checks in-memory per node evaluated.
+      const { results: zoneRows } = await db.prepare(
+        'SELECT id, name, q, r, zone_type, zone_shape, predator_ref, threat_level FROM landmarks WHERE world_id = ? AND zone_shape IS NOT NULL'
+      ).bind(a.worldId).all() as {
+        results: Array<{ id: string; name: string; q: number; r: number; zone_type: string | null; zone_shape: string | null; predator_ref: string | null; threat_level: number | null }>
+      }
+      const zones = zoneRows
+        .map(z => ({ ...z, shape: parseZoneShape(z.zone_shape) }))
+        .filter((z): z is typeof z & { shape: ZoneShape } => z.shape !== null)
+      function zonesAt(q: number, r: number) {
+        return zones.filter(z => pointInZone(q, r, z.q, z.r, z.shape))
+      }
+
+      function stepCost(q: number, r: number): number {
+        const row = hexMap.get(`${q},${r}`)
+        const biomeName = row?.biome ?? null
+        if (biomeName && a.avoid.includes(biomeName)) return Infinity
+        if (zonesAt(q, r).some(z => z.zone_type && a.avoid.includes(z.zone_type))) return Infinity
+        let cost = biomeName ? effectiveMovementCost(registry.get(biomeName), a.mode) : 1.0
+        const ford = fordingCost(row?.water_depth ?? null, a.mode)
+        if (ford) cost = ford.cost
+        return cost <= 0 ? Infinity : cost
+      }
+
+      const startKey = `${a.from.q},${a.from.r}`
+      const goalKey = `${a.to.q},${a.to.r}`
+      const gScore = new Map<string, number>([[startKey, 0]])
+      const cameFrom = new Map<string, string>()
+      const open = new Map<string, number>([[startKey, directDist]])
+      const closed = new Set<string>()
+      let nodesExpanded = 0
+      let found = startKey === goalKey
+
+      while (!found && open.size > 0) {
+        let currentKey = ''; let currentF = Infinity
+        for (const [k, f] of open) { if (f < currentF) { currentF = f; currentKey = k } }
+        open.delete(currentKey)
+        if (currentKey === goalKey) { found = true; break }
+        closed.add(currentKey)
+        nodesExpanded++
+        if (nodesExpanded > MAX_NODES) break
+        const [cq, cr] = currentKey.split(',').map(Number)
+        for (const [dq, dr] of HEX_DIRECTIONS) {
+          const nq = cq + dq; const nr = cr + dr
+          if (nq < qMin || nq > qMax || nr < rMin || nr > rMax) continue
+          const nKey = `${nq},${nr}`
+          if (closed.has(nKey)) continue
+          const stepCostVal = stepCost(nq, nr)
+          if (!isFinite(stepCostVal)) continue
+          const tentativeG = (gScore.get(currentKey) ?? Infinity) + stepCostVal
+          if (tentativeG < (gScore.get(nKey) ?? Infinity)) {
+            cameFrom.set(nKey, currentKey)
+            gScore.set(nKey, tentativeG)
+            open.set(nKey, tentativeG + hexDistance(nq, nr, a.to.q, a.to.r))
+          }
+        }
+      }
+
+      if (!found) {
+        return ok({
+          success: true, actionType: 'pathfind', worldId: a.worldId, from: a.from, to: a.to, mode: a.mode,
+          routable: false, reason: nodesExpanded > MAX_NODES ? 'search space exceeded' : 'no route found within search bounds', nodesExpanded,
+        })
+      }
+
+      const pathKeys: string[] = [goalKey]
+      let cur = goalKey
+      while (cur !== startKey) { cur = cameFrom.get(cur)!; pathKeys.push(cur) }
+      pathKeys.reverse()
+      const path = pathKeys.map(k => {
+        const [q, r] = k.split(',').map(Number)
+        return { q, r, biome: hexMap.get(k)?.biome ?? null }
+      })
+
+      const warnings: string[] = []
+      for (const { q, r } of path) {
+        for (const z of zonesAt(q, r)) {
+          warnings.push(`Hex (${q}, ${r}) is within zone "${z.zone_type ?? 'unnamed'}" (${z.name})${z.predator_ref ? `, predator: ${z.predator_ref}` : ''}${z.threat_level !== null ? `, threat ${z.threat_level}` : ''}`)
+        }
+      }
+
+      const totalCost = gScore.get(goalKey) ?? 0
+      const origin = await getGeoOrigin(db, a.worldId)
+      let totalKm: number | null = null
+      let totalDays: number | null = null
+      if (origin) {
+        let km = 0
+        for (let i = 1; i < path.length; i++) {
+          const [x1, y1] = hexToPixel(path[i - 1].q, path[i - 1].r, origin.kmPerHex)
+          const [x2, y2] = hexToPixel(path[i].q, path[i].r, origin.kmPerHex)
+          km += Math.hypot(x2 - x1, y2 - y1)
+        }
+        totalKm = Math.round(km * 100) / 100
+        const baseSpeed = TRAVEL_MODE_BASE_SPEED_KM_PER_DAY[a.mode]
+        const avgCost = path.length > 1 ? totalCost / (path.length - 1) : 1.0
+        totalDays = avgCost > 0 ? Math.round((totalKm / (baseSpeed / avgCost)) * 100) / 100 : null
+      }
+
+      return ok({
+        success: true, actionType: 'pathfind', worldId: a.worldId, from: a.from, to: a.to, mode: a.mode,
+        routable: true, path, totalHexSteps: path.length - 1, totalKm, totalDays, warnings, nodesExpanded,
+        ...(origin ? {} : { note: 'World is not geo-calibrated (waypoint.calibrate) — totalKm/totalDays are unavailable; path and totalHexSteps are still accurate.' }),
       })
     }
   }

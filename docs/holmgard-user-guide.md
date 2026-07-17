@@ -338,6 +338,26 @@ the hex's biome cost — every existing hex/world unaffected by default). When s
 A hex can carry both a `river`-style biome (coarse, always-on passability) and an explicit
 `water_depth` (fine-grained, opt-in per hex) — when both are present, `water_depth` wins.
 
+**Known Behavior (#430):** `world_map` gains `distance` and `pathfind` actions — `distance` takes
+`worldId`/`from`/`to`/`mode` and computes hex-axial `hexDistance` (always available), plus, only when
+the world is geo-calibrated (`waypoint.calibrate`), `straightLineKm` (exact hex-to-pixel Euclidean
+geometry, reusing the same formula as `hexToLatLon`/`hexToPixel` — **not** `hexDistance × kmPerHex`,
+which is a coarser approximation), a per-biome `terrainBreakdown` (hex counts, and km once
+calibrated) sampled along the direct hex line between `from`/`to`, and `estimatedTravelDays` (`null`
+if uncalibrated, or if any hex on the direct line is impassable for `mode` — flagged in `warnings`
+rather than silently averaged into a misleading day estimate). `pathfind` adds `avoid` (an array of
+strings matched against **dynamic** biome names or `zone_type` values — not a hardcoded taxonomy, per
+#429's design note) and runs a real A* over hex neighbors, bounded to a padded bounding box around
+`from`/`to` (capped search, `routable: false` with a `reason` if the search space is exhausted or no
+route exists) rather than scanning an entire world's hex table. Returns `path` (array of
+`{q,r,biome}`), `totalHexSteps`, `totalKm`/`totalDays` (same geo-calibration gating as `distance`,
+summed per-step along the actual path — not the straight line), and `warnings` for any zone the path
+crosses (reusing this file's own `parseZoneShape`/`pointInZone`, queried once per call rather than
+per-node via `resolveZonesAt`, to avoid a query-per-A*-node storm). Both actions reuse #429/#431's
+per-hex effective cost (biome `movementCost`/`modeCosts`, overridden by an explicit `water_depth`
+fording rule when set) rather than reimplementing terrain math — one cost function, three consumers
+(`move_hex`, `distance`, `pathfind`).
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
