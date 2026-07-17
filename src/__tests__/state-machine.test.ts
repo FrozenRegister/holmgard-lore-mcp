@@ -107,6 +107,93 @@ describe('advance_state_stage — D1 dissolution_stage mirror (#411)', () => {
   })
 })
 
+// #420 — Archisector's follow-up from #411: advance_stage was silent when it
+// detected is_terminal — nothing reacted. Now it marks the entity's own KV
+// Terminal-Status field (always) and logs a discoverable timeline_events row
+// when the entity resolves to a world-scoped D1 character — but deliberately
+// never touches D1 hp/conditions (that stays a separate character_manage.kill
+// call), matching party-manage.ts's morale_roll "report, don't auto-apply"
+// precedent that the issue itself cites.
+describe('advance_state_stage — terminal-stage hook (#420)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  async function seedStagedCharacter(name: string, dissolutionStage: number, opts: { dissolutionTerminal?: string; worldId?: string } = {}): Promise<string> {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, world_id, death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, name, '{}', 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0,
+      opts.worldId ?? null, 'staged', dissolutionStage, 5, opts.dissolutionTerminal ?? null, now, now,
+    ).run()
+    return id
+  }
+
+  it('marks Terminal-Status with a generic fallback for a pure-KV entity with no D1 link', async () => {
+    await seedKV('character:pure-kv-terminal', '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:pure-kv-terminal' })
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.terminal_timeline_event_id).toBeNull()
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:pure-kv-terminal' })
+    expect(lore.result.text).toContain('**Terminal-Status:** reached terminal stage')
+  })
+
+  it('uses the linked D1 character\'s dissolution_terminal free text for Terminal-Status', async () => {
+    await seedStagedCharacter('Descriptor Test Subject', 4, { dissolutionTerminal: 'consumed by the Slime-Girl distributed intelligence' })
+    await seedKV('character:descriptor-test-subject', '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:descriptor-test-subject' })
+    expect(res.result.is_terminal).toBe(true)
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:descriptor-test-subject' })
+    expect(lore.result.text).toContain('**Terminal-Status:** consumed by the Slime-Girl distributed intelligence')
+  })
+
+  it('logs a discoverable timeline_events row when the D1 character has a world_id', async () => {
+    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Terminal Hook World', theme: 'fantasy' })
+    const worldPayload = JSON.parse(world.result.content[0].text) as { worldId: string }
+    const worldId = worldPayload.worldId
+    const characterId = await seedStagedCharacter('World Linked Subject', 4, { dissolutionTerminal: 'mycelium-integrated', worldId })
+    await seedKV('character:world-linked-subject', '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:world-linked-subject' })
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.terminal_timeline_event_id).toEqual(expect.any(String))
+
+    const row = await env.RPG_DB.prepare('SELECT * FROM timeline_events WHERE id = ?').bind(res.result.terminal_timeline_event_id).first() as
+      { world_id: string; verb: string; entity_id: string; detail: string } | null
+    expect(row).toBeTruthy()
+    expect(row!.world_id).toBe(worldId)
+    expect(row!.verb).toBe('dissolved')
+    expect(row!.entity_id).toBe(characterId)
+    expect(row!.detail).toContain('character:world-linked-subject')
+    expect(row!.detail).toContain('mycelium-integrated')
+  })
+
+  it('does not log a timeline_events row when the D1 character has no world_id', async () => {
+    await seedStagedCharacter('No World Subject', 4, { dissolutionTerminal: 'consumed' })
+    await seedKV('character:no-world-subject', '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:no-world-subject' })
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.terminal_timeline_event_id).toBeNull()
+  })
+
+  it('does not fire the hook on a non-terminal advance', async () => {
+    await seedKV('character:mid-stage-subject', '**State-Stage:** 1\n**State-Total:** 5\n**Stage-Timer:** 3')
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:mid-stage-subject' })
+    expect(res.result.is_terminal).toBe(false)
+    expect(res.result.terminal_timeline_event_id).toBeUndefined()
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:mid-stage-subject' })
+    expect(lore.result.text).not.toContain('Terminal-Status')
+  })
+})
+
 describe('process_stage_batch', () => {
   it('advances all entities at the location with a State-Stage field', async () => {
     await seedKV('character:pupa-1', '**Location:** location:lab\n**State-Stage:** 1\n**State-Total:** 3')

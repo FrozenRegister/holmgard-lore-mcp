@@ -596,6 +596,35 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   const stageDescriptor = extractRawField(text, `Stage-${newStage}-Description`) ?? extractRawField(text, 'Stage-Description') ?? null
   const isTerminal = total !== null && newStage >= total
 
+  // #411/#420 — resolve the D1 character link once, up front, so both the
+  // dissolution_stage mirror and #420's terminal-stage hook can use it.
+  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
+  type CharDissolutionRow = { death_mode: string | null; dissolution_terminal: string | null; world_id: string | null }
+  let charRow: CharDissolutionRow | null = null
+  if (characterId && c.env.RPG_DB) {
+    charRow = await c.env.RPG_DB.prepare('SELECT death_mode, dissolution_terminal, world_id FROM characters WHERE id = ?')
+      .bind(characterId).first() as CharDissolutionRow | null
+  }
+
+  // #420 — terminal-stage hook, from Archisector's follow-up on #411. Right
+  // now hitting is_terminal was silent — nothing reacted, a narrator had to
+  // notice it in the response and manually follow up. This marks the
+  // entity's own KV status (using the linked D1 character's free-text
+  // dissolution_terminal description when one exists, per #411's design;
+  // otherwise a generic fallback) — always, regardless of D1 linkage.
+  // Deliberately does NOT touch D1 hp/conditions (a soft-kill): the repo's
+  // own "don't auto-apply destructive/irreversible consequences" precedent
+  // (party-manage.ts's morale_roll reports dissolved:true rather than
+  // auto-dissolving the party) applies here too — the narrator calls
+  // character_manage.kill separately once they've acted on this. Scoped to
+  // advance_stage only, not batch_stage, matching #411's own scope
+  // discipline (batch_stage advances a whole location at once; folding a
+  // per-entity hook into that bulk path is a separate decision).
+  const terminalDescriptor = charRow?.dissolution_terminal ?? 'reached terminal stage'
+  if (isTerminal) {
+    updatedText = updateFieldInText(updatedText, 'Terminal-Status', terminalDescriptor)
+  }
+
   await pushHistory(c, entityKey, raw)
   const now = new Date().toISOString()
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
@@ -612,21 +641,35 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // another. This keeps them in lockstep with no workflow change for the
   // caller; only fires for a character whose death_mode is already 'staged'.
   let d1Mirrored = false
-  const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
-  if (characterId && c.env.RPG_DB) {
-    const charRow = await c.env.RPG_DB.prepare('SELECT death_mode FROM characters WHERE id = ?').bind(characterId).first() as { death_mode: string } | null
-    if (charRow?.death_mode === 'staged') {
-      await c.env.RPG_DB.prepare('UPDATE characters SET dissolution_stage = ?, updated_at = ? WHERE id = ?')
-        .bind(newStage, now, characterId).run()
-      d1Mirrored = true
-    }
+  if (characterId && charRow?.death_mode === 'staged') {
+    await c.env.RPG_DB!.prepare('UPDATE characters SET dissolution_stage = ?, updated_at = ? WHERE id = ?')
+      .bind(newStage, now, characterId).run()
+    d1Mirrored = true
+  }
+
+  // #420 — discoverable event log: only when the entity resolves to a
+  // world-scoped D1 character (matching character.kill's own conditional for
+  // timeline_events, since the table's world_id column isn't nullable-safe
+  // without one). A pure-KV entity with no D1 link still gets the KV status
+  // update above, just no timeline row — there's no D1 world to attach it to.
+  let terminalTimelineEventId: string | null = null
+  if (isTerminal && characterId && charRow?.world_id) {
+    terminalTimelineEventId = crypto.randomUUID()
+    await c.env.RPG_DB!.prepare(
+      `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      terminalTimelineEventId, charRow.world_id, 'main', now, 'dissolved', characterId, null, null,
+      `${entityKey} reached terminal stage: ${terminalDescriptor}`, now,
+    ).run()
   }
 
   return c.json(makeResult(id, {
     content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}` }],
     metadata: { retrieved: 1, written: 1 },
     entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
-    is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true, d1_mirrored: d1Mirrored
+    is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true, d1_mirrored: d1Mirrored,
+    ...(isTerminal ? { terminal_timeline_event_id: terminalTimelineEventId } : {}),
   }), 200)
 }
 

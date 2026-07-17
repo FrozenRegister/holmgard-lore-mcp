@@ -286,6 +286,21 @@ as `?` bindings the way values can; D1 is the final type validator for the value
 bad-typed value surfaces as a D1 error, not a schema mismatch caught here). Shared implementation:
 `src/rpg/utils/dynamic-fields.ts`'s `applyDynamicFields()`.
 
+**Known Behavior (#420):** `entity_manage`'s `advance_stage` action now reacts when it detects
+`is_terminal` — previously the terminal stage was reported in the response but nothing else
+happened. Two things now fire, unconditionally on any terminal advance: (1) the entity's own KV
+text gets a `**Terminal-Status:**` field written — either the linked D1 character's
+`dissolution_terminal` free-text descriptor (if resolvable via `resolveEntityToCharacterId`, #344),
+or the generic fallback `"reached terminal stage"` for pure-KV entities with no D1 link; (2) if
+(and only if) the entity resolves to a D1 `characters` row that also has a non-null `world_id`, a
+`timeline_events` row is logged (`verb: 'dissolved'`, `tier: high` per the `event_verb_taxonomy`
+seeded in #311) and its `id` is returned as `terminal_timeline_event_id` in the response — `null`
+when terminal but unresolvable to a world-scoped character, and the key is absent entirely when the
+advance wasn't terminal. Deliberately does **not** touch D1 `hp`/`conditions`/anything mechanical —
+matching `party-manage.ts`'s `morale_roll` precedent (report `dissolved: true`, let the narrator
+decide), the follow-up soft-kill call is still a separate, explicit `character_manage.kill`. Scoped
+to `advance_stage` only, not `process_stage_batch` — same scope discipline as #411's D1 mirror.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
