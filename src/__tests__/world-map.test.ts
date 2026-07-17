@@ -104,6 +104,30 @@ describe('handleWorldMap', () => {
     expect(body.hexesUpdated).toBe(2)
   })
 
+  // ── waterDepth (#431) ────────────────────────────────────────────────
+
+  it('patch defaults waterDepth to null when omitted', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 20, r: 20, biome: 'grass' }] })
+    const row = await env.RPG_DB.prepare('SELECT water_depth FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(WORLD, 20, 20).first() as any
+    expect(row.water_depth).toBeNull()
+  })
+
+  it('patch stores an explicit waterDepth', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 21, r: 21, biome: 'grass', waterDepth: 0.9 }] })
+    const row = await env.RPG_DB.prepare('SELECT water_depth FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(WORLD, 21, 21).first() as any
+    expect(row.water_depth).toBe(0.9)
+  })
+
+  it('patch can update waterDepth back to null on re-patch', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 22, r: 22, biome: 'grass', waterDepth: 1.5 }] })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 22, r: 22, biome: 'grass' }] })
+    const row = await env.RPG_DB.prepare('SELECT water_depth FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(WORLD, 22, 22).first() as any
+    expect(row.water_depth).toBeNull()
+  })
+
   it('preview requires worldId, q, and r', async () => {
     const r = await handleWorldMap(db(), { action: 'preview', worldId: WORLD })
     const body = JSON.parse(r.content[0].text)
@@ -209,6 +233,17 @@ describe('handleWorldMap', () => {
     expect(body.hexesUpdated).toBe(0)
     expect(body.errors).toEqual([])
     expect(typeof body.duration_ms).toBe('number')
+  })
+
+  it('batch stores explicit waterDepth per hex (#431)', async () => {
+    await createWorld()
+    await handleWorldMap(db(), {
+      action: 'batch', worldId: WORLD,
+      hexes: [{ q: 30, r: 30, biome: 'grass', waterDepth: 0.4 }, { q: 31, r: 30, biome: 'grass' }],
+    })
+    const rows = await env.RPG_DB.prepare('SELECT q, water_depth FROM hexes WHERE world_id = ? AND r = 30 ORDER BY q').bind(WORLD).all() as any
+    expect(rows.results[0].water_depth).toBe(0.4)
+    expect(rows.results[1].water_depth).toBeNull()
   })
 
   it('batch reports updates separately from inserts on a mixed payload', async () => {

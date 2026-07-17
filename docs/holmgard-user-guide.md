@@ -323,6 +323,21 @@ scope note. Mode base speeds (`TRAVEL_MODE_BASE_SPEED_KM_PER_DAY` in `travel-man
 hardcoded game-balance constants, not per-world narrative data — reused by `world_map.distance`
 (#430) for multi-hex ETA estimates.
 
+**Known Behavior (#431):** the "no river-depth-threshold system" call above was revisited — the
+maintainer explicitly requested a `water_depth` column and the `≤0.6m`/`0.6–1.2m`/`>1.2m` fording
+table as an *additional* opt-in layer, not a replacement for #429's biome mechanism, resolving the
+data-provenance objection (these are now maintainer-specified game-balance thresholds, not guessed
+narrative data). `hexes` gained a nullable `water_depth` (meters) column, settable via
+`world_map.patch`/`batch`'s `waterDepth` field (`null` = no explicit fording rule, defers entirely to
+the hex's biome cost — every existing hex/world unaffected by default). When set, `water_depth`
+**overrides** the biome cost for that hex on `move_hex` for `foot`/`horse`/`carriage`/`car`
+(`fordingCost()` in `travel-manage.ts`): `≤1.2m` is fordable by `foot`/`horse` at half speed
+(`swimRisk: true` in the response once past `0.6m`, signaling the narrator should call a CON check),
+`>1.2m` or any depth at all for `carriage`/`car` is impassable. `aircraft` always ignores
+`water_depth` entirely ("irrelevant" per both issues) and falls through to the normal biome cost.
+A hex can carry both a `river`-style biome (coarse, always-on passability) and an explicit
+`water_depth` (fine-grained, opt-in per hex) — when both are present, `water_depth` wins.
+
 ---
 
 ### 6. **NPC & Personality Systems** (Making NPCs Feel Alive)
