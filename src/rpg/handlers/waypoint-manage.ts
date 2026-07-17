@@ -78,7 +78,8 @@ export async function getWaypointDistance(db: D1Database, worldId: string, fromW
   return { found: true, routable: true, distanceKm: row.distance_km }
 }
 
-async function getGeoOrigin(db: D1Database, worldId: string): Promise<GeoOrigin | null> {
+// #430 — also used by world_map.distance/pathfind for km-per-hex conversion.
+export async function getGeoOrigin(db: D1Database, worldId: string): Promise<GeoOrigin | null> {
   const row = await db.prepare('SELECT geo_origin_lat, geo_origin_lon, geo_km_per_hex FROM world_state WHERE world_id = ?').bind(worldId).first() as
     { geo_origin_lat: number | null; geo_origin_lon: number | null; geo_km_per_hex: number | null } | null
   if (!row || row.geo_origin_lat === null || row.geo_origin_lon === null || row.geo_km_per_hex === null) return null

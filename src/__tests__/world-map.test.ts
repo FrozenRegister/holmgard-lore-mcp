@@ -6,6 +6,7 @@ import { setupRpgDb } from './setup-d1'
 import { handleWorldMap } from '../rpg/handlers/world-map'
 import { handleBiomeManage } from '../rpg/handlers/biome-manage'
 import { handleZoneTypeManage } from '../rpg/handlers/zone-type-manage'
+import { handleWaypointManage } from '../rpg/handlers/waypoint-manage'
 
 describe('handleWorldMap', () => {
   beforeEach(async () => {
@@ -827,5 +828,137 @@ describe('handleWorldMap', () => {
     const r = await handleWorldMap(db(), { action: 'render_svg', worldId: WORLD, q: 40, r: 40, renderWidth: 20, renderHeight: 20 })
     const body = JSON.parse(r.content[0].text)
     expect(body.hexCount).toBe(1)
+  })
+
+  // ── distance (#430) ────────────────────────────────────────────────
+
+  it('distance requires worldId, from, and to', async () => {
+    const r = await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('distance reports hexDistance and a null km/days on a non-geo-calibrated world', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 3, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hexDistance).toBe(3)
+    expect(body.straightLineKm).toBeNull()
+    expect(body.estimatedTravelDays).toBeNull()
+    expect(body.note).toContain('not geo-calibrated')
+  })
+
+  it('distance computes straightLineKm and a terrain-weighted estimatedTravelDays once calibrated', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6, originLon: 18.3, kmPerHex: 1 })
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'grass_430', movementCost: 1.0 })
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'forest_430', movementCost: 2.0 })
+    await handleWorldMap(db(), {
+      action: 'patch', worldId: WORLD,
+      hexes: [{ q: 1, r: 0, biome: 'grass_430' }, { q: 2, r: 0, biome: 'forest_430' }, { q: 3, r: 0, biome: 'grass_430' }],
+    })
+    const r = await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 3, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hexDistance).toBe(3)
+    expect(body.straightLineKm).toBe(5.2)
+    expect(body.terrainBreakdown.grass_430.hexes).toBe(2)
+    expect(body.terrainBreakdown.forest_430.hexes).toBe(1)
+    expect(body.estimatedTravelDays).toBe(1.39)
+    expect(body.note).toBeUndefined()
+  })
+
+  it('distance flags an impassable hex on the direct line and returns a null estimatedTravelDays', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6, originLon: 18.3, kmPerHex: 1 })
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'cliff_430', movementCost: 1.0, modeCosts: { foot: 0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 1, r: 0, biome: 'cliff_430' }] })
+    const r = await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 }, mode: 'foot' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.estimatedTravelDays).toBeNull()
+    expect(body.warnings.length).toBeGreaterThan(0)
+    expect(body.warnings[0]).toContain('cliff_430')
+  })
+
+  it('distance respects mode when computing terrain-weighted days', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6, originLon: 18.3, kmPerHex: 1 })
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'road_430', movementCost: 1.0 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 1, r: 0, biome: 'road_430' }] })
+    const foot = JSON.parse((await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, mode: 'foot' })).content[0].text)
+    const car = JSON.parse((await handleWorldMap(db(), { action: 'distance', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, mode: 'car' })).content[0].text)
+    expect(car.estimatedTravelDays).toBeLessThan(foot.estimatedTravelDays)
+  })
+
+  // ── pathfind (#430) ─────────────────────────────────────────────────
+
+  it('pathfind requires worldId, from, and to', async () => {
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('pathfind returns a trivial single-hex path when from equals to', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 5, r: 5 }, to: { q: 5, r: 5 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.routable).toBe(true)
+    expect(body.path).toEqual([{ q: 5, r: 5, biome: null }])
+    expect(body.totalHexSteps).toBe(0)
+  })
+
+  it('pathfind finds the direct route on an open, unregistered-biome world', async () => {
+    await createWorld()
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.routable).toBe(true)
+    expect(body.totalHexSteps).toBe(2)
+    expect(body.totalKm).toBeNull()
+    expect(body.note).toContain('not geo-calibrated')
+  })
+
+  it('pathfind computes totalKm/totalDays once calibrated, matching the direct line for an open path', async () => {
+    await createWorld()
+    await handleWaypointManage(db(), { action: 'calibrate', worldId: WORLD, originLat: 57.6, originLon: 18.3, kmPerHex: 1 })
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 } })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.routable).toBe(true)
+    expect(body.totalKm).toBe(3.46)
+    expect(body.totalDays).toBe(0.69)
+  })
+
+  it('pathfind routes around a single impassable hex rather than failing', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'wall_430', movementCost: 1.0, modeCosts: { foot: 0 } })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 1, r: 0, biome: 'wall_430' }] })
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 }, mode: 'foot' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.routable).toBe(true)
+    expect(body.path.some((p: { q: number; r: number }) => p.q === 1 && p.r === 0)).toBe(false)
+  })
+
+  it('pathfind avoids a specific biome name when requested', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'swamp_430', movementCost: 1.0 })
+    await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [{ q: 1, r: 0, biome: 'swamp_430' }] })
+    const r = await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 }, avoid: ['swamp_430'] })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.routable).toBe(true)
+    expect(body.path.every((p: { biome: string | null }) => p.biome !== 'swamp_430')).toBe(true)
+  })
+
+  it('pathfind avoids a zone_type when requested and flags it as a warning otherwise', async () => {
+    await createWorld()
+    await handleWorldMap(db(), { action: 'suggest_poi', worldId: WORLD, query: 'Panther Territory', q: 1, r: 0, radius: 0, zoneType: 'predator_zone' })
+
+    const unavoided = JSON.parse((await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 } })).content[0].text)
+    expect(unavoided.routable).toBe(true)
+    expect(unavoided.warnings.some((w: string) => w.includes('predator_zone'))).toBe(true)
+
+    const avoided = JSON.parse((await handleWorldMap(db(), { action: 'pathfind', worldId: WORLD, from: { q: 0, r: 0 }, to: { q: 2, r: 0 }, avoid: ['predator_zone'] })).content[0].text)
+    expect(avoided.routable).toBe(true)
+    expect(avoided.path.some((p: { q: number; r: number }) => p.q === 1 && p.r === 0)).toBe(false)
   })
 })
