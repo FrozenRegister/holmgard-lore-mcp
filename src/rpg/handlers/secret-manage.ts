@@ -6,6 +6,12 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
+import { applyDynamicFields } from '../utils/dynamic-fields'
+
+// #425 — notes/linked_entity_id/linked_entity_type/leak_patterns/category
+// have no update path (present since the initial migration, not caused by a
+// later ALTER TABLE — same structural gap, lower urgency). See dynamic-fields.ts.
+const SECRET_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
 const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'reveal', 'check_reveal'] as const
 type SecretAction = typeof ACTIONS[number]
@@ -32,6 +38,8 @@ const InputSchema = z.object({
   revealedBy: z.string().optional(),
   filter: z.object({ revealed: z.boolean().optional(), linkedEntityId: z.string().optional() }).optional(),
   limit: z.number().int().min(1).max(200).optional().default(50),
+  // #425 — arbitrary D1 column passthrough, valid on `update` only.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 export async function handleSecretManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
@@ -74,9 +82,13 @@ export async function handleSecretManage(env: AppBindings, args: Record<string, 
       if (a.secretDescription) { sets.push('secret_description = ?'); vals.push(a.secretDescription) }
       if (a.sensitivity) { sets.push('sensitivity = ?'); vals.push(a.sensitivity) }
       if (a.revealConditions) { sets.push('reveal_conditions = ?'); vals.push(JSON.stringify(a.revealConditions)) }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, SECRET_FIELDS_BLACKLIST, sets, vals)
       vals.push(a.id)
       await db.prepare(`UPDATE secrets SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', id: a.id })
+      return ok({
+        success: true, actionType: 'update', id: a.id,
+        ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
+      })
     }
     case 'delete': {
       if (!a.id) return err('"id" is required')

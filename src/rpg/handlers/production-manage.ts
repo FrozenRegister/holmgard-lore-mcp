@@ -38,12 +38,25 @@ import type { AppBindings } from '../../types'
 import { handleResourceManage, tickAllOwnersDegradation, type DegradeResult } from './resource-manage'
 import { runProductionIntervene, createPendingVote, type ProductionInterveneResult } from './broadcast-manage'
 import { tickAllCorpseDecomposition } from './corpse-manage'
+import { applyDynamicFields } from '../utils/dynamic-fields'
 
-const ACTIONS = ['advance_day', 'get_state', 'set_schedule', 'list_events'] as const
+// #425 — world_state has no single owning handler: time-manage.ts writes
+// current_date/era/time_owner*, production-manage.ts's own advance_day writes
+// production_day/perimeter_radius/weather/hazard_level/encounter_modifier/
+// extraction_window/last_advanced_at, waypoint-manage.ts's calibrate writes
+// geo_origin_*/geo_km_per_hex — but production_mood (added alongside the rest
+// of migration 0013) and era/tick_speed (from 0005, the table's own creation)
+// have never had ANY write path. update_state closes that gap generically
+// rather than adding yet another narrow single-purpose action; world_id is
+// the only column protected (it's the primary key, not a mutable field).
+const WORLD_STATE_FIELDS_BLACKLIST = ['world_id'] as const
+
+const ACTIONS = ['advance_day', 'get_state', 'update_state', 'set_schedule', 'list_events'] as const
 type ProductionAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ProductionAction> = {
   tick: 'advance_day', next_day: 'advance_day', advance: 'advance_day',
   state: 'get_state', status: 'get_state',
+  update: 'update_state', set_state: 'update_state',
   schedule: 'set_schedule', configure: 'set_schedule',
   events: 'list_events', upcoming: 'list_events',
 }
@@ -71,6 +84,8 @@ const InputSchema = z.object({
     daysSinceLastIntervention: z.number().int().min(0).optional(),
     targetCharacterId: z.string().optional(),
   }).optional().default({}),
+  // #425 — arbitrary world_state column passthrough, valid on `update_state` only.
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
 function computeHazard(day: number): { level: string; modifier: number; note: string } {
@@ -188,6 +203,24 @@ export async function handleProductionManage(env: AppBindings, args: Record<stri
         extractionWindow: stateRow.extraction_window, productionMood: stateRow.production_mood,
         activePrizes, upcomingEvents,
       })
+    }
+    case 'update_state': {
+      // #425 — generic world_state column passthrough. Requires the row to
+      // already exist — world.create/generate always seed one via
+      // seedWorldState(), so this only rejects a worldId that was never
+      // created at all. Same precondition get_state already enforces, not a
+      // new restriction.
+      if (!a.worldId) return err('"worldId" is required')
+      if (!a.fields || Object.keys(a.fields).length === 0) return err('"fields" must be a non-empty object')
+      const existing = await db.prepare('SELECT world_id FROM world_state WHERE world_id = ?').bind(a.worldId).first()
+      if (!existing) return err(`No production state for world ${a.worldId} — call advance_day at least once`)
+      const sets: string[] = []
+      const vals: unknown[] = []
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, WORLD_STATE_FIELDS_BLACKLIST, sets, vals)
+      if (sets.length === 0) return err('No valid fields to update', { fields_rejected: fieldsRejected })
+      vals.push(a.worldId)
+      await db.prepare(`UPDATE world_state SET ${sets.join(', ')} WHERE world_id = ?`).bind(...vals).run()
+      return ok({ success: true, actionType: 'update_state', worldId: a.worldId, fields_applied: fieldsApplied, fields_rejected: fieldsRejected })
     }
     case 'set_schedule': {
       if (!a.worldId) return err('"worldId" is required')
