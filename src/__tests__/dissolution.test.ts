@@ -1,4 +1,4 @@
-// src/__tests__/dissolution.unit.test.ts
+// src/__tests__/dissolution.test.ts
 //
 // Phase 0 dissolution primitives unit tests.
 // Pure-function tests, no KV/D1 dependencies.
