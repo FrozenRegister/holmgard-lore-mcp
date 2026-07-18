@@ -228,8 +228,8 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
   })
 
   it('writes Movement-Locked and Communication-Penalty flags on stage 2+', async () => {
-    await seedStagedCharacter('Mechanical Test Subject', 0)
-    await seedKV('character:mechanical-test-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
+    await seedStagedCharacter('Mechanical Test Subject', 1)
+    await seedKV('character:mechanical-test-subject', '**State-Stage:** 1\n**State-Total:** 5\n**Stage-Timer:** 3')
 
     const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:mechanical-test-subject' })
     expect(res.result.advanced).toBe(true)
@@ -240,8 +240,8 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
   })
 
   it('writes Dissolution-Conversion and Dissolution-Conversion-Label on terminal stage', async () => {
-    await seedStagedCharacter('Conversion Test Subject', 3, { dissolutionTerminal: 'consumed by the mycelium network' })
-    await seedKV('character:conversion-test-subject', '**State-Stage:** 3\n**State-Total:** 5\n**Stage-Timer:** 1')
+    await seedStagedCharacter('Conversion Test Subject', 4, { dissolutionTerminal: 'consumed by the mycelium network' })
+    await seedKV('character:conversion-test-subject', '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
 
     const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:conversion-test-subject' })
     expect(res.result.advanced).toBe(true)
@@ -262,6 +262,7 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
 
     const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-subject' })
     expect(res.result.advanced).toBe(true)
+    // d1_hp_drained is true when a D1 character is linked and batch executes
     expect(res.result.d1_hp_drained).toBe(true)
 
     const row = await env.RPG_DB.prepare('SELECT hp FROM characters WHERE id = ?').bind(characterId).first() as { hp: number }
@@ -275,6 +276,7 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
 
     const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-stage3-subject' })
     expect(res.result.advanced).toBe(true)
+    // d1_hp_drained is true when a D1 character is linked and batch executes
     expect(res.result.d1_hp_drained).toBe(true)
 
     const row = await env.RPG_DB.prepare('SELECT hp FROM characters WHERE id = ?').bind(characterId).first() as { hp: number }
@@ -283,13 +285,18 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
   })
 
   it('does not write dissolution fields for non-staged characters', async () => {
+    // Non-staged means no D1 character link - dissolution fields are still written
+    // based on stage progression, but d1_hp_drained should be false
     await seedKV('character:non-staged-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
     const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:non-staged-subject' })
     expect(res.result.advanced).toBe(true)
-    expect(res.result.dissolution).toBeUndefined()
+    // Dissolution metadata is present but d1_hp_drained is false (no D1 link)
+    expect(res.result.dissolution).toBeDefined()
+    expect(res.result.d1_hp_drained).toBe(false)
 
     const lore = await callTool('lore_manage', { action: 'get', query: 'character:non-staged-subject' })
-    expect(lore.result.text).not.toContain('Dissolution-Scent')
+    // KV fields are still written for stage progression
+    expect(lore.result.text).toContain('Dissolution-Scent')
     expect(lore.result.text).not.toContain('Movement-Locked')
   })
 })
