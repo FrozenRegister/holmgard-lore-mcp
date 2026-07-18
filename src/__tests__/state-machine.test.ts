@@ -194,6 +194,106 @@ describe('advance_state_stage — terminal-stage hook (#420)', () => {
   })
 })
 
+// #441 — Phase 0 dissolution primitives: advance_stage writes sensory mutation
+// fields, mechanical flags, terminal conversion, and applies HP drain atomically.
+describe('advance_state_stage — dissolution primitives (#441)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  async function seedStagedCharacter(name: string, dissolutionStage: number, opts: { dissolutionTerminal?: string; hp?: number; worldId?: string } = {}): Promise<string> {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, world_id, death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, name, '{}', opts.hp ?? 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0,
+      opts.worldId ?? null, 'staged', dissolutionStage, 5, opts.dissolutionTerminal ?? null, now, now,
+    ).run()
+    return id
+  }
+
+  it('writes Dissolution-Scent field on stage 1 advance', async () => {
+    await seedStagedCharacter('Scent Test Subject', 0, { dissolutionTerminal: 'GASTRIC' })
+    await seedKV('character:scent-test-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:scent-test-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.dissolution?.scent_applied).toBe(true)
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:scent-test-subject' })
+    expect(lore.result.text).toContain('Dissolution-Scent')
+    expect(lore.result.text).toContain('fear-pheromone_spike')
+  })
+
+  it('writes Movement-Locked and Communication-Penalty flags on stage 2+', async () => {
+    await seedStagedCharacter('Mechanical Test Subject', 0)
+    await seedKV('character:mechanical-test-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:mechanical-test-subject' })
+    expect(res.result.advanced).toBe(true)
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:mechanical-test-subject' })
+    expect(lore.result.text).toContain('Movement-Locked')
+    expect(lore.result.text).toContain('true')
+  })
+
+  it('writes Dissolution-Conversion and Dissolution-Conversion-Label on terminal stage', async () => {
+    await seedStagedCharacter('Conversion Test Subject', 3, { dissolutionTerminal: 'consumed by the mycelium network' })
+    await seedKV('character:conversion-test-subject', '**State-Stage:** 3\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:conversion-test-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.terminal_conversion?.outcome).toBe('consumed-distributed')
+    expect(res.result.terminal_conversion?.label).toBe('Industrial Base')
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:conversion-test-subject' })
+    expect(lore.result.text).toContain('Dissolution-Conversion')
+    expect(lore.result.text).toContain('consumed-distributed')
+    expect(lore.result.text).toContain('Dissolution-Conversion-Label')
+    expect(lore.result.text).toContain('Industrial Base')
+  })
+
+  it('applies HP drain to D1 character atomically via batch', async () => {
+    const characterId = await seedStagedCharacter('HP Drain Subject', 0, { hp: 10 })
+    await seedKV('character:hp-drain-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.d1_hp_drained).toBe(true)
+
+    const row = await env.RPG_DB.prepare('SELECT hp FROM characters WHERE id = ?').bind(characterId).first() as { hp: number }
+    // Stage 1 has hp_drain_per_tick = 0, so HP should be unchanged
+    expect(row.hp).toBe(10)
+  })
+
+  it('applies HP drain on stage 3+ where hp_drain_per_tick > 0', async () => {
+    const characterId = await seedStagedCharacter('HP Drain Stage 3 Subject', 2, { hp: 10 })
+    await seedKV('character:hp-drain-stage3-subject', '**State-Stage:** 2\n**State-Total:** 5\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-stage3-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.d1_hp_drained).toBe(true)
+
+    const row = await env.RPG_DB.prepare('SELECT hp FROM characters WHERE id = ?').bind(characterId).first() as { hp: number }
+    // Stage 3 has hp_drain_per_tick = 2, so HP should be 10 - 2 = 8
+    expect(row.hp).toBe(8)
+  })
+
+  it('does not write dissolution fields for non-staged characters', async () => {
+    await seedKV('character:non-staged-subject', '**State-Stage:** 0\n**State-Total:** 5\n**Stage-Timer:** 3')
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:non-staged-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.dissolution).toBeUndefined()
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:non-staged-subject' })
+    expect(lore.result.text).not.toContain('Dissolution-Scent')
+    expect(lore.result.text).not.toContain('Movement-Locked')
+  })
+})
+
 describe('process_stage_batch', () => {
   it('advances all entities at the location with a State-Stage field', async () => {
     await seedKV('character:pupa-1', '**Location:** location:lab\n**State-Stage:** 1\n**State-Total:** 3')
