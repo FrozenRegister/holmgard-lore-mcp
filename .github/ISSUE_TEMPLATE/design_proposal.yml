@@ -1,0 +1,123 @@
+name: Design Proposal
+description: Architectural design — no implementation, no code. Single source of truth for discussion across agents.
+labels: ["design", "architecture"]
+title: "Design: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is a design-only issue.** No implementation, no code files, no scaffolding. It serves as the single source of truth for discussion among all stakeholders (narrative engine, Calder, engineering agents) before any code is written.
+
+        Design issues should be **comprehensive** — include schemas, tool signatures, migration paths, and integration maps. They establish the ground truth that implementation issues then execute against.
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: One paragraph — what problem does this design solve, and why now?
+      placeholder: "Design a knowledge-asymmetry tracking system for Holmgard. The current `rpg.sub:secret` table exists but has no consumers, no junction table, and no bridge into `get_entity_knowledge`..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What phases does this cover? What's in scope, what's explicitly out of scope?
+      placeholder: |
+        ### Phase 1: Storage & Query (Now)
+        - Create `secret_knowers` junction table
+        - Bridge `get_entity_knowledge` into D1 secrets
+        - Sensitivity taxonomy (low/medium/high/critical)
+
+        ### Out of Scope (Separate Issues)
+        - Traits system
+        - Imprisonment mechanics
+        - Opinion/hostility system (Holmgard has none)
+    validations:
+      required: true
+
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Proposed architecture
+      description: Tables, schemas, tool signatures, data flow diagrams. Be concrete.
+      placeholder: |
+        ```sql
+        CREATE TABLE secret_knowers (
+          secret_id TEXT NOT NULL REFERENCES secrets(id),
+          entity_id TEXT NOT NULL REFERENCES characters(id),
+          learned_at TEXT DEFAULT (datetime('now')),
+          learned_via TEXT NOT NULL,
+          confidence REAL,
+          is_leverage TEXT CHECK (dormant/active/weaponized),
+          PRIMARY KEY (secret_id, entity_id)
+        );
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: design-principles
+    attributes:
+      label: Design principles
+      description: What principles guide this design? What does it NOT do?
+      placeholder: |
+        1. **Secrets are dumb.** The table stores knowledge asymmetries. It does not model why someone reveals, what happens on exposure, or how secrets spread.
+        2. **No CK3 infrastructure required.** Existing Holmgard infrastructure provides the interaction surface.
+        3. **`get_entity_knowledge` is universal.** Single query surface for all knowledge checks.
+
+  - type: textarea
+    id: integration
+    attributes:
+      label: Integration points
+      description: How does this design touch existing systems? List every tool, table, and handler affected.
+      placeholder: |
+        - `rpg.sub:secret` — `reveal` gains `entityId` param
+        - `world_manage.get_entity_knowledge` — third data source added
+        - `entity_manage.analyze_utility` — new `LEVERAGE` vector
+        - `continuity_manage.append_event` — `learned_secret` verb
+        - `agent_manage` — NPC agents read secrets at invocation
+
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration path
+      description: How do we get from current state to this design without breaking existing data?
+      placeholder: |
+        1. Create `secret_knowers` table (additive — no breaking change)
+        2. Migrate `secrets.revealed = 1` rows → `secret_knowers` with anonymous knower
+        3. Drop `secrets.revealed` / `revealed_at` / `revealed_by` columns (Phase 2)
+
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: What decisions are not yet made? What needs stakeholder input?
+      placeholder: |
+        1. Should `check_reveal` also query `secret_knowers` (entity-level check) alongside global `revealed` flag?
+        2. Should `agent_manage.add_secret` (prompt-slice system) be renamed to avoid collision with world-state secrets?
+        3. What confidence threshold gates knowledge surfacing in Pre-Render Gate?
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues
+      description: Link every issue, PR, and design doc this references or depends on.
+      placeholder: |
+        - #440 — CK3-style simulation layer (propagation hooks)
+        - #447 — Context-to-Store Extraction Pipeline (input source for secrets)
+        - #410 — D1-backed entity attributes
+        - `docs/storage-selection-kv-vs-d1.md`
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI considerations
+      description: Design issues don't touch code, but the implementation will. What CI gates are relevant?
+      value: |
+        - [ ] Design is scoped narrowly enough to produce implementation issues with clear acceptance criteria
+        - [ ] All schemas use FK-in-CREATE patterns (compatible with D1's auto-applied FK enforcement)
+        - [ ] No KV → D1 backfill that guesses narrative data
+        - [ ] Migration is additive first, destructive later (Phase 1 non-breaking)
+        - [ ] Storage selection follows `docs/storage-selection-kv-vs-d1.md`
