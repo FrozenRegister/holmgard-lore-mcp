@@ -1,20 +1,17 @@
 import { EntityId } from '../types/entity.ts';
 import { Tick } from '../types/time.ts';
-import { StageMutation, UtilityVector, TerminalConversion, DEFAULT_DISSOLUTION_CONFIG } from './dissolution_config.ts';
+import { StageMutation, UtilityVector, TerminalConversion, DissolutionConfig, loadDissolutionConfig } from './dissolution_config.ts';
 
 export function stageMutationFor(
   stage: number,
-  config = DEFAULT_DISSOLUTION_CONFIG
+  config: DissolutionConfig = loadDissolutionConfig()
 ): StageMutation | null {
-  if (stage >= 1 && stage <= 5) {
-    return config.stages[stage as keyof typeof config.stages] ?? null;
-  }
-  return null;
+  return config.stages[stage] ?? null;
 }
 
 export function resolveTerminalConversion(
   vector: string,
-  config = DEFAULT_DISSOLUTION_CONFIG
+  config: DissolutionConfig = loadDissolutionConfig()
 ): TerminalConversion {
   const key = vector.toUpperCase() as UtilityVector;
   return config.terminalConversions[key] || {
@@ -29,19 +26,20 @@ export function dissolutionStageCheck(
   currentTick: Tick,
   activity: number
 ): { is_staged: boolean; stage: number | null; total_stages: number | null } {
-  // Implementation remains identical to original but uses config
-  const stage = /* original logic */ 3;
+  // Original implementation using 0-based stages
+  const stage = Math.floor(activity / 10);
   return {
-    is_staged: stage > 0,
-    stage,
+    is_staged: stage >= 0,
+    stage: stage >= 0 ? Math.min(stage, 4) : null,
     total_stages: 5
   };
 }
 
 export function buildSensoryProfile(
-  stage: number
-): Omit<StageMutation['sensory'], 'thermal'> & { thermal: string | null } {
-  const mutation = stageMutationFor(stage);
+  stage: number,
+  config: DissolutionConfig = loadDissolutionConfig()
+): StageMutation['sensory'] {
+  const mutation = stageMutationFor(stage, config);
   return mutation?.sensory ?? {
     scent: '',
     thermal: null,
@@ -52,9 +50,10 @@ export function buildSensoryProfile(
 }
 
 export function buildMechanicalEffects(
-  stage: number
+  stage: number,
+  config: DissolutionConfig = loadDissolutionConfig()
 ): StageMutation['mechanical'] {
-  const mutation = stageMutationFor(stage);
+  const mutation = stageMutationFor(stage, config);
   return mutation?.mechanical ?? {
     resistance_decrement: 0,
     movement_locked: false,

@@ -1,3 +1,5 @@
+import { KV } from '@shapes/kv';
+
 export interface StageMutation {
   sensory: {
     scent: string;
@@ -31,9 +33,16 @@ export interface TerminalConversion {
   description: string;
 }
 
+const DISSOLUTION_CONFIG_KEY = 'dissolution:phase0-5:config';
+
+export function loadDissolutionConfig(): DissolutionConfig {
+  const stored = KV.get(DISSOLUTION_CONFIG_KEY);
+  return stored ? JSON.parse(stored) : DEFAULT_DISSOLUTION_CONFIG;
+}
+
 export const DEFAULT_DISSOLUTION_CONFIG = {
   stages: {
-    1: {
+    0: {
       sensory: {
         scent: 'fear-pheromone_spike',
         thermal: null,
@@ -50,7 +59,7 @@ export const DEFAULT_DISSOLUTION_CONFIG = {
         terminal: false,
       }
     },
-    2: {
+    1: {
       sensory: {
         scent: 'fear-pheromone_spike, metabolic_stress',
         thermal: 'Shaper-radiance: ambient +10°F',
@@ -67,7 +76,7 @@ export const DEFAULT_DISSOLUTION_CONFIG = {
         terminal: false,
       }
     },
-    3: {
+    2: {
       sensory: {
         scent: 'fear-pheromone_spike, metabolic_stress, tissue-liquefaction',
         thermal: 'Shaper-radiance: ambient +15°F',
@@ -84,7 +93,7 @@ export const DEFAULT_DISSOLUTION_CONFIG = {
         terminal: false,
       }
     },
-    4: {
+    3: {
       sensory: {
         scent: 'fear-pheromone_spike, metabolic_stress, tissue-liquefaction, organic-acids',
         thermal: 'Shaper-radiance: ambient +20°F',
@@ -101,7 +110,7 @@ export const DEFAULT_DISSOLUTION_CONFIG = {
         terminal: false,
       }
     },
-    5: {
+    4: {
       sensory: {
         scent: 'fear-pheromone_spike, metabolic_stress, tissue-liquefaction, organic-acids, enzymatic-breakdown',
         thermal: 'Shaper-radiance: ambient +25°F',
@@ -156,4 +165,9 @@ export const DEFAULT_DISSOLUTION_CONFIG = {
       description: 'Entity consciousness fragmented across multiple nodes or substrates. May reconstitute under specific conditions.',
     }
   }
+};
+
+export interface DissolutionConfig {
+  stages: Record<number, StageMutation>;
+  terminalConversions: Record<UtilityVector, TerminalConversion>;
 };
