@@ -2,9 +2,9 @@
 // Idempotent — only writes if key doesn't exist or version is stale
 // Usage: Run on deploy via scripts/migrate-dissolution-config.ts
 
-import type { AppBindings } from '../types'
-import { STAGE_MUTATIONS, TERMINAL_CONVERSIONS } from '../rpg/utils/dissolution_config'
-import type { StageMutation, UtilityVector, TerminalConversion } from '../rpg/utils/dissolution_config'
+import type { AppBindings } from '../../types'
+import { STAGE_MUTATIONS, TERMINAL_CONVERSIONS } from './dissolution_config'
+import type { StageMutation, TerminalConversion } from './dissolution_config'
 
 const CONFIG_KEY = 'dissolution:config:phase0-5'
 const CONFIG_VERSION = 1
