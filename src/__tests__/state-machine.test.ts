@@ -272,9 +272,9 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
 
   it('applies HP drain on stage 3+ where hp_drain_per_tick > 0', async () => {
     const characterId = await seedStagedCharacter('HP Drain Stage 3 Subject', 2, { hp: 10 })
-    await seedKV('character:hp-drain-stage3-subject', '**State-Stage:** 2\n**State-Total:** 5\n**Stage-Timer:** 1')
+    await seedKV('character:hp-drain-stage-3-subject', '**State-Stage:** 2\n**State-Total:** 5\n**Stage-Timer:** 1')
 
-    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-stage3-subject' })
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:hp-drain-stage-3-subject' })
     expect(res.result.advanced).toBe(true)
     // d1_hp_drained is true when a D1 character is linked and batch executes
     expect(res.result.d1_hp_drained).toBe(true)
