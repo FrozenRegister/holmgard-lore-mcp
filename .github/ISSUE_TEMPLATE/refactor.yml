@@ -1,48 +1,46 @@
 name: Refactor
-description: Internal restructure — no new behavior, no new features. Behavior must be preserved.
+description: Internal restructure — no new behavior, no new features, no API changes
 labels: ["refactor"]
-title: "[Refactor]: "
+title: "Refactor: "
 body:
   - type: markdown
     attributes:
       value: |
-        A refactor changes internal structure without changing observable behavior. The CI bar is the same as a feature (all gates apply), but the risk profile is different — you're not adding new code paths, you're changing exsting ones. Regression is the primary risk.
+        **Refactors change structure without changing behavior.** If you're adding a new tool, handler, or API surface, use the Feature Request template instead. If behavior intentionally changes, it's not a refactor.
 
   - type: textarea
     id: motivation
     attributes:
       label: Motivation
-      description: Why refactor? What's the concrete payoff?
+      description: Why refactor this? What's the cost of NOT doing it?
       placeholder: |
-        Replace hardcoded 5-stage model in `dissolution.ts` with confg-driven primitives.
-        Payoff: enables Subject #12's colony-proximity stages (variable stage count),
-        20-phse transformations, and KV/D1-confgurable stage defintions.
+        `dissolution.ts` has a hardcoded 5-stage model. Every new dissolution pathway copies the same boilerplate. The code is ~400 lines of switch/case that should be ~80 lines of config-driven iteration. Cost of inaction: every new predator archetype requires modifying core engine code.
     validations:
       required: true
 
   - type: textarea
     id: behavior-guarantee
     attributes:
-      label: Behavior preservation
-      description: What must NOT change? List specific behaviors that regression tests must confirm.
+      label: Behavior preservation guarantee
+      description: What must NOT change? What existing behavior is sacred?
       placeholder: |
-        - Existing 5-stage dissolution timeline must produce identical stage descriptions
-        - `advance_stage` must work identically for all current entities
-        - `batch_stage` must process same entities in same order
-        - Stage timer decrement behavior must be unchanged
+        - `advance_stage` must produce the same terminal state for all existing entities
+        - `batch_stage` must produce identical results for all locations
+        - Existing dissolution timelines must not be disrupted
+        - All existing tests must pass without modification
     validations:
       required: true
 
   - type: textarea
-    id: call-sites
+    id: affected-call-sites
     attributes:
       label: Affected call sites
-      description: Every tool, handler, and file that touches the refactored code.
+      description: Every tool, handler, and function that calls into the code being refactored.
       placeholder: |
-        - `src/sim/dissolution.ts` — primary change
-        - `src/tools/entty.ts` — `advance_stage`, `batch_stage`
-        - `src/tools/defintions.ts` — schema if API surface changes
-        - `src/rpg/handlers/entty-manage.ts` — entity lifecycle
+        - `src/tools/entity.ts` — `advance_stage`, `batch_stage`, `create_consumption_timeline`
+        - `src/rpg/handlers/dissolution.ts` — stage advancement logic
+        - `src/rpg/handlers/encounter.ts` — encounter → dissolution bridge
+        - `src/tools/definitions.ts` — schema unchanged, but verify
     validations:
       required: true
 
@@ -50,45 +48,48 @@ body:
     id: regression-plan
     attributes:
       label: Regression test plan
-      description: What existng tests must still pass? What new regression tests will you add?
+      description: What existing tests must still pass? What new tests prove behavior is preserved?
       placeholder: |
-        Existing:
-        - `test/dissolution.test.ts` — all 14 stage-advancement tests
-        - `test/entty-lifecycle.test.ts` — batch stage processing
-
-        New:
-        - Confg-driven stage count: 3-stage, 5-stage, 20-stage timelines
-        - Custom terminal stage: termination at stage 3, stage 7
-        - KV/D1 confg loading and fallback
+        - All existing vitest suites pass with zero changes
+        - New test: config-driven dissolution produces identical output to hardcoded for all 5-stage archetypes
+        - New test: custom stage count (12-stage) advances correctly through all stages
+        - Live smoke: run `batch_stage` against production location and diff output
     validations:
       required: true
 
   - type: textarea
-    id: perf
+    id: perf-implications
     attributes:
       label: Performance implications
-      description: Is this faster? Slower? By how much? Any new queries or loops?
-      placeholder: "Negligible — confg lookup replaces hardcoded array. One extra KV read per timeline creation (cached). No new loops."
+      description: Is this faster, slower, or same? By how much? How did you measure?
+      placeholder: |
+        - Expected: ~20% faster for 5-stage dissolution (no switch/case dispatch)
+        - Expected: ~50% faster for 20-stage dissolution (iteration vs nested switch)
+        - Measure: `pnpm test:coverage` reports timing; compare before/after
+        - Memory: config objects are loaded once at startup, no per-call allocation change
 
-  - type: dropdown
-    id: api-compat
+  - type: textarea
+    id: deprecation
     attributes:
-      label: API compatibility
-      description: What happens to the old API surface?
-      options:
-        - Backward-compatible — old signatures still work
-        - Deprecated — old signatures work but log warnings
-        - Breaking — old signatures removed (must coordinate with dependents)
-    validations:
-      required: true
+      label: Deprecation plan
+      description: Is the old API deprecated (warnings) or removed (breaking)?
+      placeholder: |
+        - Old hardcoded functions are removed (not deprecated) — they're internal, not API surface
+        - No external tools change signatures — this is transparent to `/mcp` consumers
+        - No breaking changes
 
   - type: textarea
     id: ci-checklist
     attributes:
       label: CI checklist
+      description: Refactors have a lighter changelog bar but heavy test bar.
       value: |
-        - [ ] All existng tests pass unchanged
-        - [ ] 100% patch coverage on changed lines
-        - [ ] Changelog fragment (`.changelog/fragments/refactor-dissolution.md`)
-        - [ ] Issue link in PR body (`Closes #N`)
-        - [ ] Documentation updated if API surface changed
+        - [ ] `unit-tests` pass (all existing + new regression tests)
+        - [ ] `test` (sharded) pass
+        - [ ] `type-check` passes
+        - [ ] `lint` passes
+        - [ ] `build` passes
+        - [ ] `coverage` — 100% patch with no drop in project coverage
+        - [ ] Changelog fragment: only if behavior changes (refactors that preserve behavior skip this)
+        - [ ] Issue link in PR body
+        - [ ] Documentation: update if internal APIs changed (even if external tools unchanged)

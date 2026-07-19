@@ -1,22 +1,39 @@
 name: Meta / Process
-description: CI workflows, branch protection, repo config, templates, CODEOWNERS — process not product
-labels: ["meta", "ci"]
-title: "[Me\ta]: "
+description: CI workflows, branch protection, repo configuration, templates, CODEOWNERS — process changes, not product changes
+labels: ["meta", "ci-cd"]
+title: "Meta: "
 body:
   - type: markdown
     attributes:
       value: |
-        Process changes affect the development pipeline, not the product. They need review but often skip product-level acceptance criteria. Rollback plans are critical — a broken workflow blocks all PRs.
+        **Process and infrastructure changes.** No product code, no tools, no handlers. For CI workflows, repo config, templates, branch rules, CODEOWNERS, or developer experience.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What kind of meta change?
+      options:
+        - CI workflow (new or modify `.github/workflows/*.yml`)
+        - Branch protection / repo settings
+        - Issue / PR templates
+        - CODEOWNERS
+        - Tooling / dev experience (package.json scripts, ESLint config, tsconfig)
+        - Documentation infrastructure (docs site, generation, not content)
+        - Multi-category (describe below)
+    validations:
+      required: true
 
   - type: textarea
     id: what-changes
     attributes:
-      label: What changes?
-      description: Which workflow files, config files, or repo settings?
+      label: What changes
+      description: List every file that changes and what changes in it.
       placeholder: |
-        - `.githb/ISSUE_TEMPLATE/*.yml` — new issue templates
-        - `.githb/PULL_REQUEST_TEMPLATE.md` — replacement PR template
-        - `.githb/wokflows/` — no changes
+        - `.github/ISSUE_TEMPLATE/config.yml` — new: enable templates
+        - `.github/ISSUE_TEMPLATE/bug_report.yml` — new: bug report template
+        - `.github/ISSUE_TEMPLATE/feature_request.yml` — new: feature request template
+        - `.github/PULL_REQUEST_TEMPLATE.md` — new: PR template with CI checklist
     validations:
       required: true
 
@@ -24,10 +41,21 @@ body:
     id: motivation
     attributes:
       label: Motivation
-      description: What problem does this solve?
-      placeholder: "Current blank issue form leads to inconsistent structure. Agents discover CI gates by failing them. Templates enforce CI-aware structure before implementation starts."
+      description: What problem does this solve? What pain does it eliminate?
+      placeholder: |
+        Agents filing PRs don't know CI gates exist until they fail them. The back-and-forth of "add a changelog fragment" / "link an issue" / "update docs" wastes the first review cycle on every PR. Templates surface all gates before code is written.
     validations:
       required: true
+
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Rollout plan
+      description: How does this take effect? Does it need a PR merge, a repo settings change, or both?
+      placeholder: |
+        - PR merge deploys templates (automatic — GitHub picks them up on next issue/PR creation)
+        - No repo settings changes needed (templates are file-driven)
+        - Existing issues/PRs unaffected (only new ones use templates)
 
   - type: textarea
     id: rollback
@@ -35,34 +63,40 @@ body:
       label: Rollback plan
       description: How do we undo this if it causes problems?
       placeholder: |
-        Revert the PR. Templates are additive — deleting them restores previous blank-issue behavior.
-        No data migration needed. No dependent systems.
+        - Delete template files from `main`
+        - Alternative: disable via `config.yml` (set all `blank_issues_enabled: true`)
+        - No data migration — templates are stateless
 
   - type: textarea
     id: impact
     attributes:
-      label: Impact on existng PRs/branches
-      description: Does this break anything currently in flight?
-      placeholder: "No. Templates only affect new issues. Existing PRs and branches unaffected."
+      label: Impact on existing workflow
+      description: Does this break anything? Do existing branches/PRs need updates?
+      placeholder: |
+        - No impact on existing PRs (templates only apply to new issues/PRs)
+        - Existing `pull_request_template_mcp.md` is not recognized by GitHub (wrong filename) — this PR replaces it with a recognized `PULL_REQUEST_TEMPLATE.md`
+        - No branch protection changes — merge requirements unchanged
 
-  - type: dropdown
+  - type: textarea
     id: approval
     attributes:
       label: Approval requirements
-      description: Who needs to approve this beyond standard code review?
-      options:
-        - Standard review only (no special approval)
-        - Repo admin (branch protection, CODEOWNERS changes)
-        - All agent stakeholders (workflow changes affect everyone)
-    validations:
-      required: true
+      description: Who needs to sign off? Is this different from standard code review?
+      placeholder: |
+        - Standard code review (repo settings unchanged)
+        - No admin/org-level changes needed
+        - Optional: @FrozenRegister for final design review of template content
 
   - type: textarea
     id: ci-checklist
     attributes:
-      label: CI checklist
+      label: CI considerations
+      description: Meta changes often skip CI gates. Which ones apply?
       value: |
-        - [ ] New workflow files (if any) tested in a separate branch first
-        - [ ] Existing workflows not broken (no change to `ci.yml`, `pr-quality.yml`, etc.)
-        - [ ] Templates render correctly on GitHub (validate YAML, test with `gh issue create`)
-        - [ ] Documentation updated if process changes affect CLAUDE.md or CONTRIBUTING.md
+        - [ ] `lint` — YAML is linted if `.yamllint` is configured; otherwise N/A
+        - [ ] `build` — N/A (no code changes)
+        - [ ] `test` — N/A (no code changes)
+        - [ ] `type-check` — N/A (no TypeScript changes)
+        - [ ] Changelog fragment — recommended (process changes are worth noting)
+        - [ ] Issue link — this PR closes this issue
+        - [ ] Documentation — N/A (templates are self-documenting) OR update `CONTRIBUTING.md` with template usage guide

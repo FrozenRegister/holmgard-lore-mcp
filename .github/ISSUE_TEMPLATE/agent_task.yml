@@ -1,24 +1,23 @@
 name: Agent Task
-description: Structured handoff to an agent — Archisector, Calder, engineering, or batch dispatch
+description: Dispatch a task to a Holmgard agent — Archisector, Calder, or engineering
 labels: ["agent-task"]
 title: "[Agent]: "
 body:
   - type: markdown
     attributes:
       value: |
-        This issue is a **structured task for an AI agent.** It should contain everything the agent needs to work autonomously — context, constraints, expected output, and acceptance criteria. No ambiguity.
+        **Dispatches work to a specific Holmgard agent.** After filing, add the appropriate `agent:` label to trigger the dispatch workflow.
 
   - type: dropdown
     id: target-agent
     attributes:
       label: Target agent
-      description: Which agent should pick this up? (Will auto-assign via `agent-assignment.yml`)
+      description: Which agent should pick this up? (Also add the matching `agent:` label after filing.)
       options:
-        - agent:archisector
-        - agent:calder
-        - agent:engineering
-        - batch:engineering
-        - batch:design
+        - agent:archisector (narrative, sensory, dissolution)
+        - agent:calder (implementation, code, D1, workers)
+        - agent:engineering (infrastructure, CI, deployment)
+        - agent:multiple (describe below)
     validations:
       required: true
 
@@ -26,70 +25,64 @@ body:
     id: context
     attributes:
       label: Context
-      description: What does the agent need to know before starting? Link design issues, PRs, conversation threads, lore entries.
+      description: What design issue, PR, conversation thread, or world-state does this task operate within? Link everything.
       placeholder: |
-        - Design: #446 (Secrets System)
-        - Related: #447 (Extraction Pipeline)
-        - Conversation context: [link to DM/room thread]
-        - Relevant lore: `character/seraphine`, `location/apothecary`
+        - Design: #440 (CK3-style simulation layer)
+        - Current state: `dissolution.ts` has hardcoded 5-stage model
+        - Relevant PR: #459 (issue templates — for reference on repo conventions)
     validations:
       required: true
 
   - type: textarea
-    id: task
+    id: task-description
     attributes:
-      label: Task
-      description: What exactly should the agent do? Be specific about scope boundaries.
+      label: Task description
+      description: What exactly should the agent do? Be concrete — expected output, not vibes.
       placeholder: |
-        Audit the codebase for all three "secrets" systems:
-        1. `src/rpg/handlers/secret-manage.ts` — `rpg.sub:secret`
-        2. `src/tools/world.ts` — `get_entity_knowledge`
-        3. `src/rpg/handlers/agent-manage.ts` — `add_sec`ret
-
-        Output: A GitHub issue comment on #446 with:
-        - Table schemas for each system
-        - Query paths (exact SQL)
-        - Proof that no bridges exist between them
+        Implement config-driven dissolution primitives per #448:
+        1. Replace hardcoded 5-stage model with config interface
+        2. Add KV/D1-backed stage definitions
+        3. Update `advance_stage` to respect configurable terminal stage
+        4. Add tests with 100% patch coverage
     validations:
       required: true
-
 
   - type: dropdown
     id: output-type
     attributes:
       label: Expected output
-      description: What artifact should the agent produce?
+      description: What artifact should this task produce?
       options:
-        - Issue comment (analysis, audit, review)
         - Code PR (implementation)
-        - Design document (new issue or existing issue comment)
-        - Investigation (answer a question, no artifact)
-        - Narration (story content for Holmgard)
+        - Design comment (analysis, feedback, questions)
+        - Investigation (research, profiling, exploration — no code)
+        - Narration (world-state, scene, dissolution prose)
+        - Issue filing (create new issues from parent design)
     validations:
       required: true
 
-
   - type: textarea
-    id: acceptance
+    id: acceptance-criteria
     attributes:
       label: Acceptance criteria
-      description: How does a human verify the agent did the right thing?
+      description: How does the human verify this is done? Checkboxes preferred.
       placeholder: |
-        - [ ] All three systems documented with actual table schemas
-        - [ ] Query paths shown with real SQL
-        - [ ] No bridge = proven (zero cross-queries found)
-        - [ ] Comment is self-contained (no "see code" without quoting it)
+        - [ ] `pnpm test` passes with 100% patch coverage
+        - [ ] Config interface supports variable stage counts (not just 5)
+        - [ ] Terminal stage is configurable (not hardcoded to stage 5)
+        - [ ] PR links to this issue and the parent design issue
     validations:
       required: true
 
   - type: dropdown
-    id: ci-relevant
+    id: ci-relevance
     attributes:
       label: CI relevance
-      description: Does this task touch code or CI? If no, the agent can skip CI concerns.
+      description: Does the agent need to worry about CI gates?
       options:
-        - No — design/narration/investigation only
-        - Yes — will produce a PR that must pass CI gates
+        - "Yes — this produces code; all CI gates apply"
+        - "Yes — this produces docs; only changelog + documentation gates apply"
+        - "No — design/narration only; no CI gates"
     validations:
       required: true
 
@@ -97,8 +90,9 @@ body:
     id: constraints
     attributes:
       label: Constraints
-      description: What must the agent NOT do? Guardrails.
+      description: What must the agent NOT do? What conventions should they follow?
       placeholder: |
-        - Do NOT open a PR — output is a comment on the existing issue
-        - Do NOT propose implementation — this is audit-only
-        - Do NOT modify any files
+        - Follow `CLAUDE.md` storage selection (D1 vs KV)
+        - API surface convention: reads → /mcp, writes → /admin/*
+        - Do NOT modify `dissolution.ts` — config layer goes in new file
+        - Branch: `feat/<description>` from `main`

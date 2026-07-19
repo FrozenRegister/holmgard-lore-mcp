@@ -1,49 +1,47 @@
 ## Summary
-<!-- What does this PR do? One paragraph. -->
+<!-- One to three sentences: what changed and why. Link the design issue if one exists. -->
 
-## Type
-<!-- Check all that apply. At least one required. -->
-- [ ] Bug fix
-- [ ] Feature / enhancement
-- [ ] Refactor (no new behavior)
-- [ ] D1 migration
-- [ ] Meta / CI / process
-- [ ] Documentation only
+## CI checklist
+<!-- Every gate from ci.yml and pr-quality.yml. Check each one. If N/A, say why. -->
 
-## Related
-<!-- Link issues this PR closes, addresses, or depends on. Required: at least one "Closes #N" or "Part of #N". -->
-- Closes #
-
-## Files changed
-<!-- Which files? Broad strokes — "src/tools/world.ts" not "line 42". -->
-
-## CI gates
-<!-- All must pass before merge. Check each one. If N/A, explain why. -->
 - [ ] `unit-tests` pass
-- [ ] `test` (shareded) pass
+- [ ] `test` (sharded) pass
 - [ ] `type-check` passes
 - [ ] `lint` passes
 - [ ] `build` passes
-- [ ] `cverage` — 100% patch on all new/modifed lines
-- [ ] Changelog fragment added (`.changelog/fragments/my-change.md`) — N/A only for meta/CI PRs
-- [ ] Issue link in PR body (`Closes #N`) — required
-- [ ] Branch naming: `feat/`, `fix/`, `chre/`, `refactor/`, `docs/`, or `meta/`
+- [ ] `coverage` — 100% patch on all new/modified code
+- [ ] Changelog fragment added (`.changelog/fragments/<slug>.md`)
+- [ ] Issue link in PR body (`Closes #N` or `Part of #N`)
+- [ ] Documentation updated (modify `docs/` files OR explain why not needed below)
+- [ ] Branch naming convention followed (`feat/<slug>`, `fix/<slug>`, `chore/<slug>`)
 
-## Documentation
-<!-- If this PR changes tool signatures, schemas, or workflows, update docs. Check one. -->
-- [ ] No documentation changes needed
-- [ ] Documentation updated in this PR (list files below)
-- [ ] Documentation tracked separately (link issue)
+## What changed
+<!-- List files touched with a one-line description of what changed in each. Group by concern. -->
 
-## Migrations
-<!-- Only if this PR includes a D1 migration. -->
-- [ ] Forward SQL included in PR description or linked migration issue
-- [ ] Rollback SQL included
-- [ ] FK constraints verified (`PRAGMA foreign_key_check`)
-- [ ] Migration is additive (safe) or destructive (explain below)
+| File | Change |
+|------|--------|
+| `src/tools/example.ts` | Added `new_action` handler |
+| `src/tools/definitions.ts` | Registered `new_action` schema |
+| `docs/new-action.md` | Documented `new_action` usage |
+
+## Migration
+<!-- If this PR includes a D1 migration, paste the forward SQL and any rollback notes. If not, write "None." -->
+
+```sql
+-- Forward migration (copy from your migration PR or inline)
+```
 
 ## Test plan
-<!-- How did you verify this works? -->
+<!-- What did you test? Include manual smoke tests if applicable. -->
 
-## Notes for reviewers
-<!-- Anything tricky, work-in-progress, or needing special attention? -->
+- [ ] Unit: <describe>
+- [ ] Integration: <describe>
+- [ ] Live smoke: <describe or N/A>
+
+## Documentation
+<!-- If docs were updated, link the files. If not, explain why this PR doesn't need docs. -->
+
+## Screenshots / logs
+<!-- If visual or log output helps review, paste it here. Otherwise delete. -->
+
+Closes #
