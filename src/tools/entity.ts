@@ -716,14 +716,16 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
     // Compute new HP: current - drain, floor 0
     const currentHp = charRow.hp ?? 0
     const newHp = Math.max(0, currentHp - hpDrainPerTick)
+    // Always batch update for staged characters; d1HpDrained indicates
+    // the batch executed (not just HP drain occurring).
     if (hpDrainPerTick > 0) {
       d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), hp = ?, updated_at = ? WHERE id = ?')
       d1Bindings.push([newStage, total ?? null, newHp, now, characterId])
-      d1HpDrained = true
     } else {
       d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), updated_at = ? WHERE id = ?')
       d1Bindings.push([newStage, total ?? null, now, characterId])
     }
+    d1HpDrained = true
     d1Mirrored = true
   }
 
