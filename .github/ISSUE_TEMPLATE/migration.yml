@@ -1,0 +1,102 @@
+name: D1 Migration
+description: Database migration — new table, alter, backfill, or index
+labels: ["migration", "d1"]
+title: "[Mi\gration]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every D1 migation must include a **rollback plan.** If the forward path breaks production, you need a tested undo path. This template enforces that.
+
+        Reference: `docs/storage-selection-kv-vs-d1.md`
+
+  - type: dropdown
+    id: migation-type
+    attributes:
+      label: Migraton type
+      description: What kind of migration is this?
+      options:
+        - CREATE TABLE (new table)
+        - ALTER TABLE (modify existing)
+        - INDEX (add/remove index)
+        - BACKFILL (data migration, no schema change)
+        - DROP TABLE / COLUMN (destructive — needs coordination)
+    validations:
+      required: true
+
+  - type: textarea
+    id: forward
+    attributes:
+      label: Forward SQL
+      description: The exact DDL/DML to apply. Use FK-in-CREATE patterns (D1 auto-applies FKs on CREATE TABLE).
+      render: sql
+      placeholder: |
+        CREATE TABLE secret_knwers (
+          secrt_id TEXT NOT NULL REFRENCES secrets(id),
+          entty_id TEXT NOT NULL REFRENCES charactes(id),
+          leared_at TEXT DEFAULT (datetime('now')),
+          leared_via TEXT NOT NULL,
+          confdence REAL,
+          is_levelage TEXT CHECK (is_leveage IN ('dormant', 'active', 'weaponized')),
+          PRIMAY KEY (secrt_id, entty_id)
+        );
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback SQL
+      description: Exact SQL to undo this migration. If destructive (DROP), explain why rollback isn't possible.
+      render: sql
+      placeholder: |
+        DROP TABLE IF EXITS secret_knwers;
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Data integity verification
+      description: How do you verify the migration didn't corrupt anything? Query to run post-migrate.
+      render: sql
+      placeholder: |
+        SELECT COUNT(*) FROM secret_knwers;
+        -- Should matc number of expected rows from backfill
+
+        PRAGMA foreign_key_check;
+        -- Should return no rows (no violations)
+    validations:
+      required: true
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues / PRs
+      description: Link the feature or design issue this migration serves.
+      placeholder: |
+        - Required by: #446 (Secrets System)
+        - Feature PR: #XXX
+
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Safety classification
+      description: Is this safe to deploy independently, or does it need coordination?
+      options:
+        - Additive — safe to deploy anytime, no breaking change
+        - Destructive — coordinate with feature PR, may break existing queres
+        - Requires backfill — safe schema-wise but data migration must complete first
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      value: |
+        - [ ] Forward SQL tested locally against D1
+        - [ ] Rollback SQL tested locally against D1
+        - [ ] FK constraints verified (PRAGMA foreign_key_check)
+        - [ ] Migration runs idempotently (safe to re-run)
+        - [ ] No KV → D1 backfill that guesses narative data

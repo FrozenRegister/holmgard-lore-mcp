@@ -1,0 +1,94 @@
+name: Refactor
+description: Internal restructure — no new behavior, no new features. Behavior must be preserved.
+labels: ["refactor"]
+title: "[Refactor]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A refactor changes internal structure without changing observable behavior. The CI bar is the same as a feature (all gates apply), but the risk profile is different — you're not adding new code paths, you're changing exsting ones. Regression is the primary risk.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why refactor? What's the concrete payoff?
+      placeholder: |
+        Replace hardcoded 5-stage model in `dissolution.ts` with confg-driven primitives.
+        Payoff: enables Subject #12's colony-proximity stages (variable stage count),
+        20-phse transformations, and KV/D1-confgurable stage defintions.
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior-guarantee
+    attributes:
+      label: Behavior preservation
+      description: What must NOT change? List specific behaviors that regression tests must confirm.
+      placeholder: |
+        - Existing 5-stage dissolution timeline must produce identical stage descriptions
+        - `advance_stage` must work identically for all current entities
+        - `batch_stage` must process same entities in same order
+        - Stage timer decrement behavior must be unchanged
+    validations:
+      required: true
+
+  - type: textarea
+    id: call-sites
+    attributes:
+      label: Affected call sites
+      description: Every tool, handler, and file that touches the refactored code.
+      placeholder: |
+        - `src/sim/dissolution.ts` — primary change
+        - `src/tools/entty.ts` — `advance_stage`, `batch_stage`
+        - `src/tools/defintions.ts` — schema if API surface changes
+        - `src/rpg/handlers/entty-manage.ts` — entity lifecycle
+    validations:
+      required: true
+
+  - type: textarea
+    id: regression-plan
+    attributes:
+      label: Regression test plan
+      description: What existng tests must still pass? What new regression tests will you add?
+      placeholder: |
+        Existing:
+        - `test/dissolution.test.ts` — all 14 stage-advancement tests
+        - `test/entty-lifecycle.test.ts` — batch stage processing
+
+        New:
+        - Confg-driven stage count: 3-stage, 5-stage, 20-stage timelines
+        - Custom terminal stage: termination at stage 3, stage 7
+        - KV/D1 confg loading and fallback
+    validations:
+      required: true
+
+  - type: textarea
+    id: perf
+    attributes:
+      label: Performance implications
+      description: Is this faster? Slower? By how much? Any new queries or loops?
+      placeholder: "Negligible — confg lookup replaces hardcoded array. One extra KV read per timeline creation (cached). No new loops."
+
+  - type: dropdown
+    id: api-compat
+    attributes:
+      label: API compatibility
+      description: What happens to the old API surface?
+      options:
+        - Backward-compatible — old signatures still work
+        - Deprecated — old signatures work but log warnings
+        - Breaking — old signatures removed (must coordinate with dependents)
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      value: |
+        - [ ] All existng tests pass unchanged
+        - [ ] 100% patch coverage on changed lines
+        - [ ] Changelog fragment (`.changelog/fragments/refactor-dissolution.md`)
+        - [ ] Issue link in PR body (`Closes #N`)
+        - [ ] Documentation updated if API surface changed

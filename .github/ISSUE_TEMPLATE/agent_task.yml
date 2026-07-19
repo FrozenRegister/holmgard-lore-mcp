@@ -1,0 +1,104 @@
+name: Agent Task
+description: Structured handoff to an agent — Archisector, Calder, engineering, or batch dispatch
+labels: ["agent-task"]
+title: "[Agent]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is a **structured task for an AI agent.** It should contain everything the agent needs to work autonomously — context, constraints, expected output, and acceptance criteria. No ambiguity.
+
+  - type: dropdown
+    id: target-agent
+    attributes:
+      label: Target agent
+      description: Which agent should pick this up? (Will auto-assign via `agent-assignment.yml`)
+      options:
+        - agent:archisector
+        - agent:calder
+        - agent:engineering
+        - batch:engineering
+        - batch:design
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What does the agent need to know before starting? Link design issues, PRs, conversation threads, lore entries.
+      placeholder: |
+        - Design: #446 (Secrets System)
+        - Related: #447 (Extraction Pipeline)
+        - Conversation context: [link to DM/room thread]
+        - Relevant lore: `character/seraphine`, `location/apothecary`
+    validations:
+      required: true
+
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: What exactly should the agent do? Be specific about scope boundaries.
+      placeholder: |
+        Audit the codebase for all three "secrets" systems:
+        1. `src/rpg/handlers/secret-manage.ts` — `rpg.sub:secret`
+        2. `src/tools/world.ts` — `get_entity_knowledge`
+        3. `src/rpg/handlers/agent-manage.ts` — `add_sec`ret
+
+        Output: A GitHub issue comment on #446 with:
+        - Table schemas for each system
+        - Query paths (exact SQL)
+        - Proof that no bridges exist between them
+    validations:
+      required: true
+
+
+  - type: dropdown
+    id: output-type
+    attributes:
+      label: Expected output
+      description: What artifact should the agent produce?
+      options:
+        - Issue comment (analysis, audit, review)
+        - Code PR (implementation)
+        - Design document (new issue or existing issue comment)
+        - Investigation (answer a question, no artifact)
+        - Narration (story content for Holmgard)
+    validations:
+      required: true
+
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How does a human verify the agent did the right thing?
+      placeholder: |
+        - [ ] All three systems documented with actual table schemas
+        - [ ] Query paths shown with real SQL
+        - [ ] No bridge = proven (zero cross-queries found)
+        - [ ] Comment is self-contained (no "see code" without quoting it)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ci-relevant
+    attributes:
+      label: CI relevance
+      description: Does this task touch code or CI? If no, the agent can skip CI concerns.
+      options:
+        - No — design/narration/investigation only
+        - Yes — will produce a PR that must pass CI gates
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: What must the agent NOT do? Guardrails.
+      placeholder: |
+        - Do NOT open a PR — output is a comment on the existing issue
+        - Do NOT propose implementation — this is audit-only
+        - Do NOT modify any files

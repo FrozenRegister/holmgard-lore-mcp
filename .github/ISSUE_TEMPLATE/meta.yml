@@ -1,0 +1,68 @@
+name: Meta / Process
+description: CI workflows, branch protection, repo config, templates, CODEOWNERS — process not product
+labels: ["meta", "ci"]
+title: "[Me\ta]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Process changes affect the development pipeline, not the product. They need review but often skip product-level acceptance criteria. Rollback plans are critical — a broken workflow blocks all PRs.
+
+  - type: textarea
+    id: what-changes
+    attributes:
+      label: What changes?
+      description: Which workflow files, config files, or repo settings?
+      placeholder: |
+        - `.githb/ISSUE_TEMPLATE/*.yml` — new issue templates
+        - `.githb/PULL_REQUEST_TEMPLATE.md` — replacement PR template
+        - `.githb/wokflows/` — no changes
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve?
+      placeholder: "Current blank issue form leads to inconsistent structure. Agents discover CI gates by failing them. Templates enforce CI-aware structure before implementation starts."
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback plan
+      description: How do we undo this if it causes problems?
+      placeholder: |
+        Revert the PR. Templates are additive — deleting them restores previous blank-issue behavior.
+        No data migration needed. No dependent systems.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on existng PRs/branches
+      description: Does this break anything currently in flight?
+      placeholder: "No. Templates only affect new issues. Existing PRs and branches unaffected."
+
+  - type: dropdown
+    id: approval
+    attributes:
+      label: Approval requirements
+      description: Who needs to approve this beyond standard code review?
+      options:
+        - Standard review only (no special approval)
+        - Repo admin (branch protection, CODEOWNERS changes)
+        - All agent stakeholders (workflow changes affect everyone)
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      value: |
+        - [ ] New workflow files (if any) tested in a separate branch first
+        - [ ] Existing workflows not broken (no change to `ci.yml`, `pr-quality.yml`, etc.)
+        - [ ] Templates render correctly on GitHub (validate YAML, test with `gh issue create`)
+        - [ ] Documentation updated if process changes affect CLAUDE.md or CONTRIBUTING.md
