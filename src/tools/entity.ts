@@ -5,6 +5,7 @@ import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
+import { stageMutationFor, buildSensoryProfile, buildMechanicalEffects, resolveTerminalConversion } from '../rpg/utils/dissolution'
 import type { ToolContext, TypedToolContext } from './types'
 
 export const resolveInteractionSchema = z.object({
@@ -599,11 +600,60 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // #411/#420 — resolve the D1 character link once, up front, so both the
   // dissolution_stage mirror and #420's terminal-stage hook can use it.
   const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
-  type CharDissolutionRow = { death_mode: string | null; dissolution_terminal: string | null; world_id: string | null }
+  type CharDissolutionRow = { death_mode: string | null; dissolution_stage: number | null; dissolution_stages: number | null; dissolution_terminal: string | null; world_id: string | null; hp: number | null }
   let charRow: CharDissolutionRow | null = null
   if (characterId && c.env.RPG_DB) {
-    charRow = await c.env.RPG_DB.prepare('SELECT death_mode, dissolution_terminal, world_id FROM characters WHERE id = ?')
-      .bind(characterId).first() as CharDissolutionRow | null
+    charRow = await c.env.RPG_DB.prepare(
+      'SELECT death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, world_id, hp FROM characters WHERE id = ?'
+    ).bind(characterId).first() as CharDissolutionRow | null
+  }
+
+  // ── Phase 0: Dissolution Primitives ────────────────────────────────────
+  // #441 — Apply stage-gated sensory mutations to KV entity text and compute
+  // mechanical consequences. Each stage enters progressively worse sensory
+  // and mechanical states.
+  const stageMut = stageMutationFor(newStage)
+  const dissolutionDetails: Record<string, unknown> = {}
+
+  if (stageMut) {
+    // Build cumulative sensory profile from all stages up to current
+    const sensory = buildSensoryProfile(newStage)
+    const mechanical = buildMechanicalEffects(newStage)
+
+    // Write sensory fields to KV entity text
+    if (sensory.scent.length > 0) {
+      updatedText = updateFieldInText(updatedText, 'Dissolution-Scent', sensory.scent.join(', '))
+      dissolutionDetails.scent_applied = true
+    }
+    if (sensory.thermal.length > 0) {
+      updatedText = updateFieldInText(updatedText, 'Dissolution-Thermal', sensory.thermal.join(', '))
+      dissolutionDetails.thermal_applied = true
+    }
+    if (sensory.texture.length > 0) {
+      updatedText = updateFieldInText(updatedText, 'Dissolution-Texture', sensory.texture.join(', '))
+      dissolutionDetails.texture_applied = true
+    }
+    if (sensory.visual.length > 0) {
+      updatedText = updateFieldInText(updatedText, 'Dissolution-Visual', sensory.visual.join(', '))
+      dissolutionDetails.visual_applied = true
+    }
+    if (sensory.sound.length > 0) {
+      updatedText = updateFieldInText(updatedText, 'Dissolution-Sound', sensory.sound.join(', '))
+      dissolutionDetails.sound_applied = true
+    }
+
+    // Write mechanical effects as KV flags the narrator can read
+    if (mechanical.movement_locked) {
+      updatedText = updateFieldInText(updatedText, 'Movement-Locked', 'true')
+    }
+    if (mechanical.communication_penalty < 0) {
+      updatedText = updateFieldInText(updatedText, 'Communication-Penalty', mechanical.communication_penalty)
+    }
+    if (mechanical.knowledge_leakage) {
+      updatedText = updateFieldInText(updatedText, 'Knowledge-Leakage', 'active')
+    }
+
+    dissolutionDetails.mechanical = mechanical
   }
 
   // #420 — terminal-stage hook, from Archisector's follow-up on #411. Right
@@ -621,9 +671,29 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // discipline (batch_stage advances a whole location at once; folding a
   // per-entity hook into that bulk path is a separate decision).
   const terminalDescriptor = charRow?.dissolution_terminal ?? 'reached terminal stage'
+
+  // #441 — On terminal stage, resolve the conversion pathway. The pathway is
+  // determined by the entity's dissolution_terminal field (set via #411's
+  // character backfill), which encodes the utility vector.
+  let terminalConversion: { label: string; outcome: string; description: string } | null = null
   if (isTerminal) {
     updatedText = updateFieldInText(updatedText, 'Terminal-Status', terminalDescriptor)
+    // Determine conversion vector from the terminal descriptor, or default
+    const vector = (charRow?.dissolution_terminal ?? '').toUpperCase()
+    const recognizedVectors = ['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']
+    const matchedVector = recognizedVectors.find(v => vector.includes(v))
+    terminalConversion = resolveTerminalConversion(matchedVector ?? 'DISTRIBUTED')
+    updatedText = updateFieldInText(updatedText, 'Dissolution-Conversion', terminalConversion.outcome)
+    updatedText = updateFieldInText(updatedText, 'Dissolution-Conversion-Label', terminalConversion.label)
   }
+
+  // ── HP drain (mechanical consequence) ──────────────────────────────────
+  // #441 — Apply HP drain from mechanical effects as a soft suggestion:
+  // write the drain value to KV, and if a D1 character is linked and staged,
+  // apply it atomically via db.batch alongside the stage mirror.
+  const hpDrainPerTick = stageMut?.mechanical.hp_drain_per_tick ?? 0
+  const d1Statements: string[] = []
+  const d1Bindings: unknown[][] = []
 
   await pushHistory(c, entityKey, raw)
   const now = new Date().toISOString()
@@ -641,10 +711,28 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // another. This keeps them in lockstep with no workflow change for the
   // caller; only fires for a character whose death_mode is already 'staged'.
   let d1Mirrored = false
+  let d1HpDrained = false
   if (characterId && charRow?.death_mode === 'staged') {
-    await c.env.RPG_DB!.prepare('UPDATE characters SET dissolution_stage = ?, updated_at = ? WHERE id = ?')
-      .bind(newStage, now, characterId).run()
+    // Compute new HP: current - drain, floor 0
+    const currentHp = charRow.hp ?? 0
+    const newHp = Math.max(0, currentHp - hpDrainPerTick)
+    // Always batch update for staged characters; d1HpDrained indicates
+    // the batch executed (not just HP drain occurring).
+    if (hpDrainPerTick > 0) {
+      d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), hp = ?, updated_at = ? WHERE id = ?')
+      d1Bindings.push([newStage, total ?? null, newHp, now, characterId])
+    } else {
+      d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), updated_at = ? WHERE id = ?')
+      d1Bindings.push([newStage, total ?? null, now, characterId])
+    }
+    d1HpDrained = true
     d1Mirrored = true
+  }
+
+  // Execute all D1 statements atomically via db.batch
+  if (d1Statements.length > 0 && c.env.RPG_DB) {
+    const stmts = d1Statements.map((sql, i) => c.env.RPG_DB!.prepare(sql).bind(...d1Bindings[i]))
+    await c.env.RPG_DB.batch(stmts)
   }
 
   // #420 — discoverable event log: only when the entity resolves to a
@@ -655,20 +743,25 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   let terminalTimelineEventId: string | null = null
   if (isTerminal && characterId && charRow?.world_id) {
     terminalTimelineEventId = crypto.randomUUID()
+    const detailParts = [terminalDescriptor]
+    if (terminalConversion) detailParts.push(`Conversion: ${terminalConversion.label} (${terminalConversion.outcome})`)
     await c.env.RPG_DB!.prepare(
       `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       terminalTimelineEventId, charRow.world_id, 'main', now, 'dissolved', characterId, null, null,
-      `${entityKey} reached terminal stage: ${terminalDescriptor}`, now,
+      `${entityKey} reached terminal stage: ${detailParts.join('; ')}`, now,
     ).run()
   }
 
   return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}` }],
+    content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}${stageMut ? ` [Dissolution Stage ${newStage}]` : ''}` }],
     metadata: { retrieved: 1, written: 1 },
     entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
     is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true, d1_mirrored: d1Mirrored,
+    d1_hp_drained: d1HpDrained,
+    ...(Object.keys(dissolutionDetails).length > 0 ? { dissolution: dissolutionDetails } : {}),
+    ...(terminalConversion ? { terminal_conversion: terminalConversion } : {}),
     ...(isTerminal ? { terminal_timeline_event_id: terminalTimelineEventId } : {}),
   }), 200)
 }

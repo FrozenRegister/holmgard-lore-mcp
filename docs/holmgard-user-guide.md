@@ -288,18 +288,8 @@ bad-typed value surfaces as a D1 error, not a schema mismatch caught here). Shar
 
 **Known Behavior (#420):** `entity_manage`'s `advance_stage` action now reacts when it detects
 `is_terminal` — previously the terminal stage was reported in the response but nothing else
-happened. Two things now fire, unconditionally on any terminal advance: (1) the entity's own KV
-text gets a `**Terminal-Status:**` field written — either the linked D1 character's
-`dissolution_terminal` free-text descriptor (if resolvable via `resolveEntityToCharacterId`, #344),
-or the generic fallback `"reached terminal stage"` for pure-KV entities with no D1 link; (2) if
-(and only if) the entity resolves to a D1 `characters` row that also has a non-null `world_id`, a
-`timeline_events` row is logged (`verb: 'dissolved'`, `tier: high` per the `event_verb_taxonomy`
-seeded in #311) and its `id` is returned as `terminal_timeline_event_id` in the response — `null`
-when terminal but unresolvable to a world-scoped character, and the key is absent entirely when the
-advance wasn't terminal. Deliberately does **not** touch D1 `hp`/`conditions`/anything mechanical —
-matching `party-manage.ts`'s `morale_roll` precedent (report `dissolved: true`, let the narrator
-decide), the follow-up soft-kill call is still a separate, explicit `character_manage.kill`. Scoped
-to `advance_stage` only, not `process_stage_batch` — same scope discipline as #411's D1 mirror.
+
+**Known Behavior (#441):** `entity_manage`'s `advance_stage` action applies **Phase 0 dissolution primitives** when advancing through a staged-death cycle. Each stage (1–5) writes cumulative sensory-mutation fields to KV entity text (`Dissolution-Scent`, `Dissolution-Thermal`, `Dissolution-Texture`, `Dissolution-Visual`, `Dissolution-Sound`) plus mechanical flags (`Movement-Locked`, `Communication-Penalty`, `Knowledge-Leakage`). On terminal stage, the action resolves the conversion pathway from the character's `dissolution_terminal` field and writes the conversion outcome (`Dissolution-Conversion`, `Dissolution-Conversion-Label`). HP drain (per-tick from mechanical effects table) is applied atomically via D1 `db.batch` alongside the stage mirror update. The resolved/flagged split from #440 Gap 3 is **not yet implemented** — stage transitions auto-advance when called; the narrator calls `advance_stage` explicitly.
 
 **Known Behavior (#429):** `rpg{sub:"travel"}`'s `move_hex` action accepts an optional `mode`
 (`foot`/`horse`/`carriage`/`car`/`aircraft`, defaults `foot`) and now enforces terrain passability —
