@@ -15,7 +15,7 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // was added; `update` only ever touched name/seed. See dynamic-fields.ts.
 const WORLD_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at'] as const
 
-const ACTIONS = ['create', 'get', 'list', 'delete', 'update', 'generate', 'get_state'] as const
+export const ACTIONS = ['create', 'get', 'list', 'delete', 'update', 'generate', 'get_state'] as const
 type WorldAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldAction> = { ...CRUD_ALIASES, generate: 'generate', get_state: 'get_state', state: 'get_state' } as Record<string, WorldAction>
 

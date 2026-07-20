@@ -40,7 +40,7 @@ export function fordingCost(waterDepth: number | null, mode: TravelMode): Fordin
   return { cost: 2.0, swimRisk: waterDepth > 0.6 }
 }
 
-const ACTIONS = ['travel', 'loot', 'rest', 'move_hex'] as const
+export const ACTIONS = ['travel', 'loot', 'rest', 'move_hex'] as const
 type TravelAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TravelAction> = {
   move: 'travel', go: 'travel', journey: 'travel', traverse: 'travel',

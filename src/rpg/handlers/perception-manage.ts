@@ -11,7 +11,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { executeRoll } from './math-manage'
 
-const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers', 'stealth_check', 'perception_contested'] as const
+export const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers', 'stealth_check', 'perception_contested'] as const
 type PerceptionAction = typeof ACTIONS[number]
 const ALIASES: Record<string, PerceptionAction> = {
   check: 'assess', perceive: 'assess', observe: 'assess', inspect: 'assess', roll: 'assess',

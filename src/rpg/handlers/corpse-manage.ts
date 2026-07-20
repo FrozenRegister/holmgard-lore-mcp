@@ -37,7 +37,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleResourceManage } from './resource-manage'
 
-const ACTIONS = [
+export const ACTIONS = [
   'create', 'get', 'list', 'loot', 'decay', 'generate_loot', 'delete',
   'register', 'decompose', 'scavenge_check', 'loot_corpse', 'recover', 'get_state', 'psychological_impact',
 ] as const

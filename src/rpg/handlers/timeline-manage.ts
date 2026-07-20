@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = [
+export const ACTIONS = [
   'get_events',
   'get_gap',
   'get_perspectives',

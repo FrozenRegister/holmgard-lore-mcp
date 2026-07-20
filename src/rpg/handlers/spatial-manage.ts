@@ -21,7 +21,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { getBiomeRegistry } from './biome-manage'
 
-const ACTIONS = ['look', 'generate', 'update', 'get_exits', 'move', 'list', 'network_create', 'network_get', 'network_list'] as const
+export const ACTIONS = ['look', 'generate', 'update', 'get_exits', 'move', 'list', 'network_create', 'network_get', 'network_list'] as const
 type SpatialAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SpatialAction> = {
   describe: 'look', observe: 'look', inspect: 'look',

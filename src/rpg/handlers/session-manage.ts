@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['initialize', 'get_context'] as const
+export const ACTIONS = ['initialize', 'get_context'] as const
 type SessionAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SessionAction> = {
   init: 'initialize', start: 'initialize', setup: 'initialize', initialize_session: 'initialize', start_session: 'initialize',

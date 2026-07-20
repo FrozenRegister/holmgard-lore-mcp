@@ -12,7 +12,7 @@ import type { AppBindings } from '../../types'
 const KNOWN_EVENT_TYPES = ['npc_action', 'combat_update', 'world_change', 'quest_update', 'time_passage', 'environmental', 'system', 'crate_drop', 'perimeter_contraction', 'audience_vote', 'production_intervention', 'predator_release', 'shelter_collapse', 'weather_shift', 'echo_activation'] as const
 const SOURCE_TYPES = ['npc', 'combat', 'world', 'system', 'scheduler'] as const
 
-const ACTIONS = ['emit', 'poll', 'ack', 'list_types'] as const
+export const ACTIONS = ['emit', 'poll', 'ack', 'list_types'] as const
 type EventAction = typeof ACTIONS[number]
 const ALIASES: Record<string, EventAction> = {
   publish: 'emit', send: 'emit', notify: 'emit',

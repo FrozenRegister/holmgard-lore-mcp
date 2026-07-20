@@ -9,7 +9,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['long_rest', 'short_rest'] as const
+export const ACTIONS = ['long_rest', 'short_rest'] as const
 type RestAction = typeof ACTIONS[number]
 const ALIASES: Record<string, RestAction> = {
   long: 'long_rest', full_rest: 'long_rest', sleep: 'long_rest',

@@ -13,7 +13,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'get_latest', 'state_snapshot', 'set_conflict_type', 'get_conflict_type'] as const
+export const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'get_latest', 'state_snapshot', 'set_conflict_type', 'get_conflict_type'] as const
 type SceneAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SceneAction> = {
   ...CRUD_ALIASES,

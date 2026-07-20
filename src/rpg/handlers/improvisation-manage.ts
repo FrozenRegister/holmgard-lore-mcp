@@ -6,7 +6,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['apply', 'get', 'list', 'remove', 'tick', 'list_by_target'] as const
+export const ACTIONS = ['apply', 'get', 'list', 'remove', 'tick', 'list_by_target'] as const
 type ImprovAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ImprovAction> = {
   create: 'apply', add_effect: 'apply', improvise: 'apply',

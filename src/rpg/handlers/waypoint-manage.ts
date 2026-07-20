@@ -15,7 +15,7 @@ import type { AppBindings } from '../../types'
 import gotlandWaypoints from '../../../schema/seed-data/gotland-waypoints.json'
 import gotlandDistanceMatrix from '../../../schema/seed-data/gotland-distance-matrix.json'
 
-const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults', 'calibrate', 'hex_to_latlon'] as const
+export const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults', 'calibrate', 'hex_to_latlon'] as const
 type WaypointManageAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WaypointManageAction> = {
   ...CRUD_ALIASES,

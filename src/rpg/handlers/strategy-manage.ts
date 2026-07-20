@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create_nation', 'get_state', 'propose_alliance', 'claim_region', 'resolve_turn', 'list_nations'] as const
+export const ACTIONS = ['create_nation', 'get_state', 'propose_alliance', 'claim_region', 'resolve_turn', 'list_nations'] as const
 type StrategyAction = typeof ACTIONS[number]
 const ALIASES: Record<string, StrategyAction> = {
   nation: 'create_nation', new_nation: 'create_nation', found_nation: 'create_nation',

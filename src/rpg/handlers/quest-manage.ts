@@ -15,7 +15,7 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // directly below, not via fields, since they're first-class params.)
 const QUEST_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
-const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'complete', 'fail', 'add_objective', 'complete_objective'] as const
+export const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'complete', 'fail', 'add_objective', 'complete_objective'] as const
 type QuestAction = typeof ACTIONS[number]
 const ALIASES: Record<string, QuestAction> = {
   ...CRUD_ALIASES,

@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['roll', 'probability', 'solve', 'simplify', 'projectile', 'get_history'] as const
+export const ACTIONS = ['roll', 'probability', 'solve', 'simplify', 'projectile', 'get_history'] as const
 type MathAction = typeof ACTIONS[number]
 const ALIASES: Record<string, MathAction> = {
   dice: 'roll', dice_roll: 'roll', d20: 'roll', throw: 'roll',

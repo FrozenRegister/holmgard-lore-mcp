@@ -14,7 +14,7 @@ function doubleDiceCount(expr: string): string {
   return expr.replace(/^(\d+)d/, (_, count) => `${parseInt(count) * 2}d`)
 }
 
-const ACTIONS = ['attack', 'apply_damage', 'heal', 'apply_condition', 'remove_condition', 'use_ability', 'get_log', 'get_turn_summary', 'dash', 'dodge', 'disengage', 'help', 'ready'] as const
+export const ACTIONS = ['attack', 'apply_damage', 'heal', 'apply_condition', 'remove_condition', 'use_ability', 'get_log', 'get_turn_summary', 'dash', 'dodge', 'disengage', 'help', 'ready'] as const
 type CombatActionType = typeof ACTIONS[number]
 const ALIASES: Record<string, CombatActionType> = {
   hit: 'attack', strike: 'attack', swing: 'attack',

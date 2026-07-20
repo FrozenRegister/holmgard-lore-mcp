@@ -42,7 +42,7 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // have no update path anywhere (not even at create). See dynamic-fields.ts.
 const PARTY_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
-const ACTIONS = [
+export const ACTIONS = [
   'create', 'get', 'list', 'update', 'delete', 'add_member', 'remove_member', 'set_leader',
   'trust_shift', 'resolve_conflict', 'betrayal_check', 'morale_roll', 'watch_rotation',
   'begin_march', 'get_march_status', 'cohesion_check', 'group_break', 'cohesion_shift',

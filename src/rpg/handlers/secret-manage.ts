@@ -13,7 +13,7 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // later ALTER TABLE — same structural gap, lower urgency). See dynamic-fields.ts.
 const SECRET_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
-const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'reveal', 'check_reveal'] as const
+export const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'reveal', 'check_reveal'] as const
 type SecretAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SecretAction> = {
   ...CRUD_ALIASES,

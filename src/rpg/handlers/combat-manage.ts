@@ -9,7 +9,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { executeRoll } from './math-manage'
 
-const ACTIONS = ['create_encounter', 'get_encounter', 'list_encounters', 'add_combatant', 'remove_combatant', 'start', 'end', 'next_turn', 'get_state', 'death_save', 'legendary_action', 'lair_action'] as const
+export const ACTIONS = ['create_encounter', 'get_encounter', 'list_encounters', 'add_combatant', 'remove_combatant', 'start', 'end', 'next_turn', 'get_state', 'death_save', 'legendary_action', 'lair_action'] as const
 type CombatAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CombatAction> = {
   ...CRUD_ALIASES,

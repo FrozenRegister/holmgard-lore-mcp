@@ -11,7 +11,7 @@ import type { AppBindings } from '../../types'
 import { parseKvEntry, extractRawField } from '../../lib/lore'
 import { similarity } from '../utils/fuzzy-enum'
 
-const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived', 'find_by_name', 'kill', 'move_to_location', 'move_to_tile'] as const
+export const ACTIONS = ['create', 'get', 'update', 'list', 'delete', 'add_xp', 'get_progression', 'level_up', 'search', 'cast_spell', 'snapshot', 'activate', 'list_passengers', 'recompute_derived', 'find_by_name', 'kill', 'move_to_location', 'move_to_tile'] as const
 type CharAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CharAction> = {
   ...CRUD_ALIASES,

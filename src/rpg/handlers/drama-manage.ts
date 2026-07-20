@@ -10,7 +10,7 @@ import { handleMathManage } from './math-manage'
 import { handleEventManage } from './event-manage'
 import { resolveEffectiveStats } from '../utils/cohabitation'
 
-const ACTIONS = ['roll_ability', 'opposed_check', 'group_check', 'social_combat', 'dramatic_conflict'] as const
+export const ACTIONS = ['roll_ability', 'opposed_check', 'group_check', 'social_combat', 'dramatic_conflict'] as const
 type DramaAction = typeof ACTIONS[number]
 const ALIASES: Record<string, DramaAction> = {
   ability:    'roll_ability',

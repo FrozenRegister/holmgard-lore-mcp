@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'update', 'move_token', 'render', 'delete', 'get_terrain', 'set_terrain', 'calculate_aoe'] as const
+export const ACTIONS = ['create', 'get', 'update', 'move_token', 'render', 'delete', 'get_terrain', 'set_terrain', 'calculate_aoe'] as const
 type CombatMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, CombatMapAction> = {
   new_map: 'create', setup_map: 'create', init_battlefield: 'create',

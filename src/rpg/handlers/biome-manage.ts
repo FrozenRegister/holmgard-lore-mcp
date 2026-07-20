@@ -16,7 +16,7 @@ import type { AppBindings } from '../../types'
 const CATEGORIES = ['terrain', 'aquatic', 'urban', 'hazard', 'magical', 'coastal', 'subterranean', 'void', 'custom'] as const
 type BiomeCategory = typeof CATEGORIES[number]
 
-const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults'] as const
+export const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults'] as const
 type BiomeManageAction = typeof ACTIONS[number]
 const ALIASES: Record<string, BiomeManageAction> = {
   ...CRUD_ALIASES,

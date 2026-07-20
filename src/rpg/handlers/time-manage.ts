@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
 
-const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
+export const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
 type TimeAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TimeAction> = {
   set:      'set_date',
