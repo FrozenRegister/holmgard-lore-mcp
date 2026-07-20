@@ -4,7 +4,7 @@ This protocol governs how AI agents (Archisector, Calder, engineering) resolve G
 
 ## Overview
 
-Every issue resolution follows six phases, each with a defined output. The protocol is designed to be followed autonomously by an AI agent after receiving a work order.
+Every issue resolution follows seven phases, each with a defined output. The protocol is designed to be followed autonomously by an AI agent after receiving a work order.
 
 ## Phase 1: Triage
 

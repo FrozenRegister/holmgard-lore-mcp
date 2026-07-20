@@ -9,7 +9,7 @@
 - [ ] `type-check` passes
 - [ ] `lint` passes
 - [ ] `build` passes
-- [ ] `coverage` — 100% patch on all new/modified code
+- [ ] `coverage` — patch coverage reported (100% target)
 - [ ] Changelog fragment added (`.changelog/fragments/<slug>.md`)
 - [ ] Issue link in PR body (`Closes #N` or `Part of #N`)
 - [ ] Documentation updated (modify `docs/` files OR explain why not needed below)
@@ -44,4 +44,4 @@
 ## Screenshots / logs
 <!-- If visual or log output helps review, paste it here. Otherwise delete. -->
 
-Closes #
+Closes #N

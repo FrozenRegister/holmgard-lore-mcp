@@ -29,7 +29,7 @@ body:
       placeholder: |
         - Design: #440 (CK3-style simulation layer)
         - Current state: `dissolution.ts` has hardcoded 5-stage model
-        - Relevant PR: #459 (issue templates — for reference on repo conventions)
+        - Relevant PR: #448 (config-driven dissolution primitives)
     validations:
       required: true
 
