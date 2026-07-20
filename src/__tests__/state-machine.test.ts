@@ -2,8 +2,9 @@ import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, pars
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
-import { resolveDissolutionConfig, CONFIG_KEY, type SerializedConfig } from '../rpg/utils/dissolution'
+import { resolveDissolutionConfig, loadDissolutionConfigFromKV, CONFIG_KEY, type SerializedConfig } from '../rpg/utils/dissolution'
 import { DEFAULT_DISSOLUTION_CONFIG } from '../rpg/utils/dissolution_config'
+import type { AppBindings } from '../types'
 
 describe('advance_state_stage', () => {
   it('increments State-Stage and writes back', async () => {
@@ -360,6 +361,17 @@ describe('resolveDissolutionConfig — KV lookup order (#472)', () => {
 
     const config = await resolveDissolutionConfig({ env }, 'no-custom-config-for-this-id')
     expect(config.terminalStage).toBe(5)
+  })
+
+  it('loadDissolutionConfigFromKV returns null when the LORE_DB binding is unavailable', async () => {
+    const result = await loadDissolutionConfigFromKV({ env: {} as AppBindings }, CONFIG_KEY)
+    expect(result).toBeNull()
+  })
+
+  it('loadDissolutionConfigFromKV returns null when the KV read throws', async () => {
+    const throwingEnv = { env: { LORE_DB: { get: () => { throw new Error('kv unavailable') } } } as unknown as AppBindings }
+    const result = await loadDissolutionConfigFromKV(throwingEnv, CONFIG_KEY)
+    expect(result).toBeNull()
   })
 })
 
