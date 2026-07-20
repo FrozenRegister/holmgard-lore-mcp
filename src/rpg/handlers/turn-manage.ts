@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['init', 'get_status', 'submit_actions', 'mark_ready', 'poll_results'] as const
+export const ACTIONS = ['init', 'get_status', 'submit_actions', 'mark_ready', 'poll_results'] as const
 type TurnAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TurnAction> = {
   initialize: 'init', setup: 'init', start: 'init', create: 'init',

@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['batch_create_characters', 'batch_create_npcs', 'batch_distribute_items', 'execute_workflow', 'list_templates', 'get_template'] as const
+export const ACTIONS = ['batch_create_characters', 'batch_create_npcs', 'batch_distribute_items', 'execute_workflow', 'list_templates', 'get_template'] as const
 type BatchAction = typeof ACTIONS[number]
 const ALIASES: Record<string, BatchAction> = {
   bulk_characters: 'batch_create_characters', create_characters: 'batch_create_characters', many_characters: 'batch_create_characters',

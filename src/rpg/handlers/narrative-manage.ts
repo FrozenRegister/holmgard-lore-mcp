@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'archive', 'resolve'] as const
+export const ACTIONS = ['create', 'get', 'list', 'update', 'delete', 'archive', 'resolve'] as const
 type NarrativeAction = typeof ACTIONS[number]
 const ALIASES: Record<string, NarrativeAction> = {
   ...CRUD_ALIASES,

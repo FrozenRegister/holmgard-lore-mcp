@@ -10,7 +10,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'use', 'identify', 'get_dc', 'get_details'] as const
+export const ACTIONS = ['create', 'use', 'identify', 'get_dc', 'get_details'] as const
 type ScrollAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ScrollAction> = {
   new_scroll: 'create', make: 'create',

@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = [
+export const ACTIONS = [
   'create', 'get', 'list', 'update', 'delete', 'resume', 'health', 'budget',
   'set_slice', 'remove_slice', 'toggle_slice', 'list_slices', 'narrate', 'broadcast', 'preview_prompt',
   'add_secret', 'list_secrets', 'remove_secret',

@@ -10,7 +10,7 @@ import type { AppBindings } from '../../types'
 
 const RESOLVERS = ['combat', 'drama', 'both'] as const
 
-const ACTIONS = ['list', 'create', 'update', 'delete'] as const
+export const ACTIONS = ['list', 'create', 'update', 'delete'] as const
 type ConflictTypeAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ConflictTypeAction> = {
   ...CRUD_ALIASES,

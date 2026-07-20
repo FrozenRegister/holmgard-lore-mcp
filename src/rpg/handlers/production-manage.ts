@@ -51,7 +51,7 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // the only column protected (it's the primary key, not a mutable field).
 const WORLD_STATE_FIELDS_BLACKLIST = ['world_id'] as const
 
-const ACTIONS = ['advance_day', 'get_state', 'update_state', 'set_schedule', 'list_events'] as const
+export const ACTIONS = ['advance_day', 'get_state', 'update_state', 'set_schedule', 'list_events'] as const
 type ProductionAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ProductionAction> = {
   tick: 'advance_day', next_day: 'advance_day', advance: 'advance_day',

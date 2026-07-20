@@ -38,7 +38,7 @@ import { resolveZonesAt, type ResolvedZone } from './world-map'
 import { getBiomeRegistry } from './biome-manage'
 import { predatorPerceptionModifier, yieldStealthModifier, stealthOutcomeFromMargin, type StealthOutcome, type StealthAdvantage } from './perception-manage'
 
-const ACTIONS = ['resolve', 'check', 'list_types', 'add_type', 'check_infection'] as const
+export const ACTIONS = ['resolve', 'check', 'list_types', 'add_type', 'check_infection'] as const
 type EncounterAction = typeof ACTIONS[number]
 const ALIASES: Record<string, EncounterAction> = {
   encounter: 'resolve', trigger: 'resolve', roll_encounter: 'resolve',

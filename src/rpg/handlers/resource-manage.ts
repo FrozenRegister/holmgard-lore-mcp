@@ -38,7 +38,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['crate_drop', 'consume', 'degrade', 'improvise', 'scavenge', 'craft', 'get_state'] as const
+export const ACTIONS = ['crate_drop', 'consume', 'degrade', 'improvise', 'scavenge', 'craft', 'get_state'] as const
 type ResourceAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ResourceAction> = {
   drop_crate: 'crate_drop', prize_drop: 'crate_drop',

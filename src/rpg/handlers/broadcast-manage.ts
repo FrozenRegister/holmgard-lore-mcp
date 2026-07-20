@@ -43,7 +43,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['audience_pulse', 'resolve_vote', 'production_intervene', 'celeste_moment', 'get_state', 'trigger_event'] as const
+export const ACTIONS = ['audience_pulse', 'resolve_vote', 'production_intervene', 'celeste_moment', 'get_state', 'trigger_event'] as const
 type BroadcastAction = typeof ACTIONS[number]
 const ALIASES: Record<string, BroadcastAction> = {
   pulse: 'audience_pulse', approval_shift: 'audience_pulse',

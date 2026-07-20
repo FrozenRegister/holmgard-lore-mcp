@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES } from '.
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['create', 'list', 'get', 'update', 'get_full_context', 'get_relationship', 'update_relationship', 'record_memory', 'get_history', 'get_recent', 'get_context', 'interact', 'assign_to_location'] as const
+export const ACTIONS = ['create', 'list', 'get', 'update', 'get_full_context', 'get_relationship', 'update_relationship', 'record_memory', 'get_history', 'get_recent', 'get_context', 'interact', 'assign_to_location'] as const
 type NpcAction = typeof ACTIONS[number]
 const ALIASES: Record<string, NpcAction> = {
   ...CRUD_ALIASES,

@@ -8,7 +8,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['spawn_character', 'spawn_encounter', 'spawn_location', 'add_to_encounter', 'list_spawned', 'place_character'] as const
+export const ACTIONS = ['spawn_character', 'spawn_encounter', 'spawn_location', 'add_to_encounter', 'list_spawned', 'place_character'] as const
 type SpawnAction = typeof ACTIONS[number]
 const ALIASES: Record<string, SpawnAction> = {
   character: 'spawn_character', spawn_npc: 'spawn_character', create_character: 'spawn_character',

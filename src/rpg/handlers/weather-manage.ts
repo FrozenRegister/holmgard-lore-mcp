@@ -13,7 +13,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['get_forecast', 'set_forecast', 'list_forecasts'] as const
+export const ACTIONS = ['get_forecast', 'set_forecast', 'list_forecasts'] as const
 type WeatherAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WeatherAction> = {
   get: 'get_forecast', forecast: 'get_forecast', weather: 'get_forecast',

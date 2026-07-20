@@ -7,7 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['steal', 'fence', 'get', 'list', 'recover', 'cool_heat', 'report'] as const
+export const ACTIONS = ['steal', 'fence', 'get', 'list', 'recover', 'cool_heat', 'report'] as const
 type TheftAction = typeof ACTIONS[number]
 const ALIASES: Record<string, TheftAction> = {
   create: 'steal', pick_pocket: 'steal', pickpocket: 'steal', theft: 'steal',

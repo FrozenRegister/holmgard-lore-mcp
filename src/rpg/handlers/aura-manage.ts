@@ -8,7 +8,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { executeRoll } from './math-manage'
 
-const ACTIONS = ['create', 'get', 'list', 'remove', 'expire', 'get_affecting', 'concentrate', 'break_concentration', 'check_save', 'check_duration'] as const
+export const ACTIONS = ['create', 'get', 'list', 'remove', 'expire', 'get_affecting', 'concentrate', 'break_concentration', 'check_save', 'check_duration'] as const
 type AuraAction = typeof ACTIONS[number]
 const ALIASES: Record<string, AuraAction> = {
   add_aura: 'create', cast_aura: 'create',

@@ -9,7 +9,7 @@ import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES, similari
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults'] as const
+export const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults'] as const
 type ZoneTypeManageAction = typeof ACTIONS[number]
 const ALIASES: Record<string, ZoneTypeManageAction> = {
   ...CRUD_ALIASES,

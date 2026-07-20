@@ -30,7 +30,7 @@ import { getGeoOrigin } from './waypoint-manage'
 // #430 — distance/pathfind. Reuses #429's mode base speeds and #429/#431's
 // per-hex effective cost (biome cost, overridden by an explicit water_depth
 // fording rule when set) rather than reimplementing terrain math.
-const ACTIONS = ['overview', 'region', 'hexes', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones', 'render_svg', 'distance', 'pathfind'] as const
+export const ACTIONS = ['overview', 'region', 'hexes', 'patch', 'batch', 'preview', 'find_poi', 'suggest_poi', 'update_poi', 'query_zone', 'list_zones', 'render_svg', 'distance', 'pathfind'] as const
 type WorldMapAction = typeof ACTIONS[number]
 const ALIASES: Record<string, WorldMapAction> = {
   summary: 'overview', world_view: 'overview',
