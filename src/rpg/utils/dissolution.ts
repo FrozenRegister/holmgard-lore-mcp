@@ -11,9 +11,11 @@
 import {
   STAGE_MUTATIONS,
   TERMINAL_CONVERSIONS,
+  DEFAULT_DISSOLUTION_CONFIG,
   type StageMutation,
   type UtilityVector,
   type TerminalConversion,
+  type DissolutionConfig,
 } from './dissolution_config'
 
 /**
@@ -28,16 +30,25 @@ import {
  *                    unmade, conversion pathway resolves
  */
 // Re-exported from config for backward compat
-export type { StageMutation, UtilityVector, TerminalConversion }
-export { STAGE_MUTATIONS, TERMINAL_CONVERSIONS }
+export type { StageMutation, UtilityVector, TerminalConversion, DissolutionConfig }
+export { STAGE_MUTATIONS, TERMINAL_CONVERSIONS, DEFAULT_DISSOLUTION_CONFIG }
+
+// ── Config Integration ─────────────────────────────────────────────────────────
 
 /**
- * Returns the StageMutation record for a given stage number.
- * Returns null for out-of-range values (outside 1–5).
+ * Returns the StageMutation record for a given stage number from the config.
+ * Returns null for out-of-range values (outside 1 to config.terminalStage).
  */
-export function stageMutationFor(stage: number): StageMutation | null {
-  if (stage >= 1 && stage <= 5 && Number.isInteger(stage)) {
-    return STAGE_MUTATIONS[stage as 1 | 2 | 3 | 4 | 5]
+export function stageMutationFor(
+  stage: number,
+  config: DissolutionConfig = DEFAULT_DISSOLUTION_CONFIG,
+): StageMutation | null {
+  if (
+    stage >= 1 &&
+    stage <= config.terminalStage &&
+    Number.isInteger(stage)
+  ) {
+    return config.stages[stage] ?? null
   }
   return null
 }
@@ -120,7 +131,10 @@ export function consumptionTimelineCheck(kvText: string): ConsumptionTimelineInf
  * Build a cumulative sensory profile string for an entity at a given stage.
  * Each stage's mutations are layered on top of previous stages.
  */
-export function buildSensoryProfile(currentStage: number): {
+export function buildSensoryProfile(
+  currentStage: number,
+  config: DissolutionConfig = DEFAULT_DISSOLUTION_CONFIG,
+): {
   scent: string[]
   thermal: string[]
   texture: string[]
@@ -135,8 +149,8 @@ export function buildSensoryProfile(currentStage: number): {
     sound: [] as string[],
   }
 
-  for (let s = 1; s <= currentStage && s <= 5; s++) {
-    const mut = STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5]
+  for (let s = 1; s <= currentStage && s <= config.terminalStage; s++) {
+    const mut = config.stages[s]
     if (!mut) continue
     if (mut.sensory.scent) profile.scent.push(mut.sensory.scent)
     if (mut.sensory.thermal) profile.thermal.push(mut.sensory.thermal)
@@ -151,7 +165,10 @@ export function buildSensoryProfile(currentStage: number): {
 /**
  * Build a cumulative mechanical effects descriptor for an entity at a given stage.
  */
-export function buildMechanicalEffects(currentStage: number): {
+export function buildMechanicalEffects(
+  currentStage: number,
+  config: DissolutionConfig = DEFAULT_DISSOLUTION_CONFIG,
+): {
   resistance_decrement: number
   movement_locked: boolean
   communication_penalty: number
@@ -168,13 +185,22 @@ export function buildMechanicalEffects(currentStage: number): {
     terminal: false,
   }
 
-  for (let s = 1; s <= currentStage && s <= 5; s++) {
-    const mut = STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5]
+  for (let s = 1; s <= currentStage && s <= config.terminalStage; s++) {
+    const mut = config.stages[s]
     if (!mut) continue
-    effects.resistance_decrement = Math.max(effects.resistance_decrement, mut.mechanical.resistance_decrement)
+    effects.resistance_decrement = Math.max(
+      effects.resistance_decrement,
+      mut.mechanical.resistance_decrement,
+    )
     if (mut.mechanical.movement_locked) effects.movement_locked = true
-    effects.communication_penalty = Math.min(effects.communication_penalty, mut.mechanical.communication_penalty)
-    effects.hp_drain_per_tick = Math.max(effects.hp_drain_per_tick, mut.mechanical.hp_drain_per_tick)
+    effects.communication_penalty = Math.min(
+      effects.communication_penalty,
+      mut.mechanical.communication_penalty,
+    )
+    effects.hp_drain_per_tick = Math.max(
+      effects.hp_drain_per_tick,
+      mut.mechanical.hp_drain_per_tick,
+    )
     if (mut.mechanical.knowledge_leakage) effects.knowledge_leakage = true
     if (mut.mechanical.terminal) effects.terminal = true
   }
