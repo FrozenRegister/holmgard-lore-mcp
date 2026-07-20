@@ -36,6 +36,16 @@ jobs:
               // Agent labels
               { name: 'agent:claude', color: '003d82', description: 'Assigned to Claude agent' },
               { name: 'agent:cline',  color: '1a5c1a', description: 'Assigned to Cline agent' },
+              // Issue type labels (auto-applied by issue templates)
+              { name: 'agent-task',     color: 'c5def5', description: 'Structured handoff to a Holmgard agent (agent_task.yml)' },
+              { name: 'migration',      color: '7057ff', description: 'D1 database migration (migration.yml)' },
+              { name: 'D1',             color: '7057ff', description: 'D1 storage layer concern' },
+              { name: 'refactor',       color: '0e8a16', description: 'Internal restructure, no new behavior (refactor.yml)' },
+              { name: 'meta',           color: 'e4e669', description: 'CI, config, templates, process changes (meta.yml)' },
+              { name: 'ci-cd',          color: 'e4e669', description: 'CI/CD pipeline concern' },
+              { name: 'design',         color: 'ededed', description: 'Architectural design proposal (design_proposal.yml)' },
+              { name: 'architecture',   color: 'ededed', description: 'Architecture design concern' },
+              { name: 'triage',         color: 'd73a4a', description: 'Needs initial triage' },
               // Quality / process labels
               { name: 'auto-merge',        color: '8bc34a', description: 'Auto-merge after all CI checks pass' },
               { name: 'needs-docs',        color: 'e6ac00', description: 'PR requires documentation update' },

@@ -46,63 +46,81 @@ jobs:
 
             const branchName = 'issue/' + issueNum + '-' + slug
 
-            // Build work-order comment using string concatenation (to avoid YAML parsing issues)
-            const workOrder = '## Work Order [WORKORDER]\n\n' +
+            // Detect if this is an Agent Task (agent_task.yml) — structured fields
+            const isAgentTask = issue.labels.some(l => l.name === 'agent-task')
+
+            // Build work-order comment
+            let workOrder = '## Work Order [WORKORDER]\n\n' +
               'Issue: #' + issueNum + '\n' +
               'Assigned to: ' + agent + '\n' +
-              'Branch: `' + branchName + '`\n\n' +
-              '---\n\n' +
+              'Branch: `' + branchName + '`\n\n'
+
+            if (isAgentTask) {
+              workOrder += '**This is an Agent Task.** Check the issue body for:\n' +
+                '- **Context** — design issues, PRs, threads this task operates within\n' +
+                '- **Task description** — concrete expected output\n' +
+                '- **Expected output type** — code PR / design comment / investigation / narration / issue filing\n' +
+                '- **Acceptance criteria** — checkbox list the human will verify against\n' +
+                '- **CI relevance** — which gates apply\n' +
+                '- **Constraints** — what NOT to do, conventions to follow\n\n'
+            }
+
+            workOrder += '---\n\n' +
               '### Implementation Workflow\n\n' +
-              'Follow these 20 steps to complete this issue:\n\n' +
+              'Follow these steps to complete this issue:\n\n' +
               '#### Phase 1: Understand\n' +
-              '1. Read the issue, including all comments\n' +
-              '2. Summarize in 3–5 bullet points\n' +
-              '3. Create branch: `' + branchName + '`\n\n' +
+              '1. Read the issue body and all comments\n' +
+              '2. If Agent Task: read Context, Task Description, and Acceptance Criteria carefully\n' +
+              '3. Summarize in 3-5 bullet points\n' +
+              '4. Create branch: `' + branchName + '`\n\n' +
               '#### Phase 2: Analyze & Plan\n' +
-              '4. Locate relevant files in the codebase\n' +
-              '5. Outline step-by-step implementation plan\n' +
-              '6. Consider architectural consistency\n\n' +
+              '5. Locate relevant files in the codebase\n' +
+              '6. Outline step-by-step implementation plan\n' +
+              '7. Review `CLAUDE.md` for conventions (storage selection, API surface, branch naming)\n\n' +
               '#### Phase 3: Implement\n' +
-              '7. Modify existing code or create new files\n' +
-              '8. Maintain architectural consistency\n' +
-              '9. Remove obsolete code; avoid over-engineering\n\n' +
+              '8. Modify existing code or create new files\n' +
+              '9. Maintain architectural consistency\n' +
+              '10. Remove obsolete code; avoid over-engineering\n\n' +
               '#### Phase 4: Test\n' +
-              '10. Add or update tests (unit + integration)\n' +
-              '11. Run full test suite: `npm test`\n' +
-              '12. Fix failures; don\'t proceed with broken tests\n\n' +
-              '#### Phase 5: Quality\n' +
-              '13. Review code for clarity and consistency\n' +
-              '14. Ensure no dead code or poor naming\n' +
-              '15. Format consistently with project\n\n' +
+              '11. Add or update tests (unit + integration)\n' +
+              '12. Run full test suite: `pnpm test`\n' +
+              '13. Fix failures; don\'t proceed with broken tests\n' +
+              '14. Check coverage: `pnpm test:coverage` — aim for 100% patch\n\n' +
+              '#### Phase 5: Quality (CI Gates)\n' +
+              '15. `pnpm lint` — no warnings\n' +
+              '16. `pnpm type-check` — no errors\n' +
+              '17. `pnpm build` — clean build\n\n' +
               '#### Phase 6: Documentation & Changelog\n' +
-              '16. Update relevant documentation:\n' +
+              '18. Update relevant documentation:\n' +
               '    - README sections if applicable\n' +
               '    - API/interface docs\n' +
               '    - Architecture notes\n' +
               '    - Diagrams if affected\n\n' +
-              '17. Update `CHANGELOG.md`:\n' +
-              '    - Add entry under `[Unreleased]`\n' +
+              '19. Add changelog fragment (NOT CHANGELOG.md):\n' +
+              '    - Create `.changelog/fragments/<slug>.md`\n' +
               '    - Include issue number\n' +
-              '    - Provide clear summary\n\n' +
-              '18. Update GitHub Issue:\n' +
-              '    - Post detailed comment with changes\n' +
+              '    - Brief summary of the change\n' +
+              '    - See existing fragments for format\n\n' +
+              '20. Update GitHub Issue:\n' +
+              '    - Post detailed comment with changes made\n' +
               '    - Include links to relevant commits\n' +
               '    - Note tests added/updated\n' +
               '    - Document architectural considerations\n\n' +
               '#### Phase 7: Pull Request\n' +
-              '19. Create clean commit history:\n' +
-              '    - Logical commits\n' +
-              '    - Clear messages\n' +
-              '    - No noise commits\n\n' +
-              '20. Open Pull Request:\n' +
-              '    - Clear title\n' +
-              '    - Summary of issue\n' +
-              '    - Explanation of fix\n' +
-              '    - Notes on tests added/updated\n' +
-              '    - Documentation updates performed\n' +
-              '    - Marked Ready for Review\n\n' +
+              '21. Create clean commit history:\n' +
+              '    - Logical commits, clear messages, no noise\n' +
+              '22. Open Pull Request using the PR template (`.github/PULL_REQUEST_TEMPLATE.md`):\n' +
+              '    - Fill in Summary, CI checklist, What changed, Migration, Test plan\n' +
+              '    - Reference this issue: `Closes #' + issueNum + '`\n' +
+              '    - Mark Ready for Review\n\n' +
               '---\n\n' +
-              '**Key Requirements:** Write tests with any tool changes (vitest + Pester). Update CHANGELOG.md and docs (enforced by PR quality checks). All CI checks must pass. Follow existing patterns in src/.'
+              '**Key Requirements:**\n' +
+              '- Write tests with any tool changes (vitest + Pester)\n' +
+              '- Add changelog fragment (`.changelog/fragments/<slug>.md`) — enforced by pr-quality.yml\n' +
+              '- Update docs (enforced by pr-quality.yml)\n' +
+              '- All CI checks must pass (unit-tests, test, type-check, lint, build, coverage)\n' +
+              '- Follow existing patterns in `src/`\n' +
+              '- Consult `CLAUDE.md` for storage selection (D1 vs KV) and API surface conventions'
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
