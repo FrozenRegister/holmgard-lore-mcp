@@ -1,0 +1,99 @@
+name: Refactor
+description: Internal restructure — no new behavior, no new features, no API changes
+labels: ["refactor"]
+title: "Refactor: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Refactors change structure without changing behavior.** If you're adding a new tool, handler, or API surface, use the Feature Request template instead. If behavior intentionally changes, it's not a refactor.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why refactor this? What's the cost of NOT doing it?
+      placeholder: |
+        `dissolution.ts` has a hardcoded 5-stage model. Every new dissolution pathway copies the same boilerplate. The code is ~400 lines of switch/case that should be ~80 lines of config-driven iteration. Cost of inaction: every new predator archetype requires modifying core engine code.
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior-guarantee
+    attributes:
+      label: Behavior preservation guarantee
+      description: What must NOT change? What existing behavior is sacred?
+      placeholder: |
+        - `advance_stage` must produce the same terminal state for all existing entities
+        - `batch_stage` must produce identical results for all locations
+        - Existing dissolution timelines must not be disrupted
+        - All existing tests must pass without modification
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-call-sites
+    attributes:
+      label: Affected call sites
+      description: Every tool, handler, and function that calls into the code being refactored.
+      placeholder: |
+        - `src/tools/entity.ts` — `advance_stage`, `batch_stage`, `create_consumption_timeline`
+        - `src/rpg/handlers/dissolution.ts` — stage advancement logic
+        - `src/rpg/handlers/encounter.ts` — encounter → dissolution bridge
+        - `src/tools/definitions.ts` — schema unchanged, but verify
+    validations:
+      required: true
+
+  - type: textarea
+    id: regression-plan
+    attributes:
+      label: Regression test plan
+      description: What existing tests must still pass? What new tests prove behavior is preserved?
+      placeholder: |
+        - All existing vitest suites pass with zero changes
+        - New test: config-driven dissolution produces identical output to hardcoded for all 5-stage archetypes
+        - New test: custom stage count (12-stage) advances correctly through all stages
+        - Live smoke: run `batch_stage` against production location and diff output
+    validations:
+      required: true
+
+  - type: textarea
+    id: perf-implications
+    attributes:
+      label: Performance implications
+      description: Is this faster, slower, or same? By how much? How did you measure?
+      placeholder: |
+        - Expected: ~20% faster for 5-stage dissolution (no switch/case dispatch)
+        - Expected: ~50% faster for 20-stage dissolution (iteration vs nested switch)
+        - Measure: `pnpm test:coverage` reports timing; compare before/after
+        - Memory: config objects are loaded once at startup, no per-call allocation change
+
+  - type: textarea
+    id: deprecation
+    attributes:
+      label: Deprecation plan
+      description: Is the old API deprecated (warnings) or removed (breaking)?
+      placeholder: |
+        - Old hardcoded functions are removed (not deprecated) — they're internal, not API surface
+        - No external tools change signatures — this is transparent to `/mcp` consumers
+        - No breaking changes
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      description: >-
+        Refactors have a lighter changelog bar but heavy test bar.
+        Note: `skip-quality-checks` bypasses ALL THREE pr-quality.yml gates (issue-link, changelog, docs)
+        at once — it is not a per-gate switch. Only apply it if you're intentionally skipping all three;
+        the ci.yml gates (unit-tests, test, type-check, lint, build, coverage) are unaffected either way.
+      value: |
+        - [ ] `unit-tests` pass (all existing + new regression tests)
+        - [ ] `test` (sharded) pass
+        - [ ] `type-check` passes
+        - [ ] `lint` passes
+        - [ ] `build` passes
+        - [ ] `coverage` — 100% patch with no drop in project coverage
+        - [ ] Changelog fragment: only if behavior changes (see note above)
+        - [ ] Issue link in PR body
+        - [ ] Documentation: update if internal APIs changed (even if external tools unchanged)

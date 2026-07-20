@@ -1,0 +1,109 @@
+name: Feature Request
+description: New tool, handler, migration, or MCP capability — spec it out
+labels: ["enhancement"]
+title: "Feature: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New MCP tool, RPG handler action, D1 migration, or workflow change. Read `CLAUDE.md` for conventions (storage selection, API surface, test requirements) before filling this out.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What gap does this fill? What can't the narrator / agent do today that this would enable?
+      placeholder: "The narrator can't query what secrets an entity knows about another entity — `get_entity_knowledge` only queries KV markdown and `entity_knowledge`, not the `secrets` table."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What exactly should change? Include tool names, file paths, table schemas, and action signatures.
+      placeholder: |
+        Modify `get_entity_knowledge` in `src/tools/world.ts`:
+        - Add D1 query: `SELECT s.* FROM secrets s JOIN secret_knowers sk ON ...`
+        - Merge results with existing KV and `entity_knowledge` sources
+        - Add `source: ['kv', 'entity_knowledge', 'secrets']` to response
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-systems
+    attributes:
+      label: Affected systems
+      description: List every tool, file, table, and workflow this touches
+      placeholder: |
+        - `src/tools/world.ts` — `get_entity_knowledge` case
+        - `src/rpg/handlers/secret-manage.ts` — `reveal` action (add entityId param)
+        - D1 migration: `secret_knowers` junction table
+        - `src/tools/definitions.ts` — schema updates
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage-layer
+    attributes:
+      label: Storage layer
+      description: Where does state live? See `docs/storage-selection-kv-vs-d1.md` if unsure.
+      options:
+        - D1 (mechanical/queryable state)
+        - KV (freeform/narrative content)
+        - Both (hybrid — explain in proposal)
+        - No new storage (tool/logic only)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: api-surface
+    attributes:
+      label: API surface
+      description: Where does the tool live? See CLAUDE.md § API surface convention.
+      options:
+        - POST /mcp (JSON-RPC — reads, queries, agent-facing)
+        - POST /admin/* (REST — privileged writes, gated by ADMIN_SECRET)
+        - Both
+        - N/A (internal refactor, no new endpoint)
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: What tests will you add? Both Workers vitest AND live smoke tests are required if tools change.
+      placeholder: |
+        - Unit: new secrets query returns merged results from all three sources
+        - Unit: `reveal(entityId)` creates `secret_knowers` row
+        - Live: smoke test against production D1 with known secrets
+        - Coverage: 100% patch on all new code paths
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      description: All of these must pass before merge. Check each one.
+      value: |
+        - [ ] `unit-tests` pass
+        - [ ] `test` (sharded) pass
+        - [ ] `type-check` passes
+        - [ ] `lint` passes
+        - [ ] `build` passes
+        - [ ] `coverage` — 100% patch on all new code
+        - [ ] Changelog fragment added (`.changelog/fragments/my-change.md`)
+        - [ ] Issue link in PR body (e.g. `Closes #N`)
+        - [ ] Documentation updated (modify `docs/` files OR add `## Documentation` section to PR body)
+        - [ ] Branch naming convention followed
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: What issues/PRs does this depend on? What depends on this?
+      placeholder: |
+        - Depends on: #440 (tick engine, for propagation hooks)
+        - Blocks: #447 (extraction pipeline needs secrets routing)

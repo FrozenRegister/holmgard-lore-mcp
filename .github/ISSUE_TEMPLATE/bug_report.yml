@@ -1,0 +1,75 @@
+name: Bug Report
+description: Something is broken — CI failure, type error, test regression, runtime crash
+labels: ["bug", "triage"]
+title: "Bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Before you start, check that:
+        - This hasn't already been reported (search open issues)
+        - You're on the latest `main`
+        - The issue is reproducible
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug — what did you observe?
+      placeholder: "`ci.yml` lint job fails with ESLint error on `src/index.ts` line 42"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+      placeholder: "Lint should pass — no ESLint errors on clean `main`"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps to trigger the bug
+      placeholder: |
+        1. `git checkout main && git pull`
+        2. `pnpm install --frozen-lockfile`
+        3. `pnpm run lint`
+        4. Observe error
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit / version
+      description: The SHA or tag where you observed this (or "latest main")
+      placeholder: "4886e20 or latest main"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      description: Paste terminal output, CI logs, or error messages (wrapped in triple backticks)
+      render: shell
+
+  - type: dropdown
+    id: ci-check
+    attributes:
+      label: CI checklist — have you verified?
+      description: All of these gates are enforced on merge. If this bug causes a CI failure, which job(s) are affected? Names match the job ids in `ci.yml` and `pr-quality.yml` exactly.
+      multiple: true
+      options:
+        - unit-tests
+        - test (sharded)
+        - type-check
+        - lint
+        - build
+        - coverage
+        - check-changelog
+        - check-issue-link
+        - check-docs
+        - None — not a CI bug

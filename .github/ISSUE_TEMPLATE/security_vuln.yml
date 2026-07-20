@@ -1,0 +1,84 @@
+name: Security Vulnerability
+description: Report a security issue or vulnerability
+labels: ["security", "triage"]
+title: "Security: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ Do not use this public form for an unpatched Critical or High severity vulnerability.** This issue tracker is public — filing exploit details here before a fix ships is full public disclosure.
+
+        - **Critical / High severity, or anything with a working exploit**: use GitHub's private vulnerability reporting instead — go to this repository's **Security** tab → **Report a vulnerability** (see `SECURITY.md` in the repo root for details). Do not post reproduction steps or exploit payloads in a public issue.
+        - **Medium / Low severity, or a vulnerability that is already public/patched**: this template is fine to use.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How critical is this vulnerability? If Critical or High, stop and use private reporting (see note above) instead of submitting this form.
+      options:
+        - Critical (RCE, auth bypass, data exfiltration, production impact)
+        - High (significant privilege escalation, data exposure)
+        - Medium (limited impact, requires specific conditions)
+        - Low (cosmetic, information leak with minimal impact)
+    validations:
+      required: true
+
+  - type: textarea
+    id: vulnerability-description
+    attributes:
+      label: Vulnerability description
+      description: What is the vulnerability? What component is affected?
+      placeholder: |
+        The `get_entity_knowledge` tool does not validate the `entity_id` parameter against the `characters` table before querying `secret_knowers`. An attacker can craft a malformed entity_id that triggers a SQL error, leaking database schema information.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: Exact steps to reproduce the vulnerability
+      placeholder: |
+        1. Send MCP request: `{"tool": "get_entity_knowledge", "args": {"entity_id": "'; DROP TABLE characters; --"}}`
+        2. Observe SQL error in logs
+        3. Verify schema information is leaked
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact-assessment
+    attributes:
+      label: Impact assessment
+      description: What can an attacker do with this? Who is affected?
+      placeholder: |
+        - Any authenticated user can trigger SQL errors
+        - Error messages expose D1 table names and column schemas
+        - Potential for SQL injection if parameterized queries are not used
+        - Affects all `/mcp` consumers
+    validations:
+      required: true
+
+  - type: textarea
+    id: disclosure-timeline
+    attributes:
+      label: Disclosure timeline
+      description: How should this be disclosed? Any embargo request?
+      placeholder: |
+        - Prefer: disclose after fix is merged to main
+        - If critical: notify maintainers directly first, then disclose
+        - No embargo requested (or specify embargo period)
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-fix
+    attributes:
+      label: Suggested fix (optional)
+      description: Do you have a fix in mind? This is optional but helpful.
+      placeholder: |
+        Add entity_id validation:
+        ```sql
+        SELECT COUNT(*) FROM characters WHERE id = ?;
+        ```
+        Before querying `secret_knowers`. Return 404 if entity doesn't exist.

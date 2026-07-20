@@ -1,0 +1,133 @@
+name: D1 Migration
+description: Database migration — new table, alter, backfill, or index
+labels: ["migration", "D1"]
+title: "Migration: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **D1 database migration.** All migrations must include forward SQL, rollback plan, and data integrity verification. D1 auto-applies FK enforcement on `CREATE TABLE` — the template reminds you.
+
+  - type: dropdown
+    id: migration-type
+    attributes:
+      label: Migration type
+      description: What kind of migration is this?
+      options:
+        - New table(s)
+        - Alter existing table (add/modify/rename column)
+        - Backfill (populate new column/table from existing data)
+        - Index creation
+        - Destructive (drop table, drop column, rename with data loss)
+        - Multi-step (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: forward-sql
+    attributes:
+      label: Forward migration SQL
+      description: Exact SQL that will be executed. Use FK-in-CREATE pattern (D1 auto-applies on CREATE TABLE). Include IF NOT EXISTS guards for idempotency.
+      render: sql
+      placeholder: |
+        ```sql
+        CREATE TABLE IF NOT EXISTS secret_knowers (
+          secret_id TEXT NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,
+          entity_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          learned_at TEXT DEFAULT (datetime('now')),
+          learned_via TEXT NOT NULL,
+          confidence REAL CHECK(confidence >= 0 AND confidence <= 1),
+          is_leverage TEXT CHECK(is_leverage IN ('dormant', 'active', 'weaponized')),
+          PRIMARY KEY (secret_id, entity_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_secret_knowers_entity
+          ON secret_knowers(entity_id);
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback-sql
+    attributes:
+      label: Rollback SQL
+      description: How do we undo this migration if something goes wrong? Include IF EXISTS guards.
+      render: sql
+      placeholder: |
+        ```sql
+        DROP TABLE IF EXISTS secret_knowers;
+        DROP INDEX IF EXISTS idx_secret_knowers_entity;
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: data-integrity
+    attributes:
+      label: Data integrity verification
+      description: How do you verify this migration didn't corrupt anything? What queries prove it worked?
+      render: sql
+      placeholder: |
+        ```sql
+        -- Verify table exists with correct schema
+        PRAGMA table_info(secret_knowers);
+
+        -- Verify FKs are enforced
+        -- (insert row with invalid entity_id — should fail)
+
+        -- After backfill: verify row counts match
+        SELECT COUNT(*) FROM secret_knowers;
+        SELECT COUNT(*) FROM secrets WHERE revealed = 1;
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: related-issues
+    attributes:
+      label: Related issues
+      description: Which feature/design issues does this migration enable?
+      placeholder: |
+        - Design: #446 (Secrets system)
+        - Feature: #447 (Extraction pipeline)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Safety classification
+      description: How dangerous is this migration?
+      options:
+        - Additive (new table/index/column — no existing data touched)
+        - Modifying (ALTER existing column — data may be reshaped but not lost)
+        - Backfill (populating data — reads existing, writes new)
+        - Destructive (DROP, irreversible rename — data loss possible)
+        - Multi-step (combine above — describe ordering in notes)
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      description: Migrations touch code and run in CI. Check each gate.
+      value: |
+        - [ ] `unit-tests` pass
+        - [ ] `test` (sharded) pass
+        - [ ] `type-check` passes
+        - [ ] `lint` passes
+        - [ ] `build` passes
+        - [ ] `coverage` — 100% patch with no drop in project coverage
+        - [ ] Changelog fragment added (`.changelog/fragments/migration-<slug>.md`)
+        - [ ] Issue link in PR body
+        - [ ] Documentation updated (D1 docs if schema changes)
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Anything else the reviewer or deployer needs to know?
+      placeholder: |
+        - Phase 1 of this migration is additive only (new table). Phase 2 (separate migration) drops `secrets.revealed` column after backfill is confirmed.
+        - Run during low-traffic window — `secret_knowers` join may be expensive on first query.

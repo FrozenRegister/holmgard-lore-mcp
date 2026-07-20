@@ -1,0 +1,98 @@
+name: Agent Task
+description: Dispatch a task to a Holmgard agent — Archisector, Calder, or engineering
+labels: ["agent-task"]
+title: "Agent: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Dispatches work to a specific Holmgard agent.** After filing, add the appropriate `agent:` label to trigger the dispatch workflow.
+
+  - type: dropdown
+    id: target-agent
+    attributes:
+      label: Target agent
+      description: Which agent should pick this up? (Also add the matching `agent:` label after filing.)
+      options:
+        - agent:archisector (narrative, sensory, dissolution)
+        - agent:calder (implementation, code, D1, workers)
+        - agent:engineering (infrastructure, CI, deployment)
+        - agent:multiple (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What design issue, PR, conversation thread, or world-state does this task operate within? Link everything.
+      placeholder: |
+        - Design: #440 (CK3-style simulation layer)
+        - Current state: `dissolution.ts` has hardcoded 5-stage model
+        - Relevant PR: #448 (config-driven dissolution primitives)
+    validations:
+      required: true
+
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Task description
+      description: What exactly should the agent do? Be concrete — expected output, not vibes.
+      placeholder: |
+        Implement config-driven dissolution primitives per #448:
+        1. Replace hardcoded 5-stage model with config interface
+        2. Add KV/D1-backed stage definitions
+        3. Update `advance_stage` to respect configurable terminal stage
+        4. Add tests with 100% patch coverage
+    validations:
+      required: true
+
+  - type: dropdown
+    id: output-type
+    attributes:
+      label: Expected output
+      description: What artifact should this task produce?
+      options:
+        - Code PR (implementation)
+        - Design comment (analysis, feedback, questions)
+        - Investigation (research, profiling, exploration — no code)
+        - Narration (world-state, scene, dissolution prose)
+        - Issue filing (create new issues from parent design)
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: How does the human verify this is done? Checkboxes preferred.
+      placeholder: |
+        - [ ] `pnpm test` passes with 100% patch coverage
+        - [ ] Config interface supports variable stage counts (not just 5)
+        - [ ] Terminal stage is configurable (not hardcoded to stage 5)
+        - [ ] PR links to this issue and the parent design issue
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ci-relevance
+    attributes:
+      label: CI relevance
+      description: Does the agent need to worry about CI gates?
+      options:
+        - "Yes — this produces code; all CI gates apply"
+        - "Yes — this produces docs; only changelog + documentation gates apply"
+        - "No — design/narration only; no CI gates"
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: What must the agent NOT do? What conventions should they follow?
+      placeholder: |
+        - Follow `CLAUDE.md` storage selection (D1 vs KV)
+        - API surface convention: reads → /mcp, writes → /admin/*
+        - Do NOT modify `dissolution.ts` — config layer goes in new file
+        - Branch: `feat/<description>` from `main`
