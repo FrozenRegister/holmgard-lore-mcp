@@ -82,7 +82,7 @@ body:
     id: ci-checklist
     attributes:
       label: CI checklist
-      description: Refactors have a lighter changelog bar but heavy test bar.
+      description: Refactors have a lighter changelog bar but heavy test bar. Note: if this refactor truly changes no behavior, apply the `skip-quality-checks` label to bypass the changelog gate (pr-quality.yml still checks other gates).
       value: |
         - [ ] `unit-tests` pass (all existing + new regression tests)
         - [ ] `test` (sharded) pass
@@ -90,6 +90,6 @@ body:
         - [ ] `lint` passes
         - [ ] `build` passes
         - [ ] `coverage` — 100% patch with no drop in project coverage
-        - [ ] Changelog fragment: only if behavior changes (refactors that preserve behavior skip this)
+        - [ ] Changelog fragment: only if behavior changes (see note above)
         - [ ] Issue link in PR body
         - [ ] Documentation: update if internal APIs changed (even if external tools unchanged)

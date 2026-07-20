@@ -60,7 +60,7 @@ body:
     id: ci-check
     attributes:
       label: CI checklist — have you verified?
-      description: All of these gates are enforced on merge. If this bug causes a CI failure, which job(s) are affected?
+      description: All of these gates are enforced on merge. If this bug causes a CI failure, which job(s) are affected? Use the same naming as the GitHub Actions job names (`ci.yml` and `pr-quality.yml`).
       multiple: true
       options:
         - unit-tests
@@ -68,9 +68,8 @@ body:
         - type-check
         - lint
         - build
-        - coverage (100% patch)
-        - pr-quality / changelog-fragment
-        - pr-quality / issue-link
-        - pr-quality / documentation
-        - auto-merge
+        - coverage
+        - changelog-fragment
+        - issue-link
+        - documentation
         - None — not a CI bug

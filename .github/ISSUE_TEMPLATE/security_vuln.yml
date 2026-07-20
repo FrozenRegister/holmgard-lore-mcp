@@ -1,0 +1,81 @@
+name: Security Vulnerability
+description: Report a security issue or vulnerability
+labels: ["security", "triage"]
+title: "[Security]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ Security Report.** If this is a critical vulnerability that needs immediate attention, contact the maintainers directly in addition to filing this issue.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How critical is this vulnerability?
+      options:
+        - Critical (RCE, auth bypass, data exfiltration, production impact)
+        - High (significant privilege escalation, data exposure)
+        - Medium (limited impact, requires specific conditions)
+        - Low (cosmetic, information leak with minimal impact)
+    validations:
+      required: true
+
+  - type: textarea
+    id: vulnerability-description
+    attributes:
+      label: Vulnerability description
+      description: What is the vulnerability? What component is affected?
+      placeholder: |
+        The `get_entity_knowledge` tool does not validate the `entity_id` parameter against the `characters` table before querying `secret_knowers`. An attacker can craft a malformed entity_id that triggers a SQL error, leaking database schema information.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: Exact steps to reproduce the vulnerability
+      placeholder: |
+        1. Send MCP request: `{"tool": "get_entity_knowledge", "args": {"entity_id": "'; DROP TABLE characters; --"}}`
+        2. Observe SQL error in logs
+        3. Verify schema information is leaked
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact-assessment
+    attributes:
+      label: Impact assessment
+      description: What can an attacker do with this? Who is affected?
+      placeholder: |
+        - Any authenticated user can trigger SQL errors
+        - Error messages expose D1 table names and column schemas
+        - Potential for SQL injection if parameterized queries are not used
+        - Affects all `/mcp` consumers
+    validations:
+      required: true
+
+  - type: textarea
+    id: disclosure-timeline
+    attributes:
+      label: Disclosure timeline
+      description: How should this be disclosed? Any embargo request?
+      placeholder: |
+        - Prefer: disclose after fix is merged to main
+        - If critical: notify maintainers directly first, then disclose
+        - No embargo requested (or specify embargo period)
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-fix
+    attributes:
+      label: Suggested fix (optional)
+      description: Do you have a fix in mind? This is optional but helpful.
+      placeholder: |
+        Add entity_id validation:
+        ```sql
+        SELECT COUNT(*) FROM characters WHERE id = ?;
+        ```
+        Before querying `secret_knowers`. Return 404 if entity doesn't exist.
