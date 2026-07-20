@@ -1,7 +1,7 @@
 name: Agent Task
 description: Dispatch a task to a Holmgard agent — Archisector, Calder, or engineering
 labels: ["agent-task"]
-title: "[Agent]: "
+title: "Agent: "
 body:
   - type: markdown
     attributes:

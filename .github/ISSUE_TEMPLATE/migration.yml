@@ -122,8 +122,6 @@ body:
         - [ ] Changelog fragment added (`.changelog/fragments/migration-<slug>.md`)
         - [ ] Issue link in PR body
         - [ ] Documentation updated (D1 docs if schema changes)
-    validations:
-      required: false
 
   - type: textarea
     id: notes

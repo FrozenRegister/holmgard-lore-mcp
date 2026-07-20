@@ -1,18 +1,21 @@
 name: Security Vulnerability
 description: Report a security issue or vulnerability
 labels: ["security", "triage"]
-title: "[Security]: "
+title: "Security: "
 body:
   - type: markdown
     attributes:
       value: |
-        **⚠️ Security Report.** If this is a critical vulnerability that needs immediate attention, contact the maintainers directly in addition to filing this issue.
+        **⚠️ Do not use this public form for an unpatched Critical or High severity vulnerability.** This issue tracker is public — filing exploit details here before a fix ships is full public disclosure.
+
+        - **Critical / High severity, or anything with a working exploit**: use GitHub's private vulnerability reporting instead — go to this repository's **Security** tab → **Report a vulnerability** (see `SECURITY.md` in the repo root for details). Do not post reproduction steps or exploit payloads in a public issue.
+        - **Medium / Low severity, or a vulnerability that is already public/patched**: this template is fine to use.
 
   - type: dropdown
     id: severity
     attributes:
       label: Severity
-      description: How critical is this vulnerability?
+      description: How critical is this vulnerability? If Critical or High, stop and use private reporting (see note above) instead of submitting this form.
       options:
         - Critical (RCE, auth bypass, data exfiltration, production impact)
         - High (significant privilege escalation, data exposure)
