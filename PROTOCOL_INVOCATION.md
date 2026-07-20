@@ -54,7 +54,7 @@ Start by summarizing your understanding now.
 2. **Plan** — Identify files, outline the fix
 3. **Implement** — Write code, add tests
 4. **Test** — Run `pnpm test`, `pnpm lint`, `pnpm type-check`
-5. **Document** — Update CLAUDE.md, CHANGELOG.md, Issue comment
+5. **Document** — Update docs (CLAUDE.md, docs/ files), add a changelog fragment, and post an Issue comment summarizing the change
 6. **PR** — Open a review-ready Pull Request
 
 **Full protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md)

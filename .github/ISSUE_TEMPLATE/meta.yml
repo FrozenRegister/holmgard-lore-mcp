@@ -93,10 +93,7 @@ body:
       label: CI considerations
       description: Meta changes often skip CI gates. Which ones apply?
       value: |
-        - [ ] `lint` — YAML is linted if `.yamllint` is configured; otherwise N/A
-        - [ ] `build` — N/A (no code changes)
-        - [ ] `test` — N/A (no code changes)
-        - [ ] `type-check` — N/A (no TypeScript changes)
+        - [ ] CI (lint/build/test/type-check): N/A — no code changes
         - [ ] Changelog fragment — recommended (process changes are worth noting)
         - [ ] Issue link — this PR closes this issue
         - [ ] Documentation — N/A (templates are self-documenting) OR update `CONTRIBUTING.md` with template usage guide

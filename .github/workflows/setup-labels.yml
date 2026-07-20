@@ -33,9 +33,13 @@ jobs:
               { name: 'batch:1', color: '00aabb', description: 'Parallel work batch 1' },
               { name: 'batch:2', color: '00bbaa', description: 'Parallel work batch 2' },
               { name: 'batch:3', color: '00ccbb', description: 'Parallel work batch 3' },
-              // Agent labels
+              // Agent labels (workflow dispatch targets)
               { name: 'agent:claude', color: '003d82', description: 'Assigned to Claude agent' },
               { name: 'agent:cline',  color: '1a5c1a', description: 'Assigned to Cline agent' },
+              { name: 'agent:archisector', color: 'bf9000', description: 'Assigned to Archisector (narrative, sensory, dissolution)' },
+              { name: 'agent:calder',   color: '17a2b8', description: 'Assigned to Calder (implementation, code, D1, workers)' },
+              { name: 'agent:engineering', color: '800080', description: 'Assigned to engineering agent (infrastructure, CI, deployment)' },
+              { name: 'agent:multiple', color: '666666', description: 'Multiple agents assigned (describe below)' },
               // Issue type labels (auto-applied by issue templates)
               { name: 'agent-task',     color: 'c5def5', description: 'Structured handoff to a Holmgard agent (agent_task.yml)' },
               { name: 'migration',      color: '7057ff', description: 'D1 database migration (migration.yml)' },
@@ -46,11 +50,12 @@ jobs:
               { name: 'design',         color: 'ededed', description: 'Architectural design proposal (design_proposal.yml)' },
               { name: 'architecture',   color: 'ededed', description: 'Architecture design concern' },
               { name: 'triage',         color: 'd73a4a', description: 'Needs initial triage' },
+              { name: 'security',       color: 'b60205', description: 'Security vulnerability report (security_vuln.yml)' },
               // Quality / process labels
               { name: 'auto-merge',        color: '8bc34a', description: 'Auto-merge after all CI checks pass' },
               { name: 'needs-docs',        color: 'e6ac00', description: 'PR requires documentation update' },
               { name: 'needs-changelog',   color: 'e6ac00', description: 'PR requires CHANGELOG entry' },
-              { name: 'skip-quality-checks', color: 'cccccc', description: 'Bypass PR quality checks (emergency hotfix)' },
+              { name: 'skip-quality-checks', color: 'cccccc', description: 'Bypass PR quality checks (emergency hotfix or refactor with no behavior change)' },
             ]
 
             for (const label of labels) {

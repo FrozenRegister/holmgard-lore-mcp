@@ -1,7 +1,7 @@
 name: Feature Request
 description: New tool, handler, migration, or MCP capability — spec it out
 labels: ["enhancement"]
-title: "[Feature]: "
+title: "Feature: "
 body:
   - type: markdown
     attributes:
@@ -95,7 +95,7 @@ body:
         - [ ] `build` passes
         - [ ] `coverage` — 100% patch on all new code
         - [ ] Changelog fragment added (`.changelog/fragments/my-change.md`)
-        - [ ] Issue link in PR body (`Closes #N`)
+        - [ ] Issue link in PR body (e.g. `Closes #N`)
         - [ ] Documentation updated (modify `docs/` files OR add `## Documentation` section to PR body)
         - [ ] Branch naming convention followed
 

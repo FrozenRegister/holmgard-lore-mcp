@@ -108,6 +108,22 @@ body:
       required: true
 
   - type: textarea
+    id: ci-checklist
+    attributes:
+      label: CI checklist
+      description: Migrations touch code and run in CI. Check each gate.
+      value: |
+        - [ ] `unit-tests` pass
+        - [ ] `test` (sharded) pass
+        - [ ] `type-check` passes
+        - [ ] `lint` passes
+        - [ ] `build` passes
+        - [ ] `coverage` — 100% patch with no drop in project coverage
+        - [ ] Changelog fragment added (`.changelog/fragments/migration-<slug>.md`)
+        - [ ] Issue link in PR body
+        - [ ] Documentation updated (D1 docs if schema changes)
+
+  - type: textarea
     id: notes
     attributes:
       label: Additional notes
