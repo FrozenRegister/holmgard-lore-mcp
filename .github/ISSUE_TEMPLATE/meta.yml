@@ -93,6 +93,7 @@ body:
       label: CI considerations
       description: Meta changes often skip CI gates. Which ones apply?
       value: |
-        CI: N/A — no code changes. Changelog fragment recommended.
+        - [ ] CI (lint/build/test/type-check): N/A — no code changes
+        - [ ] Changelog fragment — recommended (process changes are worth noting)
         - [ ] Issue link — this PR closes this issue
         - [ ] Documentation — N/A (templates are self-documenting) OR update `CONTRIBUTING.md` with template usage guide
