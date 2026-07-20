@@ -40,92 +40,125 @@ export interface TerminalConversion {
   description: string
 }
 
+export interface DissolutionConfig {
+  /**
+   * Map of stage number to StageMutation definition.
+   * Stage numbers are 1-indexed and must be contiguous from 1 to terminalStage.
+   */
+  stages: Record<number, StageMutation>
+  /**
+   * Terminal stage for forced conversion.
+   * Stages beyond this point are considered terminal conversions.
+   */
+  terminalStage: number
+}
+
+/**
+ * Default dissolution configuration - 5 stages.
+ * This config matches the hardcoded STAGE_MUTATIONS for backward compatibility.
+ */
+export const DEFAULT_DISSOLUTION_CONFIG: DissolutionConfig = {
+  stages: {
+    1: {
+      sensory: {
+        scent: 'fear-pheromone_spike',
+        thermal: null,
+        texture: null,
+        visual: null,
+        sound: null,
+      },
+      mechanical: {
+        resistance_decrement: 0.05,
+        movement_locked: false,
+        communication_penalty: 0,
+        hp_drain_per_tick: 0,
+        knowledge_leakage: false,
+        terminal: false,
+      },
+    },
+    2: {
+      sensory: {
+        scent: 'fear-pheromone_spike, metabolic_stress',
+        thermal: 'Shaper-radiance: ambient +10°F',
+        texture: null,
+        visual: null,
+        sound: null,
+      },
+      mechanical: {
+        resistance_decrement: 0.10,
+        movement_locked: true,
+        communication_penalty: 0,
+        hp_drain_per_tick: 0,
+        knowledge_leakage: false,
+        terminal: false,
+      },
+    },
+    3: {
+      sensory: {
+        scent: 'rending_tissue, metabolic_stress',
+        thermal: 'Shaper-radiance: ambient +10°F',
+        texture: 'epidermal_softening',
+        visual: null,
+        sound: 'voice_degradation',
+      },
+      mechanical: {
+        resistance_decrement: 0.15,
+        movement_locked: true,
+        communication_penalty: -4,
+        hp_drain_per_tick: 2,
+        knowledge_leakage: false,
+        terminal: false,
+      },
+    },
+    4: {
+      sensory: {
+        scent: 'rending_tissue, metabolic_stress',
+        thermal: 'Shaper-radiance: ambient +10°F',
+        texture: 'epidermal_softening, surface_membrane_transparency',
+        visual: 'bioluminescence_shift_to_predator_spectrum',
+        sound: 'voice_degradation, internal_hum',
+      },
+      mechanical: {
+        resistance_decrement: 0.20,
+        movement_locked: true,
+        communication_penalty: -6,
+        hp_drain_per_tick: 4,
+        knowledge_leakage: true,
+        terminal: false,
+      },
+    },
+    5: {
+      sensory: {
+        scent: 'rendered_fat / fermentation / mineral_stillness',
+        thermal: 'cooling_to_ambient',
+        texture: 'complete_tissue_restructuring',
+        visual: 'identity_markers_dissolving',
+        sound: 'silence',
+      },
+      mechanical: {
+        resistance_decrement: 0.30,
+        movement_locked: true,
+        communication_penalty: -10,
+        hp_drain_per_tick: 8,
+        knowledge_leakage: true,
+        terminal: true,
+      },
+    },
+  },
+  terminalStage: 5,
+}
+
+/**
+ * Legacy constant for backward compatibility.
+ * Re-exported from the default config so existing consumers of STAGE_MUTATIONS
+ * keep working unchanged.
+ */
 export const STAGE_MUTATIONS: Record<1 | 2 | 3 | 4 | 5, StageMutation> = {
-  1: {
-    sensory: {
-      scent: 'fear-pheromone_spike',
-      thermal: null,
-      texture: null,
-      visual: null,
-      sound: null,
-    },
-    mechanical: {
-      resistance_decrement: 0.05,
-      movement_locked: false,
-      communication_penalty: 0,
-      hp_drain_per_tick: 0,
-      knowledge_leakage: false,
-      terminal: false,
-    },
-  },
-  2: {
-    sensory: {
-      scent: 'fear-pheromone_spike, metabolic_stress',
-      thermal: 'Shaper-radiance: ambient +10°F',
-      texture: null,
-      visual: null,
-      sound: null,
-    },
-    mechanical: {
-      resistance_decrement: 0.10,
-      movement_locked: true,
-      communication_penalty: 0,
-      hp_drain_per_tick: 0,
-      knowledge_leakage: false,
-      terminal: false,
-    },
-  },
-  3: {
-    sensory: {
-      scent: 'rending_tissue, metabolic_stress',
-      thermal: 'Shaper-radiance: ambient +10°F',
-      texture: 'epidermal_softening',
-      visual: null,
-      sound: 'voice_degradation',
-    },
-    mechanical: {
-      resistance_decrement: 0.15,
-      movement_locked: true,
-      communication_penalty: -4,
-      hp_drain_per_tick: 2,
-      knowledge_leakage: false,
-      terminal: false,
-    },
-  },
-  4: {
-    sensory: {
-      scent: 'rending_tissue, metabolic_stress',
-      thermal: 'Shaper-radiance: ambient +10°F',
-      texture: 'epidermal_softening, surface_membrane_transparency',
-      visual: 'bioluminescence_shift_to_predator_spectrum',
-      sound: 'voice_degradation, internal_hum',
-    },
-    mechanical: {
-      resistance_decrement: 0.20,
-      movement_locked: true,
-      communication_penalty: -6,
-      hp_drain_per_tick: 4,
-      knowledge_leakage: true,
-      terminal: false,
-    },
-  },
-  5: {
-    sensory: {
-      scent: 'rendered_fat / fermentation / mineral_stillness',
-      thermal: 'cooling_to_ambient',
-      texture: 'complete_tissue_restructuring',
-      visual: 'identity_markers_dissolving',
-      sound: 'silence',
-    },
-    mechanical: {
-      resistance_decrement: 0.30,
-      movement_locked: true,
-      communication_penalty: -10,
-      hp_drain_per_tick: 8,
-      knowledge_leakage: true,
-      terminal: true,
-    },
-  },
+  1: DEFAULT_DISSOLUTION_CONFIG.stages[1],
+  2: DEFAULT_DISSOLUTION_CONFIG.stages[2],
+  3: DEFAULT_DISSOLUTION_CONFIG.stages[3],
+  4: DEFAULT_DISSOLUTION_CONFIG.stages[4],
+  5: DEFAULT_DISSOLUTION_CONFIG.stages[5],
 }
 
 // Reuse the exact vocabulary from #410/#315
