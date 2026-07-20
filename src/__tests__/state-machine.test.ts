@@ -471,6 +471,20 @@ describe('advance_state_stage — config-driven dissolution beyond stage 5 (#471
     expect(res.result.dissolution?.stage_exceeds_config).toBe(true)
     expect(res.result.dissolution?.scent_applied).toBeUndefined()
   })
+
+  it('neither writes mutations nor sets stage_exceeds_config when the config-exceeding stage happens to also be the entity\'s own terminal stage', async () => {
+    // Resolved config (default, nothing seeded) has terminalStage 5, so
+    // stageMut is null at stage 6. But this entity's own State-Total is 6,
+    // so is_terminal fires at the same advance — neither the `if (stageMut)`
+    // branch nor the `else if (!isTerminal)` guard should run.
+    await seedStagedCharacter('Coincident Terminal Subject', 5)
+    await seedKV('character:coincident-terminal-subject', '**State-Stage:** 5\n**State-Total:** 6\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:coincident-terminal-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.dissolution).toBeUndefined()
+  })
 })
 
 describe('process_stage_batch', () => {
