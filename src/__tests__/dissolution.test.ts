@@ -15,6 +15,7 @@ import {
   buildSensoryProfile,
   buildMechanicalEffects,
 } from '../rpg/utils/dissolution'
+import { DEFAULT_DISSOLUTION_CONFIG, type DissolutionConfig } from '../rpg/utils/dissolution_config'
 
 describe('dissolution primitives', () => {
   // ── STAGE_MUTATIONS ───────────────────────────────────────────────
@@ -370,5 +371,82 @@ describe('dissolution primitives', () => {
     expect(effects.hp_drain_per_tick).toBe(0)
     expect(effects.knowledge_leakage).toBe(false)
     expect(effects.terminal).toBe(false)
+  })
+
+  // ── Config-driven behavior beyond the default 5 stages (#471/#472) ──
+  // #448 added an optional `config` parameter to these functions but nothing
+  // ever called them with a non-default config, so stages past 5 remained a
+  // silent no-op in production. These tests exercise an actual custom,
+  // longer config directly (no KV involved — pure function behavior).
+
+  function buildCustomConfig(stageCount: number): DissolutionConfig {
+    const stages: DissolutionConfig['stages'] = {}
+    for (let s = 1; s <= stageCount; s++) {
+      stages[s] = {
+        sensory: { scent: `custom-scent-${s}`, thermal: null, texture: null, visual: null, sound: null },
+        mechanical: {
+          resistance_decrement: 0.01 * s,
+          movement_locked: s >= 2,
+          communication_penalty: 0,
+          hp_drain_per_tick: s,
+          knowledge_leakage: false,
+          terminal: s === stageCount,
+        },
+      }
+    }
+    return { stages, terminalStage: stageCount }
+  }
+
+  it('stageMutationFor with a custom 8-stage config returns real mutations for stages 6-8 (previously null)', () => {
+    const config = buildCustomConfig(8)
+    for (const s of [6, 7, 8]) {
+      const mut = stageMutationFor(s, config)
+      expect(mut).not.toBeNull()
+      expect(mut!.sensory.scent).toBe(`custom-scent-${s}`)
+      expect(mut!.mechanical.hp_drain_per_tick).toBe(s)
+    }
+    expect(stageMutationFor(8, config)!.mechanical.terminal).toBe(true)
+  })
+
+  it('stageMutationFor with a custom config still returns null beyond that config\'s own terminalStage', () => {
+    const config = buildCustomConfig(8)
+    expect(stageMutationFor(9, config)).toBeNull()
+  })
+
+  it('stageMutationFor defaults to DEFAULT_DISSOLUTION_CONFIG (5 stages) when no config is passed', () => {
+    expect(stageMutationFor(5)).toEqual(stageMutationFor(5, DEFAULT_DISSOLUTION_CONFIG))
+    expect(stageMutationFor(6)).toBeNull()
+  })
+
+  it('buildSensoryProfile with a custom 8-stage config accumulates scent through stage 8', () => {
+    const config = buildCustomConfig(8)
+    const profile = buildSensoryProfile(8, config)
+    expect(profile.scent).toHaveLength(8)
+    expect(profile.scent[7]).toBe('custom-scent-8')
+  })
+
+  it('buildSensoryProfile with the default config is unaffected by a custom config passed elsewhere (no shared state)', () => {
+    const config = buildCustomConfig(8)
+    buildSensoryProfile(8, config)
+    const defaultProfile = buildSensoryProfile(5)
+    expect(defaultProfile.scent).toEqual(buildSensoryProfile(5, DEFAULT_DISSOLUTION_CONFIG).scent)
+  })
+
+  it('buildMechanicalEffects with a custom 8-stage config drains HP and reaches terminal at stage 8, not 5', () => {
+    const config = buildCustomConfig(8)
+    const effectsAt5 = buildMechanicalEffects(5, config)
+    expect(effectsAt5.terminal).toBe(false)
+    expect(effectsAt5.hp_drain_per_tick).toBe(5)
+
+    const effectsAt8 = buildMechanicalEffects(8, config)
+    expect(effectsAt8.terminal).toBe(true)
+    expect(effectsAt8.hp_drain_per_tick).toBe(8)
+  })
+
+  it('buildMechanicalEffects with a custom config never accumulates past its own terminalStage', () => {
+    const config = buildCustomConfig(8)
+    const effects = buildMechanicalEffects(20, config)
+    // currentStage=20 exceeds config.terminalStage=8; loop caps at 8
+    expect(effects.hp_drain_per_tick).toBe(8)
   })
 })

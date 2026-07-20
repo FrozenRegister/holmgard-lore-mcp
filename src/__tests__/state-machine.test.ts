@@ -2,6 +2,9 @@ import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, pars
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './setup-d1'
+import { resolveDissolutionConfig, loadDissolutionConfigFromKV, CONFIG_KEY, type SerializedConfig } from '../rpg/utils/dissolution'
+import { DEFAULT_DISSOLUTION_CONFIG } from '../rpg/utils/dissolution_config'
+import type { AppBindings } from '../types'
 
 describe('advance_state_stage', () => {
   it('increments State-Stage and writes back', async () => {
@@ -298,6 +301,189 @@ describe('advance_state_stage — dissolution primitives (#441)', () => {
     // KV fields are still written for stage progression
     expect(lore.result.text).toContain('Dissolution-Scent')
     expect(lore.result.text).not.toContain('Movement-Locked')
+  })
+})
+
+// #472 — resolveDissolutionConfig's KV lookup order, tested directly against
+// the live KV binding (no advance_stage involved).
+describe('resolveDissolutionConfig — KV lookup order (#472)', () => {
+  it('falls back to DEFAULT_DISSOLUTION_CONFIG when nothing is seeded and no dissolutionId is given', async () => {
+    const config = await resolveDissolutionConfig({ env }, null)
+    expect(config).toEqual(DEFAULT_DISSOLUTION_CONFIG)
+  })
+
+  it('falls back to DEFAULT_DISSOLUTION_CONFIG when a dissolutionId is given but nothing is seeded anywhere', async () => {
+    const config = await resolveDissolutionConfig({ env }, 'no-such-instance')
+    expect(config).toEqual(DEFAULT_DISSOLUTION_CONFIG)
+  })
+
+  it('uses the seeded default config when no dissolutionId is given', async () => {
+    const seeded: SerializedConfig = {
+      version: 2,
+      stages: { 1: DEFAULT_DISSOLUTION_CONFIG.stages[1], 2: DEFAULT_DISSOLUTION_CONFIG.stages[2] },
+      terminalStage: 2,
+      terminalConversions: {},
+      migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put(CONFIG_KEY, JSON.stringify(seeded))
+
+    const config = await resolveDissolutionConfig({ env }, null)
+    expect(config.terminalStage).toBe(2)
+    expect(config.stages[1]).toEqual(DEFAULT_DISSOLUTION_CONFIG.stages[1])
+  })
+
+  it('prefers a per-instance config over the seeded default when dissolutionId matches', async () => {
+    const seededDefault: SerializedConfig = {
+      version: 2, stages: DEFAULT_DISSOLUTION_CONFIG.stages, terminalStage: 5,
+      terminalConversions: {}, migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put(CONFIG_KEY, JSON.stringify(seededDefault))
+
+    const custom: SerializedConfig = {
+      version: 1,
+      stages: { 1: DEFAULT_DISSOLUTION_CONFIG.stages[1] },
+      terminalStage: 1,
+      terminalConversions: {},
+      migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put('dissolution:config:subject-12', JSON.stringify(custom))
+
+    const config = await resolveDissolutionConfig({ env }, 'subject-12')
+    expect(config.terminalStage).toBe(1)
+  })
+
+  it('falls back to the seeded default when dissolutionId is set but no per-instance config exists at that key', async () => {
+    const seededDefault: SerializedConfig = {
+      version: 2, stages: DEFAULT_DISSOLUTION_CONFIG.stages, terminalStage: 5,
+      terminalConversions: {}, migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put(CONFIG_KEY, JSON.stringify(seededDefault))
+
+    const config = await resolveDissolutionConfig({ env }, 'no-custom-config-for-this-id')
+    expect(config.terminalStage).toBe(5)
+  })
+
+  it('loadDissolutionConfigFromKV returns null when the LORE_DB binding is unavailable', async () => {
+    const result = await loadDissolutionConfigFromKV({ env: {} as AppBindings }, CONFIG_KEY)
+    expect(result).toBeNull()
+  })
+
+  it('loadDissolutionConfigFromKV returns null when the KV read throws', async () => {
+    const throwingEnv = { env: { LORE_DB: { get: () => { throw new Error('kv unavailable') } } } as unknown as AppBindings }
+    const result = await loadDissolutionConfigFromKV(throwingEnv, CONFIG_KEY)
+    expect(result).toBeNull()
+  })
+})
+
+// #471/#472 — advance_stage actually applies mutations past stage 5 for a
+// character with a per-instance config, and surfaces (instead of silently
+// no-oping) the case where an entity's own tracked total exceeds what its
+// resolved config defines.
+describe('advance_state_stage — config-driven dissolution beyond stage 5 (#471, #472)', () => {
+  beforeEach(async () => {
+    await setupRpgDb(env.RPG_DB)
+  })
+
+  async function seedStagedCharacter(name: string, dissolutionStage: number, opts: { dissolutionId?: string; hp?: number } = {}): Promise<string> {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, death_mode, dissolution_stage, dissolution_stages, dissolution_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, name, '{}', opts.hp ?? 20, 20, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0,
+      'staged', dissolutionStage, 8, opts.dissolutionId ?? null, now, now,
+    ).run()
+    return id
+  }
+
+  it('applies real sensory/mechanical mutations at stage 6, 7, and 8 for a character with an 8-stage per-instance config (previously silently no-op\'d)', async () => {
+    const dissolutionId = 'eight-stage-transform'
+    const customConfig: SerializedConfig = {
+      version: 1,
+      stages: Object.fromEntries(Array.from({ length: 8 }, (_, i) => {
+        const s = i + 1
+        return [s, {
+          sensory: { scent: `stage-${s}-scent`, thermal: null, texture: null, visual: null, sound: null },
+          mechanical: { resistance_decrement: 0.01 * s, movement_locked: s >= 2, communication_penalty: 0, hp_drain_per_tick: s, knowledge_leakage: false, terminal: s === 8 },
+        }]
+      })),
+      terminalStage: 8,
+      terminalConversions: {},
+      migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put(`dissolution:config:${dissolutionId}`, JSON.stringify(customConfig))
+
+    const characterId = await seedStagedCharacter('Eight Stage Subject', 5, { dissolutionId, hp: 20 })
+    await seedKV('character:eight-stage-subject', '**State-Stage:** 5\n**State-Total:** 8\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:eight-stage-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.new_stage).toBe(6)
+    // This is the exact bug from #471: stage 6 previously produced no
+    // dissolution fields at all under the default 5-stage config.
+    expect(res.result.dissolution?.scent_applied).toBe(true)
+    expect(res.result.dissolution?.stage_exceeds_config).toBeUndefined()
+
+    const lore = await callTool('lore_manage', { action: 'get', query: 'character:eight-stage-subject' })
+    expect(lore.result.text).toContain('stage-6-scent')
+
+    const row = await env.RPG_DB.prepare('SELECT hp FROM characters WHERE id = ?').bind(characterId).first() as { hp: number }
+    // Stage 6 has hp_drain_per_tick = 6 in the custom config
+    expect(row.hp).toBe(14)
+  })
+
+  it('reaches the custom config\'s terminal at stage 8, not stage 5', async () => {
+    const dissolutionId = 'eight-stage-terminal'
+    const customConfig: SerializedConfig = {
+      version: 1,
+      stages: Object.fromEntries(Array.from({ length: 8 }, (_, i) => {
+        const s = i + 1
+        return [s, {
+          sensory: { scent: `stage-${s}-scent`, thermal: null, texture: null, visual: null, sound: null },
+          mechanical: { resistance_decrement: 0.01 * s, movement_locked: s >= 2, communication_penalty: 0, hp_drain_per_tick: s, knowledge_leakage: false, terminal: s === 8 },
+        }]
+      })),
+      terminalStage: 8,
+      terminalConversions: {},
+      migrated_at: new Date().toISOString(),
+    }
+    await env.LORE_DB.put(`dissolution:config:${dissolutionId}`, JSON.stringify(customConfig))
+    await seedStagedCharacter('Eight Stage Terminal Subject', 7, { dissolutionId })
+    await seedKV('character:eight-stage-terminal-subject', '**State-Stage:** 7\n**State-Total:** 8\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:eight-stage-terminal-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.dissolution?.scent_applied).toBe(true)
+  })
+
+  it('surfaces stage_exceeds_config instead of silently no-oping when the resolved config is shorter than the entity\'s own tracked total', async () => {
+    // No per-instance config seeded and none seeded at the default key either
+    // -> resolves to DEFAULT_DISSOLUTION_CONFIG (terminalStage 5), but this
+    // character's own State-Total says it has 8 stages — a mismatch.
+    await seedStagedCharacter('Mismatched Config Subject', 5)
+    await seedKV('character:mismatched-config-subject', '**State-Stage:** 5\n**State-Total:** 8\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:mismatched-config-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.is_terminal).toBe(false)
+    expect(res.result.dissolution?.stage_exceeds_config).toBe(true)
+    expect(res.result.dissolution?.scent_applied).toBeUndefined()
+  })
+
+  it('neither writes mutations nor sets stage_exceeds_config when the config-exceeding stage happens to also be the entity\'s own terminal stage', async () => {
+    // Resolved config (default, nothing seeded) has terminalStage 5, so
+    // stageMut is null at stage 6. But this entity's own State-Total is 6,
+    // so is_terminal fires at the same advance — neither the `if (stageMut)`
+    // branch nor the `else if (!isTerminal)` guard should run.
+    await seedStagedCharacter('Coincident Terminal Subject', 5)
+    await seedKV('character:coincident-terminal-subject', '**State-Stage:** 5\n**State-Total:** 6\n**Stage-Timer:** 1')
+
+    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'character:coincident-terminal-subject' })
+    expect(res.result.advanced).toBe(true)
+    expect(res.result.is_terminal).toBe(true)
+    expect(res.result.dissolution).toBeUndefined()
   })
 })
 

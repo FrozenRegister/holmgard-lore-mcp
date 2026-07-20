@@ -5,7 +5,7 @@ import { makeResult, makeError } from '../lib/rpc'
 import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
-import { stageMutationFor, buildSensoryProfile, buildMechanicalEffects, resolveTerminalConversion } from '../rpg/utils/dissolution'
+import { stageMutationFor, buildSensoryProfile, buildMechanicalEffects, resolveTerminalConversion, resolveDissolutionConfig } from '../rpg/utils/dissolution'
 import type { ToolContext, TypedToolContext } from './types'
 
 export const resolveInteractionSchema = z.object({
@@ -600,11 +600,11 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // #411/#420 — resolve the D1 character link once, up front, so both the
   // dissolution_stage mirror and #420's terminal-stage hook can use it.
   const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
-  type CharDissolutionRow = { death_mode: string | null; dissolution_stage: number | null; dissolution_stages: number | null; dissolution_terminal: string | null; world_id: string | null; hp: number | null }
+  type CharDissolutionRow = { death_mode: string | null; dissolution_stage: number | null; dissolution_stages: number | null; dissolution_terminal: string | null; dissolution_id: string | null; world_id: string | null; hp: number | null }
   let charRow: CharDissolutionRow | null = null
   if (characterId && c.env.RPG_DB) {
     charRow = await c.env.RPG_DB.prepare(
-      'SELECT death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, world_id, hp FROM characters WHERE id = ?'
+      'SELECT death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, dissolution_id, world_id, hp FROM characters WHERE id = ?'
     ).bind(characterId).first() as CharDissolutionRow | null
   }
 
@@ -612,13 +612,20 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   // #441 — Apply stage-gated sensory mutations to KV entity text and compute
   // mechanical consequences. Each stage enters progressively worse sensory
   // and mechanical states.
-  const stageMut = stageMutationFor(newStage)
+  // #472 — resolve the config that applies to this specific character
+  // (per-instance override via dissolution_id, falling back to the seeded
+  // or in-memory default) instead of always using the hardcoded 5-stage
+  // table, so stage counts beyond 5 (e.g. Subject #12's proximity-gated
+  // stages, or any narrator-authored N-stage transformation) actually apply
+  // mutations instead of silently no-oping past stage 5 (#471).
+  const dissolutionConfig = await resolveDissolutionConfig(c, charRow?.dissolution_id ?? null)
+  const stageMut = stageMutationFor(newStage, dissolutionConfig)
   const dissolutionDetails: Record<string, unknown> = {}
 
   if (stageMut) {
     // Build cumulative sensory profile from all stages up to current
-    const sensory = buildSensoryProfile(newStage)
-    const mechanical = buildMechanicalEffects(newStage)
+    const sensory = buildSensoryProfile(newStage, dissolutionConfig)
+    const mechanical = buildMechanicalEffects(newStage, dissolutionConfig)
 
     // Write sensory fields to KV entity text
     if (sensory.scent.length > 0) {
@@ -654,6 +661,12 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
     }
 
     dissolutionDetails.mechanical = mechanical
+  } else if (!isTerminal) {
+    // #471/#472 — newStage is beyond what the resolved config defines, but
+    // this entity's own tracked total (KV State-Total) says it isn't done
+    // yet — a mismatched/too-short config, not expected steady-state
+    // behavior. Surface it instead of silently doing nothing.
+    dissolutionDetails.stage_exceeds_config = true
   }
 
   // #420 — terminal-stage hook, from Archisector's follow-up on #411. Right
