@@ -8,6 +8,7 @@
 // dissolution_stages, dissolution_terminal) and KV entity text fields.
 // Every D1 write for one advance is a single atomic db.batch.
 
+import type { AppBindings } from '../../types'
 import {
   STAGE_MUTATIONS,
   TERMINAL_CONVERSIONS,
@@ -51,6 +52,65 @@ export function stageMutationFor(
     return config.stages[stage] ?? null
   }
   return null
+}
+
+// ── KV-backed config resolution (#472) ────────────────────────────────────
+// The seed step (seedDissolutionConfigKV) lives in migrate-dissolution-config.ts
+// as a one-time deploy operation, but reading a config back is on the live
+// advance_stage request path — it belongs here, not in a migrate-*.ts file
+// (vitest.config.ts excludes migrate-*.ts from the coverage gate, which is
+// correct for one-time seed scripts but would wrongly exempt this read path).
+
+export const CONFIG_KEY = 'dissolution:config:phase0-5'
+
+export interface SerializedConfig {
+  version: number
+  stages: Record<number, StageMutation>
+  terminalStage: number
+  terminalConversions: Record<string, TerminalConversion>
+  migrated_at: string
+}
+
+/**
+ * Load a dissolution config from KV at the given key (defaults to the
+ * seeded phase0-5 default key). Returns null if KV is unavailable, the key
+ * doesn't exist, or the stored value doesn't parse.
+ */
+export async function loadDissolutionConfigFromKV(
+  c: { env: AppBindings },
+  key: string = CONFIG_KEY,
+): Promise<SerializedConfig | null> {
+  try {
+    const kv = c.env.LORE_DB
+    if (!kv) return null
+    return (await kv.get(key, 'json')) as SerializedConfig | null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolves the DissolutionConfig that applies to a specific dissolving
+ * character. Lookup order: a per-instance config keyed by the character's
+ * own `dissolution_id` (e.g. a narrator-authored 20-stage transformation
+ * written directly to KV — no admin tool exists to author these yet, same
+ * as any other narrator-improvised KV content in this repo) → the seeded
+ * default config (`dissolution:config:phase0-5`, written by
+ * seedDissolutionConfigKV) → the in-memory DEFAULT_DISSOLUTION_CONFIG
+ * fallback, so behavior is never broken even before seedDissolutionConfigKV
+ * has ever run.
+ */
+export async function resolveDissolutionConfig(
+  c: { env: AppBindings },
+  dissolutionId: string | null,
+): Promise<DissolutionConfig> {
+  if (dissolutionId) {
+    const custom = await loadDissolutionConfigFromKV(c, `dissolution:config:${dissolutionId}`)
+    if (custom) return { stages: custom.stages, terminalStage: custom.terminalStage }
+  }
+  const seeded = await loadDissolutionConfigFromKV(c)
+  if (seeded) return { stages: seeded.stages, terminalStage: seeded.terminalStage }
+  return DEFAULT_DISSOLUTION_CONFIG
 }
 
 // ── Terminal Conversion Pathways ──────────────────────────────────────────────

@@ -3,18 +3,15 @@
 // Usage: Run on deploy via scripts/migrate-dissolution-config.ts
 
 import type { AppBindings } from '../../types'
-import { STAGE_MUTATIONS, TERMINAL_CONVERSIONS } from './dissolution_config'
-import type { StageMutation, TerminalConversion } from './dissolution_config'
+import { STAGE_MUTATIONS, TERMINAL_CONVERSIONS, DEFAULT_DISSOLUTION_CONFIG } from './dissolution_config'
+import { CONFIG_KEY, type SerializedConfig } from './dissolution'
 
-const CONFIG_KEY = 'dissolution:config:phase0-5'
-const CONFIG_VERSION = 1
-
-interface SerializedConfig {
-  version: number
-  stages: Record<number, StageMutation>
-  terminalConversions: Record<string, TerminalConversion>
-  migrated_at: string
-}
+// #472 — bumped for the `terminalStage` field added to SerializedConfig
+// (nothing has ever been seeded in production — this function had zero call
+// sites before #472 — so there's no live data to migrate; the version bump
+// is future-proofing only, matching this file's own existing
+// stale-version-update path).
+const CONFIG_VERSION = 2
 
 /**
  * Seed the dissolution config into KV if it doesn't exist.
@@ -45,6 +42,7 @@ export async function seedDissolutionConfigKV(c: { env: AppBindings }): Promise<
         const data: SerializedConfig = {
           version: CONFIG_VERSION,
           stages: STAGE_MUTATIONS,
+          terminalStage: DEFAULT_DISSOLUTION_CONFIG.terminalStage,
           terminalConversions: TERMINAL_CONVERSIONS,
           migrated_at: new Date().toISOString(),
         }
@@ -59,6 +57,7 @@ export async function seedDissolutionConfigKV(c: { env: AppBindings }): Promise<
     const data: SerializedConfig = {
       version: CONFIG_VERSION,
       stages: STAGE_MUTATIONS,
+      terminalStage: DEFAULT_DISSOLUTION_CONFIG.terminalStage,
       terminalConversions: TERMINAL_CONVERSIONS,
       migrated_at: new Date().toISOString(),
     }
@@ -66,21 +65,5 @@ export async function seedDissolutionConfigKV(c: { env: AppBindings }): Promise<
     return { action: 'seeded' }
   } catch (err) {
     return { action: 'skipped', error: String(err) }
-  }
-}
-
-/**
- * Load dissolution config from KV.
- * Falls back to in-memory defaults if KV is unavailable.
- */
-export async function loadDissolutionConfigFromKV(
-  c: { env: AppBindings }
-): Promise<SerializedConfig | null> {
-  try {
-    const kv = c.env.LORE_DB
-    if (!kv) return null
-    return (await kv.get(CONFIG_KEY, 'json')) as SerializedConfig | null
-  } catch {
-    return null
   }
 }

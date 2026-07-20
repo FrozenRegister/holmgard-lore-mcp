@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   STAGE_MUTATIONS,
   TERMINAL_CONVERSIONS,
+  DEFAULT_DISSOLUTION_CONFIG,
   type StageMutation,
   type UtilityVector,
   type TerminalConversion,
@@ -150,5 +151,26 @@ describe('dissolution_config', () => {
   it('DISTRIBUTED uses Industrial Base outcome', () => {
     expect(TERMINAL_CONVERSIONS.DISTRIBUTED.outcome).toBe('consumed-distributed')
     expect(TERMINAL_CONVERSIONS.DISTRIBUTED.label).toBe('Industrial Base')
+  })
+
+  // ── DEFAULT_DISSOLUTION_CONFIG (#472) ───────────────────────────────
+  // #448 introduced DissolutionConfig/DEFAULT_DISSOLUTION_CONFIG but never
+  // tested that it actually reproduces STAGE_MUTATIONS byte-for-byte, which
+  // is the non-negotiable backward-compatibility requirement from #448's own
+  // success criteria.
+
+  it('terminalStage is 5', () => {
+    expect(DEFAULT_DISSOLUTION_CONFIG.terminalStage).toBe(5)
+  })
+
+  it('stages 1-5 are byte-identical to STAGE_MUTATIONS', () => {
+    for (let s = 1; s <= 5; s++) {
+      expect(DEFAULT_DISSOLUTION_CONFIG.stages[s]).toEqual(STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5])
+    }
+  })
+
+  it('has exactly 5 stages defined, no extras', () => {
+    const keys = Object.keys(DEFAULT_DISSOLUTION_CONFIG.stages).map(Number).sort()
+    expect(keys).toEqual([1, 2, 3, 4, 5])
   })
 })
