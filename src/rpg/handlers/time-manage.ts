@@ -7,6 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
+import { runTickDriver, type TickDriverInput } from './tick-hooks'
 
 export const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
 type TimeAction = typeof ACTIONS[number]
@@ -47,6 +48,11 @@ const InputSchema = z.object({
   // "archisector", "calder-architect") so `advance` can guard against a
   // different agent moving the same world's clock underneath it.
   owner:        z.string().nullable().optional(),
+  // #442 — tick driver hooks. Optional array of hook names to run after date advance.
+  hooks:        z.array(z.string()).optional(),
+  // #442 — dry_run mode. If true, hooks run against shadow state and return summary
+  // without persisting mutations.
+  dry_run:      z.boolean().optional(),
 })
 
 // ── Date arithmetic helpers ───────────────────────────────────────────────────
@@ -94,10 +100,37 @@ function parseDateParts(dateStr: string): [number, number, number] {
 }
 
 function dateDiff(fromStr: string, toStr: string): number {
-  // Returns the number of days from fromStr to toStr (approximate, for response only)
+  // Returns the number of days from fromStr to toStr, accounting for actual days per month
   const [fy, fm, fd] = parseDateParts(fromStr)
   const [ty, tm, td] = parseDateParts(toStr)
-  return (ty - fy) * 365 + (tm - fm) * 30 + (td - fd)
+
+  if (fy === ty && fm === tm) {
+    // Same month/year: simple day difference
+    return td - fd
+  }
+
+  // Cross-month/year: count actual days in each month
+  let totalDays = 0
+  let y = fy
+  let m = fm
+  const d = fd
+
+  // Days remaining in current month
+  totalDays += daysInMonth(y, m) - d
+  m++
+  if (m > 12) { m = 1; y++ }
+
+  // Complete months until target month/year
+  while (y < ty || (y === ty && m < tm)) {
+    totalDays += daysInMonth(y, m)
+    m++
+    if (m > 12) { m = 1; y++ }
+  }
+
+  // Days in target month
+  totalDays += td
+
+  return totalDays
 }
 
 function season(month: number): string {
@@ -313,7 +346,7 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         }
       }
 
-      return ok({
+      const result: Record<string, unknown> = {
         success: true, actionType: 'advance',
         world_id: a.world_id,
         old_date: oldDate,
@@ -322,7 +355,27 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         days_elapsed: dateDiff(oldDate, newDate),
         birthdays_triggered: birthdaysTriggered,
         time_owner: willClaim ? identifiedOwner : ws.time_owner,
-      })
+      }
+
+      // #442 — Tick driver: run hooks after date advance if provided.
+      // Backward compat: hooks param omitted → skip, return current response shape.
+      // If hooks param is provided (even empty array), return tick_driver with results.
+      if (a.hooks !== undefined) {
+        const tickInput: TickDriverInput = {
+          hooks: a.hooks,
+          dry_run: a.dry_run ?? false,
+        }
+        const tickResult = await runTickDriver(env, db, a.world_id, oldDate, newDate, tickInput)
+        result.tick_driver = {
+          success: tickResult.success,
+          resolved: tickResult.resolved,
+          flagged: tickResult.flagged,
+          narrator_summary: tickResult.narrator_summary,
+          mutations: tickResult.mutations,
+        }
+      }
+
+      return ok(result)
     }
 
     case 'get_timeline': {

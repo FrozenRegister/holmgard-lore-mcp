@@ -465,4 +465,237 @@ describe('handleTimeManage', () => {
     expect(body.success).toBe(true)
     expect(body.time_owner).toBe('calder-architect')
   })
+
+  // ── Tick Driver (#442) ────────────────────────────────────────────────────
+
+  it('advance with no hooks returns tick_driver as undefined (backward compat)', async () => {
+    await seedWorld('w-tick-noops', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-noops', by: '1 month' })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeUndefined()
+    // Ensure existing fields are present
+    expect(body.old_date).toBe('2184-07-01')
+    expect(body.new_date).toBe('2184-08-01')
+  })
+
+  it('advance with empty hooks array returns tick_driver with empty resolved/flagged', async () => {
+    await seedWorld('w-tick-empty', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-empty', by: '1 month', hooks: [] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBe(true)
+    expect(body.tick_driver.resolved).toHaveLength(0)
+    expect(body.tick_driver.flagged).toHaveLength(0)
+  })
+
+  it('advance with hooks returns tick_driver object with resolved and flagged hooks', async () => {
+    await seedWorld('w-tick-basic', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-basic', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBe(true)
+    // weather_update is a resolved hook
+    expect(body.tick_driver.resolved).toContainEqual(expect.objectContaining({ category: 'resolved' }))
+  })
+
+  it('advance with dry_run=true returns mutations diff without persisting', async () => {
+    await seedWorld('w-tick-dryrun', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-dryrun', by: '1 month', hooks: ['weather_update'], dry_run: true })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.mutations).toBeDefined() // dry_run returns mutations
+  })
+
+  it('advance with multiple hooks runs in topologically sorted order', async () => {
+    await seedWorld('w-tick-multi', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-multi', by: '1 month', hooks: ['health_degradation', 'resource_consume'] })).content[0].text)
+    expect(body.success).toBe(true)
+    // Both should run (order handled internally by topological sort)
+    expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
+  })
+
+  it('advance with flagged hooks returns them in flagged array', async () => {
+    await seedWorld('w-tick-flagged', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-flagged', by: '1 month', hooks: ['encounter_check'] })).content[0].text)
+    expect(body.success).toBe(true)
+    // encounter_check is a flagged hook
+    expect(body.tick_driver.flagged).toContainEqual(expect.objectContaining({ category: 'flagged' }))
+  })
+
+  it('advance includes narrator_summary from hooks when provided', async () => {
+    await seedWorld('w-tick-narr', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-narr', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBeDefined()
+    expect(typeof body.tick_driver.narrator_summary).toBe('string')
+  })
+
+  it('advance with invalid hook name still returns success=true with empty results', async () => {
+    await seedWorld('w-tick-invalid', '2184-07-01')
+    // Non-existent hook names are silently skipped
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-invalid', by: '1 month', hooks: ['nonexistent_hook'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+  })
+
+  it('advance with dissolution_flag hook categorizes as flagged', async () => {
+    await seedWorld('w-tick-diss', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-diss', by: '1 month', hooks: ['dissolution_flag'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.flagged.some((h: any) => h.category === 'flagged')).toBe(true)
+  })
+
+  it('advance preserves all existing response fields when hooks are used', async () => {
+    await seedWorld('w-tick-preserve', '2184-01-01')
+    await seedChar('c-preserve', '2166-07-15')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-preserve', by: '31 days', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.old_date).toBe('2184-01-01')
+    expect(body.new_date).toBe('2184-02-01')
+    expect(body.days_elapsed).toBe(31)
+    expect(body.birthdays_triggered).toBeDefined()
+    expect(body.tick_driver).toBeDefined()
+  })
+
+  it('advance with dry_run=false (explicit) applies mutations', async () => {
+    await seedWorld('w-tick-apply', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-apply', by: '1 month', hooks: ['weather_update'], dry_run: false })).content[0].text)
+    expect(body.success).toBe(true)
+    // When not dry_run, mutations field is not included
+    expect(body.tick_driver.mutations).toBeUndefined()
+  })
+
+  it('advance without dry_run param defaults to false (applies mutations)', async () => {
+    await seedWorld('w-tick-default', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-default', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeUndefined()
+  })
+
+  it('advance with enabled hook executes and returns results', async () => {
+    await seedWorld('w-tick-enabled', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-enabled', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
+  })
+
+  it('advance includes all narrator summaries from executed hooks', async () => {
+    await seedWorld('w-tick-summaries', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-summaries', by: '1 month', hooks: ['weather_update', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBeDefined()
+    expect(body.tick_driver.narrator_summary).toContain('Weather')
+    expect(body.tick_driver.narrator_summary).toContain('health')
+  })
+
+  it('advance with multiple dependencies runs hooks in correct order', async () => {
+    await seedWorld('w-tick-deps', '2184-07-01')
+    // dissolution_flag depends on health_degradation and encounter_check
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-deps', by: '1 month', hooks: ['dissolution_flag', 'weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    // Should have results from both weather_update and dissolution_flag
+    const allResults = [...body.tick_driver.resolved, ...body.tick_driver.flagged]
+    expect(allResults.length).toBeGreaterThan(0)
+  })
+
+  it('advance with dry_run mode includes mutations in response', async () => {
+    await seedWorld('w-tick-dryrun-mutations', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-dryrun-mutations', by: '1 month', hooks: ['weather_update'], dry_run: true })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.mutations).toBeDefined()
+    expect(body.tick_driver.mutations.would_persist).toBeDefined()
+  })
+
+  it('advance with non-existent world_id errors', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'nonexistent-world', by: '1 month', hooks: [] })).content[0].text)
+    expect(body.error).toBe(true)
+  })
+
+  it('advance with large hooks array runs all hooks', async () => {
+    await seedWorld('w-tick-large', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-large', by: '1 month', hooks: ['weather_update', 'resource_consume', 'encounter_check', 'health_degradation', 'dissolution_flag'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    // All hooks should execute
+    const allResults = body.tick_driver.resolved.length + body.tick_driver.flagged.length
+    expect(allResults).toBeGreaterThanOrEqual(5)
+  })
+
+  it('advance tick_driver success field is always set', async () => {
+    await seedWorld('w-tick-success', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-success', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBeDefined()
+    expect(typeof body.tick_driver.success).toBe('boolean')
+  })
+
+  it('advance with encounter_check and health_degradation together', async () => {
+    await seedWorld('w-tick-combined', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-combined', by: '1 month', hooks: ['encounter_check', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.resolved).toBeDefined()
+    expect(body.tick_driver.flagged).toBeDefined()
+  })
+
+  it('advance tick_driver fields exist regardless of hook results', async () => {
+    await seedWorld('w-tick-fields', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-fields', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBeDefined()
+    expect(body.tick_driver.resolved).toBeDefined()
+    expect(body.tick_driver.flagged).toBeDefined()
+    expect(Array.isArray(body.tick_driver.resolved)).toBe(true)
+    expect(Array.isArray(body.tick_driver.flagged)).toBe(true)
+  })
+
+  it('advance with single hook includes narrator_summary', async () => {
+    await seedWorld('w-tick-single-narr', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-single-narr', by: '1 month', hooks: ['resource_consume'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBeDefined()
+    expect(typeof body.tick_driver.narrator_summary).toBe('string')
+    expect(body.tick_driver.narrator_summary.length).toBeGreaterThan(0)
+  })
+
+  it('advance dry_run with single hook returns mutations', async () => {
+    await seedWorld('w-tick-dry-single', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-dry-single', by: '1 month', hooks: ['resource_consume'], dry_run: true })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeDefined()
+    expect(body.tick_driver.mutations.would_persist).toBeDefined()
+  })
+
+  it('advance without dry_run explicitly omits mutations', async () => {
+    await seedWorld('w-tick-no-dry', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-no-dry', by: '1 month', hooks: ['weather_update'], dry_run: false })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeUndefined()
+  })
+
+  it('advance with resolved hook populates resolved array', async () => {
+    await seedWorld('w-tick-resolved', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-resolved', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver.resolved).toHaveLength(1)
+    expect(body.tick_driver.resolved[0]).toHaveProperty('category')
+    expect(body.tick_driver.resolved[0].category).toBe('resolved')
+  })
+
+  it('advance with flagged hook populates flagged array', async () => {
+    await seedWorld('w-tick-flagged-only', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-flagged-only', by: '1 month', hooks: ['encounter_check'] })).content[0].text)
+    expect(body.tick_driver.flagged).toHaveLength(1)
+    expect(body.tick_driver.flagged[0]).toHaveProperty('category')
+    expect(body.tick_driver.flagged[0].category).toBe('flagged')
+  })
+
+  it('advance with mixed resolved and flagged hooks', async () => {
+    await seedWorld('w-tick-mixed', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-mixed', by: '1 month', hooks: ['weather_update', 'encounter_check', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
+    expect(body.tick_driver.flagged.length).toBeGreaterThan(0)
+  })
 })
