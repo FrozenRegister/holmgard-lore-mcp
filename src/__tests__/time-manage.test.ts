@@ -674,4 +674,28 @@ describe('handleTimeManage', () => {
     expect(body.success).toBe(true)
     expect(body.tick_driver.mutations).toBeUndefined()
   })
+
+  it('advance with resolved hook populates resolved array', async () => {
+    await seedWorld('w-tick-resolved', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-resolved', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver.resolved).toHaveLength(1)
+    expect(body.tick_driver.resolved[0]).toHaveProperty('category')
+    expect(body.tick_driver.resolved[0].category).toBe('resolved')
+  })
+
+  it('advance with flagged hook populates flagged array', async () => {
+    await seedWorld('w-tick-flagged-only', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-flagged-only', by: '1 month', hooks: ['encounter_check'] })).content[0].text)
+    expect(body.tick_driver.flagged).toHaveLength(1)
+    expect(body.tick_driver.flagged[0]).toHaveProperty('category')
+    expect(body.tick_driver.flagged[0].category).toBe('flagged')
+  })
+
+  it('advance with mixed resolved and flagged hooks', async () => {
+    await seedWorld('w-tick-mixed', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-mixed', by: '1 month', hooks: ['weather_update', 'encounter_check', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
+    expect(body.tick_driver.flagged.length).toBeGreaterThan(0)
+  })
 })
