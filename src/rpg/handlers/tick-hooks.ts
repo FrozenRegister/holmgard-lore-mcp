@@ -15,7 +15,7 @@ export interface HookResult {
 }
 
 // Import claims system for conflict resolution
-import { resolveTickConflicts, type FlaggedEvent, type Priority } from '../utils/claims'
+import { resolveTickConflicts, type FlaggedEvent } from '../utils/claims'
 
 export interface WorldSnapshot {
   date: string
@@ -315,14 +315,11 @@ export async function runTickDriver(
        for (const resolution of resolutionResults) {
          conflictResolutions.push({
            status: resolution.status,
-           eventType: resolution.event.status === 'modified' ? resolution.event.eventType : resolution.event.eventType,
+           eventType: resolution.event.eventType,
            targetKey: resolution.event.targetKey,
            sourceEntityKey: resolution.event.sourceEntityKey,
            narrativeContext: resolution.status === 'modified' ? resolution.modification.narrativeContext : undefined
          })
-
-         // For modified events, we could potentially update the event payload here
-         // For now, we just record the resolution
        }
      }
 

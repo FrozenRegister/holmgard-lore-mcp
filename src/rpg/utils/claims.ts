@@ -226,9 +226,9 @@ export async function resolveTickConflicts(
                 originalTarget: targetKey,
                 narrativeContext: `The target was already claimed by ${claim.claimedBy}`,
                 conflictWith: {
-                  claimerKey: claim.claimedBy,
-                  claimedAt: claim.claimedAt!,
-                  claimedUntil: claim.claimedUntil!
+                  claimerKey: claim.claimedBy || '',
+                  claimedAt: claim.claimedAt || '',
+                  claimedUntil: claim.claimedUntil || ''
                 }
               }
             })
@@ -248,9 +248,9 @@ export async function resolveTickConflicts(
               originalTarget: targetKey,
               narrativeContext: `The target was already claimed by ${claim.claimedBy}`,
               conflictWith: {
-                claimerKey: claim.claimedBy,
-                claimedAt: claim.claimedAt!,
-                claimedUntil: claim.claimedUntil!
+                claimerKey: claim.claimedBy || '',
+                claimedAt: claim.claimedAt || '',
+                claimedUntil: claim.claimedUntil || ''
               }
             }
           })

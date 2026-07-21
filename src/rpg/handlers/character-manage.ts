@@ -194,6 +194,7 @@ export async function getCharacter(env: AppBindings, db: D1Database, key: string
   if (results.length > 1) {
     // If multiple characters have the same name, try to find one with matching D1-ID in KV
     // This is a fallback for ambiguous names
+    if (!env.LORE_DB) throw new Error('LORE_DB binding is required for character lookup')
     const kvKey = `character:${name}`
     const kvData = await env.LORE_DB.get(kvKey)
     if (kvData) {
