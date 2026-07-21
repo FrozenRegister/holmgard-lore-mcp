@@ -9,8 +9,6 @@ import { runTickDriver, type HookResult } from './tick-hooks'
 import type { AppBindings } from '../../types'
 import * as characterManage from '../handlers/character-manage'
 
-const { getCharacter } = characterManage
-
 // Mock environment and database
 const mockEnv: AppBindings = {
   LORE_DB: {} as KVNamespace,
@@ -45,26 +43,31 @@ beforeEach(() => {
   vi.resetAllMocks()
 
   // Mock getCharacter
-  vi.spyOn(characterManage, 'getCharacter').mockImplementation(async (env, db, key) => {
+  vi.spyOn(characterManage, 'getCharacter').mockImplementation(async (_env, _db, key) => {
     if (key === 'char-1') return testCharacter
     return null
   })
 
-  // Mock world state query
+  // Mock world state query with full D1PreparedStatement interface
   vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
-    if (query.includes('world_state')) {
-      return {
-        bind: vi.fn().mockReturnThis(),
-        first: vi.fn().mockResolvedValue({
-          current_date: '2187-01-10',
-          weather: null
-        })
-      }
-    }
-    return {
+    const mockStmt: any = {
       bind: vi.fn().mockReturnThis(),
-      first: vi.fn().mockResolvedValue(null)
+      first: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+      raw: vi.fn().mockResolvedValue([])
     }
+
+    if (query.includes('world_state')) {
+      mockStmt.first.mockResolvedValue({
+        current_date: '2187-01-10',
+        weather: null
+      })
+    } else {
+      mockStmt.first.mockResolvedValue(null)
+    }
+
+    return mockStmt
   })
 })
 
@@ -97,7 +100,7 @@ describe('Tick Hooks - Conflict Resolution', () => {
             {
               id: 'event-1',
               eventType: 'hunt',
-              priority: 'HIGH',
+              priority: 'HIGH' as const,
               targetKey: 'char-1',
               sourceEntityKey: 'creature:shaper-alpha',
               payload: {},
@@ -106,7 +109,7 @@ describe('Tick Hooks - Conflict Resolution', () => {
             {
               id: 'event-2',
               eventType: 'track',
-              priority: 'MEDIUM',
+              priority: 'MEDIUM' as const,
               targetKey: 'char-1',
               sourceEntityKey: 'party:adventurers',
               payload: {},
@@ -175,7 +178,7 @@ describe('Tick Hooks - Conflict Resolution', () => {
             {
               id: 'event-1',
               eventType: 'tenderize',
-              priority: 'HIGH',
+              priority: 'HIGH' as const,
               targetKey: 'char-1',
               sourceEntityKey: 'creature:shaper-alpha',
               payload: {},
@@ -185,7 +188,7 @@ describe('Tick Hooks - Conflict Resolution', () => {
             {
               id: 'event-2',
               eventType: 'hunt',
-              priority: 'HIGH',
+              priority: 'HIGH' as const,
               targetKey: 'char-1',
               sourceEntityKey: 'party:adventurers',
               payload: {},
