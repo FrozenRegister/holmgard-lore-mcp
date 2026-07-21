@@ -57,11 +57,10 @@ export function releaseWorldLock(worldId: string): void {
 // ── Shadow State System ───────────────────────────────────────────────────────
 
 export async function snapshotWorldState(db: D1Database, worldId: string): Promise<WorldSnapshot> {
-  const [ws, parties, characters, encounters] = await Promise.all([
+  const [ws, parties, characters] = await Promise.all([
     db.prepare('SELECT * FROM world_state WHERE world_id = ?').bind(worldId).first() as Promise<Record<string, any> | null>,
     db.prepare('SELECT * FROM parties WHERE world_id = ? AND status = ?').bind(worldId, 'active').all() as Promise<{ results: any[] }>,
     db.prepare('SELECT * FROM characters WHERE world_id = ?').bind(worldId).all() as Promise<{ results: any[] }>,
-    db.prepare('SELECT * FROM encounters WHERE world_id = ? LIMIT 1000').bind(worldId).all() as Promise<{ results: any[] }>,
   ])
 
   const dateStr = ws?.current_date ?? new Date().toISOString().split('T')[0]
@@ -69,7 +68,7 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
     date: dateStr,
     parties: new Map((parties?.results || []).map((p: any) => [p.id, p])),
     characters: new Map((characters?.results || []).map((c: any) => [c.id, c])),
-    encounters: new Map((encounters?.results || []).map((e: any) => [e.id, e])),
+    encounters: new Map(),
     weather: ws?.weather as any,
   }
 }
