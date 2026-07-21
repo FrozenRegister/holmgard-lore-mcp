@@ -8,7 +8,6 @@
 
 import type { AppBindings } from '../../types'
 import { getCharacter, updateCharacter } from '../handlers/character-manage'
-import { getCurrentDate } from '../handlers/time-manage'
 
 // Priority tiers for conflict resolution
 export type Priority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
@@ -272,14 +271,14 @@ export async function resolveTickConflicts(
 /**
  * Clear claims for dead or removed predators
  *
- * @param env - App bindings
- * @param db - D1 database
- * @param currentTickTime - Current tick timestamp
+ * @param _env - App bindings
+ * @param _db - D1 database
+ * @param _currentTickTime - Current tick timestamp
  */
 export async function clearDeadPredatorClaims(
-  env: AppBindings,
-  db: D1Database,
-  currentTickTime: string
+  _env: AppBindings,
+  _db: D1Database,
+  _currentTickTime: string
 ): Promise<void> {
   // This will be implemented in Phase 3 (creature AI)
   // For now, we rely on the stale-claim check in resolveTickConflicts
