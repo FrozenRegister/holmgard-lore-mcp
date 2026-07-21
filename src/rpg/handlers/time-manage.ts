@@ -208,6 +208,21 @@ export async function seedWorldState(db: D1Database, worldId: string): Promise<v
   await db.prepare('INSERT OR IGNORE INTO world_state (world_id) VALUES (?)').bind(worldId).run()
 }
 
+/**
+ * Get the current date for a world
+ * @param db - D1 database
+ * @param worldId - World ID
+ * @returns Current date string or null if world not found
+ */
+export async function getCurrentDate(db: D1Database, worldId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT "current_date" FROM world_state WHERE world_id = ?')
+    .bind(worldId)
+    .first() as { current_date: string } | null
+
+  return row?.current_date ?? null
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function handleTimeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {

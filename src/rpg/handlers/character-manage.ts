@@ -173,6 +173,112 @@ function parseChar(row: Record<string, unknown>) {
   }
 }
 
+/**
+ * Get a character by lore key (e.g., "character:john-doe")
+ * @param env - App bindings
+ * @param db - D1 database
+ * @param key - Character lore key
+ * @returns Character data or null if not found
+ */
+export async function getCharacter(env: AppBindings, db: D1Database, key: string): Promise<Record<string, unknown> | null> {
+  // Extract character name from lore key (e.g., "character:john-doe" -> "john-doe")
+  const name = key.replace(/^character:/, '')
+
+  // Try to find by exact name first
+  const { results } = await db.prepare('SELECT * FROM characters WHERE name = ? LIMIT 2').bind(name).all()
+
+  if (results.length === 0) {
+    return null
+  }
+
+  if (results.length > 1) {
+    // If multiple characters have the same name, try to find one with matching D1-ID in KV
+    // This is a fallback for ambiguous names
+    const kvKey = `character:${name}`
+    const kvData = await env.LORE_DB.get(kvKey)
+    if (kvData) {
+      const { text } = parseKvEntry(kvData)
+      const d1Id = extractRawField(text, 'D1-ID')
+      if (d1Id) {
+        const exactMatch = results.find((row: any) => row.id === d1Id)
+        if (exactMatch) {
+          return parseChar(exactMatch as Record<string, unknown>)
+        }
+      }
+    }
+    // If still ambiguous, return the first one
+    return parseChar(results[0] as Record<string, unknown>)
+  }
+
+  return parseChar(results[0] as Record<string, unknown>)
+}
+
+/**
+ * Update a character by ID
+ * @param env - App bindings
+ * @param db - D1 database
+ * @param key - Character lore key
+ * @param updates - Fields to update
+ * @returns Updated character data
+ */
+export async function updateCharacter(
+  env: AppBindings,
+  db: D1Database,
+  key: string,
+  updates: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const char = await getCharacter(env, db, key)
+  if (!char) {
+    throw new Error(`Character not found: ${key}`)
+  }
+
+  const charId = char.id as string
+  const now = new Date().toISOString()
+  const sets: string[] = ['updated_at = ?']
+  const vals: unknown[] = [now]
+
+  // Build the update query
+  for (const [field, value] of Object.entries(updates)) {
+    if (value === undefined || value === null) continue
+
+    // Handle special fields
+    switch (field) {
+      case 'claimed_by':
+        sets.push('claimed_by = ?')
+        vals.push(value)
+        break
+      case 'claimed_until':
+        sets.push('claimed_until = ?')
+        vals.push(value)
+        break
+      case 'claimed_at':
+        sets.push('claimed_at = ?')
+        vals.push(value)
+        break
+      default:
+        // For other fields, use the dynamic fields system
+        if (!CHARACTER_FIELDS_BLACKLIST.includes(field as any)) {
+          sets.push(`${field} = ?`)
+          vals.push(value)
+        }
+        break
+    }
+  }
+
+  if (sets.length > 1) { // More than just updated_at
+    vals.push(charId)
+    await db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+    await syncCharacterToKv(env, charId)
+  }
+
+  // Return the updated character
+  const updatedChar = await getCharacter(env, db, key)
+  if (!updatedChar) {
+    throw new Error(`Character not found after update: ${key}`)
+  }
+  return updatedChar
+}
+
 export async function handleCharacterManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
   if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
