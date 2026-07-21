@@ -57,7 +57,7 @@ export function releaseWorldLock(worldId: string): void {
 // ── Shadow State System ───────────────────────────────────────────────────────
 
 export async function snapshotWorldState(db: D1Database, worldId: string): Promise<WorldSnapshot> {
-  const ws = await db.prepare('SELECT * FROM world_state WHERE world_id = ?').bind(worldId).first() as Promise<Record<string, any> | null>
+  const ws = (await db.prepare('SELECT * FROM world_state WHERE world_id = ?').bind(worldId).first()) as Record<string, any> | null
 
   const dateStr = ws?.current_date ?? new Date().toISOString().split('T')[0]
   return {
