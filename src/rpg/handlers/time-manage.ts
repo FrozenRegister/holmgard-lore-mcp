@@ -7,6 +7,7 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
+import { runTickDriver, type TickDriverInput } from './tick-hooks'
 
 export const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
 type TimeAction = typeof ACTIONS[number]
@@ -47,6 +48,11 @@ const InputSchema = z.object({
   // "archisector", "calder-architect") so `advance` can guard against a
   // different agent moving the same world's clock underneath it.
   owner:        z.string().nullable().optional(),
+  // #442 — tick driver hooks. Optional array of hook names to run after date advance.
+  hooks:        z.array(z.string()).optional(),
+  // #442 — dry_run mode. If true, hooks run against shadow state and return summary
+  // without persisting mutations.
+  dry_run:      z.boolean().optional(),
 })
 
 // ── Date arithmetic helpers ───────────────────────────────────────────────────
@@ -313,7 +319,7 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         }
       }
 
-      return ok({
+      const result: Record<string, unknown> = {
         success: true, actionType: 'advance',
         world_id: a.world_id,
         old_date: oldDate,
@@ -322,7 +328,26 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
         days_elapsed: dateDiff(oldDate, newDate),
         birthdays_triggered: birthdaysTriggered,
         time_owner: willClaim ? identifiedOwner : ws.time_owner,
-      })
+      }
+
+      // #442 — Tick driver: run hooks after date advance if provided.
+      // Backward compat: no hooks → skip, return current response shape.
+      if (a.hooks && a.hooks.length > 0) {
+        const tickInput: TickDriverInput = {
+          hooks: a.hooks,
+          dry_run: a.dry_run ?? false,
+        }
+        const tickResult = await runTickDriver(env, db, a.world_id, oldDate, newDate, tickInput)
+        result.tick_driver = {
+          success: tickResult.success,
+          resolved: tickResult.resolved,
+          flagged: tickResult.flagged,
+          narrator_summary: tickResult.narrator_summary,
+          mutations: tickResult.mutations,
+        }
+      }
+
+      return ok(result)
     }
 
     case 'get_timeline': {
