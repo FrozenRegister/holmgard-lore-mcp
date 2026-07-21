@@ -100,10 +100,37 @@ function parseDateParts(dateStr: string): [number, number, number] {
 }
 
 function dateDiff(fromStr: string, toStr: string): number {
-  // Returns the number of days from fromStr to toStr (approximate, for response only)
+  // Returns the number of days from fromStr to toStr, accounting for actual days per month
   const [fy, fm, fd] = parseDateParts(fromStr)
   const [ty, tm, td] = parseDateParts(toStr)
-  return (ty - fy) * 365 + (tm - fm) * 30 + (td - fd)
+
+  if (fy === ty && fm === tm) {
+    // Same month/year: simple day difference
+    return td - fd
+  }
+
+  // Cross-month/year: count actual days in each month
+  let totalDays = 0
+  let y = fy
+  let m = fm
+  let d = fd
+
+  // Days remaining in current month
+  totalDays += daysInMonth(y, m) - d
+  m++
+  if (m > 12) { m = 1; y++ }
+
+  // Complete months until target month/year
+  while (y < ty || (y === ty && m < tm)) {
+    totalDays += daysInMonth(y, m)
+    m++
+    if (m > 12) { m = 1; y++ }
+  }
+
+  // Days in target month
+  totalDays += td
+
+  return totalDays
 }
 
 function season(month: number): string {
@@ -331,8 +358,9 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       }
 
       // #442 — Tick driver: run hooks after date advance if provided.
-      // Backward compat: no hooks → skip, return current response shape.
-      if (a.hooks && a.hooks.length > 0) {
+      // Backward compat: hooks param omitted → skip, return current response shape.
+      // If hooks param is provided (even empty array), return tick_driver with results.
+      if (a.hooks !== undefined) {
         const tickInput: TickDriverInput = {
           hooks: a.hooks,
           dry_run: a.dry_run ?? false,
