@@ -113,7 +113,7 @@ function dateDiff(fromStr: string, toStr: string): number {
   let totalDays = 0
   let y = fy
   let m = fm
-  let d = fd
+  const d = fd
 
   // Days remaining in current month
   totalDays += daysInMonth(y, m) - d
