@@ -613,4 +613,41 @@ describe('handleTimeManage', () => {
     const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'nonexistent-world', by: '1 month', hooks: [] })).content[0].text)
     expect(body.error).toBe(true)
   })
+
+  it('advance with large hooks array runs all hooks', async () => {
+    await seedWorld('w-tick-large', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-large', by: '1 month', hooks: ['weather_update', 'resource_consume', 'encounter_check', 'health_degradation', 'dissolution_flag'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    // All hooks should execute
+    const allResults = body.tick_driver.resolved.length + body.tick_driver.flagged.length
+    expect(allResults).toBeGreaterThanOrEqual(5)
+  })
+
+  it('advance tick_driver success field is always set', async () => {
+    await seedWorld('w-tick-success', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-success', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBeDefined()
+    expect(typeof body.tick_driver.success).toBe('boolean')
+  })
+
+  it('advance with encounter_check and health_degradation together', async () => {
+    await seedWorld('w-tick-combined', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-combined', by: '1 month', hooks: ['encounter_check', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.resolved).toBeDefined()
+    expect(body.tick_driver.flagged).toBeDefined()
+  })
+
+  it('advance tick_driver fields exist regardless of hook results', async () => {
+    await seedWorld('w-tick-fields', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-fields', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBeDefined()
+    expect(body.tick_driver.resolved).toBeDefined()
+    expect(body.tick_driver.flagged).toBeDefined()
+    expect(Array.isArray(body.tick_driver.resolved)).toBe(true)
+    expect(Array.isArray(body.tick_driver.flagged)).toBe(true)
+  })
 })
