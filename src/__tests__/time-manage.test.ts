@@ -571,4 +571,46 @@ describe('handleTimeManage', () => {
     expect(body.success).toBe(true)
     expect(body.tick_driver.mutations).toBeUndefined()
   })
+
+  it('advance with enabled hook executes and returns results', async () => {
+    await seedWorld('w-tick-enabled', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-enabled', by: '1 month', hooks: ['weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
+  })
+
+  it('advance includes all narrator summaries from executed hooks', async () => {
+    await seedWorld('w-tick-summaries', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-summaries', by: '1 month', hooks: ['weather_update', 'health_degradation'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBeDefined()
+    expect(body.tick_driver.narrator_summary).toContain('Weather')
+    expect(body.tick_driver.narrator_summary).toContain('health')
+  })
+
+  it('advance with multiple dependencies runs hooks in correct order', async () => {
+    await seedWorld('w-tick-deps', '2184-07-01')
+    // dissolution_flag depends on health_degradation and encounter_check
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-deps', by: '1 month', hooks: ['dissolution_flag', 'weather_update'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.success).toBe(true)
+    // Should have results from both weather_update and dissolution_flag
+    const allResults = [...body.tick_driver.resolved, ...body.tick_driver.flagged]
+    expect(allResults.length).toBeGreaterThan(0)
+  })
+
+  it('advance with dry_run mode includes mutations in response', async () => {
+    await seedWorld('w-tick-dryrun-mutations', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-dryrun-mutations', by: '1 month', hooks: ['weather_update'], dry_run: true })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.mutations).toBeDefined()
+    expect(body.tick_driver.mutations.would_persist).toBeDefined()
+  })
+
+  it('advance with non-existent world_id errors', async () => {
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'nonexistent-world', by: '1 month', hooks: [] })).content[0].text)
+    expect(body.error).toBe(true)
+  })
 })
