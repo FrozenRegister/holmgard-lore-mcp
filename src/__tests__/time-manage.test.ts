@@ -650,4 +650,28 @@ describe('handleTimeManage', () => {
     expect(Array.isArray(body.tick_driver.resolved)).toBe(true)
     expect(Array.isArray(body.tick_driver.flagged)).toBe(true)
   })
+
+  it('advance with single hook includes narrator_summary', async () => {
+    await seedWorld('w-tick-single-narr', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-single-narr', by: '1 month', hooks: ['resource_consume'] })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBeDefined()
+    expect(typeof body.tick_driver.narrator_summary).toBe('string')
+    expect(body.tick_driver.narrator_summary.length).toBeGreaterThan(0)
+  })
+
+  it('advance dry_run with single hook returns mutations', async () => {
+    await seedWorld('w-tick-dry-single', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-dry-single', by: '1 month', hooks: ['resource_consume'], dry_run: true })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeDefined()
+    expect(body.tick_driver.mutations.would_persist).toBeDefined()
+  })
+
+  it('advance without dry_run explicitly omits mutations', async () => {
+    await seedWorld('w-tick-no-dry', '2184-07-01')
+    const body = JSON.parse((await handleTimeManage(db(), { action: 'advance', world_id: 'w-tick-no-dry', by: '1 month', hooks: ['weather_update'], dry_run: false })).content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeUndefined()
+  })
 })
