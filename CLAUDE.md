@@ -43,13 +43,16 @@ What this means in practice:
 
 ### Automated Setup (Recommended)
 
-Enable the git hook so the fast checks run automatically on every commit:
+The git hook is enabled automatically — `pnpm install` runs `scripts/setup-git-hooks.mjs` via the `prepare`
+lifecycle script, which sets `core.hooksPath` to `scripts/` so the fast checks run on every commit with no
+manual step. If you ever need to (re)do it by hand:
 
 ```powershell
 git config core.hooksPath scripts
 ```
 
-The hook runs in `-SkipTests` mode by default under this policy — it validates type-check and markdown formatting, but leaves the full suite to CI.
+The hook runs in `-SkipTests` mode by default under this policy — it validates test file layout, type-check,
+and markdown formatting, but leaves the full suite to CI.
 
 ### Manual Validation
 

@@ -62,7 +62,11 @@ Every issue resolution follows seven phases, each with a defined output. The pro
 
 **Goal:** Prove the code works and doesn't regress.
 
-1. Add or update tests (unit + integration)
+1. Add or update tests (unit + integration) — **new test files MUST go under `tests/unit/`, `tests/worker/`,
+   or `tests/live/` (see CLAUDE.md § Tests). Never colocate a test beside its source file or create a new
+   top-level test directory** — a misplaced file isn't just unlinted, it silently never runs, since every
+   Vitest config's `include` glob is scoped to one specific `tests/` subdirectory. `pnpm run check:test-layout`
+   catches this before you even commit (runs automatically via the pre-commit hook — see CONTRIBUTING.md).
 2. Run full test suite: `pnpm test`
 3. Check coverage: `pnpm test:coverage` — aim for 100% patch coverage
 4. Fix failures; don't proceed with broken tests

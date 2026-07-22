@@ -94,5 +94,7 @@ body:
       placeholder: |
         - Follow `CLAUDE.md` storage selection (D1 vs KV)
         - API surface convention: reads → /mcp, writes → /admin/*
+        - New/moved test files go under tests/unit/, tests/worker/, or tests/live/ only — never
+          colocated beside source, never a new top-level test directory (CLAUDE.md § Tests)
         - Do NOT modify `dissolution.ts` — config layer goes in new file
         - Branch: `feat/<description>` from `main`

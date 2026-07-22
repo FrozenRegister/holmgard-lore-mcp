@@ -19,4 +19,6 @@ If none of these fit, blank issues are still enabled.
 
 Read [CLAUDE.md](./CLAUDE.md) for storage selection (KV vs. D1), API surface conventions (MCP reads vs. `/admin/*` writes), branch naming, and the CI gates enforced on every PR. Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) — it lists every gate from `ci.yml` and `pr-quality.yml`.
 
+**New or moved test files go under `tests/unit/`, `tests/worker/`, or `tests/live/` — never colocated beside source, and never a new top-level test directory.** See CLAUDE.md § Tests. This is enforced by `pnpm run check:test-layout`, which runs as its own CI job and as the first step of the local pre-commit gate (auto-enabled by `pnpm install` via the `prepare` script — no manual `git config` needed).
+
 For the full autonomous-agent workflow, see [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) and [PROTOCOL_INVOCATION.md](./PROTOCOL_INVOCATION.md).

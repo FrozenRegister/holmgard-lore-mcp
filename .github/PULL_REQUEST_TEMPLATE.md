@@ -4,9 +4,10 @@
 ## CI checklist
 <!-- Every gate from ci.yml and pr-quality.yml. Check each one. If N/A, say why. -->
 <!-- These boxes are a self-check for the author/reviewer — they are not machine-enforced. -->
-<!-- The actual gates are: ci.yml (unit-tests, test, type-check, lint, build, coverage) and -->
+<!-- The actual gates are: ci.yml (test-layout, unit-tests, test, type-check, lint, build, coverage) and -->
 <!-- pr-quality.yml (check-issue-link, check-changelog, check-docs), which run independently of this checklist. -->
 
+- [ ] `test-layout` passes (new/moved test files under `tests/unit/`, `tests/worker/`, or `tests/live/` only)
 - [ ] `unit-tests` pass
 - [ ] `test` (sharded) pass
 - [ ] `type-check` passes
@@ -36,10 +37,12 @@
 
 ## Test plan
 <!-- What did you test? Include manual smoke tests if applicable. -->
+<!-- New/moved test files go under tests/unit/, tests/worker/, or tests/live/ only (CLAUDE.md § Tests) — -->
+<!-- never colocated beside source, never a new top-level test directory. -->
 
-- [ ] Unit: <describe>
-- [ ] Integration: <describe>
-- [ ] Live smoke: <describe or N/A>
+- [ ] Unit (`tests/unit/`): <describe>
+- [ ] Integration (`tests/worker/`): <describe>
+- [ ] Live smoke (`tests/live/`): <describe or N/A>
 
 ## Documentation
 <!-- If docs were updated, link the files. If not, explain why this PR doesn't need docs. -->

@@ -9,6 +9,7 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/setup-git-hooks.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "test": "vitest run",

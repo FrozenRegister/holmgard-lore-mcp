@@ -113,6 +113,7 @@ body:
       label: CI checklist
       description: Migrations touch code and run in CI. Check each gate.
       value: |
+        - [ ] `test-layout` passes (new/moved test files under `tests/unit/`, `tests/worker/`, or `tests/live/` only)
         - [ ] `unit-tests` pass
         - [ ] `test` (sharded) pass
         - [ ] `type-check` passes
