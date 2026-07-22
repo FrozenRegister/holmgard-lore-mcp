@@ -11,7 +11,7 @@ export default defineConfig({
       provider: 'istanbul',
       reporter: ['lcov', 'text', 'json', 'json-summary'],
       include: ['src/**/*.ts'],
-      exclude: ['src/__tests__/**', 'node_modules/**', 'src/**/migrate-*.ts'],
+      exclude: ['src/__tests__/**', 'node_modules/**', 'src/**/migrate-*.ts', '**/*.test.ts'],
       reportsDirectory: './coverage',
     },
   },

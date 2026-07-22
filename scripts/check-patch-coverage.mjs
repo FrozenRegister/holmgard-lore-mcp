@@ -60,6 +60,7 @@ function isExcludedFromCoverage(relPath) {
   if (!relPath.startsWith('src/')) return true
   if (relPath.startsWith('src/__tests__/')) return true
   if (/\/migrate-[^/]+\.ts$/.test('/' + relPath)) return true
+  if (relPath.endsWith('.test.ts')) return true
   return false
 }
 
