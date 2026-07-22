@@ -373,11 +373,13 @@ Tools for creating consistent, believable NPC behavior and dialogue.
 **Example Use:**
 
 ```
-Narrator creates an NPC with personality:
-  npc_manage({ action: "create", name: "Orm", 
-               personality_traits: ["gruff", "protective", "shrewd"],
-               goals: ["protect the Old Mill", "profit from travelers"],
-               fears: ["losing the tavern"] })
+Narrator creates an NPC (no `personality_traits`/`goals`/`fears` fields exist on
+`create` — those are narrative facts, not structured columns; put them in the
+character's lore text via `lore_manage` instead):
+  npc_manage({ action: "create", name: "Orm", class: "Commoner", race: "Human",
+               background: "Folk Hero", disposition: "neutral" })
+  lore_manage({ action: "set", key: "npc:orm",
+                 text: "**Personality:** gruff, protective, shrewd. **Goals:** protect the Old Mill, profit from travelers. **Fears:** losing the tavern." })
 
 Narrator checks what Orm might sense when danger approaches:
   get_sensory_profile("npc:orm", "oldmill_tavern")
