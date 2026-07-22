@@ -5,13 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-pnpm test                        # run Workers runtime tests (vitest --project workers)
+pnpm test                        # run Workers runtime tests (vitest run)
 pnpm test:coverage               # run Workers tests and generate coverage (lcov → ./coverage/lcov.info)
-pnpm test:live                   # run live production smoke tests (vitest --project live)
+pnpm test:live                   # run live production smoke tests (vitest run --config vitest.live.config.ts)
 pnpm test -- --reporter=verbose  # Workers test output with per-test names
 pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
-pnpm run build                   # esbuild bundle → dist/index.js
+pnpm run build                   # wrangler deploy --dry-run --outdir dist (bundle check)
 pnpm run deploy                  # wrangler deploy to Cloudflare
 wrangler dev                     # local dev server (uses wrangler.jsonc main)
 ```
@@ -147,7 +147,7 @@ If you do delegate, the handoff prompt needs to carry the same context a fresh r
 
 ## Architecture
 
-**Single file worker**: all logic lives in `src/index.ts` — a [Hono](https://hono.dev/) app exported as the Workers default export.
+**Modular Hono worker**: `src/index.ts` is a *slim entry point* — it wires middleware, the JSON-RPC `/mcp` handler, and the `/admin`, `/internal`, `/api/entities`, and `/changes` sub-routers, then exports the [Hono](https://hono.dev/) app as the Workers default export. The actual logic lives in modules under `src/tools/` (lore-system dispatchers), `src/rpg/handlers/` (RPG-system dispatchers), `src/lib/` (KV, RPC, history, indexes, and other shared helpers), and `src/admin/`, `src/api/`, `src/do/`. **For the full request flow and design patterns, read `ARCHITECTURE.md` — it is the authoritative, current description; this section is only a pointer.** (Historical note: the worker began life as a genuinely single-file `src/index.ts` and was later split; older docs and comments that say "all logic lives in `src/index.ts`" predate that split.)
 
 **Two storage layers** (in priority order):
 
