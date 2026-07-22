@@ -20,36 +20,45 @@ RESET='\033[0m'
 echo ""
 echo -e "${YELLOW}Running pre-commit validation...${RESET}"
 
-# [1/6] TypeScript type checking
+# [1/7] Test layout (fast — no dependencies needed, just git ls-files)
 echo ""
-echo "[1/6] Checking TypeScript types"
+echo "[1/7] Checking test file layout"
+if ! pnpm run check:test-layout; then
+  echo -e "${RED}✗ Test layout check failed${RESET}"
+  exit 1
+fi
+echo -e "${GREEN}✓ Test layout check passed${RESET}"
+
+# [2/7] TypeScript type checking
+echo ""
+echo "[2/7] Checking TypeScript types"
 if ! pnpm run type-check; then
   echo -e "${RED}✗ Type checking failed${RESET}"
   exit 1
 fi
 echo -e "${GREEN}✓ Type checking passed${RESET}"
 
-# [2/6] Lint
+# [3/7] Lint
 echo ""
-echo "[2/6] Checking lint"
+echo "[3/7] Checking lint"
 if ! pnpm run lint; then
   echo -e "${RED}✗ Lint failed${RESET}"
   exit 1
 fi
 echo -e "${GREEN}✓ Lint passed${RESET}"
 
-# [3/6] Markdown linting
+# [4/7] Markdown linting
 echo ""
-echo "[3/6] Checking markdown linting"
+echo "[4/7] Checking markdown linting"
 if ! pnpm fix:md; then
   echo -e "${RED}✗ Markdown linting failed${RESET}"
   exit 1
 fi
 echo -e "${GREEN}✓ Markdown linting passed${RESET}"
 
-# [4/6] Changelog fragment requirement (mirrors check-changelog CI gate)
+# [5/7] Changelog fragment requirement (mirrors check-changelog CI gate)
 echo ""
-echo "[4/6] Checking changelog fragment requirement"
+echo "[5/7] Checking changelog fragment requirement"
 STAGED=$(git diff --cached --name-only)
 REQUIRES_CHANGELOG=$(echo "$STAGED" | grep -E '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' || true)
 
@@ -62,9 +71,9 @@ if [[ -n "$REQUIRES_CHANGELOG" ]]; then
 fi
 echo -e "${GREEN}✓ Changelog fragment check passed${RESET}"
 
-# [5/6] Docs warning
+# [6/7] Docs warning
 echo ""
-echo "[5/6] Checking docs requirement"
+echo "[6/7] Checking docs requirement"
 HAS_SRC=$(echo "$STAGED" | grep -E '^src/' || true)
 HAS_DOCS=$(echo "$STAGED" | grep -E '^docs/' || true)
 
@@ -75,9 +84,9 @@ if [[ -n "$HAS_SRC" && -z "$HAS_DOCS" ]]; then
 fi
 echo -e "${GREEN}✓ Docs check passed${RESET}"
 
-# [6/6] Tests (opt-in; the full suite + coverage otherwise run in CI)
+# [7/7] Tests (opt-in; the full suite + coverage otherwise run in CI)
 echo ""
-echo "[6/6] Running full test suite"
+echo "[7/7] Running full test suite"
 if [[ "$WITH_TESTS" == "true" ]]; then
   if ! pnpm test; then
     echo -e "${RED}✗ Tests failed${RESET}"

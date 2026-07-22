@@ -18,6 +18,16 @@ env:
   PNPM_VERSION: '10.15.0'
 
 jobs:
+  test-layout:
+    name: Test Layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard against test files outside tests/{unit,worker,live}/
+        # No pnpm/node_modules needed — the script only uses node:child_process
+        # (git ls-files) and node:fs, so this is a near-instant job. See #490.
+        run: node scripts/check-test-layout.mjs
+
   unit-tests:
     name: Unit Tests (pure functions, no Workers runtime)
     runs-on: ubuntu-latest
@@ -200,7 +210,7 @@ jobs:
 
   notify:
     name: Notify on Failure
-    needs: [unit-tests, test, type-check, lint, build, coverage]
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
     if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
@@ -218,7 +228,7 @@ jobs:
 
   trigger-auto-merge:
     name: Trigger Auto-Merge Check
-    needs: [unit-tests, test, type-check, lint, build, coverage]
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
     # workflow_run only reliably fires for push-triggered runs, not pull_request-triggered
     # ones (see auto-merge.yml) — dispatching directly here is the reliable fast path;
     # the 5-min cron in auto-merge.yml remains as a fallback if this ever fails to fire.

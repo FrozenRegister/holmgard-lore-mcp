@@ -32,7 +32,17 @@ Write-Host ""
 Write-Host "Running pre-commit validation..." -ForegroundColor Yellow
 
 try {
-  # 1. TypeScript type checking (fast)
+  # 1. Test layout (fast — no dependencies needed, just git ls-files)
+  Write-CheckHeader "Checking test file layout"
+  $layoutResult = & pnpm run check:test-layout 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Test layout check failed"
+    Write-Host $layoutResult
+    exit 1
+  }
+  Write-Success "Test layout check passed"
+
+  # 2. TypeScript type checking (fast)
   Write-CheckHeader "Checking TypeScript types"
   $typeResult = & pnpm run type-check 2>&1
   if ($LASTEXITCODE -ne 0) {
@@ -42,7 +52,7 @@ try {
   }
   Write-Success "Type checking passed"
 
-  # 2. Lint (fast)
+  # 3. Lint (fast)
   Write-CheckHeader "Checking lint"
   $lintResult = & pnpm run lint 2>&1
   if ($LASTEXITCODE -ne 0) {
@@ -52,7 +62,7 @@ try {
   }
   Write-Success "Lint passed"
 
-  # 3. Check markdown linting
+  # 4. Check markdown linting
   Write-CheckHeader "Checking markdown linting"
   $markdownResult = & pnpm fix:md 2>&1
   if ($LASTEXITCODE -ne 0) {
@@ -62,7 +72,7 @@ try {
   }
   Write-Success "Markdown linting passed"
 
-  # 4. Check if a changelog fragment should be added (mirrors check-changelog CI gate)
+  # 5. Check if a changelog fragment should be added (mirrors check-changelog CI gate)
   Write-CheckHeader "Checking changelog fragment requirement"
   $stagedFiles = & git diff --cached --name-only
   $requiresChangelog = $stagedFiles | Where-Object { $_ -match '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' }
@@ -76,7 +86,7 @@ try {
   }
   Write-Success "Changelog fragment check passed"
 
-  # 5. Check docs requirement (mirrors check-docs CI gate)
+  # 6. Check docs requirement (mirrors check-docs CI gate)
   Write-CheckHeader "Checking docs requirement"
   $stagedFiles = & git diff --cached --name-only
   $hasSrcChanges = $stagedFiles | Where-Object { $_ -match '^src/' }
@@ -89,7 +99,7 @@ try {
   }
   Write-Success "Docs check passed"
 
-  # 6. Run tests (opt-in with -WithTests; the full suite + coverage otherwise run in CI)
+  # 7. Run tests (opt-in with -WithTests; the full suite + coverage otherwise run in CI)
   if ($WithTests) {
     Write-CheckHeader "Running full test suite"
     $testResult = & pnpm test 2>&1
