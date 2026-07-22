@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { runTickDriver, type HookResult } from './tick-hooks'
 import type { AppBindings } from '../../types'
-import * as characterManage from '../handlers/character-manage'
 
 // Mock environment and database
 const mockEnv: AppBindings = {
