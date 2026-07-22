@@ -55,6 +55,7 @@ These tools manage the raw lore — everything from character descriptions to wo
 | `get_topic_histories` | Narrator | View all past versions of a lore entry (see how a character's disposition has changed) |
 
 **Example Use:**
+
 ```
 Narrator needs to recall the tavern keeper's personality:
   get_lore("npc:tavern_keeper_oldmill")
@@ -79,9 +80,10 @@ Track player characters, NPCs, companions, and groups.
 | `party_manage` (create, join, list_members) | Narrator | Group characters into adventuring parties or factions |
 
 **Example Use:**
+
 ```
 Narrator creates the tavern keeper as an NPC:
-  character_manage({ action: "create", name: "Orm", type: "npc", 
+  character_manage({ action: "create", name: "Orm", characterType: "npc", 
                      background: "Refugee from the Old Mill, now runs the tavern" })
 
 Narrator checks a player's current inventory:
@@ -142,14 +144,15 @@ callers to fabricate placeholder coordinates. For a calibrated world, `lat`/`lon
 on `register` (dropping real geo data silently would be worse than requiring it).
 
 **Example Use:**
+
 ```
 Narrator checks who's at the tavern:
   get_location_occupants("location:oldmill_tavern")
   → [ "npc:orm_tavern_keeper", "player:aldric", "npc:acolyte_mysterious" ]
 
 Narrator moves a character:
-  spatial_manage({ action: "move_entity", entity_id: "player:aldric", 
-                   from: "oldmill_tavern", to: "oldmill_road_north" })
+  entity_manage({ action: "move", entity_key: "player:aldric", 
+                   new_location_key: "location:oldmill_road_north" })
 ```
 
 ---
@@ -164,15 +167,15 @@ Define quests, steps, and how they progress.
 | `set_goal` | Narrator | Track long-term party goals |
 
 **Example Use:**
+
 ```
 Narrator creates a quest:
-  quest_manage({ action: "create", name: "Bandit Menace", 
-                 objective: "Investigate bandits near the Old Mill",
-                 status: "active" })
+  quest_manage({ action: "create", worldId: "world:holmgard", name: "Bandit Menace", 
+                 objectives: [{ description: "Investigate bandits near the Old Mill" }] })
 
 Narrator marks a step complete:
-  quest_manage({ action: "mark_step", quest_id: "quest:bandit_menace",
-                 step: "Gathered rumors from Orm at the tavern" })
+  quest_manage({ action: "complete_objective", questId: "quest:bandit_menace",
+                 objectiveIndex: 0 })
 ```
 
 ---
@@ -188,14 +191,19 @@ Manage combat scenarios, turn order, and encounter state.
 | `combat_map` | Narrator | Visualize combatants and distances (d&d grid or narrative distance) |
 
 **Example Use:**
+
 ```
 Narrator starts combat with bandits:
-  combat_manage({ action: "create_encounter", name: "Bandits at the Crossroads",
-                  enemies: ["bandit_1", "bandit_2", "bandit_leader"] })
+  combat_manage({ action: "create_encounter",
+                  tokens: [
+                    { id: "bandit_1", name: "Bandit", type: "enemy" },
+                    { id: "bandit_2", name: "Bandit", type: "enemy" },
+                    { id: "bandit_leader", name: "Bandit Leader", type: "enemy" }
+                  ] })
 
 Narrator resolves Aldric's attack:
-  combat_action({ action: "attack", actor: "player:aldric", 
-                  target: "bandit_1", attack_roll: 18 })
+  combat_action({ action: "attack", actorId: "player:aldric", 
+                  targetIds: ["bandit_1"], attackRoll: 18 })
 ```
 
 **Known Behavior (#314):** Characters have a `death_mode` field — `"instant"` (default) for
@@ -338,8 +346,8 @@ which is a coarser approximation), a per-biome `terrainBreakdown` (hex counts, a
 calibrated) sampled along the direct hex line between `from`/`to`, and `estimatedTravelDays` (`null`
 if uncalibrated, or if any hex on the direct line is impassable for `mode` — flagged in `warnings`
 rather than silently averaged into a misleading day estimate). `pathfind` adds `avoid` (an array of
-strings matched against **dynamic** biome names or `zone_type` values — not a hardcoded taxonomy, per
-#429's design note) and runs a real A* over hex neighbors, bounded to a padded bounding box around
+strings matched against **dynamic** biome names or `zone_type` values — not a hardcoded taxonomy,
+per #429's design note) and runs a real A* over hex neighbors, bounded to a padded bounding box around
 `from`/`to` (capped search, `routable: false` with a `reason` if the search space is exhausted or no
 route exists) rather than scanning an entire world's hex table. Returns `path` (array of
 `{q,r,biome}`), `totalHexSteps`, `totalKm`/`totalDays` (same geo-calibration gating as `distance`,
@@ -363,6 +371,7 @@ Tools for creating consistent, believable NPC behavior and dialogue.
 | `get_sensory_profile` | Narrator | What does an NPC sense/perceive in their location? |
 
 **Example Use:**
+
 ```
 Narrator creates an NPC with personality:
   npc_manage({ action: "create", name: "Orm", 
@@ -390,14 +399,17 @@ Track character knowledge, relationships, and how they change.
 | `find_by_tag` | Narrator | Find all lore entries tagged with a theme (e.g., "all prophecies", "all treasures") |
 
 **Example Use:**
+
 ```
 Narrator checks Orm's relationship with Aldric:
   get_relationship("npc:orm", "player:aldric")
   → { disposition: "cautious_cooperation", history: ["shared rumors about bandits"] }
 
 Narrator adds a hidden secret (revealed later):
-  secret_manage({ action: "create", entity_id: "npc:orm", 
-                  content: "Orm's brother leads the bandit gang; internal conflict" })
+  secret_manage({ action: "create", worldId: "world:holmgard", name: "Orm's Brother",
+                  publicDescription: "Orm has a brother he never speaks of.",
+                  secretDescription: "Orm's brother leads the bandit gang; internal conflict",
+                  linkedEntityId: "npc:orm" })
 ```
 
 ---
@@ -414,6 +426,7 @@ Manage the passage of time, events that ripple across the world, and long-term c
 | `check_convergence` | Narrator | Do two separate story threads (party A and party B) ever meet? Where and when? |
 
 **Example Use:**
+
 ```
 Narrator advances time at the end of a session:
   thread_tick("main_timeline", duration: "1_day")
@@ -463,6 +476,7 @@ Manage scenes, player choices, and narrative pacing.
 | `commit_choice` | Narrator | Log player choice and resolve its consequences |
 
 **Example Use:**
+
 ```
 Narrator starts a scene:
   activate_scene({ name: "Confrontation at the Crossroads", 
@@ -507,15 +521,18 @@ For advanced campaigns, spawn AI-driven NPCs that act autonomously with goals an
 | `get_journal` | Narrator | Read the agent NPC's internal thoughts/observations |
 
 **Example Use:**
+
 ```
-Narrator creates an autonomous bandit leader agent:
-  agent_manage({ action: "create", character_id: "bandit_leader",
-                 prompt_slices: ["persona: ruthless, intelligent, protective of gang",
-                                "directive: expand territory, avoid direct confrontation with adventurers",
-                                "recent_events: lost 2 bandits in skirmish"] })
+Narrator creates an autonomous bandit leader agent, then adds its prompt slices
+(slices are set individually via `set_slice`, not passed inline to `create`):
+  agent_manage({ action: "create", characterId: "bandit_leader" })
+  agent_manage({ action: "set_slice", agentId: "<returned agent id>",
+                 kind: "persona", content: "ruthless, intelligent, protective of gang" })
+  agent_manage({ action: "set_slice", agentId: "<returned agent id>",
+                 kind: "directive", content: "expand territory, avoid direct confrontation with adventurers" })
 
 Narrator asks what the bandit leader does when alone:
-  agent_manage({ action: "invoke", agent_id: "bandit_leader",
+  agent_manage({ action: "invoke", agentId: "<returned agent id>",
                  situation: "Your scouts report the adventurers are asking about you in the tavern." })
   → "I move camp further north and send a scout to watch them. Too risky to be seen yet."
 ```
@@ -631,11 +648,13 @@ Narrator asks what the bandit leader does when alone:
 ## Example Campaign Flow
 
 **Session Start:**
+
 - Narrator calls `thread_tick` to see what happened since last session
 - Narrator fetches player character data via `character_manage`
 - Narrator checks `recent_changes` to brief players on world events
 
 **During Play:**
+
 - Player: "Aldric goes to the tavern"
   - Narrator calls `get_location_occupants("location:tavern")` to see who's there
   - Narrator calls `get_relationship("npc:orm", "player:aldric")` to set NPC tone
@@ -653,6 +672,7 @@ Narrator asks what the bandit leader does when alone:
   - Narrator updates NPC knowledge via `secret_manage` reveals
 
 **Session End:**
+
 - Narrator calls `thread_tick` to advance world time
 - Narrator calls `append_event` to log major story beats
 - Narrator updates all character states with final `patch_lore` calls

@@ -306,8 +306,8 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 ## Related Code
 
 - **`/mcp` dispatch & result envelope:** `src/lib/rpc.ts`, `src/index.ts`
-- **Existing read handlers to mirror:** `src/tools/lore.ts` (`get_lore`), `src/tools/system.ts` (`list_topics`)
-- **Map push endpoints (REST, unchanged):** `src/admin/routes.ts` lines 535–658
-- **D1 schema:** `schema/rpg-schema.sql` lines 842–866
+- **Existing read handlers to mirror:** both `get_lore` and `list_topics` are defined in `src/tools/system.ts` (not `lore.ts` — `lore.ts` holds the write/mutate handlers: `set_lore`, `delete_lore`, `patch_lore`, `batch_set_lore`, `batch_mutate`, `restore_lore`, etc.)
+- **Map push endpoints (REST, unchanged):** `src/admin/routes.ts` lines 665–787 (`/map/push-hexes` ~665–725, `/map/push-landmarks` ~727–787)
+- **D1 schema:** `schema/rpg-schema.sql` lines 1134–1174
 - **Client read transport:** `holmgard-lore-editor/src/lib/sync.ts` (`rpc()`, `getTopicRemote`, `listTopicsRemote`)
 - **Client plan:** `holmgard-lore-editor/docs/d1-readback-plan.md`

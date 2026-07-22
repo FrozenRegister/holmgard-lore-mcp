@@ -53,9 +53,10 @@ Start by summarizing your understanding now.
 1. **Triage** — Understand the Issue, summarize, await confirmation
 2. **Plan** — Identify files, outline the fix
 3. **Implement** — Write code, add tests
-4. **Test** — Run `pnpm test`, `pnpm lint`, `pnpm type-check`
-5. **Document** — Update docs (CLAUDE.md, docs/ files), add a changelog fragment, and post an Issue comment summarizing the change
-6. **PR** — Open a review-ready Pull Request
+4. **Test** — Run `pnpm test`, check coverage
+5. **Quality** — Run `pnpm lint`, `pnpm type-check`, `pnpm build` (CI gates)
+6. **Document** — Update docs (CLAUDE.md, docs/ files), add a changelog fragment, and post an Issue comment summarizing the change
+7. **Pull Request** — Open a review-ready Pull Request
 
 **Full protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md)
 

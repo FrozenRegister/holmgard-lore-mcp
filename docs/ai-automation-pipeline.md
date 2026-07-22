@@ -195,81 +195,82 @@ batch:3: #4 (surface:docs)
 
 ### 6. PR Quality Checks (`pr-quality.yml`)
 
-**Trigger:** `pull_request: [opened, synchronize, ready_for_review]`
+**Trigger:** `pull_request: [opened, synchronize, ready_for_review, edited]`
 
-**Purpose:** Enforce that every PR updates CHANGELOG.md and includes documentation.
+**Purpose:** Enforce that every PR carries an issue link, a changelog fragment, and documentation.
 
 **Checks:**
 
-1. **`check-changelog`**
-   - Fails if CHANGELOG.md is not in the PR's changed files
-   - Error message guides user on how to fix
+1. **`check-issue-link`**
+   - Fails unless the PR body contains a closing keyword (`closes`/`fixes`/`resolves` `#123`)
 
-2. **`check-docs`**
+2. **`check-changelog`**
+   - Fails if a PR touching `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md` has no new file under `.changelog/fragments/` (CHANGELOG.md itself is not edited directly — fragments are assembled into it at release time)
+
+3. **`check-docs`**
    - Fails if neither:
      - A file under `docs/` was modified, NOR
      - PR body contains a `## Documentation` section
    - Allows PRs to document changes in the PR body if they don't touch `docs/`
+   - Skipped automatically for dependencies-only PRs (only `package*`/`*.lock` files changed)
 
 **Escape hatch:**
-- Apply `skip-quality-checks` label to bypass (for emergency hotfixes only)
+- Apply `skip-quality-checks` label to bypass any of the above (for emergency hotfixes only)
 
 **Example failures:**
 ```
-❌ CHANGELOG.md required
-Every PR must include a CHANGELOG entry under [Unreleased].
+Issue link required
+The PR body must contain a closing keyword referencing an issue (Closes #123).
 
-❌ Documentation required
-Every PR must either:
-  1. Modify files under docs/, OR
-  2. Include a ## Documentation section in the PR body
+Changelog fragment required
+Create a file like .changelog/fragments/my-feature.md.
+
+Documentation update suggested
+Modify files under docs/, or add a ## Documentation section to the PR body.
 ```
 
 ---
 
 ### 7. Auto-Merge (`auto-merge.yml`)
 
-**Trigger:** `pull_request: labeled` (when `auto-merge` label is applied)
+**Trigger:** `pull_request: labeled` (when `auto-merge` label is applied), `workflow_run` completion of CI/PR Quality/Auto-fix Markdown, a `*/5 * * * *` cron fallback poller, and `workflow_dispatch`
 
 **Purpose:** Automatically merge a PR after all CI checks pass.
 
 **Conditions:**
-- All CI checks must be passing (test, type-check, lint)
+- All (deduped, latest-per-name) check runs for the PR's head SHA must be completed and not failed (`codecov/*` checks are excluded from the failure gate)
 - No "changes requested" reviews
 - PR must not be a draft
 
-**Current status:** Informational only — logs status but does not actually merge via GitHub API. To enable full auto-merge, the workflow needs to be enhanced with:
-
-```bash
-gh pr merge --auto --squash <PR-number>
-```
-
-This requires additional setup in branch protection rules.
+**Current status:** Fully active — squash-merges the PR via the GitHub API (`pulls.merge`), then closes any issues referenced with a closing keyword in the PR body (`GITHUB_TOKEN`-driven merges don't trigger GitHub's own closing-keyword automation), dispatches `d1-migrate.yml` if the PR touched `schema/migrations/**`, and deletes the source branch.
 
 ---
 
 ### 8. Enhanced CI (`ci.yml`)
 
-**Trigger:** `push: [main]`, `pull_request: [main]`
+**Trigger:** `push: [main, develop]`, `pull_request: [main, develop]`, `workflow_dispatch`
 
 **Purpose:** Run type-checking and linting alongside tests; fail fast on any CI error.
 
 **Jobs:**
 
-1. **`test`**
-   - Node 20, 22
-   - Runs `npm test`
+1. **`unit-tests`**
+   - Node 22 only
+   - Runs the pure-function `*.unit.test.ts` tier directly via `pnpm exec vitest run --config vitest.unit.config.ts`
+
+2. **`test`**
+   - Node 22 only, sharded 1/4–4/4 (invoked directly via `pnpm exec vitest run --shard=N/4`, not `pnpm test`)
    - Vitest + Miniflare
 
-2. **`type-check`**
-   - Node 22 only
-   - Runs `npm run type-check`
+3. **`type-check`**
+   - Runs `pnpm run type-check`
    - Catches TypeScript errors
 
-3. **`lint`**
-   - Node 22 only
-   - Runs `npm run lint`
+4. **`lint`**
+   - Runs `pnpm run lint`
    - ESLint configuration
+
+5. **`build`**, **`coverage`** (enforces 100% patch coverage), **`notify`** (files an issue on main/develop failure), and **`trigger-auto-merge`** (dispatches `auto-merge.yml`) round out the workflow.
 
 **Changes from previous CI:**
 - Removed `continue-on-error: true` — failures now block merges
@@ -316,7 +317,7 @@ Check out the branch suggested in the work-order comment:
 ```bash
 git checkout -b issue/<number>-<slug>
 # ... implement ...
-npm test
+pnpm test
 git push origin issue/<number>-<slug>
 ```
 

@@ -13,10 +13,12 @@ Every map-shaped table and every map-shaped client data structure in this projec
   - Backend: none needed server-side today (pathfinding is client-only), but the formula matches `mapTools.ts`.
   - Client: `holmgard-lore-editor/src/lib/mapTools.ts:36-40`, and duplicated in `mapDb.ts:188,210,239`.
 - **Six neighbor directions** (pointy-top axial), `mapTools.ts:43-50`:
+
   ```
   [{1,0}, {1,-1}, {0,-1}, {-1,0}, {-1,1}, {0,1}]
   ```
-- **Hex↔pixel** (for SVG rendering) lives server-side in `src/rpg/handlers/world-map.ts` (`hexToPixel`, `hexCorners`, ~lines 196-211) and matches the standard Red Blob Games pointy-top formulas.
+
+- **Hex↔pixel** (for SVG rendering) lives server-side in `src/rpg/handlers/world-map.ts` (`hexToPixel`, `hexCorners`, ~lines 239-252) and matches the standard Red Blob Games pointy-top formulas.
 - **Hex↔lat/lon** (for real-world-anchored campaigns, e.g. Gotland) lives server-side in `src/rpg/utils/geo-transform.ts` (`hexToLatLon`/`latLonToHex`), calibrated per-world via `world_state.geo_origin_lat/lon` + `geo_km_per_hex`. The client has an independent, simpler version for Earth-derived maps in `hexmap-utils.ts:143-164` (`axialToLatLon`/`latLonToAxial`) — these are **not the same formula** and are not meant to interoperate; the server one is precise per-world calibration for gameplay (waypoints, party marches), the client one is a fixed-scale approximation for rendering pre-generated Earth data.
 
 ### `x`/`y` naming that secretly (or actually) meant `q`/`r` — fixed 2026-07-15
@@ -59,8 +61,10 @@ CREATE TABLE landmarks (
 
 CREATE TABLE waypoints (
   id, world_id, name,
-  q, r,                              -- axial position (required — see below)
-  lat, lon,                          -- real-world-anchored position (also required)
+  q, r,                              -- axial position, NOT NULL (required — see below)
+  lat, lon,                          -- real-world-anchored position, nullable since
+                                      -- migration 0037 (#399) — required only when the
+                                      -- target world is geo-calibrated (see below)
   kind, created_at, updated_at
 );
 
@@ -79,7 +83,7 @@ crate_drops.q INTEGER NOT NULL, crate_drops.r INTEGER NOT NULL
 
 `hexes`/`landmarks` is a **single-table, column-level split of ownership**, not a KV/D1-style split — the editor's push endpoints (`/admin/map/push-hexes`, `/admin/map/push-landmarks`) and the RPG engine's write paths (`world_map.patch`/`batch`/`suggest_poi`/`update_poi`) both write to the same rows but touch disjoint column sets. This was the root cause of a real bug (`docs/issues/HIGH-map-push-insert-or-replace-wipes-rpg-columns.md`, #321): the editor's `INSERT OR REPLACE` push used to null out the RPG-owned columns on every ordinary editor sync. Fixed via `ON CONFLICT DO UPDATE` that only touches the columns each route owns — a pattern any future map-table write path must follow.
 
-**`waypoint.register` already requires both `q`/`r` and `lat`/`lon`** (`waypoint-manage.ts:100-101`) — it is not a lat/lon-only endpoint. This is relevant to Cluster 3; see the companion plan doc.
+**`waypoint.register` requires `q`/`r`; `lat`/`lon` are conditionally required** (`waypoint-manage.ts:100-111`) — `q`/`r` are always mandatory, but `lat`/`lon` are only enforced when the target world has already been geo-calibrated (`waypoint.calibrate` has set `world_state.geo_origin_lat/lon`); an uncalibrated grid/hex world can register a waypoint with `q`/`r` alone. This changed after Cluster 3: migration `0037_waypoint_lat_lon_optional.sql` (#399) made `waypoints.lat`/`lon` nullable specifically because forcing placeholder lat/lon on a non-geo-calibrated world would store fabricated data. See the companion plan doc for the original Cluster 3 context.
 
 ## 3. Backend↔frontend sync path
 
@@ -129,7 +133,7 @@ This is not a LOD/aggregation system like B or C — there's no shared coordinat
 
 ## 5. Known documentation drift (flagged, not yet fixed)
 
-- `src/index.ts:98-99`'s `SUB_SCHEMAS` doc comment for `world_map` advertises stale actions (`generate, get_hex, get_region, list_regions, set_hex, get_map` with `x, y, biome` params) that don't match `world-map.ts`'s real `ACTIONS` array (`overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg` with `q, r` params).
+- ~~`src/index.ts`'s `SUB_SCHEMAS` doc comment for `world_map` advertises stale actions...~~ **Fixed.** The `world_map` entry in `SUB_SCHEMAS` (`src/index.ts:156`) now lists `overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg, distance, pathfind` with `q, r` params, matching `world-map.ts`'s real `ACTIONS` array (which has since grown `distance`/`pathfind` via #430) exactly. Left here as a resolved record rather than deleted, per this doc's own stated purpose of not letting drift get rediscovered from scratch.
 - `docs/d1-readback-api-design.md`'s "Current D1 Schema" section predates migration 0019 and is missing `world_id`/`biome`/`elevation`/`moisture`/`temperature`/`zone_*`/`region_id`/`population`.
 - `CLAUDE.md`'s "editor-maintained (tracked) files" list under Hex Map Editor is stale on the *editor repo* side: `parent-child-terrain-sync.js`, `region-switcher.js`, `mcp-auth.js`, `mcp-storage.js`, `river-edges.js` are tracked/editor-maintained, not external/gitignored as its comment implies.
 
