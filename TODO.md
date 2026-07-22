@@ -6,6 +6,6 @@ The dedicated tool this item deferred building has since been implemented: `cont
 `append_event`/`get_event_log` actions (`handle_append_event`/`handle_get_event_log` in
 `src/tools/meta.ts`) write and read per-entity `events:<entityKey>` KV logs — the same convention
 this item proposed, just as a first-class tool rather than a `patch_lore`-append convention. Covered
-by `src/__tests__/thread-tracking.test.ts` and `src/__tests__/narrative.test.ts`. `events:*` keys are
+by `tests/worker/thread-tracking.test.ts` and `tests/worker/narrative.test.ts`. `events:*` keys are
 also already excluded from `kvList()` (see `src/lib/kv.ts` and CLAUDE.md's "Exclude Indexes from
 kvList" section).

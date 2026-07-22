@@ -44,22 +44,25 @@ partway through.
 
 ## Two Test Tiers
 
-Almost all tests in `src/__tests__/*.test.ts` drive the worker end-to-end via `SELF.fetch`/`callTool` against a
-real (miniflare) KV/D1 instance — that's the source of truth for tool behavior, and it's what `pnpm test` runs
-(`vitest.config.ts`).
+Almost all tests live under `tests/worker/**/*.test.ts` and drive the worker end-to-end via `SELF.fetch`/`callTool`
+against a real (miniflare) KV/D1 instance — that's the source of truth for tool behavior, and it's what `pnpm test`
+runs (`vitest.config.ts`, which explicitly includes `tests/worker/**/*.test.ts`).
 
-A small second tier, `src/__tests__/*.unit.test.ts`, covers genuinely pure functions (no I/O, no bindings —
-e.g. `scoreMatch`, `countOccurrences`, `parseKvEntry`, `normalizeLocationKey`) directly, with no Workers runtime
-to boot:
+A small second tier, `tests/unit/**/*.test.ts`, covers genuinely pure functions (no I/O, no bindings — e.g.
+`scoreMatch`, `countOccurrences`, `parseKvEntry`, `normalizeLocationKey`) directly, with no Workers runtime to boot:
 
 ```bash
 pnpm test:unit          # run the fast unit tier (sub-second)
 pnpm test:unit:watch    # watch mode for the fast unit tier
 ```
 
-These files are excluded from the main `vitest.config.ts` run and have their own `unit-tests` CI job, so they
-give fast feedback without duplicating the integration suite. When adding a new pure helper function, prefer a
-`*.unit.test.ts` file here over routing the test through a tool call.
+Selection between tiers is directory-based, not filename-based: `vitest.config.ts` includes only
+`tests/worker/**`, and `vitest.unit.config.ts` includes only `tests/unit/**` — a test file's location determines
+which runtime it gets, so there's no ambiguity from a magic filename suffix. (Files that are also genuinely
+suffix-tagged `*.unit.test.ts`, like `tests/unit/lib/score-match.unit.test.ts`, keep that naming as an extra
+signal, but it's the directory that the config actually keys off.) They have their own `unit-tests` CI job, so
+they give fast feedback without duplicating the integration suite. When adding a new pure helper function,
+prefer a file under `tests/unit/` over routing the test through a tool call.
 
 ## Test Suite Status
 
@@ -94,7 +97,7 @@ The following 284 lint problems are pre-existing across test files:
 1. **`@typescript-eslint/no-unused-vars`** (~150+ errors)
    - Unused imports in test files (e.g., `rpc`, `callTool`, `seedKV`, `parseEncounterTable`)
    - Unused destructured variables from test helpers (e.g., `env`, `SELF`, `beforeEach`)
-   - Files affected: All test files in `src/__tests__/`
+   - Files affected: All test files in `tests/worker/`
 
 2. **`no-empty`** (5+ errors)
    - Empty block statements (e.g., `catch () {}`, `try {} catch {}`)
@@ -148,7 +151,7 @@ This fixes:
 
 For each file with `no-unused-vars` errors:
 
-**Example**: `src/__tests__/admin.test.ts`
+**Example**: `tests/worker/admin.test.ts`
 
 ```typescript
 // Before
@@ -164,7 +167,7 @@ import { callToolWithApiKey, parseEncounterTable } from './helpers'
 **Find unused imports in a file**:
 
 ```bash
-pnpm run lint src/__tests__/admin.test.ts 2>&1 | grep "no-unused-vars"
+pnpm run lint tests/worker/admin.test.ts 2>&1 | grep "no-unused-vars"
 ```
 
 #### Step 3: Fix empty block statements
