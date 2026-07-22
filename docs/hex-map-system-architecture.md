@@ -3,7 +3,7 @@
 **Status:** Reference doc — how the system actually works today, consolidated from both repos.
 **Companion doc:** `holmgard-lore-editor/docs/zoom-mechanisms-comparison.md` (client-side zoom mechanisms in detail — this doc summarizes it and adds the backend half + the region-switcher mechanism it doesn't cover).
 
-This exists because the pieces of the hex map system are scattered across two repos, several partially-stale planning docs, and a handful of vendor JS files, and no single doc answers "how do coordinates work end to end" or "how does zoom actually work today." Both questions came up while triaging GitHub issue #391 Cluster 3 (#337, #340, #341), which turned out to be based on a wrong premise (see `docs/issues/cluster-3-hex-coordinate-alignment-plan.md`).
+This exists because the pieces of the hex map system are scattered across two repos, several partially-stale planning docs, and a handful of vendor JS files, and no single doc answers "how do coordinates work end to end" or "how does zoom actually work today." Both questions came up while triaging GitHub issue #391 Cluster 3 (#337, #340, #341, all since closed — the plan doc that tracked them, based on a wrong Cartesian-tile-mode premise, has been removed now that the work shipped).
 
 ## 1. Coordinate system: axial `(q, r)`, everywhere
 
@@ -81,7 +81,7 @@ corpses.position_q INTEGER, corpses.position_r INTEGER
 crate_drops.q INTEGER NOT NULL, crate_drops.r INTEGER NOT NULL
 ```
 
-`hexes`/`landmarks` is a **single-table, column-level split of ownership**, not a KV/D1-style split — the editor's push endpoints (`/admin/map/push-hexes`, `/admin/map/push-landmarks`) and the RPG engine's write paths (`world_map.patch`/`batch`/`suggest_poi`/`update_poi`) both write to the same rows but touch disjoint column sets. This was the root cause of a real bug (`docs/issues/HIGH-map-push-insert-or-replace-wipes-rpg-columns.md`, #321): the editor's `INSERT OR REPLACE` push used to null out the RPG-owned columns on every ordinary editor sync. Fixed via `ON CONFLICT DO UPDATE` that only touches the columns each route owns — a pattern any future map-table write path must follow.
+`hexes`/`landmarks` is a **single-table, column-level split of ownership**, not a KV/D1-style split — the editor's push endpoints (`/admin/map/push-hexes`, `/admin/map/push-landmarks`) and the RPG engine's write paths (`world_map.patch`/`batch`/`suggest_poi`/`update_poi`) both write to the same rows but touch disjoint column sets. This was the root cause of a real, since-fixed bug: the editor's `INSERT OR REPLACE` push used to null out the RPG-owned columns on every ordinary editor sync (see `.changelog/fragments/map-push-preserves-rpg-columns.md`). Fixed via `ON CONFLICT DO UPDATE` that only touches the columns each route owns — a pattern any future map-table write path must follow.
 
 **`waypoint.register` requires `q`/`r`; `lat`/`lon` are conditionally required** (`waypoint-manage.ts:100-111`) — `q`/`r` are always mandatory, but `lat`/`lon` are only enforced when the target world has already been geo-calibrated (`waypoint.calibrate` has set `world_state.geo_origin_lat/lon`); an uncalibrated grid/hex world can register a waypoint with `q`/`r` alone. This changed after Cluster 3: migration `0037_waypoint_lat_lon_optional.sql` (#399) made `waypoints.lat`/`lon` nullable specifically because forcing placeholder lat/lon on a non-geo-calibrated world would store fabricated data. See the companion plan doc for the original Cluster 3 context.
 
