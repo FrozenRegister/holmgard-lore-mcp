@@ -104,6 +104,8 @@ If something genuinely isn't covered by any artifact here (an infra/install fail
 
 Every artifact is named with the commit SHA it was generated from (`{sha}` in the table above, or embedded via `workflow_run.head_sha` in the artifact listing for `coverage-report`, which isn't SHA-suffixed by name). Before trusting any downloaded artifact against a PR you're actively fixing, confirm the SHA in the listing matches the PR's *current* head SHA (from `pull_request_read`). If a force-push happened after the run that produced the artifact you're looking at, it's describing a commit that no longer exists on the branch — find the newer run instead.
 
+**Always compare against `workflow_run.head_sha` from the listing response, never derive the SHA yourself from the artifact's name string.** The `{sha}` baked into each artifact's name is `github.event.pull_request.head.sha` (falling back to `github.sha` on push/workflow_dispatch runs) — deliberately *not* plain `github.sha`, because on a `pull_request`-triggered run `github.sha` is GitHub's ephemeral merge commit, not the PR branch's actual head commit. Verified directly against a real run: they differed. The listing response's `workflow_run.head_sha` field is always correct regardless of event type; that's the one to check, not string-matching the artifact name.
+
 ---
 
 ## Related

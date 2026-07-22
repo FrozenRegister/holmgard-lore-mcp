@@ -43,7 +43,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-unit-${{ github.sha }}
+          # github.sha on a pull_request-triggered run is the ephemeral merge
+          # commit, not the PR branch's actual head commit — verified against
+          # a real run (differed from workflow_run.head_sha). Falls back to
+          # github.sha for push/workflow_dispatch, where it's correct as-is.
+          name: test-results-unit-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-unit.json
           retention-days: 7
 
@@ -76,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-shard-${{ matrix.shard }}-${{ github.sha }}
+          name: test-results-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-shard-${{ matrix.shard }}.json
           retention-days: 7
 
@@ -103,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: typecheck-report-${{ github.sha }}
+          name: typecheck-report-${{ github.event.pull_request.head.sha || github.sha }}
           path: tsc-diagnostics.txt
           retention-days: 7
 
@@ -130,7 +134,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lint-report-${{ github.sha }}
+          name: lint-report-${{ github.event.pull_request.head.sha || github.sha }}
           path: eslint-report.json
           retention-days: 7
 
