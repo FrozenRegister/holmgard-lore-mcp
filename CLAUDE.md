@@ -91,11 +91,29 @@ Then push and let CI run the full matrix + coverage (~2 min). Treat green CI as 
 ### Common Failures
 
 - **Type errors** — Run `pnpm run type-check` to identify and fix. In tests, use type assertions with `as` for dynamic values: `const result = (await response.json()) as { ok: boolean; ... }`
-- **Coverage below 100% on new code (CI)** — Open the failing `coverage` job or the Codecov report to see uncovered lines, add tests, push again. To reproduce locally if needed: `pnpm test:coverage`, then inspect `coverage/lcov.info`.
+- **Coverage below 100% on new code (CI)** — **If you're an agent, don't reproduce this locally first.** Download the `coverage-report` artifact from the failed run and read `patch-coverage-report.json` — it already lists the exact uncovered file:line pairs. See [CI Artifacts for Agents](#ci-artifacts-for-agents) below.
 - **Changelog fragment missing** — Create a `.md` file under `.changelog/fragments/` describing your changes (e.g. `.changelog/fragments/my-feature.md`)
 - **Documentation update suggested** — Either (1) modify files under `docs/`, or (2) add a `## Documentation` section to your PR body describing the change, or (3) apply the `skip-quality-checks` label if documentation truly isn't needed (e.g., internal refactors, fixes to unreleased code, dependencies-only updates)
 - **Markdown formatting** — Run `pnpm fix:md` to auto-correct (e.g., table spacing)
-- **Tests failing in CI** — Reproduce locally by running just that file (`pnpm test -- <file>`), fix, push again
+- **Tests failing in CI** — **If you're an agent, don't rerun the suite first.** Download the relevant `test-results-*` artifact and read the structured failure — see [CI Artifacts for Agents](#ci-artifacts-for-agents) below. Rerun locally only once you're iterating on an actual fix.
+
+## CI Artifacts for Agents
+
+**If you are an AI agent working on this repo: read this before running `pnpm test`, `pnpm run lint`, `pnpm run type-check`, or `pnpm test:coverage` to diagnose a failing PR.** Every one of those already ran in CI, and the results already exist as small, structured, downloadable artifacts — re-running them to find out what already failed wastes the exact time this system exists to save. Full guide with file formats and exact field names: **[`docs/agent-ci-artifacts-guide.md`](./docs/agent-ci-artifacts-guide.md)**.
+
+The short version:
+
+| Failing check | Artifact | File | Answers |
+|---|---|---|---|
+| `Coverage` | `coverage-report` | `patch-coverage-report.json` | Exact uncovered file:line pairs |
+| `Lint` | `lint-report-{sha}` | `eslint-report.json` | Exact rule/file/line for every violation |
+| `Type Check` | `typecheck-report-{sha}` | `tsc-diagnostics.txt` | Compiler errors, plain text |
+| `Unit Tests` | `test-results-unit-{sha}` | `test-results-unit.json` | Structured pass/fail + failure messages |
+| `Tests (shard N/4)` | `test-results-shard-{N}-{sha}` | `test-results-shard-{N}.json` | Same, per shard |
+
+Find and download via the GitHub MCP tools already available in-session — no `gh` CLI, no new auth: `actions_list(method: "list_workflow_run_artifacts", resource_id: <run_id>)` to find the artifact (its response includes `workflow_run.head_sha` — check this against the PR's current head before trusting it, no download needed), then `actions_get(method: "download_workflow_run_artifact", resource_id: <artifact_id>)` for the download URL.
+
+**Rerunning locally is fine when you're actively iterating on a fix** (write code, run the one file you touched, repeat) — it's only wasteful when you're using it to find out why an *already-completed* CI run failed, which the artifacts above already answer.
 
 ## Workflows & Protocols
 
@@ -302,6 +320,8 @@ Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along 
 ## Tests
 
 Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers` (vitest 4 plugin API — `cloudflareTest()` in `vitest.config.ts`). KV is in-memory miniflare storage; `ADMIN_SECRET` is `test-secret-123`.
+
+**Gotcha — `pnpm run <script> -- <flags>` silently swallows the flags.** pnpm always inserts a literal `--` before args forwarded this way, regardless of whether the underlying script already has one. Vitest sees its *own* `--` and treats everything after it as a positional test-file filter, not CLI flags — so `pnpm test -- --shard=1/4` or `pnpm run test:unit -- --reporter=json` silently does nothing (no error, flag just never takes effect). This was discovered because `.github/workflows/ci.yml`'s sharded `test` job was invoking `pnpm test -- --shard=${{ matrix.shard }}/4` — every "shard" was actually running the full suite (~5 min each, matching full-suite time, not a 1/4 slice). Fixed by calling vitest directly: `pnpm exec vitest run --shard=1/4 ...` (verified locally: a real 1/4 slice runs in ~2 min against ~34 files, vs. the full suite's ~7 min). When adding CLI flags to any `pnpm run <script>` invocation in a workflow, always use `pnpm exec <bin> <args>` instead of `pnpm run <script> -- <args>`.
 
 `reset()` from `cloudflare:test` is called `afterEach` to wipe all KV between tests. Seed KV directly with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` rather than going through `set_lore` — this avoids writing to the module-level `loreDB` fallback and keeps test isolation clean.
 

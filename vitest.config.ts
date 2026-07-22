@@ -9,7 +9,7 @@ export default defineConfig({
     globalSetup: ['./vitest.global-setup.ts'],
     coverage: {
       provider: 'istanbul',
-      reporter: ['lcov', 'text', 'json'],
+      reporter: ['lcov', 'text', 'json', 'json-summary'],
       include: ['src/**/*.ts'],
       exclude: ['src/__tests__/**', 'node_modules/**', 'src/**/migrate-*.ts'],
       reportsDirectory: './coverage',

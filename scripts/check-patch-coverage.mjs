@@ -10,10 +10,11 @@
 // either breaking on pre-existing debt or missing a badly-covered new file.
 
 import { execSync } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 
 const baseRef = process.env.PATCH_COVERAGE_BASE_REF || 'origin/main'
 const coveragePath = process.env.PATCH_COVERAGE_JSON || 'coverage/coverage-final.json'
+const reportPath = process.env.PATCH_COVERAGE_REPORT || 'coverage/patch-coverage-report.json'
 
 function getChangedLines(ref) {
   const diffOutput = execSync(`git diff --unified=0 --diff-filter=ACMR ${ref}...HEAD -- '*.ts'`, {
@@ -62,15 +63,25 @@ function isExcludedFromCoverage(relPath) {
   return false
 }
 
+function writeReport(report) {
+  // Written unconditionally (pass, fail, or nothing-to-check) so an agent
+  // reading the coverage-report artifact never needs to parse console output
+  // or a job log to learn the answer — see issue #479.
+  writeFileSync(reportPath, JSON.stringify(report, null, 2))
+}
+
 function main() {
   const changed = getChangedLines(baseRef)
   if (changed.size === 0) {
     console.log(`check-patch-coverage: no changed .ts files vs ${baseRef} — nothing to check`)
+    writeReport({ passed: true, baseRef, checkedFiles: 0, failures: [] })
     return
   }
 
   if (!existsSync(coveragePath)) {
-    console.error(`check-patch-coverage: ${coveragePath} not found — did the coverage reporter include 'json'?`)
+    const message = `${coveragePath} not found — did the coverage reporter include 'json'?`
+    console.error(`check-patch-coverage: ${message}`)
+    writeReport({ passed: false, baseRef, checkedFiles: 0, failures: [], error: message })
     process.exit(1)
   }
   const coverage = JSON.parse(readFileSync(coveragePath, 'utf8'))
@@ -104,10 +115,12 @@ function main() {
       console.error(`  ${f.file}: ${lineWord} ${f.lines.join(', ')}${f.reason ? ` (${f.reason})` : ''}`)
     }
     console.error(`\n${failures.length} file(s) with uncovered changed lines. This repo requires 100% patch coverage — see CLAUDE.md.\n`)
+    writeReport({ passed: false, baseRef, checkedFiles: changed.size, failures })
     process.exit(1)
   }
 
   console.log(`check-patch-coverage: all changed lines across ${changed.size} file(s) are covered.`)
+  writeReport({ passed: true, baseRef, checkedFiles: changed.size, failures: [] })
 }
 
 main()
