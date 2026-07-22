@@ -113,6 +113,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history needed to resolve the merge-base for the patch-coverage
+          # diff below (git diff base...HEAD) — the default shallow checkout
+          # doesn't have origin/main available locally.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -124,6 +129,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run tests with coverage
         run: pnpm test:coverage
+      - name: Enforce patch coverage (changed lines must be tested)
+        if: github.event_name == 'pull_request'
+        env:
+          PATCH_COVERAGE_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: pnpm run check:patch-coverage
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

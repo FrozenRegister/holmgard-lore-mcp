@@ -13,6 +13,7 @@
     "deploy": "wrangler deploy --name holmgard-lore-mcp",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "check:patch-coverage": "node scripts/check-patch-coverage.mjs",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:unit:watch": "vitest --config vitest.unit.config.ts",
