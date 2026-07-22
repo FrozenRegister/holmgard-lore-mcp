@@ -392,7 +392,7 @@ describe('coverage gaps — edge paths', () => {
   // (see makeActionDispatcher in src/tools/types.ts and its tests in types.test.ts),
   // not inside the handler — calling the handler directly with malformed args is no
   // longer a case the handler itself needs to guard against. The equivalent end-to-end
-  // behavior is covered by src/__tests__/invalid-params-entity.test.ts, which exercises
+  // behavior is covered by tests/worker/invalid-params-entity.test.ts, which exercises
   // this through the real entity_manage dispatch (e.g. 'create_consumption_timeline:
   // missing stages', 'set_consumption_timeline: missing entity_key').
 

@@ -22,7 +22,7 @@ coverage:
         informational: false
 
 ignore:
-  - "src/__tests__/**"
+  - "tests/**"
   - "*.config.*"
   - "wrangler.jsonc"
   - "node_modules/**"
