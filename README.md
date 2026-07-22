@@ -38,7 +38,7 @@ pnpm install
 pnpm run dev                        # Start local dev server with wrangler
 pnpm test                           # Run vitest suite in Workers runtime
 pnpm test -- --reporter=verbose     # Verbose output with per-test names
-pnpm test -- src/__tests__/crud.test.ts  # Run single test file
+pnpm test -- tests/worker/crud.test.ts  # Run single test file
 pnpm test:coverage                  # Generate coverage report (lcov)
 pnpm test:live                      # Run smoke tests against production (requires MCP_API_KEY)
 ```
@@ -492,7 +492,7 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 
 ### Test Suites
 
-1. **Unit/Integration tests** (`pnpm test`): Run full `src/__tests__/*.test.ts` suite in Workers runtime
+1. **Unit/Integration tests** (`pnpm test`): Run full `tests/worker/**/*.test.ts` suite in Workers runtime
 2. **Coverage** (`pnpm test:coverage`): Generate LCOV report to `./coverage/lcov.info`
 3. **Live smoke tests** (`pnpm test:live`): End-to-end tests against production worker (requires `MCP_API_KEY` env var)
 

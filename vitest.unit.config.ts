@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import path from 'node:path'
 
 // Fast tier for genuinely pure functions — no miniflare/Workers runtime boot.
 // The rest of the suite (vitest.config.ts) drives the worker end-to-end via
@@ -8,7 +9,12 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     name: 'unit',
-    include: ['src/**/*.unit.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     testTimeout: 5000,
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 })

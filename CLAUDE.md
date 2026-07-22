@@ -19,7 +19,7 @@ wrangler dev                     # local dev server (uses wrangler.jsonc main)
 To run a single test file or describe block:
 
 ```bash
-pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
+pnpm test -- --reporter=verbose tests/worker/admin.test.ts
 ```
 
 Live smoke tests require `MCP_API_KEY` set in the environment. `ADMIN_SECRET` is optional (admin tests skip if unset).
@@ -66,7 +66,7 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
 | **Changelog fragment** | CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add a `.md` file under `.changelog/fragments/`. Fragments are assembled at release time — no merge conflicts. |
-| **Touched test file(s)** | Local | `pnpm test -- src/__tests__/<file>.test.ts` for the area you changed |
+| **Touched test file(s)** | Local | `pnpm test -- tests/worker/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | `coverage` CI job is the enforced gate — fails if patch coverage drops below 100%. Codecov upload is advisory only. |
 | **Documentation** | CI | PRs must either modify `docs/` files OR include a `## Documentation` section in PR body. Dependencies-only and internal refactors can use `skip-quality-checks` label. |
@@ -82,7 +82,7 @@ pnpm fix:md                                      # Fix markdown formatting
 # If src/, docs/, wrangler.jsonc, or CLAUDE.md changed — add a changelog fragment:
 # New-Item .changelog\fragments\my-feature.md    # PowerShell
 # touch .changelog/fragments/my-feature.md       # bash
-pnpm test -- src/__tests__/<touched-file>.test.ts  # Only the tests you touched
+pnpm test -- tests/worker/<touched-file>.test.ts  # Only the tests you touched
 .\scripts\pre-commit-validate.ps1 -SkipTests     # Fast local gate
 ```
 
@@ -327,7 +327,7 @@ Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
 
-1. **Vitest workers** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime via miniflare
+1. **Vitest workers** (`tests/worker/**/*.test.ts`) — unit/integration tests running in the Workers runtime via miniflare
 2. **Vitest live** (`tests/live/*.test.ts`) — end-to-end smoke tests against the deployed production worker
 
 Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.

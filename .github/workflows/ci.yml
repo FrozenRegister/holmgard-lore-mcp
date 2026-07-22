@@ -129,7 +129,7 @@ jobs:
         run: pnpm run lint
       - name: Generate structured lint report
         if: always()
-        run: npx eslint --format json src > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
+        run: npx eslint --format json src tests > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4

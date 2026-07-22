@@ -262,7 +262,7 @@ The worker dispatches `/mcp` methods through `src/lib/rpc.ts` + the tool handler
 - [ ] Register each in the `tools/call` dispatch table **and** the bare-method dispatch (mirror how `get_lore` / `list_topics` are wired in `src/index.ts` / `src/lib/rpc.ts`).
 - [ ] Add tool definitions to `toolDefinitions` (so `tools/list` advertises them with input schemas).
 - [ ] Guard `c.env?.RPG_DB` — return a graceful error when D1 is unbound.
-- [ ] **Update both test suites** (`src/__tests__/*` workers + `tests/live/*`), per repo policy.
+- [ ] **Update both test suites** (`tests/worker/*` workers + `tests/live/*`), per repo policy.
 - [ ] Add CHANGELOG `[Unreleased]` entry.
 - [ ] Update the **15 MCP tools** list in `CLAUDE.md` (it becomes 18).
 

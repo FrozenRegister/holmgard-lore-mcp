@@ -83,7 +83,7 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints', () => {
 
 // Malformed-request edge cases against the deployed worker — the happy-path
 // tests above only exercise valid input. See issue #31: these are the smoke-test
-// equivalent of src/__tests__/admin.test.ts's validation coverage, run against
+// equivalent of tests/worker/admin.test.ts's validation coverage, run against
 // the live worker instead of miniflare.
 describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('Admin Endpoints — malformed requests', () => {
   describe('/admin/set-lore', () => {

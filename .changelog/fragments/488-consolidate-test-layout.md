@@ -1,0 +1,8 @@
+### Consolidated scattered test files into a single `tests/` layout (#488)
+
+- Replaced three competing test conventions (colocated `*.test.ts` beside source files, `src/__tests__/` flat directory, `tests/{unit,integration,live}/`) with one root: `tests/unit/`, `tests/worker/`, `tests/live/` — each mapped to exactly one Vitest project via an explicit `include` glob (`vitest.unit.config.ts`, `vitest.config.ts`, `vitest.live.config.ts`), closing the ambiguity where a stray test file could silently run in the wrong runtime or not at all.
+- Fixed a real bug surfaced by the audit: `tests/unit/agent/agent-manage.test.ts` required the Workers runtime (`cloudflare:test`) but was never actually reached by `vitest.unit.config.ts`'s old suffix-only include (`src/**/*.unit.test.ts`) — it was silently running through the default Workers config instead of the fast unit tier its directory implied. It's now correctly under `tests/worker/agent/`. The other pre-existing `tests/unit/entity/` and `tests/unit/lore/` files had the same problem (never actually unit-tier despite the name) and are now genuinely picked up by the unit config for the first time.
+- Added a `@/*` -> `src/*` path alias (`tsconfig.json`, both Vitest configs) so relocated tests don't carry fragile `../../../src/foo` relative paths.
+- Widened `pnpm run lint` scope from `eslint src` to `eslint src tests` — test files outside `src/__tests__/` were never linted before this change (720 pre-existing `no-explicit-any` warnings surfaced, 0 errors).
+- Updated `codecov.yml` ignore list and removed a now-dead `src/__tests__/` branch in `scripts/check-patch-coverage.mjs` to match the new layout.
+- No test behavior changed — every file moved as a whole with only import paths rewritten; nothing was split.

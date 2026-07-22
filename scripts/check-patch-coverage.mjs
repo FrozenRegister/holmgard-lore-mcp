@@ -57,8 +57,9 @@ function findCoverageEntry(coverage, relPath) {
 function isExcludedFromCoverage(relPath) {
   // Mirrors vitest.config.ts coverage.include/exclude — files matching these
   // legitimately have no coverage data and shouldn't be flagged as gaps.
+  // All test files now live under tests/, outside src/, so the leading
+  // `!relPath.startsWith('src/')` check already excludes them.
   if (!relPath.startsWith('src/')) return true
-  if (relPath.startsWith('src/__tests__/')) return true
   if (/\/migrate-[^/]+\.ts$/.test('/' + relPath)) return true
   return false
 }
