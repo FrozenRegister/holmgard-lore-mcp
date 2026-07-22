@@ -702,7 +702,11 @@ describe('handleTimeManage', () => {
   // ── New Exported Functions Tests ─────────────────────────────────────────────
 
   it('getCurrentDate retrieves current date for existing world', async () => {
-    // Initialize a world with a known date using the handler directly
+    // Create world in worlds table first (FK constraint)
+    await env.RPG_DB.prepare(
+      `INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind('test-world', 'Test World', 'seed', 10, 10, now, now).run()
+
     const r = await handleTimeManage(db(), {
       action: 'set_date',
       world_id: 'test-world',
@@ -711,7 +715,6 @@ describe('handleTimeManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
 
-    // Import and test getCurrentDate directly
     const { getCurrentDate } = await import('../rpg/handlers/time-manage')
     const currentDate = await getCurrentDate(env.RPG_DB, 'test-world')
 
