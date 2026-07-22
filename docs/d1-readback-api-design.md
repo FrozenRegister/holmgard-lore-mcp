@@ -1,8 +1,16 @@
 # D1 Readback API Design & Implementation Guide
 
-**Status:** Planning phase
+**Status:** SUPERSEDED — the design below (MCP bare-methods `get_map_hexes`/`get_map_landmarks`/`get_map_meta`) was never built. What shipped instead is `POST /internal/map-readback` (`src/internal/routes.ts`), a single combined REST endpoint gated by `ADMIN_SECRET`/`X-Api-Key` — see "What actually shipped" below. The rest of this document is kept as the historical design rationale, not a description of current behavior.
 **Scope:** Worker-side read path for hexes & landmarks stored in D1
 **Branches:** Both repos use `claude/holmgard-d1-readback-0p3b5t`
+
+---
+
+## What actually shipped (read this first)
+
+`POST /internal/map-readback` takes `{ mapId }` in the body, requires the same secret as `/admin/*` (`checkSecret()` — `X-Admin-Secret` or `X-Api-Key`), and returns `{ ok: true, hexes: [...], landmarks: [...] }` in one call — both tables in a single combined REST response, not two separate bare MCP methods plus a third `get_map_meta` method. There is no `tools/call` registration for map reads; they are not discoverable via `tools/list` or callable by an agent through the MCP surface at all.
+
+This contradicts the "reads via MCP, privileged writes via REST" convention this doc's own design section argues for (and that `CLAUDE.md`'s "API surface convention" still documents as the intended pattern) — a read endpoint that requires the admin secret. Whether to migrate this to the MCP surface to match convention, or whether REST was the right call here for reasons not captured in the original design, is an open question — filed separately rather than guessed at here.
 
 ---
 
@@ -43,6 +51,7 @@ Both paths share one handler; only the envelope differs.
 ## Current D1 Schema
 
 ### hexes table
+
 ```sql
 CREATE TABLE hexes (
   q          INTEGER NOT NULL,
@@ -57,6 +66,7 @@ CREATE TABLE hexes (
 ```
 
 ### landmarks table
+
 ```sql
 CREATE TABLE landmarks (
   id         TEXT PRIMARY KEY,
@@ -81,6 +91,7 @@ All methods are called via `POST /mcp`. Authentication matches the existing read
 **Purpose:** Fetch all hexes for a map.
 
 #### Request (bare method — what the client calls)
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -91,6 +102,7 @@ All methods are called via `POST /mcp`. Authentication matches the existing read
 ```
 
 #### Response — `result`
+
 ```json
 {
   "mapId": "main",
@@ -104,18 +116,22 @@ All methods are called via `POST /mcp`. Authentication matches the existing read
 ```
 
 #### Request (`tools/call` — agent path, same handler)
+
 ```json
 {
   "jsonrpc": "2.0", "id": 1, "method": "tools/call",
   "params": { "name": "get_map_hexes", "arguments": { "mapId": "main" } }
 }
 ```
+
 → `result` = `{ content: [{ type:"text", text:"2 hexes on map 'main' (last updated …)" }], metadata: { mapId, hexes, count, lastUpdated } }`
 
 #### Errors
+
 JSON-RPC errors (not HTTP status). Invalid params → `-32602`. D1 unavailable → application error in `result` (`{ ok:false, error:"RPG_DB unavailable" }`) or `-32000`, matching how existing tools degrade. Empty map → `hexes: []`, **not** an error.
 
 #### Query & mapping
+
 ```sql
 SELECT q, r, terrain, label, data, updated_at FROM hexes WHERE map_id = ? ORDER BY q, r
 ```
@@ -151,11 +167,13 @@ function hexFromD1(row: HexRow): HexOut {
 **Purpose:** Fetch all landmarks for a map.
 
 #### Request (bare method)
+
 ```json
 { "jsonrpc": "2.0", "id": 2, "method": "get_map_landmarks", "params": { "mapId": "main" } }
 ```
 
 #### Response — `result`
+
 ```json
 {
   "mapId": "main",
@@ -172,6 +190,7 @@ function hexFromD1(row: HexRow): HexOut {
 ```
 
 #### Query & mapping
+
 ```sql
 SELECT id, q, r, name, category, data, updated_at FROM landmarks WHERE map_id = ? ORDER BY q, r
 ```
@@ -212,20 +231,24 @@ Notes: `attributes` is returned **stringified** to match the client `LandmarkRec
 **Purpose:** Map metadata (counts, last update) — cheap precheck before a full pull (lets the client decide full vs. delta vs. skip).
 
 #### Request (bare method)
+
 ```json
 { "jsonrpc": "2.0", "id": 3, "method": "get_map_meta", "params": { "mapId": "main" } }
 ```
 
 #### Response — `result`
+
 ```json
 { "mapId": "main", "hexCount": 1024, "landmarkCount": 42, "lastUpdated": "2025-01-15T10:30:00Z" }
 ```
 
 #### Queries
+
 ```sql
 SELECT COUNT(*) AS hex_count, MAX(updated_at) AS last_updated FROM hexes WHERE map_id = ?;
 SELECT COUNT(*) AS landmark_count, MAX(updated_at) AS last_updated FROM landmarks WHERE map_id = ?;
 ```
+
 Both tables empty → counts of 0 (not an error).
 
 ---
@@ -250,9 +273,11 @@ The worker dispatches `/mcp` methods through `src/lib/rpc.ts` + the tool handler
 (unchanged from client plan — see `holmgard-lore-editor/docs/d1-readback-plan.md`)
 
 ### 1. Persistent vs. transient Landmark fields
+
 The rich `Landmark` type (types.ts) has 40+ fields; D1 stores a base subset + JSON `data`. Which of the styling/positioning fields must round-trip is **TBD** — review editor UI before Phase 2.
 
 ### 2. Elevation
+
 `Hex.elevation` is optional in types.ts and absent from D1. Decide: add `elevation INTEGER DEFAULT 0` (migration) or drop from the client type.
 
 ---
@@ -278,9 +303,11 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 ## Testing Strategy
 
 ### Unit (vitest)
+
 - `hexFromD1` / `landmarkFromD1`: null fields, malformed `data` JSON, missing keys.
 
 ### Integration (miniflare + D1)
+
 - Seed `hexes`/`landmarks`, call each method via `/mcp` (bare **and** `tools/call`), assert `result` shape.
 - Empty map → empty arrays, count 0.
 - D1 unbound → graceful error.
@@ -288,6 +315,7 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 - Large payload (1000+ rows) returns in one read.
 
 ### Live smoke (`tests/live/*`)
+
 - Hit deployed `/mcp` with the new methods against a known map.
 
 ---
@@ -306,8 +334,8 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 ## Related Code
 
 - **`/mcp` dispatch & result envelope:** `src/lib/rpc.ts`, `src/index.ts`
-- **Existing read handlers to mirror:** `src/tools/lore.ts` (`get_lore`), `src/tools/system.ts` (`list_topics`)
-- **Map push endpoints (REST, unchanged):** `src/admin/routes.ts` lines 535–658
-- **D1 schema:** `schema/rpg-schema.sql` lines 842–866
+- **Existing read handlers to mirror:** both `get_lore` and `list_topics` are defined in `src/tools/system.ts` (not `lore.ts` — `lore.ts` holds the write/mutate handlers: `set_lore`, `delete_lore`, `patch_lore`, `batch_set_lore`, `batch_mutate`, `restore_lore`, etc.)
+- **Map push endpoints (REST, unchanged):** `src/admin/routes.ts` lines 665–787 (`/map/push-hexes` ~665–725, `/map/push-landmarks` ~727–787)
+- **D1 schema:** `schema/rpg-schema.sql` lines 1134–1174
 - **Client read transport:** `holmgard-lore-editor/src/lib/sync.ts` (`rpc()`, `getTopicRemote`, `listTopicsRemote`)
 - **Client plan:** `holmgard-lore-editor/docs/d1-readback-plan.md`

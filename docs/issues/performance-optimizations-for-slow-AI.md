@@ -24,6 +24,7 @@ This document proposes structural optimizations to reduce both latency and token
 ## Issue 2: No Aggregated "Narrative Snapshot" Endpoint
 
 **Current behavior:** To get a complete picture for a scene, the narrator calls:
+
 1. `get_location_occupants` — who is present
 2. `get_lore` × N — each entity's profile
 3. `get_relationship` × M — pairwise relationships
@@ -33,6 +34,7 @@ This document proposes structural optimizations to reduce both latency and token
 That's 3 + N + M calls minimum.
 
 **Proposed fix:** Create a `narrative_snapshot(location_key, depth)` endpoint that returns:
+
 - Location text (from `get_lore`)
 - Present entity keys with short bios
 - Open setups (from `list_unpaid_setups` scoped to present actors)
@@ -51,9 +53,11 @@ This replaces 10+ calls with 1 call. The "depth" parameter controls how much det
 **Current behavior:** `get_lore` always returns the complete lore entry text — often 3,000–8,000 words. The narrator frequently only needs the structured fields (Location, Status, Timeline-Value, Weight-1, Weight-2).
 
 **Proposed fix:** Add a `fields` parameter to `get_lore` and `get_lore_batch`:
+
 ```
 get_lore({ query: "character:kavissa-crowmark", fields: ["Location", "Status", "Weight-1", "Timeline-Value"] })
 ```
+
 This returns only the specified field values, not the full body text.
 
 **Impact reduction:** Token burn per `get_lore` call drops from ~8,000 tokens to ~200 tokens — a **97% reduction** in output size.
@@ -75,6 +79,7 @@ This returns only the specified field values, not the full body text.
 **Current behavior:** Every tool call is synchronous — the narrator sends a request, waits for the full response, then continues. No tool supports partial/incremental responses.
 
 **Proposed fix (long-term):** For high-latency aggregations like `narrative_snapshot`, consider a two-phase pattern:
+
 1. Quick response with entity keys and locations (available immediately)
 2. Optional follow-up for full text
 
@@ -89,6 +94,7 @@ This lets the narrator start generating a scene description while waiting for fu
 **Current behavior:** `list_topics` returns just the topic key (e.g., `character:kavissa-crowmark`). The narrator must then call `get_lore` for each key to find the right one.
 
 **Proposed fix:** Add `with_titles: true` parameter that returns a title/name alongside each key, e.g.:
+
 ```json
 [{ "key": "character:kavissa-crowmark", "name": "Kavissa Crowmark" },
  { "key": "character:seraphine-herbalist", "name": "Seraphine" }]
@@ -112,9 +118,10 @@ This lets the narrator find the right entity without fetching every profile.
 
 ## Issue 8: No Bulk Timeline Advancement
 
-**Current behavior:** `thread_tick` is already a bulk operation, but it's broken (see `HIGH-thread-tick-Timeline-Value-parser-mismatch.md`). When fixed, it should also support an `advance_by` parameter (default 1) to tick multiple days at once, and return the delta of all changes.
+**Current behavior:** `thread_tick` is already a bulk operation and correctly parses `**Timeline-Value:**` fields (the parser-mismatch bug once tracked here was resolved — `extractFieldFromText` in `src/lib/lore.ts` uses a markdown regex, not YAML frontmatter). Remaining idea: support an `advance_by` parameter (default 1) to tick multiple days at once, and return the delta of all changes.
 
 **Proposed fix:** Fix thread_tick (see separate issue), then add:
+
 - `advance_by: integer` — number of ticks to advance
 - Return value with list of entities that hit zero, list of entities that crossed key thresholds
 
@@ -149,6 +156,7 @@ This lets the narrator find the right entity without fetching every profile.
 ## Summary
 
 The three highest-ROI changes are:
+
 1. **`fields` parameter on `get_lore`** — ~97% token reduction per read, trivial to implement
 2. **`scene_brief` recursive expansion** — eliminates N+1 read pattern for multi-location scenes
 3. **`narrative_snapshot` endpoint** — eliminates 10+ round-trips per scene, but requires more implementation work

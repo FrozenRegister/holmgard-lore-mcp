@@ -11,19 +11,25 @@ Every issue resolution follows seven phases, each with a defined output. The pro
 **Goal:** Understand the issue before touching code.
 
 1. Read the issue body and all comments
-2. If the issue is an **Agent Task** (has `agent-task` label), extract:
+2. Read `ARCHITECTURE.md`'s "Scale and constraints" section before evaluating any
+   proposed solution — this repo is one Cloudflare Worker, not a distributed system,
+   and proposals that don't fit that scale (container tooling, clock-drift detection,
+   schema-registry frameworks, etc.) should be flagged or scaled down in Phase 1, not
+   carried forward into the plan
+3. If the issue is an **Agent Task** (has `agent-task` label), extract:
    - **Context** — what design issues, PRs, or threads this task operates within
    - **Task description** — what exactly needs to be done
    - **Expected output type** — code PR, design comment, investigation, narration, or issue filing
    - **Acceptance criteria** — the checkboxes the human will verify against
    - **CI relevance** — which gates apply
-3. If the issue is a **Bug Report**, reproduce the problem first
-4. If the issue is a **Design Proposal**, read the full proposal before analyzing implementation
-5. If the issue is a **Migration**, verify forward SQL, rollback SQL, and data integrity queries
-6. If the issue is a **Refactor**, identify the behavior preservation guarantee
-7. If the issue is a **Meta** change, understand the rollout and rollback plan
-8. Summarize in 3-5 bullet points
-9. **Wait for human confirmation** (unless the issue is trivial — single-file, no ambiguity)
+4. If the issue is a **Bug Report**, reproduce the problem first
+5. If the issue is a **Design Proposal**, read the full proposal before analyzing implementation —
+   check every proposed addition against the scale constraints from step 2 before writing it down
+6. If the issue is a **Migration**, verify forward SQL, rollback SQL, and data integrity queries
+7. If the issue is a **Refactor**, identify the behavior preservation guarantee
+8. If the issue is a **Meta** change, understand the rollout and rollback plan
+9. Summarize in 3-5 bullet points
+10. **Wait for human confirmation** (unless the issue is trivial — single-file, no ambiguity)
 
 ## Phase 2: Plan
 

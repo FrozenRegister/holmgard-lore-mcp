@@ -1,5 +1,6 @@
 # HIGH: KV-to-D1 Auto-Redirect for Character Lookups
 
+**Tracked by:** #308 (the broader KV/D1 unification design — #308 stays open on purpose for its still-undecided Phase 2/3 breaking rename, per #391's phase review)
 **Priority:** HIGH
 **Status:** Spec, ready for implementation
 **Labels:** backend, kv, d1, migration, redirect
