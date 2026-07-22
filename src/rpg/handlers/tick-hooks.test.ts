@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { runTickDriver, type HookResult } from './tick-hooks'
 import type { AppBindings } from '../../types'
+import * as characterManager from './character-manage'
 
 // Mock environment and database
 const mockEnv: AppBindings = {
@@ -42,7 +43,7 @@ beforeEach(() => {
   vi.resetAllMocks()
 
   // Mock getCharacter
-  vi.spyOn(characterManage, 'getCharacter').mockImplementation(async (_env, _db, key) => {
+  vi.spyOn(characterManager, 'getCharacter').mockImplementation(async (_env, _db, key) => {
     if (key === 'char-1') return testCharacter
     return null
   })
