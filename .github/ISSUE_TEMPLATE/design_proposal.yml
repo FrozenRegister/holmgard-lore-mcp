@@ -121,3 +121,4 @@ body:
         - [ ] No KV → D1 backfill that guesses narrative data
         - [ ] Migration is additive first, destructive later (Phase 1 non-breaking)
         - [ ] Storage selection follows `docs/storage-selection-kv-vs-d1.md`
+        - [ ] Proposal checked against `ARCHITECTURE.md`'s "Scale and constraints" section — no container/orchestration tooling, no cross-machine clock-drift detection, no schema-registry-style validation frameworks unless the issue explicitly demonstrates this repo's scale requires one

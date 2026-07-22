@@ -5,6 +5,36 @@ patterns a contributor needs before touching handler code. For the *what* (tool
 inventory, input/output shapes), see `COMPLETE_TOOL_REFERENCE.md`. For AI-agent-facing
 conventions and gotchas, see `CLAUDE.md`.
 
+## Scale and constraints — read this before proposing infrastructure
+
+**This is one Cloudflare Worker, not a distributed system.** Every design proposal,
+red-team review, or CI-tooling suggestion should be checked against what's actually
+here before it's written down:
+
+- **One process, one deploy target.** `wrangler deploy` ships a single Worker script.
+  There is no fleet, no cluster, no multi-region rollout, and no container of any
+  kind — no Dockerfile exists in this repo and none is planned.
+- **One CI runner per job, on GitHub-managed infrastructure.** GitHub Actions already
+  timestamps every step and isolates every job's resource usage. There is no
+  clock-drift risk to detect (nothing coordinates across independent machines) and
+  no capacity-planning need (Cloudflare's platform limits, not our CI runners, are
+  the actual constraint).
+- **A small, closed tool surface.** ~15 MCP tools total, all defined in this repo,
+  all reviewed by the same people. This is not a plugin ecosystem or a multi-tenant
+  API — proposals that assume untrusted third-party integrations or a large surface
+  area to defend don't apply here.
+- **Storage is free-tier KV + a small D1 database**, not a data platform. See
+  `docs/storage-selection-kv-vs-d1.md` before proposing new storage tooling.
+
+**If a proposal reaches for concepts from distributed-systems ops** (clock-drift
+detection, per-service resource telemetry, container image diffing, schema-registry
+validation frameworks, multi-run correlation IDs) **— check first whether the thing
+it protects against can actually happen at this scale.** Issue #484 is a worked
+example: a CI-artifact design proposal accumulated several enterprise-scale
+recommendations (Dockerfile diffing in a repo with no Docker; clock-drift detection
+for a single GitHub-managed runner) that didn't survive a check against this section.
+The fix in each case wasn't a bigger tool — it was reading this file first.
+
 ## Two subsystems, one worker
 
 The codebase grew in two phases and both are live in production:
