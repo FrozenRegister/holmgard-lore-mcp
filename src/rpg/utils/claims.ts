@@ -275,11 +275,11 @@ export async function resolveTickConflicts(
  * @param _db - D1 database
  * @param _currentTickTime - Current tick timestamp
  */
-export async function clearDeadPredatorClaims(
+export function clearDeadPredatorClaims(
   _env: AppBindings,
   _db: D1Database,
   _currentTickTime: string
-): Promise<void> {
+): void {
   // This will be implemented in Phase 3 (creature AI)
   // For now, we rely on the stale-claim check in resolveTickConflicts
   console.log('clearDeadPredatorClaims: Phase 3 implementation pending')
