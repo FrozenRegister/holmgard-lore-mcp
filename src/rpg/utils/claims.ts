@@ -7,6 +7,7 @@
  */
 
 import type { AppBindings } from '../../types'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getCharacter, updateCharacter } from '../handlers/character-manage'
 
 // Priority tiers for conflict resolution
