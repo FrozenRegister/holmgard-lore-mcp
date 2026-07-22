@@ -1631,4 +1631,62 @@ describe('character_manage tool', () => {
     expect(char.character.current_hex_q).toBe(10)
     expect(char.character.current_hex_r).toBe(10)
   })
+
+  // ── New Exported Functions Tests ─────────────────────────────────────────────
+
+  it('getCharacter retrieves character by lore key', async () => {
+    // Create a character first
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'TestCharacter',
+      characterType: 'npc'
+    })
+    expect(create.success).toBe(true)
+
+    // Import and test getCharacter directly
+    const { getCharacter } = await import('../rpg/handlers/character-manage')
+    const char = await getCharacter(env, env.RPG_DB, 'character:TestCharacter')
+
+    expect(char).toBeTruthy()
+    expect(char?.name).toBe('TestCharacter')
+    expect(char?.character_type).toBe('npc')
+  })
+
+  it('getCharacter returns null for non-existent character', async () => {
+    const { getCharacter } = await import('../rpg/handlers/character-manage')
+    const char = await getCharacter(env, env.RPG_DB, 'character:NonExistent')
+
+    expect(char).toBeNull()
+  })
+
+  it('updateCharacter updates claim fields', async () => {
+    // Create a character first
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'UpdateTest',
+      characterType: 'npc'
+    })
+    expect(create.success).toBe(true)
+
+    // Test updateCharacter directly
+    const { updateCharacter } = await import('../rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:UpdateTest', {
+      claimed_by: 'entity:test',
+      claimed_until: '2187-01-15T00:00:00Z',
+      claimed_at: '2187-01-10T00:00:00Z'
+    })
+
+    expect(updated).toBeTruthy()
+    expect(updated.claimed_by).toBe('entity:test')
+    expect(updated.claimed_until).toBe('2187-01-15T00:00:00Z')
+    expect(updated.claimed_at).toBe('2187-01-10T00:00:00Z')
+  })
+
+  it('updateCharacter throws error for non-existent character', async () => {
+    const { updateCharacter } = await import('../rpg/handlers/character-manage')
+
+    await expect(updateCharacter(env, env.RPG_DB, 'character:NonExistent', {
+      claimed_by: 'entity:test'
+    })).rejects.toThrow('Character not found: character:NonExistent')
+  })
 })

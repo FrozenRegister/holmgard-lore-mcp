@@ -237,4 +237,55 @@ describe('Tick Hooks - Conflict Resolution', () => {
       originalRegistry.forEach((value, key) => HOOK_REGISTRY.set(key, value))
     }
   })
+
+  // ── Conflict Resolution Integration Tests ────────────────────────────────────
+
+  it('should return conflict_resolutions when flagged events exist', async () => {
+    // Mock a hook that returns flagged events
+    const mockHook = {
+      name: 'test_hook',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'flagged',
+        data: {
+          events: [
+            {
+              id: 'event-1',
+              eventType: 'test_event',
+              priority: 'HIGH',
+              targetKey: 'char-1',
+              sourceEntityKey: 'entity:alpha',
+              payload: {},
+              resourceLocks: ['char-1']
+            }
+          ]
+        },
+        narrator_summary: 'Test event flagged'
+      })
+    }
+
+    // Mock HOOK_REGISTRY
+    const { HOOK_REGISTRY } = await import('./tick-hooks')
+    HOOK_REGISTRY.set('test_hook', mockHook as any)
+
+    const result = await runTickDriver(
+      mockEnv,
+      mockDb,
+      'world-1',
+      '2187-01-10',
+      '2187-01-11',
+      { hooks: ['test_hook'] }
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.conflict_resolutions).toBeDefined()
+    expect(result.conflict_resolutions).toHaveLength(1)
+    expect(result.conflict_resolutions![0].status).toBe('resolved')
+    expect(result.conflict_resolutions![0].eventType).toBe('test_event')
+
+    // Clean up
+    HOOK_REGISTRY.delete('test_hook')
+  })
 })

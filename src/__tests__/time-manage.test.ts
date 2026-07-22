@@ -698,4 +698,28 @@ describe('handleTimeManage', () => {
     expect(body.tick_driver.resolved.length).toBeGreaterThan(0)
     expect(body.tick_driver.flagged.length).toBeGreaterThan(0)
   })
+
+  // ── New Exported Functions Tests ─────────────────────────────────────────────
+
+  it('getCurrentDate retrieves current date for existing world', async () => {
+    // Initialize a world with a known date
+    await callTool('time_manage', {
+      action: 'initialize',
+      worldId: 'test-world',
+      startDate: '2187-01-01T00:00:00Z'
+    })
+
+    // Import and test getCurrentDate directly
+    const { getCurrentDate } = await import('../rpg/handlers/time-manage')
+    const currentDate = await getCurrentDate(env.RPG_DB, 'test-world')
+
+    expect(currentDate).toBe('2187-01-01T00:00:00Z')
+  })
+
+  it('getCurrentDate returns null for non-existent world', async () => {
+    const { getCurrentDate } = await import('../rpg/handlers/time-manage')
+    const currentDate = await getCurrentDate(env.RPG_DB, 'non-existent-world')
+
+    expect(currentDate).toBeNull()
+  })
 })

@@ -13,10 +13,17 @@ import {
   clearClaim,
   isStaleClaim,
   resolveTickConflicts,
+  clearDeadPredatorClaims,
   type Priority,
   type FlaggedEvent
 } from './claims'
 import type { AppBindings } from '../../types'
+
+// Mock the character-manage module
+vi.mock('../handlers/character-manage', () => ({
+  getCharacter: vi.fn(),
+  updateCharacter: vi.fn()
+}))
 
 // Mock environment and database
 const mockEnv: AppBindings = {
@@ -412,6 +419,18 @@ describe('Claims System', () => {
       const event2Results = results.filter(r => r.event.id === 'event-2')
       expect(event2Results).toHaveLength(1)
       expect(event2Results[0].status).toBe('deferred')
+    })
+  })
+
+  describe('clearDeadPredatorClaims', () => {
+    it('should log pending implementation message', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      clearDeadPredatorClaims(mockEnv, mockDb, '2187-01-10T00:00:00Z')
+
+      expect(consoleSpy).toHaveBeenCalledWith('clearDeadPredatorClaims: Phase 3 implementation pending')
+
+      consoleSpy.mockRestore()
     })
   })
 })
