@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## When conventions are missing, default to best practice — always
+
+If asked to add a new tool, workflow, dependency, or convention and this repo has no established pattern to
+follow (or the existing pattern is clearly non-standard), don't invent something ad hoc or pick whatever's
+fastest to wire up. Research and default to the current, widely-accepted best practice for this stack
+(Node/TypeScript/Cloudflare Workers), and briefly state why that's the choice before implementing — the human
+maintaining this repo may not know what the standard approach is and is relying on you to surface it, not to
+silently pick something workable. This applies generally, not just to code: CI/CD setup, tooling choices,
+config file conventions, dependency selection, etc. Example: this repo had no code formatter at all until an
+explicit ask surfaced it — Prettier + `eslint-config-prettier` (see below) is the standard pairing, not a
+one-off choice.
+
 ## Commands
 
 ```bash
@@ -11,6 +23,8 @@ pnpm test:live                   # run live production smoke tests (vitest run -
 pnpm test -- --reporter=verbose  # Workers test output with per-test names
 pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
+pnpm run format                  # Prettier auto-fix (src/, tests/, scripts/, root .ts/.mjs configs)
+pnpm run format:check            # Prettier check only, no writes
 pnpm run build                   # wrangler deploy --dry-run --outdir dist (bundle check)
 pnpm run deploy                  # wrangler deploy to Cloudflare
 wrangler dev                     # local dev server (uses wrangler.jsonc main)
@@ -69,6 +83,7 @@ and markdown formatting, but leaves the full suite to CI.
 | **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
+| **Code formatting** (`pnpm run format`) | Local + CI | Prettier. Not a required gate — the `Auto-fix Code Formatting` CI workflow pushes a fix commit to the PR branch automatically, same pattern as markdown |
 | **Changelog fragment** | CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add a `.md` file under `.changelog/fragments/`. Fragments are assembled at release time — no merge conflicts. |
 | **Touched test file(s)** | Local | `pnpm test -- tests/worker/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
