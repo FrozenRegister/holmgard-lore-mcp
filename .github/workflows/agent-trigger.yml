@@ -118,7 +118,7 @@ jobs:
               '- Write tests with any tool changes (vitest + Pester)\n' +
               '- Add changelog fragment (`.changelog/fragments/<slug>.md`) — enforced by pr-quality.yml\n' +
               '- Update docs (enforced by pr-quality.yml)\n' +
-              '- All CI checks must pass (unit-tests, test, type-check, lint, build, coverage)\n' +
+              '- All CI checks must pass (test-layout, unit-tests, test, type-check, lint, build, coverage)\n' +
               '- Follow existing patterns in `src/`\n' +
               '- Consult `CLAUDE.md` for storage selection (D1 vs KV) and API surface conventions'
 

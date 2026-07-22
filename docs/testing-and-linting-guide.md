@@ -64,6 +64,14 @@ signal, but it's the directory that the config actually keys off.) They have the
 they give fast feedback without duplicating the integration suite. When adding a new pure helper function,
 prefer a file under `tests/unit/` over routing the test through a tool call.
 
+### Layout is enforced, not just convention
+
+`pnpm run check:test-layout` (`scripts/check-test-layout.mjs`) scans all tracked `*.test.ts` files and fails if any
+live outside `tests/{unit,worker,live}/`. It runs as its own fast `Test Layout` CI job (no `pnpm install` needed —
+just `git ls-files`) and as the first step of the local pre-commit gate. This exists because a misplaced test file
+isn't just unlinted or uncounted — it's silently never executed at all, since none of the three Vitest configs'
+`include` globs would ever reach it (see #490).
+
 ## Test Suite Status
 
 ### ✅ Tests (384 passing)

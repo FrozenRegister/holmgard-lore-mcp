@@ -62,6 +62,7 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 
 | Check | Where | Notes |
 | --- | --- | --- |
+| **Test file layout** (`pnpm run check:test-layout`) | Local + CI | Fails if any `*.test.ts` lives outside `tests/{unit,worker,live}/` — see [Tests](#tests). Instant; no `pnpm install` needed. |
 | **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
@@ -76,6 +77,7 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 **Run these locally — fast:**
 
 ```powershell
+pnpm run check:test-layout                       # Guard test files stay under tests/
 pnpm run type-check                              # Catch type errors early
 pnpm run lint                                    # Lint
 pnpm fix:md                                      # Fix markdown formatting
@@ -320,6 +322,8 @@ Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along 
 ## Tests
 
 Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers` (vitest 4 plugin API — `cloudflareTest()` in `vitest.config.ts`). KV is in-memory miniflare storage; `ADMIN_SECRET` is `test-secret-123`.
+
+**Every test file must live under `tests/{unit,worker,live}/`.** This is enforced by `pnpm run check:test-layout` (`scripts/check-test-layout.mjs`), which runs as its own `Test Layout` CI job and in the local pre-commit gate. A `*.test.ts` file placed anywhere else (colocated in `src/`, or a new stray `tests/` subdirectory) won't just fail this check — it will silently never run at all, since all three Vitest configs now have explicit `include` globs scoped to their own subdirectory (see #488/#489). The check fails fast and lists the offending paths.
 
 **Gotcha — `pnpm run <script> -- <flags>` silently swallows the flags.** pnpm always inserts a literal `--` before args forwarded this way, regardless of whether the underlying script already has one. Vitest sees its *own* `--` and treats everything after it as a positional test-file filter, not CLI flags — so `pnpm test -- --shard=1/4` or `pnpm run test:unit -- --reporter=json` silently does nothing (no error, flag just never takes effect). This was discovered because `.github/workflows/ci.yml`'s sharded `test` job was invoking `pnpm test -- --shard=${{ matrix.shard }}/4` — every "shard" was actually running the full suite (~5 min each, matching full-suite time, not a 1/4 slice). Fixed by calling vitest directly: `pnpm exec vitest run --shard=1/4 ...` (verified locally: a real 1/4 slice runs in ~2 min against ~34 files, vs. the full suite's ~7 min). When adding CLI flags to any `pnpm run <script>` invocation in a workflow, always use `pnpm exec <bin> <args>` instead of `pnpm run <script> -- <args>`.
 
