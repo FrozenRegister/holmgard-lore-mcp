@@ -303,6 +303,8 @@ Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along 
 
 Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers` (vitest 4 plugin API — `cloudflareTest()` in `vitest.config.ts`). KV is in-memory miniflare storage; `ADMIN_SECRET` is `test-secret-123`.
 
+**Gotcha — `pnpm run <script> -- <flags>` silently swallows the flags.** pnpm always inserts a literal `--` before args forwarded this way, regardless of whether the underlying script already has one. Vitest sees its *own* `--` and treats everything after it as a positional test-file filter, not CLI flags — so `pnpm test -- --shard=1/4` or `pnpm run test:unit -- --reporter=json` silently does nothing (no error, flag just never takes effect). This was discovered because `.github/workflows/ci.yml`'s sharded `test` job was invoking `pnpm test -- --shard=${{ matrix.shard }}/4` — every "shard" was actually running the full suite (~5 min each, matching full-suite time, not a 1/4 slice). Fixed by calling vitest directly: `pnpm exec vitest run --shard=1/4 ...` (verified locally: a real 1/4 slice runs in ~2 min against ~34 files, vs. the full suite's ~7 min). When adding CLI flags to any `pnpm run <script>` invocation in a workflow, always use `pnpm exec <bin> <args>` instead of `pnpm run <script> -- <args>`.
+
 `reset()` from `cloudflare:test` is called `afterEach` to wipe all KV between tests. Seed KV directly with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` rather than going through `set_lore` — this avoids writing to the module-level `loreDB` fallback and keeps test isolation clean.
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
