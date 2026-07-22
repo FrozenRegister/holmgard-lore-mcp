@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as characterManage from '../handlers/character-manage'
 
-const { getCharacter, updateCharacter } = characterManage
 import {
   getClaim,
   setClaim,
