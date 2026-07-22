@@ -702,12 +702,14 @@ describe('handleTimeManage', () => {
   // ── New Exported Functions Tests ─────────────────────────────────────────────
 
   it('getCurrentDate retrieves current date for existing world', async () => {
-    // Initialize a world with a known date
-    await callTool('time_manage', {
-      action: 'initialize',
-      worldId: 'test-world',
-      startDate: '2187-01-01T00:00:00Z'
+    // Initialize a world with a known date using the handler directly
+    const r = await handleTimeManage(db(), {
+      action: 'set_date',
+      world_id: 'test-world',
+      date: '2187-01-01T00:00:00Z'
     })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
 
     // Import and test getCurrentDate directly
     const { getCurrentDate } = await import('../rpg/handlers/time-manage')
