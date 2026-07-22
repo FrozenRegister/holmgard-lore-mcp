@@ -275,12 +275,14 @@ export async function resolveTickConflicts(
  * @param _db - D1 database
  * @param _currentTickTime - Current tick timestamp
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function clearDeadPredatorClaims(
-  _env: AppBindings,
-  _db: D1Database,
-  _currentTickTime: string
+  env: AppBindings,
+  db: D1Database,
+  currentTickTime: string
 ): void {
   // This will be implemented in Phase 3 (creature AI)
   // For now, we rely on the stale-claim check in resolveTickConflicts
+  void env; void db; void currentTickTime;
   console.log('clearDeadPredatorClaims: Phase 3 implementation pending')
 }
