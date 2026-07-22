@@ -256,5 +256,6 @@ pnpm test && pnpm run type-check && pnpm run lint
 
 ## Related Documentation
 
+- [Agent CI Artifacts Guide](./agent-ci-artifacts-guide.md) — for agents diagnosing a failing PR: what structured artifacts CI already produced (coverage, lint, type-check, test results) and how to read them instead of rerunning the suite
 - [AI Automation Pipeline](./ai-automation-pipeline.md) — GitHub Actions workflows for issue triage and agent assignment
 - [CLAUDE.md](../CLAUDE.md) — Main development guidance
