@@ -36,14 +36,21 @@ export interface LatLon {
   lon: number
 }
 
-export function latLonToKm(point: LatLon, origin: Pick<GeoOrigin, 'originLat' | 'originLon'>): { xKm: number; yKm: number } {
+export function latLonToKm(
+  point: LatLon,
+  origin: Pick<GeoOrigin, 'originLat' | 'originLon'>,
+): { xKm: number; yKm: number } {
   const originLatRad = (origin.originLat * Math.PI) / 180
   const xKm = (point.lon - origin.originLon) * KM_PER_DEGREE_LAT * Math.cos(originLatRad)
   const yKm = (origin.originLat - point.lat) * KM_PER_DEGREE_LAT
   return { xKm, yKm }
 }
 
-export function kmToLatLon(xKm: number, yKm: number, origin: Pick<GeoOrigin, 'originLat' | 'originLon'>): LatLon {
+export function kmToLatLon(
+  xKm: number,
+  yKm: number,
+  origin: Pick<GeoOrigin, 'originLat' | 'originLon'>,
+): LatLon {
   const originLatRad = (origin.originLat * Math.PI) / 180
   const lon = origin.originLon + xKm / (KM_PER_DEGREE_LAT * Math.cos(originLatRad))
   const lat = origin.originLat - yKm / KM_PER_DEGREE_LAT

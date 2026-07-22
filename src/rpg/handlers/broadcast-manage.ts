@@ -43,22 +43,47 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-export const ACTIONS = ['audience_pulse', 'resolve_vote', 'production_intervene', 'celeste_moment', 'get_state', 'trigger_event'] as const
-type BroadcastAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'audience_pulse',
+  'resolve_vote',
+  'production_intervene',
+  'celeste_moment',
+  'get_state',
+  'trigger_event',
+] as const
+type BroadcastAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, BroadcastAction> = {
-  pulse: 'audience_pulse', approval_shift: 'audience_pulse',
-  vote: 'resolve_vote', tally_vote: 'resolve_vote',
-  intervene: 'production_intervene', check_intervention: 'production_intervene',
-  celeste: 'celeste_moment', narrate: 'celeste_moment',
-  state: 'get_state', viewership: 'get_state',
-  event: 'trigger_event', force_event: 'trigger_event',
+  pulse: 'audience_pulse',
+  approval_shift: 'audience_pulse',
+  vote: 'resolve_vote',
+  tally_vote: 'resolve_vote',
+  intervene: 'production_intervene',
+  check_intervention: 'production_intervene',
+  celeste: 'celeste_moment',
+  narrate: 'celeste_moment',
+  state: 'get_state',
+  viewership: 'get_state',
+  event: 'trigger_event',
+  force_event: 'trigger_event',
 }
 
-const VOTE_TYPES = ['fan_favorite', 'mercy_kill', 'hazard_boost', 'prize_drop_location', 'showdown'] as const
+const VOTE_TYPES = [
+  'fan_favorite',
+  'mercy_kill',
+  'hazard_boost',
+  'prize_drop_location',
+  'showdown',
+] as const
 
 const INTERVENTION_TYPES = [
-  'drone_harassment', 'predator_release', 'audio_broadcast', 'fake_prize_drop',
-  'perimeter_pulse', 'celeste_spotlight', 'medical_intervention', 'sabotage',
+  'drone_harassment',
+  'predator_release',
+  'audio_broadcast',
+  'fake_prize_drop',
+  'perimeter_pulse',
+  'celeste_spotlight',
+  'medical_intervention',
+  'sabotage',
 ] as const
 
 interface ApprovalEvent {
@@ -89,38 +114,76 @@ const APPROVAL_EVENTS: Record<string, ApprovalEvent> = {
   left_someone_behind: { positive: 10, negative: -15, note: 'Ruthless winner vs. betrayer.' },
 }
 
-const CELESTE_TEMPLATES: Record<string, { tone: string; reaction: string; approvalShift: number; trendingPhrase: string; template: (yieldName: string, details: string) => string }> = {
+const CELESTE_TEMPLATES: Record<
+  string,
+  {
+    tone: string
+    reaction: string
+    approvalShift: number
+    trendingPhrase: string
+    template: (yieldName: string, details: string) => string
+  }
+> = {
   predator_kill: {
-    tone: 'reverent', reaction: 'roaring', approvalShift: 12, trendingPhrase: 'SPEAR GIRL',
-    template: (y, d) => `Ladies and gentlemen, you have just witnessed something extraordinary. ${y} has done what no one expected. ${d} We'll have replays. We'll have analysis. But right now, what you need to know is: this is trending. This is real. And it just changed the game.`,
+    tone: 'reverent',
+    reaction: 'roaring',
+    approvalShift: 12,
+    trendingPhrase: 'SPEAR GIRL',
+    template: (y, d) =>
+      `Ladies and gentlemen, you have just witnessed something extraordinary. ${y} has done what no one expected. ${d} We'll have replays. We'll have analysis. But right now, what you need to know is: this is trending. This is real. And it just changed the game.`,
   },
   betrayal: {
-    tone: 'scandalized', reaction: 'gasping', approvalShift: -8, trendingPhrase: 'THE KNIFE',
-    template: (y, d) => `Oh. Oh, this is the moment we live for. ${y}. ${d} The Accord did not see that coming. Neither, I suspect, did the person standing next to them.`,
+    tone: 'scandalized',
+    reaction: 'gasping',
+    approvalShift: -8,
+    trendingPhrase: 'THE KNIFE',
+    template: (y, d) =>
+      `Oh. Oh, this is the moment we live for. ${y}. ${d} The Accord did not see that coming. Neither, I suspect, did the person standing next to them.`,
   },
   injury: {
-    tone: 'concerned', reaction: 'tense', approvalShift: 3, trendingPhrase: 'HOLD ON',
-    template: (y, d) => `Stay with us. ${y} is down. ${d} Production is watching closely. We all are.`,
+    tone: 'concerned',
+    reaction: 'tense',
+    approvalShift: 3,
+    trendingPhrase: 'HOLD ON',
+    template: (y, d) =>
+      `Stay with us. ${y} is down. ${d} Production is watching closely. We all are.`,
   },
   death: {
-    tone: 'somber', reaction: 'silent', approvalShift: -2, trendingPhrase: 'REST NOW',
-    template: (y, d) => `We ask for a moment of quiet. ${y} will not be joining us at the extraction point. ${d} The Preserve does not forgive. It never has.`,
+    tone: 'somber',
+    reaction: 'silent',
+    approvalShift: -2,
+    trendingPhrase: 'REST NOW',
+    template: (y, d) =>
+      `We ask for a moment of quiet. ${y} will not be joining us at the extraction point. ${d} The Preserve does not forgive. It never has.`,
   },
   extraction: {
-    tone: 'triumphant', reaction: 'roaring', approvalShift: 20, trendingPhrase: 'SHE MADE IT',
-    template: (y, d) => `The boat. THE BOAT. ${y} has reached extraction. ${d} Thirty days. Against everything Gotland could throw at them. Let them hear you.`,
+    tone: 'triumphant',
+    reaction: 'roaring',
+    approvalShift: 20,
+    trendingPhrase: 'SHE MADE IT',
+    template: (y, d) =>
+      `The boat. THE BOAT. ${y} has reached extraction. ${d} Thirty days. Against everything Gotland could throw at them. Let them hear you.`,
   },
   first_aid: {
-    tone: 'warm', reaction: 'moved', approvalShift: 7, trendingPhrase: 'STEADY HANDS',
-    template: (y, d) => `In a place built to turn strangers into rivals, ${y} just chose otherwise. ${d} Humanity, on live broadcast, to nine hundred million people.`,
+    tone: 'warm',
+    reaction: 'moved',
+    approvalShift: 7,
+    trendingPhrase: 'STEADY HANDS',
+    template: (y, d) =>
+      `In a place built to turn strangers into rivals, ${y} just chose otherwise. ${d} Humanity, on live broadcast, to nine hundred million people.`,
   },
 }
 
 function pickApprovalTemplate(eventType: string) {
-  return CELESTE_TEMPLATES[eventType] ?? {
-    tone: 'neutral', reaction: 'watching', approvalShift: 0, trendingPhrase: 'THE PRESERVE',
-    template: (y: string, d: string) => `Cameras roll on ${y}. ${d}`,
-  }
+  return (
+    CELESTE_TEMPLATES[eventType] ?? {
+      tone: 'neutral',
+      reaction: 'watching',
+      approvalShift: 0,
+      trendingPhrase: 'THE PRESERVE',
+      template: (y: string, d: string) => `Cameras roll on ${y}. ${d}`,
+    }
+  )
 }
 
 const InputSchema = z.object({
@@ -148,23 +211,48 @@ const InputSchema = z.object({
 
 type ApprovalEventResult =
   | { error: true; message: string }
-  | { error: false; characterId: string; eventType: string; delta: number; approval: number; note: string }
+  | {
+      error: false
+      characterId: string
+      eventType: string
+      delta: number
+      approval: number
+      note: string
+    }
 
-async function applyApprovalEvent(db: D1Database, worldId: string, characterId: string, eventType: string, direction: 'positive' | 'negative' | undefined, now: string): Promise<ApprovalEventResult> {
+async function applyApprovalEvent(
+  db: D1Database,
+  worldId: string,
+  characterId: string,
+  eventType: string,
+  direction: 'positive' | 'negative' | undefined,
+  now: string,
+): Promise<ApprovalEventResult> {
   const event = APPROVAL_EVENTS[eventType]
   if (!event) return { error: true, message: `Unknown eventType: ${eventType}` }
   let delta: number
   if (event.delta !== undefined) {
     delta = event.delta
   } else {
-    if (!direction) return { error: true, message: `eventType "${eventType}" is polarizing and requires a "direction" ("positive" or "negative")` }
+    if (!direction)
+      return {
+        error: true,
+        message: `eventType "${eventType}" is polarizing and requires a "direction" ("positive" or "negative")`,
+      }
     delta = direction === 'positive' ? event.positive! : event.negative!
   }
 
-  const existing = await db.prepare('SELECT approval FROM broadcast_approval WHERE character_id = ?').bind(characterId).first() as { approval: number } | null
+  const existing = (await db
+    .prepare('SELECT approval FROM broadcast_approval WHERE character_id = ?')
+    .bind(characterId)
+    .first()) as { approval: number } | null
   const newApproval = Math.max(0, Math.min(100, (existing?.approval ?? 50) + delta))
-  await db.prepare('INSERT INTO broadcast_approval (character_id, world_id, approval, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(character_id) DO UPDATE SET approval = excluded.approval, updated_at = excluded.updated_at')
-    .bind(characterId, worldId, newApproval, now).run()
+  await db
+    .prepare(
+      'INSERT INTO broadcast_approval (character_id, world_id, approval, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(character_id) DO UPDATE SET approval = excluded.approval, updated_at = excluded.updated_at',
+    )
+    .bind(characterId, worldId, newApproval, now)
+    .run()
 
   return { error: false, characterId, eventType, delta, approval: newApproval, note: event.note }
 }
@@ -182,8 +270,17 @@ export interface ProductionInterveneResult {
 // and production-manage.ts's advance_day (#283 integration contract step 6 —
 // "Check for production intervention → call broadcast.production_intervene").
 export async function runProductionIntervene(
-  db: D1Database, worldId: string, day: number,
-  signals: { noEncounterIn24h?: boolean; allYieldsStationary?: boolean; moraleStableDays?: number; daysSinceLastIntervention?: number; targetCharacterId?: string; details?: string } = {},
+  db: D1Database,
+  worldId: string,
+  day: number,
+  signals: {
+    noEncounterIn24h?: boolean
+    allYieldsStationary?: boolean
+    moraleStableDays?: number
+    daysSinceLastIntervention?: number
+    targetCharacterId?: string
+    details?: string
+  } = {},
 ): Promise<ProductionInterveneResult> {
   const now = new Date().toISOString()
   let threshold = 15
@@ -199,22 +296,53 @@ export async function runProductionIntervene(
 
   const interventionType = INTERVENTION_TYPES[Math.floor(Math.random() * INTERVENTION_TYPES.length)]
   const id = crypto.randomUUID()
-  await db.prepare('INSERT INTO broadcast_interventions (id, world_id, day, intervention_type, target_character_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, worldId, day, interventionType, signals.targetCharacterId ?? null, signals.details || null, now).run()
-  await db.prepare('UPDATE world_state SET last_intervention_at = ? WHERE world_id = ?').bind(now, worldId).run()
+  await db
+    .prepare(
+      'INSERT INTO broadcast_interventions (id, world_id, day, intervention_type, target_character_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    .bind(
+      id,
+      worldId,
+      day,
+      interventionType,
+      signals.targetCharacterId ?? null,
+      signals.details || null,
+      now,
+    )
+    .run()
+  await db
+    .prepare('UPDATE world_state SET last_intervention_at = ? WHERE world_id = ?')
+    .bind(now, worldId)
+    .run()
 
-  return { triggered: true, roll, threshold, interventionId: id, interventionType, targetCharacterId: signals.targetCharacterId ?? null }
+  return {
+    triggered: true,
+    roll,
+    threshold,
+    interventionId: id,
+    interventionType,
+    targetCharacterId: signals.targetCharacterId ?? null,
+  }
 }
 
 // Creates (but does not resolve) a pending vote — used by production-manage's
 // advance_day on its every-3-days audience-vote tick. Resolution requires a
 // narrator-supplied winningOption (see file header), which isn't available
 // during an automatic daily tick, so this only opens the vote.
-export async function createPendingVote(db: D1Database, worldId: string, voteType: typeof VOTE_TYPES[number], day: number): Promise<string> {
+export async function createPendingVote(
+  db: D1Database,
+  worldId: string,
+  voteType: (typeof VOTE_TYPES)[number],
+  day: number,
+): Promise<string> {
   const now = new Date().toISOString()
   const voteId = crypto.randomUUID()
-  await db.prepare('INSERT INTO broadcast_votes (id, world_id, vote_type, day, options, resolved, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)')
-    .bind(voteId, worldId, voteType, day, JSON.stringify([]), now).run()
+  await db
+    .prepare(
+      'INSERT INTO broadcast_votes (id, world_id, vote_type, day, options, resolved, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
+    )
+    .bind(voteId, worldId, voteType, day, JSON.stringify([]), now)
+    .run()
   return voteId
 }
 
@@ -223,28 +351,51 @@ export async function createPendingVote(db: D1Database, worldId: string, voteTyp
 // a `default` fallback here would be permanently dead code, since every
 // caller's voteType is either Zod-validated at the API boundary or read
 // back from a row this same validation originally wrote.
-function resolveVoteConsequence(voteType: typeof VOTE_TYPES[number], winningOption: string): Record<string, unknown> {
+function resolveVoteConsequence(
+  voteType: (typeof VOTE_TYPES)[number],
+  winningOption: string,
+): Record<string, unknown> {
   switch (voteType) {
     case 'fan_favorite':
-      return { targetYieldId: winningOption, crateBias: ['food', 'medical'], note: 'Targeted crate with luxury items + medical supplies.' }
+      return {
+        targetYieldId: winningOption,
+        crateBias: ['food', 'medical'],
+        note: 'Targeted crate with luxury items + medical supplies.',
+      }
     case 'mercy_kill': {
       const yes = winningOption.toLowerCase() === 'yes'
       return yes
         ? { decision: 'drone_strike', note: 'Yield is euthanized by Production drone.' }
-        : { decision: 'spared', medicalSupplyBan: true, note: 'Yield continues, but Production stops dropping medical supplies near them.' }
+        : {
+            decision: 'spared',
+            medicalSupplyBan: true,
+            note: 'Yield continues, but Production stops dropping medical supplies near them.',
+          }
     }
     case 'hazard_boost':
       return { targetSector: winningOption, encounterModifierBoost: 8, durationHours: 48 }
     case 'prize_drop_location':
-      return { coordinatesRevealed: winningOption, note: 'Forced convergence — all Yields know the location.' }
+      return {
+        coordinatesRevealed: winningOption,
+        note: 'Forced convergence — all Yields know the location.',
+      }
     case 'showdown':
-      return { pairedYields: winningOption.split(',').map(s => s.trim()).filter(Boolean), note: 'Both receive identical intel leading to the same coordinates, timed to arrive simultaneously.' }
+      return {
+        pairedYields: winningOption
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        note: 'Both receive identical intel leading to the same coordinates, timed to arrive simultaneously.',
+      }
   }
 }
 
-export async function handleBroadcastManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleBroadcastManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -254,8 +405,16 @@ export async function handleBroadcastManage(env: AppBindings, args: Record<strin
   switch (match.matched) {
     case 'audience_pulse':
     case 'trigger_event': {
-      if (!a.worldId || !a.characterId || !a.eventType) return err('"worldId", "characterId", and "eventType" are required')
-      const result = await applyApprovalEvent(db, a.worldId, a.characterId, a.eventType, a.direction, now)
+      if (!a.worldId || !a.characterId || !a.eventType)
+        return err('"worldId", "characterId", and "eventType" are required')
+      const result = await applyApprovalEvent(
+        db,
+        a.worldId,
+        a.characterId,
+        a.eventType,
+        a.direction,
+        now,
+      )
       if (result.error) return err(result.message)
       return ok({ success: true, actionType: match.matched, ...result, error: undefined })
     }
@@ -264,26 +423,48 @@ export async function handleBroadcastManage(env: AppBindings, args: Record<strin
       let voteId = a.voteId
       let voteType = a.voteType
       if (voteId) {
-        const existing = await db.prepare('SELECT * FROM broadcast_votes WHERE id = ?').bind(voteId).first() as Record<string, unknown> | null
+        const existing = (await db
+          .prepare('SELECT * FROM broadcast_votes WHERE id = ?')
+          .bind(voteId)
+          .first()) as Record<string, unknown> | null
         if (!existing) return err(`Vote not found: ${voteId}`)
         voteType = existing.vote_type as typeof voteType
       } else {
-        if (!a.worldId || !voteType) return err('"worldId" and "voteType" are required when "voteId" is not given')
+        if (!a.worldId || !voteType)
+          return err('"worldId" and "voteType" are required when "voteId" is not given')
         voteId = crypto.randomUUID()
-        await db.prepare('INSERT INTO broadcast_votes (id, world_id, vote_type, day, options, resolved, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)')
-          .bind(voteId, a.worldId, voteType, a.day, JSON.stringify(a.options), now).run()
+        await db
+          .prepare(
+            'INSERT INTO broadcast_votes (id, world_id, vote_type, day, options, resolved, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
+          )
+          .bind(voteId, a.worldId, voteType, a.day, JSON.stringify(a.options), now)
+          .run()
       }
       const consequence = resolveVoteConsequence(voteType!, a.winningOption)
-      await db.prepare('UPDATE broadcast_votes SET result = ?, resolved = 1, resolved_at = ? WHERE id = ?')
-        .bind(JSON.stringify({ winningOption: a.winningOption, consequence }), now, voteId).run()
-      return ok({ success: true, actionType: 'resolve_vote', voteId, voteType, winningOption: a.winningOption, consequence })
+      await db
+        .prepare(
+          'UPDATE broadcast_votes SET result = ?, resolved = 1, resolved_at = ? WHERE id = ?',
+        )
+        .bind(JSON.stringify({ winningOption: a.winningOption, consequence }), now, voteId)
+        .run()
+      return ok({
+        success: true,
+        actionType: 'resolve_vote',
+        voteId,
+        voteType,
+        winningOption: a.winningOption,
+        consequence,
+      })
     }
     case 'production_intervene': {
       if (!a.worldId) return err('"worldId" is required')
       const result = await runProductionIntervene(db, a.worldId, a.day, {
-        noEncounterIn24h: a.noEncounterIn24h, allYieldsStationary: a.allYieldsStationary,
-        moraleStableDays: a.moraleStableDays, daysSinceLastIntervention: a.daysSinceLastIntervention,
-        targetCharacterId: a.targetCharacterId, details: a.details,
+        noEncounterIn24h: a.noEncounterIn24h,
+        allYieldsStationary: a.allYieldsStationary,
+        moraleStableDays: a.moraleStableDays,
+        daysSinceLastIntervention: a.daysSinceLastIntervention,
+        targetCharacterId: a.targetCharacterId,
+        details: a.details,
       })
       return ok({ success: true, actionType: 'production_intervene', ...result })
     }
@@ -293,32 +474,65 @@ export async function handleBroadcastManage(env: AppBindings, args: Record<strin
       const yieldName = a.characterId ?? 'the Yield'
       const broadcastText = tmpl.template(yieldName, a.details)
       return ok({
-        success: true, actionType: 'celeste_moment', eventType: a.eventType, characterId: a.characterId ?? null,
-        celesteTone: tmpl.tone, audienceReaction: tmpl.reaction, approvalShift: tmpl.approvalShift,
-        trendingPhrase: tmpl.trendingPhrase, broadcastText,
+        success: true,
+        actionType: 'celeste_moment',
+        eventType: a.eventType,
+        characterId: a.characterId ?? null,
+        celesteTone: tmpl.tone,
+        audienceReaction: tmpl.reaction,
+        approvalShift: tmpl.approvalShift,
+        trendingPhrase: tmpl.trendingPhrase,
+        broadcastText,
       })
     }
     case 'get_state': {
       if (!a.worldId) return err('"worldId" is required')
-      const { results: approvals } = await db.prepare('SELECT character_id, approval, updated_at FROM broadcast_approval WHERE world_id = ? ORDER BY approval DESC').bind(a.worldId).all()
-      const { results: votes } = await db.prepare('SELECT * FROM broadcast_votes WHERE world_id = ? AND resolved = 0 ORDER BY day').bind(a.worldId).all()
-      const { results: interventions } = await db.prepare('SELECT * FROM broadcast_interventions WHERE world_id = ? ORDER BY day DESC LIMIT 10').bind(a.worldId).all()
+      const { results: approvals } = await db
+        .prepare(
+          'SELECT character_id, approval, updated_at FROM broadcast_approval WHERE world_id = ? ORDER BY approval DESC',
+        )
+        .bind(a.worldId)
+        .all()
+      const { results: votes } = await db
+        .prepare('SELECT * FROM broadcast_votes WHERE world_id = ? AND resolved = 0 ORDER BY day')
+        .bind(a.worldId)
+        .all()
+      const { results: interventions } = await db
+        .prepare(
+          'SELECT * FROM broadcast_interventions WHERE world_id = ? ORDER BY day DESC LIMIT 10',
+        )
+        .bind(a.worldId)
+        .all()
 
-      const avgApproval = approvals.length > 0
-        ? approvals.reduce((s, r) => s + ((r as { approval: number }).approval), 0) / approvals.length
-        : 50
-      const trendingYields = (approvals as Array<{ character_id: string; approval: number }>).slice(0, 3).map(r => r.character_id)
+      const avgApproval =
+        approvals.length > 0
+          ? approvals.reduce((s, r) => s + (r as { approval: number }).approval, 0) /
+            approvals.length
+          : 50
+      const trendingYields = (approvals as Array<{ character_id: string; approval: number }>)
+        .slice(0, 3)
+        .map((r) => r.character_id)
       const totalViewers = Math.round(800_000_000 + avgApproval * 1_000_000)
 
       return ok({
-        success: true, actionType: 'get_state', worldId: a.worldId,
-        approvals, activeVotes: votes, recentInterventions: interventions,
+        success: true,
+        actionType: 'get_state',
+        worldId: a.worldId,
+        approvals,
+        activeVotes: votes,
+        recentInterventions: interventions,
         viewership: {
           totalViewers,
           peakConcurrent: Math.round(totalViewers * 1.1),
-          demographicSplit: { AccordGeneral: '62%', SovereignElite: '18%', International: '15%', BlackMarket: '5%' },
+          demographicSplit: {
+            AccordGeneral: '62%',
+            SovereignElite: '18%',
+            International: '15%',
+            BlackMarket: '5%',
+          },
           trendingYields,
-          productionMood: avgApproval >= 60 ? 'satisfied' : avgApproval >= 35 ? 'watchful' : 'restless',
+          productionMood:
+            avgApproval >= 60 ? 'satisfied' : avgApproval >= 35 ? 'watchful' : 'restless',
         },
       })
     }

@@ -11,7 +11,7 @@ describe('handleBatchManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   it('returns guiding error for unknown action', async () => {
     const r = await handleBatchManage(db(), { action: 'zap' })
@@ -30,7 +30,7 @@ describe('handleBatchManage', () => {
       characters: [
         { name: 'Fighter1', characterClass: 'Fighter', characterType: 'pc' },
         { name: 'Mage1', characterClass: 'Wizard', characterType: 'pc', level: 3 },
-      ]
+      ],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -75,12 +75,17 @@ describe('handleBatchManage', () => {
       stealthBonus: 4,
       resourcePools: { sneakAttack: { max: 1, current: 1 } },
     }
-    const r = await handleBatchManage(db(), { action: 'batch_create_characters', characters: [spec] })
+    const r = await handleBatchManage(db(), {
+      action: 'batch_create_characters',
+      characters: [spec],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.successCount).toBe(1)
 
-    const row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?').bind(body.created[0].id).first() as Record<string, unknown>
+    const row = (await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?')
+      .bind(body.created[0].id)
+      .first()) as Record<string, unknown>
     expect(JSON.parse(row.stats as string)).toEqual(spec.stats)
     expect(row.faction_id).toBe('faction:bandits')
     expect(row.behavior).toBe('ambush')
@@ -108,10 +113,18 @@ describe('handleBatchManage', () => {
   })
 
   it('batch_create_characters records per-character errors on DB failure', async () => {
-    const brokenDb = { RPG_DB: { prepare: () => { throw new Error('simulated DB error') } } } as any
+    const brokenDb = {
+      RPG_DB: {
+        prepare: () => {
+          throw new Error('simulated DB error')
+        },
+      },
+    } as any
     const r = await handleBatchManage(brokenDb, {
       action: 'batch_create_characters',
-      characters: [{ name: 'Broken', characterType: 'pc', characterClass: 'Fighter', race: 'Human', level: 1 }]
+      characters: [
+        { name: 'Broken', characterType: 'pc', characterClass: 'Fighter', race: 'Human', level: 1 },
+      ],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -122,7 +135,7 @@ describe('handleBatchManage', () => {
   it('batch_create_npcs creates NPC characters', async () => {
     const r = await handleBatchManage(db(), {
       action: 'batch_create_npcs',
-      characters: [{ name: 'Guard A', characterType: 'enemy' }]
+      characters: [{ name: 'Guard A', characterType: 'enemy' }],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -137,13 +150,43 @@ describe('handleBatchManage', () => {
 
   it('batch_distribute_items distributes items', async () => {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare(`INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind('char-1', 'char-1', '{}', 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, now, now).run()
-    const item = await handleItemManage(db(), { action: 'create', name: 'Gold Coin', type: 'currency' })
+    await env.RPG_DB.prepare(
+      `INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        'char-1',
+        'char-1',
+        '{}',
+        10,
+        10,
+        10,
+        1,
+        'pc',
+        'Fighter',
+        'Human',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '{}',
+        '{}',
+        0,
+        now,
+        now,
+      )
+      .run()
+    const item = await handleItemManage(db(), {
+      action: 'create',
+      name: 'Gold Coin',
+      type: 'currency',
+    })
     const { itemId } = JSON.parse(item.content[0].text)
     const r = await handleBatchManage(db(), {
       action: 'batch_distribute_items',
-      distributions: [{ characterId: 'char-1', itemId, quantity: 10 }]
+      distributions: [{ characterId: 'char-1', itemId, quantity: 10 }],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -159,7 +202,7 @@ describe('handleBatchManage', () => {
   it('execute_workflow records steps', async () => {
     const r = await handleBatchManage(db(), {
       action: 'execute_workflow',
-      steps: [{ tool: 'character_manage', args: { action: 'list' } }]
+      steps: [{ tool: 'character_manage', args: { action: 'list' } }],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -208,7 +251,10 @@ describe('handleBatchManage', () => {
 
   it('get_template returns template with empty data for unknown template id in templateData', async () => {
     // merchant-caravan has known template data
-    const r = await handleBatchManage(db(), { action: 'get_template', templateId: 'merchant-caravan' })
+    const r = await handleBatchManage(db(), {
+      action: 'get_template',
+      templateId: 'merchant-caravan',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })

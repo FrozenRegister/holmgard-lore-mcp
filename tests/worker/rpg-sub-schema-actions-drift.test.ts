@@ -70,9 +70,14 @@ async function callTool(name: string, args: Record<string, unknown>) {
   const res = await SELF.fetch('http://example.com/mcp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
   })
-  const json = await res.json() as Record<string, any>
+  const json = (await res.json()) as Record<string, any>
   const text = json.result?.content?.[0]?.text
   return text ? JSON.parse(text) : json
 }
@@ -133,8 +138,11 @@ describe('rpg sub-schema actions drift guard (#468)', () => {
       const r = await callTool('load_tool_schema', { toolName: 'rpg', sub })
       expect(r.success).toBe(true)
       const description: string = r.schema.description
-      const missing = actions.filter(action => !new RegExp(`\\b${action}\\b`).test(description))
-      expect(missing, `sub "${sub}" description is missing real action(s): ${missing.join(', ')}`).toEqual([])
+      const missing = actions.filter((action) => !new RegExp(`\\b${action}\\b`).test(description))
+      expect(
+        missing,
+        `sub "${sub}" description is missing real action(s): ${missing.join(', ')}`,
+      ).toEqual([])
     })
   }
 })

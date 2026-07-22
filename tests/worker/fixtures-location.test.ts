@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -54,12 +62,18 @@ describe('canonical fixture — location:transit-hub-north (YAML exits + encount
   beforeEach(() => seedKV('location:transit-hub-north', TRANSIT_HUB_LORE))
 
   it('stores and retrieves full canonical lore verbatim', async () => {
-    const res = await callTool('lore_manage', { action: 'get', query: 'location:transit-hub-north' })
+    const res = await callTool('lore_manage', {
+      action: 'get',
+      query: 'location:transit-hub-north',
+    })
     expect(res.result.content[0].text).toBe(TRANSIT_HUB_LORE)
   })
 
   it('get_reachable_locations parses YAML-style Exits list and returns all three destinations', async () => {
-    const res = await callTool('world_manage', { action: 'get_reachable_locations', origin_key: 'location:transit-hub-north' })
+    const res = await callTool('world_manage', {
+      action: 'get_reachable_locations',
+      origin_key: 'location:transit-hub-north',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.locations).toHaveLength(3)
     const keys = res.result.locations.map((l: { key: string }) => l.key)

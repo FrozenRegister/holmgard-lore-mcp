@@ -3,7 +3,11 @@
 // Usage: Run on deploy via scripts/migrate-dissolution-config.ts
 
 import type { AppBindings } from '../../types'
-import { STAGE_MUTATIONS, TERMINAL_CONVERSIONS, DEFAULT_DISSOLUTION_CONFIG } from './dissolution_config'
+import {
+  STAGE_MUTATIONS,
+  TERMINAL_CONVERSIONS,
+  DEFAULT_DISSOLUTION_CONFIG,
+} from './dissolution_config'
 import { CONFIG_KEY, type SerializedConfig } from './dissolution'
 
 // #472 — bumped for the `terminalStage` field added to SerializedConfig
@@ -30,7 +34,7 @@ export async function seedDissolutionConfigKV(c: { env: AppBindings }): Promise<
     }
 
     // Check if config already exists
-    const existing = await kv.get(CONFIG_KEY, 'json') as SerializedConfig | null
+    const existing = (await kv.get(CONFIG_KEY, 'json')) as SerializedConfig | null
 
     if (existing) {
       // If version matches, we're good — no need to overwrite

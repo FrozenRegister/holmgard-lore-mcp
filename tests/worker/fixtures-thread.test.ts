@@ -1,23 +1,37 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
 describe('canonical fixture — thread comparison: primary vs secondary processing cycle', () => {
   beforeEach(async () => {
-    await seedKV('entity:subject-alpha', [
-      '# Entity: Subject Alpha',
-      'Status: Active, Stage-2-of-4',
-      'Thread: primary-processing-cycle',
-      'Timeline-Value: 12',
-      'Current-Date: cycle-day-1',
-    ].join('\n'))
-    await seedKV('entity:subject-beta', [
-      '# Entity: Subject Beta',
-      'Status: Stage-3-of-4, Modified-Consciousness',
-      'Thread: secondary-processing-cycle',
-      'Timeline-Value: 48',
-      'Current-Date: cycle-day-3',
-    ].join('\n'))
+    await seedKV(
+      'entity:subject-alpha',
+      [
+        '# Entity: Subject Alpha',
+        'Status: Active, Stage-2-of-4',
+        'Thread: primary-processing-cycle',
+        'Timeline-Value: 12',
+        'Current-Date: cycle-day-1',
+      ].join('\n'),
+    )
+    await seedKV(
+      'entity:subject-beta',
+      [
+        '# Entity: Subject Beta',
+        'Status: Stage-3-of-4, Modified-Consciousness',
+        'Thread: secondary-processing-cycle',
+        'Timeline-Value: 48',
+        'Current-Date: cycle-day-3',
+      ].join('\n'),
+    )
   })
 
   it('get_thread_comparison reports one entity per thread and correct timeline offset', async () => {
@@ -45,16 +59,22 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   })
 
   it('check_convergence returns can_converge=true when threads share a Current-Date', async () => {
-    await seedKV('entity:subject-alpha', [
-      'Thread: primary-processing-cycle',
-      'Timeline-Value: 12',
-      'Current-Date: convergence-point',
-    ].join('\n'))
-    await seedKV('entity:subject-beta', [
-      'Thread: secondary-processing-cycle',
-      'Timeline-Value: 48',
-      'Current-Date: convergence-point',
-    ].join('\n'))
+    await seedKV(
+      'entity:subject-alpha',
+      [
+        'Thread: primary-processing-cycle',
+        'Timeline-Value: 12',
+        'Current-Date: convergence-point',
+      ].join('\n'),
+    )
+    await seedKV(
+      'entity:subject-beta',
+      [
+        'Thread: secondary-processing-cycle',
+        'Timeline-Value: 48',
+        'Current-Date: convergence-point',
+      ].join('\n'),
+    )
     const res = await callTool('world_manage', {
       action: 'check_convergence',
       thread_a: 'primary-processing-cycle',

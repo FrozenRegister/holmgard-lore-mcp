@@ -6,16 +6,21 @@ describe.skipIf(!MCP_API_KEY)('Sensory Profile', () => {
 
   beforeEach(async () => {
     key = `test:sensory-${uid()}`
-    await setLore(key, [
-      '**Temperature:** warm',
-      '**Scent:** earthy',
-      '**Texture:** smooth',
-      '**Sound-Signature:** low hum',
-      '**Visual-Descriptors:** amber glow',
-    ].join('\n'))
+    await setLore(
+      key,
+      [
+        '**Temperature:** warm',
+        '**Scent:** earthy',
+        '**Texture:** smooth',
+        '**Sound-Signature:** low hum',
+        '**Visual-Descriptors:** amber glow',
+      ].join('\n'),
+    )
   })
 
-  afterEach(async () => { await deleteLore(key) })
+  afterEach(async () => {
+    await deleteLore(key)
+  })
 
   it('get_sensory_profile returns all five sensory fields', async () => {
     const res = await tool('entity_manage', { action: 'get_sensory_profile', entity_key: key })
@@ -24,7 +29,10 @@ describe.skipIf(!MCP_API_KEY)('Sensory Profile', () => {
   })
 
   it('get_sensory_profile returns error for missing entity', async () => {
-    const res = await tool('entity_manage', { action: 'get_sensory_profile', entity_key: 'character:no-body' })
+    const res = await tool('entity_manage', {
+      action: 'get_sensory_profile',
+      entity_key: 'character:no-body',
+    })
     expect(res.error).toBeTruthy()
   })
 })

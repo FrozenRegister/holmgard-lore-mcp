@@ -10,7 +10,11 @@ function expectSchemaHintError(res: any) {
 
 describe('entity_manage invalid params include schema_hint and example', () => {
   it('resolve_interaction: missing action_type', async () => {
-    const res = await callTool('entity_manage', { action: 'resolve_interaction', entity_a_id: 'character:a', entity_b_id: 'character:b' })
+    const res = await callTool('entity_manage', {
+      action: 'resolve_interaction',
+      entity_a_id: 'character:a',
+      entity_b_id: 'character:b',
+    })
     expectSchemaHintError(res)
   })
 
@@ -20,12 +24,19 @@ describe('entity_manage invalid params include schema_hint and example', () => {
   })
 
   it('analyze_utility: missing utility_vector', async () => {
-    const res = await callTool('entity_manage', { action: 'analyze_utility', entity_id: 'character:a' })
+    const res = await callTool('entity_manage', {
+      action: 'analyze_utility',
+      entity_id: 'character:a',
+    })
     expectSchemaHintError(res)
   })
 
   it('map_integration: missing integration_depth', async () => {
-    const res = await callTool('entity_manage', { action: 'map_integration', source_id: 'character:a', target_id: 'character:b' })
+    const res = await callTool('entity_manage', {
+      action: 'map_integration',
+      source_id: 'character:a',
+      target_id: 'character:b',
+    })
     expectSchemaHintError(res)
   })
 
@@ -55,7 +66,11 @@ describe('entity_manage invalid params include schema_hint and example', () => {
   })
 
   it('get_compatibility: missing interaction_type', async () => {
-    const res = await callTool('entity_manage', { action: 'get_compatibility', entity_a: 'character:a', entity_b: 'character:b' })
+    const res = await callTool('entity_manage', {
+      action: 'get_compatibility',
+      entity_a: 'character:a',
+      entity_b: 'character:b',
+    })
     expectSchemaHintError(res)
   })
 
@@ -65,18 +80,29 @@ describe('entity_manage invalid params include schema_hint and example', () => {
   })
 
   it('transfer_item: missing item_key', async () => {
-    const res = await callTool('entity_manage', { action: 'transfer_item', from_entity: 'character:a', to_entity: 'character:b' })
+    const res = await callTool('entity_manage', {
+      action: 'transfer_item',
+      from_entity: 'character:a',
+      to_entity: 'character:b',
+    })
     expectSchemaHintError(res)
   })
 
   it('list_consumption_timelines: invalid status_filter', async () => {
-    const res = await callTool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'bogus' })
+    const res = await callTool('entity_manage', {
+      action: 'list_consumption_timelines',
+      status_filter: 'bogus',
+    })
     expectSchemaHintError(res)
   })
 
   it('create_consumption_timeline: missing stages', async () => {
     const res = await callTool('entity_manage', {
-      action: 'create_consumption_timeline', entity_key: 'character:a', predator_key: 'character:b', stage_timer: 5, terminal_state: 'consumed'
+      action: 'create_consumption_timeline',
+      entity_key: 'character:a',
+      predator_key: 'character:b',
+      stage_timer: 5,
+      terminal_state: 'consumed',
     })
     expectSchemaHintError(res)
   })

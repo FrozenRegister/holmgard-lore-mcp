@@ -17,9 +17,9 @@ export function invalidParamsError(
   id: string | number | null,
   toolName: string,
   error: z.ZodError,
-  example?: Record<string, unknown>
+  example?: Record<string, unknown>,
 ): JsonRpcResponse {
-  const issues = error.issues.map(i => `${i.path.join('.')}: ${i.message}`)
+  const issues = error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)
   const schemaHint = `load_tool_schema({ toolName: "${toolName}" })`
   const message = `Invalid params — ${issues.join('; ')}. For the full parameter schema, call ${schemaHint}.`
   const data: Record<string, unknown> = { issues: error.format(), schema_hint: schemaHint }

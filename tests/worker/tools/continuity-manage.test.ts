@@ -35,5 +35,4 @@ describe('handle_continuity_manage', () => {
     expect(res.error).toBeDefined()
     expect(res.error.message).toBe('Unknown action "nope"')
   })
-
 })

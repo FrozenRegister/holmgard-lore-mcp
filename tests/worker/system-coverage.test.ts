@@ -16,7 +16,10 @@ describe('validate_topic_exists — scoreMatch coverage', () => {
   })
 
   it('scoreMatch: exact match returns 1.0 confidence', async () => {
-    const res = await callTool('lore_manage', { action: 'validate', query_string: 'character:test-exact' })
+    const res = await callTool('lore_manage', {
+      action: 'validate',
+      query_string: 'character:test-exact',
+    })
     expect(res.result.exists).toBe(true)
     expect(res.result.confidence).toBe(1.0)
     expect(res.result.did_you_mean).toBe('character:test-exact')
@@ -24,7 +27,10 @@ describe('validate_topic_exists — scoreMatch coverage', () => {
 
   it('scoreMatch: prefix match (candidate starts with query) returns ~0.9 confidence', async () => {
     // Query that matches the beginning of a key
-    const res = await callTool('lore_manage', { action: 'validate', query_string: 'character:test' })
+    const res = await callTool('lore_manage', {
+      action: 'validate',
+      query_string: 'character:test',
+    })
     expect(res.result.exists).toBe(false)
     expect(res.result.confidence).toBeGreaterThan(0.85)
     expect(res.result.confidence).toBeLessThanOrEqual(0.9)
@@ -55,7 +61,10 @@ describe('validate_topic_exists — scoreMatch coverage', () => {
   })
 
   it('scoreMatch: no match returns 0 confidence', async () => {
-    const res = await callTool('lore_manage', { action: 'validate', query_string: 'zzzznonexistent9999' })
+    const res = await callTool('lore_manage', {
+      action: 'validate',
+      query_string: 'zzzznonexistent9999',
+    })
     expect(res.result.exists).toBe(false)
     expect(res.result.confidence).toBeNull()
     expect(res.result.did_you_mean).toBeNull()
@@ -91,14 +100,20 @@ describe('validate_topic_exists — scoreMatch coverage', () => {
   })
 
   it('scoreMatch: handles query with colon separators', async () => {
-    const res = await callTool('lore_manage', { action: 'validate', query_string: 'character:test-ex' })
+    const res = await callTool('lore_manage', {
+      action: 'validate',
+      query_string: 'character:test-ex',
+    })
     expect(res.result.exists).toBe(false)
     // Should extract "ex" and use it for matching
     expect(res.result.namespace_matches.length).toBeGreaterThan(0)
   })
 
   it('scoreMatch: case-insensitive matching', async () => {
-    const res = await callTool('lore_manage', { action: 'validate', query_string: 'CHARACTER:TEST-EXACT' })
+    const res = await callTool('lore_manage', {
+      action: 'validate',
+      query_string: 'CHARACTER:TEST-EXACT',
+    })
     expect(res.result.exists).toBe(true)
     expect(res.result.exact_match).toBe('character:test-exact')
   })
@@ -117,7 +132,8 @@ describe('get_lore — auto-suggest and edge cases', () => {
     // Should return an error (key not found with suggestions)
     if (res.error?.data) {
       // May have alternatives or did_you_mean, depending on implementation
-      const hasSuggestions = res.error.data.alternatives || res.error.data.did_you_mean || res.error.data.confidence
+      const hasSuggestions =
+        res.error.data.alternatives || res.error.data.did_you_mean || res.error.data.confidence
       expect(res.error.data).toBeDefined()
     }
   })
@@ -297,7 +313,7 @@ describe('get_lore_section — strict vs loose mode', () => {
       action: 'get_section',
       key: 'character:test-strict',
       sections: ['personality'],
-      mode: 'loose'
+      mode: 'loose',
     })
     expect(res.result.sections['personality']).toBeDefined()
     expect(res.result.sections['personality']).toContain('Curious')
@@ -308,7 +324,7 @@ describe('get_lore_section — strict vs loose mode', () => {
       action: 'get_section',
       key: 'character:test-strict',
       sections: ['personality'],
-      mode: 'strict'
+      mode: 'strict',
     })
     // In strict mode, "personality" (lowercase) won't match "PERSONALITY" (uppercase)
     // Either not_found should include it, or sections should be empty
@@ -326,7 +342,7 @@ describe('get_lore_section — strict vs loose mode', () => {
       action: 'get_section',
       key: 'character:test-strict',
       sections: ['Goals (Long-term)'],
-      mode: 'loose'
+      mode: 'loose',
     })
     expect(res.result.sections['Goals (Long-term)']).toBeDefined()
   })

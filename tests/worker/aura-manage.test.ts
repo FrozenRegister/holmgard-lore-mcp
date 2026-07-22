@@ -10,12 +10,38 @@ describe('handleAuraManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   async function createCharacter(id: string) {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare(`INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, id, '{}', 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, now, now).run()
+    await env.RPG_DB.prepare(
+      `INSERT OR IGNORE INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        id,
+        '{}',
+        10,
+        10,
+        10,
+        1,
+        'pc',
+        'Fighter',
+        'Human',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '{}',
+        '{}',
+        0,
+        now,
+        now,
+      )
+      .run()
   }
 
   it('returns guiding error for unknown action', async () => {
@@ -31,7 +57,13 @@ describe('handleAuraManage', () => {
 
   it('create inserts a new aura', async () => {
     await createCharacter('char-1')
-    const r = await handleAuraManage(db(), { action: 'create', ownerId: 'char-1', spellName: 'Bless', requiresConcentration: true, effects: { bonus: 1 } })
+    const r = await handleAuraManage(db(), {
+      action: 'create',
+      ownerId: 'char-1',
+      spellName: 'Bless',
+      requiresConcentration: true,
+      effects: { bonus: 1 },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.auraId).toBeTruthy()
@@ -52,7 +84,11 @@ describe('handleAuraManage', () => {
 
   it('get returns created aura', async () => {
     await createCharacter('char-2')
-    const c = await handleAuraManage(db(), { action: 'create', ownerId: 'char-2', spellName: 'Shield' })
+    const c = await handleAuraManage(db(), {
+      action: 'create',
+      ownerId: 'char-2',
+      spellName: 'Shield',
+    })
     const { auraId } = JSON.parse(c.content[0].text)
     const r = await handleAuraManage(db(), { action: 'get', id: auraId })
     const body = JSON.parse(r.content[0].text)
@@ -120,7 +156,12 @@ describe('handleAuraManage', () => {
 
   it('concentrate records concentration', async () => {
     await createCharacter('c1')
-    const r = await handleAuraManage(db(), { action: 'concentrate', characterId: 'c1', spellName: 'Web', targetIds: ['t1', 't2'] })
+    const r = await handleAuraManage(db(), {
+      action: 'concentrate',
+      characterId: 'c1',
+      spellName: 'Web',
+      targetIds: ['t1', 't2'],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.spellName).toBe('Web')
@@ -133,7 +174,10 @@ describe('handleAuraManage', () => {
   })
 
   it('break_concentration returns hadConcentration false when none active', async () => {
-    const r = await handleAuraManage(db(), { action: 'break_concentration', characterId: 'no-conc' })
+    const r = await handleAuraManage(db(), {
+      action: 'break_concentration',
+      characterId: 'no-conc',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.hadConcentration).toBe(false)

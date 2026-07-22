@@ -10,10 +10,14 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
 export const ACTIONS = ['long_rest', 'short_rest'] as const
-type RestAction = typeof ACTIONS[number]
+type RestAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, RestAction> = {
-  long: 'long_rest', full_rest: 'long_rest', sleep: 'long_rest',
-  short: 'short_rest', partial_rest: 'short_rest', catch_breath: 'short_rest',
+  long: 'long_rest',
+  full_rest: 'long_rest',
+  sleep: 'long_rest',
+  short: 'short_rest',
+  partial_rest: 'short_rest',
+  catch_breath: 'short_rest',
 }
 
 const InputSchema = z.object({
@@ -35,7 +39,8 @@ type CharacterRow = {
 
 function restoreLongRest(char: CharacterRow) {
   const spellSlots = char.spell_slots ? JSON.parse(char.spell_slots) : null
-  if (spellSlots) for (const level of Object.keys(spellSlots)) spellSlots[level].current = spellSlots[level].max
+  if (spellSlots)
+    for (const level of Object.keys(spellSlots)) spellSlots[level].current = spellSlots[level].max
   const pactMagicSlots = char.pact_magic_slots ? JSON.parse(char.pact_magic_slots) : null
   if (pactMagicSlots) pactMagicSlots.current = pactMagicSlots.max
   const pools = char.resource_pools ? JSON.parse(char.resource_pools) : {}
@@ -49,18 +54,28 @@ function restoreShortRest(char: CharacterRow) {
   return { pactMagicSlots }
 }
 
-async function getCharacterIds(db: D1Database, characterId?: string, partyId?: string): Promise<string[]> {
+async function getCharacterIds(
+  db: D1Database,
+  characterId?: string,
+  partyId?: string,
+): Promise<string[]> {
   if (characterId) return [characterId]
   if (partyId) {
-    const { results } = await db.prepare('SELECT character_id FROM party_members WHERE party_id = ?').bind(partyId).all()
-    return (results as Array<{ character_id: string }>).map(r => r.character_id)
+    const { results } = await db
+      .prepare('SELECT character_id FROM party_members WHERE party_id = ?')
+      .bind(partyId)
+      .all()
+    return (results as Array<{ character_id: string }>).map((r) => r.character_id)
   }
   return []
 }
 
-export async function handleRestManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleRestManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -74,37 +89,94 @@ export async function handleRestManage(env: AppBindings, args: Record<string, un
     case 'long_rest': {
       const rested: string[] = []
       for (const id of characterIds) {
-        const char = await db.prepare('SELECT id, max_hp, spell_slots, pact_magic_slots, legendary_actions, legendary_resistances, resource_pools FROM characters WHERE id = ?').bind(id).first() as CharacterRow | null
+        const char = (await db
+          .prepare(
+            'SELECT id, max_hp, spell_slots, pact_magic_slots, legendary_actions, legendary_resistances, resource_pools FROM characters WHERE id = ?',
+          )
+          .bind(id)
+          .first()) as CharacterRow | null
         if (!char) continue
         const { spellSlots, pactMagicSlots, pools } = restoreLongRest(char)
-        await db.prepare(`
+        await db
+          .prepare(
+            `
           UPDATE characters SET hp = max_hp, spell_slots = ?, pact_magic_slots = ?,
             legendary_actions_remaining = legendary_actions, legendary_resistances_remaining = legendary_resistances,
             conditions = '[]', resource_pools = ?, updated_at = ?
           WHERE id = ?
-        `).bind(spellSlots ? JSON.stringify(spellSlots) : char.spell_slots, pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots, JSON.stringify(pools), now, id).run()
+        `,
+          )
+          .bind(
+            spellSlots ? JSON.stringify(spellSlots) : char.spell_slots,
+            pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots,
+            JSON.stringify(pools),
+            now,
+            id,
+          )
+          .run()
         rested.push(id)
       }
-      if (rested.length === 0) return err(`No characters found for ${a.characterId ? `characterId ${a.characterId}` : `partyId ${a.partyId}`}`)
-      return ok({ success: true, actionType: 'long_rest', characterIds: rested, restored: ['hp', 'spell_slots', 'pact_magic_slots', 'legendary_actions', 'legendary_resistances', 'conditions', 'death_saves'] })
+      if (rested.length === 0)
+        return err(
+          `No characters found for ${a.characterId ? `characterId ${a.characterId}` : `partyId ${a.partyId}`}`,
+        )
+      return ok({
+        success: true,
+        actionType: 'long_rest',
+        characterIds: rested,
+        restored: [
+          'hp',
+          'spell_slots',
+          'pact_magic_slots',
+          'legendary_actions',
+          'legendary_resistances',
+          'conditions',
+          'death_saves',
+        ],
+      })
     }
     case 'short_rest': {
       const rested: string[] = []
       for (const id of characterIds) {
-        const char = await db.prepare('SELECT id, max_hp, spell_slots, pact_magic_slots, legendary_actions, legendary_resistances, resource_pools FROM characters WHERE id = ?').bind(id).first() as CharacterRow | null
+        const char = (await db
+          .prepare(
+            'SELECT id, max_hp, spell_slots, pact_magic_slots, legendary_actions, legendary_resistances, resource_pools FROM characters WHERE id = ?',
+          )
+          .bind(id)
+          .first()) as CharacterRow | null
         if (!char) continue
         const { pactMagicSlots } = restoreShortRest(char)
         if (a.healAmount) {
-          await db.prepare('UPDATE characters SET hp = MIN(max_hp, hp + ?), pact_magic_slots = ?, updated_at = ? WHERE id = ?')
-            .bind(a.healAmount, pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots, now, id).run()
+          await db
+            .prepare(
+              'UPDATE characters SET hp = MIN(max_hp, hp + ?), pact_magic_slots = ?, updated_at = ? WHERE id = ?',
+            )
+            .bind(
+              a.healAmount,
+              pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots,
+              now,
+              id,
+            )
+            .run()
         } else {
-          await db.prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?')
-            .bind(pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots, now, id).run()
+          await db
+            .prepare('UPDATE characters SET pact_magic_slots = ?, updated_at = ? WHERE id = ?')
+            .bind(pactMagicSlots ? JSON.stringify(pactMagicSlots) : char.pact_magic_slots, now, id)
+            .run()
         }
         rested.push(id)
       }
-      if (rested.length === 0) return err(`No characters found for ${a.characterId ? `characterId ${a.characterId}` : `partyId ${a.partyId}`}`)
-      return ok({ success: true, actionType: 'short_rest', characterIds: rested, healAmount: a.healAmount ?? 0, restored: ['pact_magic_slots', ...(a.healAmount ? ['hp'] : [])] })
+      if (rested.length === 0)
+        return err(
+          `No characters found for ${a.characterId ? `characterId ${a.characterId}` : `partyId ${a.partyId}`}`,
+        )
+      return ok({
+        success: true,
+        actionType: 'short_rest',
+        characterIds: rested,
+        healAmount: a.healAmount ?? 0,
+        restored: ['pact_magic_slots', ...(a.healAmount ? ['hp'] : [])],
+      })
     }
   }
 }

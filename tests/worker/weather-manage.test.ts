@@ -13,13 +13,18 @@ describe('weather_manage tool', () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
     })
 
     const resClone = res.clone()
     let json: Record<string, any>
     try {
-      json = await res.json() as Record<string, any>
+      json = (await res.json()) as Record<string, any>
     } catch (e) {
       const text = await resClone.text()
       if (text.includes('Internal Server Error') || text.includes('Error:')) {
@@ -42,15 +47,20 @@ describe('weather_manage tool', () => {
   // Setup helper: create world for testing
   async function createWorld(worldId: string) {
     const db = env.RPG_DB
-    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
-      worldId,
-      `World ${worldId}`,
-      'test-seed-123',
-      100,
-      100,
-      new Date().toISOString(),
-      new Date().toISOString()
-    ).run()
+    await db
+      .prepare(
+        'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        worldId,
+        `World ${worldId}`,
+        'test-seed-123',
+        100,
+        100,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      )
+      .run()
   }
 
   // ── get_forecast Tests ──────────────────────────────────────────────────────
@@ -67,7 +77,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-empty',
-      day: 0
+      day: 0,
     })
     expect(r.found).toBe(false)
     expect(r.gap).toBeDefined()
@@ -85,14 +95,14 @@ describe('weather_manage tool', () => {
       temperatureHigh: 25,
       temperatureLow: 15,
       conditions: 'clear',
-      windSpeed: 10
+      windSpeed: 10,
     })
     // Now get it
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-forecast',
-      day: 0
+      day: 0,
     })
     expect(r.found).toBe(true)
     expect(r.temperature_high).toBe(25)
@@ -109,13 +119,13 @@ describe('weather_manage tool', () => {
       worldId: 'world:test-days',
       day: 5,
       temperatureHigh: 20,
-      conditions: 'overcast'
+      conditions: 'overcast',
     })
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-days',
-      day: 5
+      day: 5,
     })
     expect(r.found).toBe(true)
     expect(r.day).toBe(5)
@@ -137,7 +147,7 @@ describe('weather_manage tool', () => {
       day: 0,
       temperatureHigh: 30,
       temperatureLow: 20,
-      conditions: 'storm'
+      conditions: 'storm',
     })
     expect(r.success).toBe(true)
     expect(r.actionType).toBe('set_forecast')
@@ -159,7 +169,7 @@ describe('weather_manage tool', () => {
       precipitationType: 'rain',
       humidity: 0.85,
       visibility: 'moderate',
-      fog: true
+      fog: true,
     })
     expect(!r.error).toBe(true)
 
@@ -168,7 +178,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-full',
-      day: 1
+      day: 1,
     })
     expect(verify.conditions).toBe('rain')
     expect(verify.humidity).toBe(0.85)
@@ -183,7 +193,7 @@ describe('weather_manage tool', () => {
       worldId: 'world:test-update',
       day: 2,
       temperatureHigh: 25,
-      conditions: 'clear'
+      conditions: 'clear',
     })
     // Update
     const r = await callTool('rpg', {
@@ -192,7 +202,7 @@ describe('weather_manage tool', () => {
       worldId: 'world:test-update',
       day: 2,
       temperatureHigh: 30,
-      conditions: 'overcast'
+      conditions: 'overcast',
     })
     expect(r.success).toBe(true)
 
@@ -201,7 +211,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-update',
-      day: 2
+      day: 2,
     })
     expect(verify.temperature_high).toBe(30)
     expect(verify.conditions).toBe('overcast')
@@ -214,7 +224,7 @@ describe('weather_manage tool', () => {
       action: 'set_forecast',
       worldId: 'world:test-legacy',
       day: 0,
-      weather: 'storm'
+      weather: 'storm',
     })
     expect(r.success).toBe(true)
   })
@@ -226,7 +236,7 @@ describe('weather_manage tool', () => {
       action: 'set',
       worldId: 'world:test-alias-set',
       day: 0,
-      conditions: 'clear'
+      conditions: 'clear',
     })
     expect(r.success).toBe(true)
   })
@@ -238,7 +248,7 @@ describe('weather_manage tool', () => {
       action: 'override',
       worldId: 'world:test-alias-override',
       day: 0,
-      conditions: 'rain'
+      conditions: 'rain',
     })
     expect(r.success).toBe(true)
   })
@@ -255,7 +265,7 @@ describe('weather_manage tool', () => {
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'list_forecasts',
-      worldId: 'world:test-empty-list'
+      worldId: 'world:test-empty-list',
     })
     expect(r.success).toBe(true)
     expect(r.count).toBe(0)
@@ -270,27 +280,27 @@ describe('weather_manage tool', () => {
       action: 'set_forecast',
       worldId: 'world:test-list',
       day: 0,
-      conditions: 'clear'
+      conditions: 'clear',
     })
     await callTool('rpg', {
       sub: 'weather',
       action: 'set_forecast',
       worldId: 'world:test-list',
       day: 1,
-      conditions: 'rain'
+      conditions: 'rain',
     })
     await callTool('rpg', {
       sub: 'weather',
       action: 'set_forecast',
       worldId: 'world:test-list',
       day: 2,
-      conditions: 'storm'
+      conditions: 'storm',
     })
 
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'list_forecasts',
-      worldId: 'world:test-list'
+      worldId: 'world:test-list',
     })
     expect(r.success).toBe(true)
     expect(r.count).toBe(3)
@@ -307,7 +317,7 @@ describe('weather_manage tool', () => {
         action: 'set_forecast',
         worldId: 'world:test-limit',
         day: i,
-        conditions: 'clear'
+        conditions: 'clear',
       })
     }
 
@@ -315,7 +325,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'list_forecasts',
       worldId: 'world:test-limit',
-      limit: 5
+      limit: 5,
     })
     expect(r.success).toBe(true)
     expect(r.count).toBeLessThanOrEqual(5)
@@ -328,13 +338,13 @@ describe('weather_manage tool', () => {
       action: 'set_forecast',
       worldId: 'world:test-alias-list',
       day: 0,
-      conditions: 'overcast'
+      conditions: 'overcast',
     })
 
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'list',
-      worldId: 'world:test-alias-list'
+      worldId: 'world:test-alias-list',
     })
     expect(r.success).toBe(true)
     expect(r.count).toBeGreaterThan(0)
@@ -345,7 +355,7 @@ describe('weather_manage tool', () => {
     const r = await callTool('rpg', {
       sub: 'weather',
       action: 'forecasts',
-      worldId: 'world:test-alias-forecasts'
+      worldId: 'world:test-alias-forecasts',
     })
     expect(r.success).toBe(true)
   })
@@ -360,7 +370,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-workflow',
-      day: 0
+      day: 0,
     })
     if (gapResult.found === undefined) {
       // Response structure might vary - just verify gap is present if forecast not found
@@ -377,7 +387,7 @@ describe('weather_manage tool', () => {
       day: 0,
       temperatureHigh: 22,
       temperatureLow: 12,
-      conditions: 'partly-cloudy'
+      conditions: 'partly-cloudy',
     })
     // Just verify set doesn't error
     if (!setResult.error) {
@@ -389,7 +399,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: 'world:test-workflow',
-      day: 0
+      day: 0,
     })
     // If we got a result, verify it has the expected values
     if (getResult.found || !getResult.gap) {
@@ -403,13 +413,35 @@ describe('weather_manage tool', () => {
     const worldId1 = `world:wxfcast${Math.random().toString(36).slice(2, 8)}`
     const worldId2 = `world:wxfcast${Math.random().toString(36).slice(2, 8)}`
 
-    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
-      worldId1, 'Weather Test World 1', 'seed1', 100, 100, new Date().toISOString(), new Date().toISOString()
-    ).run()
+    await db
+      .prepare(
+        'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        worldId1,
+        'Weather Test World 1',
+        'seed1',
+        100,
+        100,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      )
+      .run()
 
-    await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
-      worldId2, 'Weather Test World 2', 'seed2', 100, 100, new Date().toISOString(), new Date().toISOString()
-    ).run()
+    await db
+      .prepare(
+        'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        worldId2,
+        'Weather Test World 2',
+        'seed2',
+        100,
+        100,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      )
+      .run()
 
     // Set forecast for world A
     const setA = await callTool('rpg', {
@@ -418,7 +450,7 @@ describe('weather_manage tool', () => {
       worldId: worldId1,
       day: 0,
       temperatureHigh: 30,
-      conditions: 'clear'
+      conditions: 'clear',
     })
     expect(!setA.error).toBe(true)
 
@@ -429,7 +461,7 @@ describe('weather_manage tool', () => {
       worldId: worldId2,
       day: 0,
       temperatureHigh: 10,
-      conditions: 'snow'
+      conditions: 'snow',
     })
     expect(!setB.error).toBe(true)
 
@@ -438,7 +470,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: worldId1,
-      day: 0
+      day: 0,
     })
     expect(resultA.conditions).toBe('clear')
 
@@ -446,7 +478,7 @@ describe('weather_manage tool', () => {
       sub: 'weather',
       action: 'get_forecast',
       worldId: worldId2,
-      day: 0
+      day: 0,
     })
     expect(resultB.conditions).toBe('snow')
   })

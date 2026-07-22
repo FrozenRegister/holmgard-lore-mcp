@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { latLonToKm, kmToLatLon, latLonToHex, hexToLatLon, type GeoOrigin } from '@/rpg/utils/geo-transform'
+import {
+  latLonToKm,
+  kmToLatLon,
+  latLonToHex,
+  hexToLatLon,
+  type GeoOrigin,
+} from '@/rpg/utils/geo-transform'
 
 // Origin = Visby (the proposed default Gotland waypoint layout's origin, #328).
 const ORIGIN: GeoOrigin = { originLat: 57.6349, originLon: 18.2948, kmPerHex: 3 }
@@ -37,7 +43,10 @@ describe('geo-transform', () => {
 
   describe('latLonToHex', () => {
     it('places the origin at hex (0, 0)', () => {
-      expect(latLonToHex({ lat: ORIGIN.originLat, lon: ORIGIN.originLon }, ORIGIN)).toEqual({ q: 0, r: 0 })
+      expect(latLonToHex({ lat: ORIGIN.originLat, lon: ORIGIN.originLon }, ORIGIN)).toEqual({
+        q: 0,
+        r: 0,
+      })
     })
 
     it('derives the proposed initial waypoint hex layout from real lat/lon (#328)', () => {
@@ -49,7 +58,7 @@ describe('geo-transform', () => {
     })
 
     it('rounds to the nearest integer hex', () => {
-      const hex = latLonToHex({ lat: 57.62, lon: 18.30 }, ORIGIN)
+      const hex = latLonToHex({ lat: 57.62, lon: 18.3 }, ORIGIN)
       expect(Number.isInteger(hex.q)).toBe(true)
       expect(Number.isInteger(hex.r)).toBe(true)
     })

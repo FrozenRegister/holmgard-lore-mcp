@@ -23,29 +23,53 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
   }
 
   afterEach(async () => {
-    await Promise.all(createdIds.splice(0).map(id => tool('character_manage', { action: 'delete', characterId: id })))
+    await Promise.all(
+      createdIds
+        .splice(0)
+        .map((id) => tool('character_manage', { action: 'delete', characterId: id })),
+    )
   })
 
   it('create accepts hostBodyId/active and get reflects them', async () => {
     const hostId = await createChar({ name: `Host ${uid()}` })
-    const passengerId = await createChar({ name: `Passenger ${uid()}`, hostBodyId: hostId, active: false })
+    const passengerId = await createChar({
+      name: `Passenger ${uid()}`,
+      hostBodyId: hostId,
+      active: false,
+    })
 
-    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: passengerId }))
+    const getRes = parseResult(
+      await tool('character_manage', { action: 'get', characterId: passengerId }),
+    )
     expect(getRes.character.host_body_id).toBe(hostId)
     expect(getRes.character.active).toBe(0)
   })
 
   it('activate atomically switches which consciousness is active', async () => {
     const hostId = await createChar({ name: `Host ${uid()}` })
-    const cordeliaId = await createChar({ name: `Cordelia ${uid()}`, hostBodyId: hostId, active: true })
-    const bellonaId = await createChar({ name: `Bellona ${uid()}`, hostBodyId: hostId, active: false })
+    const cordeliaId = await createChar({
+      name: `Cordelia ${uid()}`,
+      hostBodyId: hostId,
+      active: true,
+    })
+    const bellonaId = await createChar({
+      name: `Bellona ${uid()}`,
+      hostBodyId: hostId,
+      active: false,
+    })
 
-    const activateRes = parseResult(await tool('character_manage', { action: 'activate', characterId: bellonaId }))
+    const activateRes = parseResult(
+      await tool('character_manage', { action: 'activate', characterId: bellonaId }),
+    )
     expect(activateRes.success).toBe(true)
     expect(activateRes.deactivated).toEqual([cordeliaId])
 
-    const cordeliaAfter = parseResult(await tool('character_manage', { action: 'get', characterId: cordeliaId }))
-    const bellonaAfter = parseResult(await tool('character_manage', { action: 'get', characterId: bellonaId }))
+    const cordeliaAfter = parseResult(
+      await tool('character_manage', { action: 'get', characterId: cordeliaId }),
+    )
+    const bellonaAfter = parseResult(
+      await tool('character_manage', { action: 'get', characterId: bellonaId }),
+    )
     expect(cordeliaAfter.character.active).toBe(0)
     expect(bellonaAfter.character.active).toBe(1)
   })
@@ -53,9 +77,15 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
   it('list_passengers reports the active consciousness and dormant passengers', async () => {
     const hostId = await createChar({ name: `Host ${uid()}` })
     const activeId = await createChar({ name: `Active ${uid()}`, hostBodyId: hostId, active: true })
-    const passengerId = await createChar({ name: `Passenger ${uid()}`, hostBodyId: hostId, active: false })
+    const passengerId = await createChar({
+      name: `Passenger ${uid()}`,
+      hostBodyId: hostId,
+      active: false,
+    })
 
-    const listRes = parseResult(await tool('character_manage', { action: 'list_passengers', hostBodyId: hostId }))
+    const listRes = parseResult(
+      await tool('character_manage', { action: 'list_passengers', hostBodyId: hostId }),
+    )
     expect(listRes.success).toBe(true)
     expect(listRes.activeCharacterId).toBe(activeId)
     expect(listRes.passengers.map((p: { id: string }) => p.id)).toEqual([passengerId])
@@ -96,14 +126,20 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     const charId = await createChar({
       name: `Recompute ${uid()}`,
       stats: { str: 10, dex: 12, con: 10, int: 10, wis: 16, cha: 10 },
-      ac: 999, perceptionBonus: 999, stealthBonus: 999,
+      ac: 999,
+      perceptionBonus: 999,
+      stealthBonus: 999,
     })
 
-    const recomputeRes = parseResult(await tool('character_manage', { action: 'recompute_derived', characterId: charId }))
+    const recomputeRes = parseResult(
+      await tool('character_manage', { action: 'recompute_derived', characterId: charId }),
+    )
     expect(recomputeRes.success).toBe(true)
     expect(recomputeRes.charactersUpdated).toBe(1)
 
-    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    const getRes = parseResult(
+      await tool('character_manage', { action: 'get', characterId: charId }),
+    )
     expect(getRes.character.ac).toBe(11) // 10 + (12-10)/2
     expect(getRes.character.perception_bonus).toBe(3) // (16-10)/2
     expect(getRes.character.stealth_bonus).toBe(1) // (12-10)/2
@@ -112,14 +148,24 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
   it('move_to_location and move_to_tile set position independently, dual-mode (#313)', async () => {
     const charId = await createChar({ name: `Mover ${uid()}` })
 
-    const locRes = parseResult(await tool('character_manage', { action: 'move_to_location', characterId: charId, locationKey: 'location:linwood-estate' }))
+    const locRes = parseResult(
+      await tool('character_manage', {
+        action: 'move_to_location',
+        characterId: charId,
+        locationKey: 'location:linwood-estate',
+      }),
+    )
     expect(locRes.success).toBe(true)
 
-    const tileRes = parseResult(await tool('character_manage', { action: 'move_to_tile', characterId: charId, q: 52, r: 28 }))
+    const tileRes = parseResult(
+      await tool('character_manage', { action: 'move_to_tile', characterId: charId, q: 52, r: 28 }),
+    )
     expect(tileRes.success).toBe(true)
     expect(tileRes.mapId).toBe('main')
 
-    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    const getRes = parseResult(
+      await tool('character_manage', { action: 'get', characterId: charId }),
+    )
     expect(getRes.character.location_key).toBe('location:linwood-estate')
     expect(getRes.character.current_hex_q).toBe(52)
     expect(getRes.character.current_hex_r).toBe(28)
@@ -128,16 +174,26 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
   it('create defaults death_mode to instant, update sets staged dissolution fields (#314)', async () => {
     const charId = await createChar({ name: `Dissolving ${uid()}` })
 
-    const defaultRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    const defaultRes = parseResult(
+      await tool('character_manage', { action: 'get', characterId: charId }),
+    )
     expect(defaultRes.character.death_mode).toBe('instant')
 
-    const updateRes = parseResult(await tool('character_manage', {
-      action: 'update', characterId: charId,
-      deathMode: 'staged', dissolutionStage: 2, dissolutionStages: 5, dissolutionTerminal: 'consumed',
-    }))
+    const updateRes = parseResult(
+      await tool('character_manage', {
+        action: 'update',
+        characterId: charId,
+        deathMode: 'staged',
+        dissolutionStage: 2,
+        dissolutionStages: 5,
+        dissolutionTerminal: 'consumed',
+      }),
+    )
     expect(updateRes.success).toBe(true)
 
-    const getRes = parseResult(await tool('character_manage', { action: 'get', characterId: charId }))
+    const getRes = parseResult(
+      await tool('character_manage', { action: 'get', characterId: charId }),
+    )
     expect(getRes.character.death_mode).toBe('staged')
     expect(getRes.character.dissolution_stage).toBe(2)
     expect(getRes.character.dissolution_stages).toBe(5)
@@ -149,24 +205,42 @@ describe.skipIf(!MCP_API_KEY)('character_manage co-habitation', () => {
     const targetId = await createChar({ name: `StagedTarget ${uid()}` })
     await tool('character_manage', { action: 'update', characterId: targetId, deathMode: 'staged' })
 
-    const attackRes = parseResult(await tool('rpg', {
-      sub: 'combat_action', action: 'attack', actorId: attackerId, targetIds: [targetId], attackRoll: 15, damage: 5,
-    }))
+    const attackRes = parseResult(
+      await tool('rpg', {
+        sub: 'combat_action',
+        action: 'attack',
+        actorId: attackerId,
+        targetIds: [targetId],
+        attackRoll: 15,
+        damage: 5,
+      }),
+    )
     expect(attackRes.error).toBe(true)
     expect(attackRes.message).toContain('staged-dissolution')
   })
 
   it('kill removes the dead character from their party and archives it once empty (#398)', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Kill Party World ${uid()}`, theme: 'fantasy' }))
+    const worldRes = parseResult(
+      await tool('rpg', {
+        sub: 'world',
+        action: 'create',
+        name: `Kill Party World ${uid()}`,
+        theme: 'fantasy',
+      }),
+    )
     const worldId = worldRes.worldId
-    const partyRes = parseResult(await tool('rpg', { sub: 'party', action: 'create', name: `Solo Party ${uid()}`, worldId }))
+    const partyRes = parseResult(
+      await tool('rpg', { sub: 'party', action: 'create', name: `Solo Party ${uid()}`, worldId }),
+    )
     const partyId = partyRes.partyId
     const doomedId = await createChar({ name: `Last One ${uid()}` })
     await tool('rpg', { sub: 'party', action: 'add_member', partyId, characterId: doomedId })
 
     const killRes = parseResult(await tool('character_manage', { action: 'kill', id: doomedId }))
     expect(killRes.success).toBe(true)
-    expect(killRes.partyUpdates).toEqual([{ partyId, remainingMembers: 0, archived: true, soloSurvivorId: null }])
+    expect(killRes.partyUpdates).toEqual([
+      { partyId, remainingMembers: 0, archived: true, soloSurvivorId: null },
+    ])
 
     const partyAfter = parseResult(await tool('rpg', { sub: 'party', action: 'get', partyId }))
     expect(partyAfter.party.status).toBe('archived')

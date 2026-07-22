@@ -2,10 +2,26 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { parseKvEntry, extractFieldFromText, updateFieldInText, extractConsumptionInfo, extractActiveThreads, normalizeWeight, inferFromSensoryComposite, extractRawField, parseLoreSections } from '../lib/lore'
+import {
+  parseKvEntry,
+  extractFieldFromText,
+  updateFieldInText,
+  extractConsumptionInfo,
+  extractActiveThreads,
+  normalizeWeight,
+  inferFromSensoryComposite,
+  extractRawField,
+  parseLoreSections,
+} from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { getIndexedKeys, updateIndexes, resolveIndexedEntities } from '../lib/indexes'
-import { stageMutationFor, buildSensoryProfile, buildMechanicalEffects, resolveTerminalConversion, resolveDissolutionConfig } from '../rpg/utils/dissolution'
+import {
+  stageMutationFor,
+  buildSensoryProfile,
+  buildMechanicalEffects,
+  resolveTerminalConversion,
+  resolveDissolutionConfig,
+} from '../rpg/utils/dissolution'
 import type { ToolContext, TypedToolContext } from './types'
 
 export const resolveInteractionSchema = z.object({
@@ -14,7 +30,11 @@ export const resolveInteractionSchema = z.object({
   action_type: z.string().min(1),
 })
 
-export async function handle_resolve_interaction({ c, id, args }: TypedToolContext<typeof resolveInteractionSchema>): Promise<Response> {
+export async function handle_resolve_interaction({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof resolveInteractionSchema>): Promise<Response> {
   const keyA = args.entity_a_id.trim().toLowerCase()
   const keyB = args.entity_b_id.trim().toLowerCase()
   const actionType = args.action_type
@@ -43,13 +63,31 @@ export async function handle_resolve_interaction({ c, id, args }: TypedToolConte
   const w1Raw = typeof w1FromD1 === 'number' ? w1FromD1 : extractFieldFromText(textA, 'Weight-1')
   const w2Raw = typeof w2FromD1 === 'number' ? w2FromD1 : extractFieldFromText(textB, 'Weight-2')
 
-  if (typeof w1Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyA}" missing numeric **Weight-1:** field (got: ${JSON.stringify(w1Raw)})`, null), 200)
-  if (typeof w2Raw !== 'number') return c.json(makeError(id, -32602, `Entity "${keyB}" missing numeric **Weight-2:** field (got: ${JSON.stringify(w2Raw)})`, null), 200)
+  if (typeof w1Raw !== 'number')
+    return c.json(
+      makeError(
+        id,
+        -32602,
+        `Entity "${keyA}" missing numeric **Weight-1:** field (got: ${JSON.stringify(w1Raw)})`,
+        null,
+      ),
+      200,
+    )
+  if (typeof w2Raw !== 'number')
+    return c.json(
+      makeError(
+        id,
+        -32602,
+        `Entity "${keyB}" missing numeric **Weight-2:** field (got: ${JSON.stringify(w2Raw)})`,
+        null,
+      ),
+      200,
+    )
 
   const w1 = normalizeWeight(w1Raw)
   const w2 = normalizeWeight(w2Raw)
   // Formula: (W1 * 0.7) - (W2 * 0.3)
-  const probability = Math.max(0, Math.min(1, (w1 * 0.7) - (w2 * 0.3)))
+  const probability = Math.max(0, Math.min(1, w1 * 0.7 - w2 * 0.3))
   const roll = Math.random()
   const success = roll < probability
   const delta_value = success ? Math.max(1, Math.round(probability * 10)) : 0
@@ -61,27 +99,60 @@ export async function handle_resolve_interaction({ c, id, args }: TypedToolConte
       await pushHistory(c, keyA, rawA)
       const now = new Date().toISOString()
       const version = typeof metaA.version === 'number' ? metaA.version + 1 : 1
-      await kvPut(c, keyA, JSON.stringify({ text: updatedTextA, meta: { version, updatedAt: now, createdAt: metaA.createdAt ?? now, lastAction: actionType } }))
+      await kvPut(
+        c,
+        keyA,
+        JSON.stringify({
+          text: updatedTextA,
+          meta: {
+            version,
+            updatedAt: now,
+            createdAt: metaA.createdAt ?? now,
+            lastAction: actionType,
+          },
+        }),
+      )
       await appendChangelog(c, keyA, version)
       loreDB[keyA] = updatedTextA
       clearRequestCache(c)
     }
   }
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `${actionType}: ${success ? 'SUCCESS' : 'FAILURE'} (roll ${roll.toFixed(3)} vs P=${probability.toFixed(3)}) — delta_value: ${delta_value}` }],
-    metadata: {
-      entity_a_id: keyA, entity_b_id: keyB, action_type: actionType, weight_1: w1, weight_2: w2, weight_1_raw: w1Raw, weight_2_raw: w2Raw, probability: Math.round(probability * 1000) / 1000, roll: Math.round(roll * 1000) / 1000,
-      weight_1_source: typeof w1FromD1 === 'number' ? 'd1' : 'kv', weight_2_source: typeof w2FromD1 === 'number' ? 'd1' : 'kv',
-    },
-    success,
-    delta_value
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `${actionType}: ${success ? 'SUCCESS' : 'FAILURE'} (roll ${roll.toFixed(3)} vs P=${probability.toFixed(3)}) — delta_value: ${delta_value}`,
+        },
+      ],
+      metadata: {
+        entity_a_id: keyA,
+        entity_b_id: keyB,
+        action_type: actionType,
+        weight_1: w1,
+        weight_2: w2,
+        weight_1_raw: w1Raw,
+        weight_2_raw: w2Raw,
+        probability: Math.round(probability * 1000) / 1000,
+        roll: Math.round(roll * 1000) / 1000,
+        weight_1_source: typeof w1FromD1 === 'number' ? 'd1' : 'kv',
+        weight_2_source: typeof w2FromD1 === 'number' ? 'd1' : 'kv',
+      },
+      success,
+      delta_value,
+    }),
+    200,
+  )
 }
 
 export const destroyEntitySchema = z.object({ entity_key: z.string().min(1) })
 
-export async function handle_destroy_entity({ c, id, args }: TypedToolContext<typeof destroyEntitySchema>): Promise<Response> {
+export async function handle_destroy_entity({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof destroyEntitySchema>): Promise<Response> {
   const key = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${key}" not found`, null), 200)
@@ -98,19 +169,34 @@ export async function handle_destroy_entity({ c, id, args }: TypedToolContext<ty
   delete loreDB[key]
   clearRequestCache(c)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Entity "${key}" destroyed.` }],
-    metadata: { entity_key: key, destroyed: true }
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: `Entity "${key}" destroyed.` }],
+      metadata: { entity_key: key, destroyed: true },
+    }),
+    200,
+  )
 }
 
 export const analyzeUtilitySchema = z.object({
   entity_id: z.string().min(1),
-  utility_vector: z.enum(['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']),
+  utility_vector: z.enum([
+    'GASTRIC',
+    'BUTCHERY',
+    'INCUBATION',
+    'SCULPTURE',
+    'PARASITISM',
+    'THRALL',
+    'DISTRIBUTED',
+  ]),
   entity_role: z.enum(['subject', 'actor']).default('subject'),
 })
 
-export async function handle_analyze_utility({ c, id, args }: TypedToolContext<typeof analyzeUtilitySchema>): Promise<Response> {
+export async function handle_analyze_utility({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof analyzeUtilitySchema>): Promise<Response> {
   const key = args.entity_id.trim().toLowerCase()
   const vector = args.utility_vector
   const entityRole = args.entity_role
@@ -128,9 +214,15 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   let fMatch: RegExpExecArray | null
   while ((fMatch = fieldScanRegex.exec(text)) !== null) {
     const originalName = fMatch[1].trim()
-    const normalizedKey = originalName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase()
+    const normalizedKey = originalName
+      .replace(/\s*\([^)]*\)/g, '')
+      .trim()
+      .toLowerCase()
     if (!parsedFields.has(normalizedKey)) {
-      parsedFields.set(normalizedKey, { originalName, value: parseFloat(fMatch[2].replace(/,/g, '')) })
+      parsedFields.set(normalizedKey, {
+        originalName,
+        value: parseFloat(fMatch[2].replace(/,/g, '')),
+      })
     }
   }
 
@@ -139,67 +231,67 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   const SUBJECT_VECTORS: Record<string, FieldWeight[]> = {
     GASTRIC: [
       { field: 'tenderness-index', weight: 0.25 },
-      { field: 'fat-marbling-index', weight: 0.20 },
-      { field: 'sensory-receptivity', weight: 0.20 },
+      { field: 'fat-marbling-index', weight: 0.2 },
+      { field: 'sensory-receptivity', weight: 0.2 },
       { field: 'weight-2', weight: 0.15 },
-      { field: 'compliance-potential', weight: 0.10 },
-      { field: 'cortisol-level', weight: 0.10, inverted: true },
+      { field: 'compliance-potential', weight: 0.1 },
+      { field: 'cortisol-level', weight: 0.1, inverted: true },
     ],
     BUTCHERY: [
-      { field: 'caloric-yield-estimate', weight: 0.30 },
+      { field: 'caloric-yield-estimate', weight: 0.3 },
       { field: 'fat-marbling-index', weight: 0.25 },
       { field: 'tenderness-index', weight: 0.15 },
       { field: 'cortisol-level', weight: 0.15, inverted: true },
-      { field: 'weight-2', weight: 0.10 },
+      { field: 'weight-2', weight: 0.1 },
       { field: 'sensory-receptivity', weight: 0.05 },
     ],
     INCUBATION: [
       { field: 'compliance-potential', weight: 0.25 },
-      { field: 'weight-2', weight: 0.20 },
+      { field: 'weight-2', weight: 0.2 },
       { field: 'fat-marbling-index', weight: 0.15 },
       { field: 'cortisol-level', weight: 0.15, inverted: true },
       { field: 'sensory-receptivity', weight: 0.15 },
-      { field: 'tenderness-index', weight: 0.10 },
+      { field: 'tenderness-index', weight: 0.1 },
     ],
     SCULPTURE: [
-      { field: 'sensory-receptivity', weight: 0.30 },
+      { field: 'sensory-receptivity', weight: 0.3 },
       { field: 'compliance-potential', weight: 0.25 },
       { field: 'tenderness-index', weight: 0.15 },
       { field: 'fat-marbling-index', weight: 0.15 },
-      { field: 'cortisol-level', weight: 0.10, inverted: true },
+      { field: 'cortisol-level', weight: 0.1, inverted: true },
       { field: 'weight-2', weight: 0.05 },
     ],
     PARASITISM: [
-      { field: 'weight-2', weight: 0.30 },
+      { field: 'weight-2', weight: 0.3 },
       { field: 'compliance-potential', weight: 0.25 },
-      { field: 'sensory-receptivity', weight: 0.20 },
-      { field: 'cortisol-level', weight: 0.10, inverted: true },
-      { field: 'tenderness-index', weight: 0.10 },
+      { field: 'sensory-receptivity', weight: 0.2 },
+      { field: 'cortisol-level', weight: 0.1, inverted: true },
+      { field: 'tenderness-index', weight: 0.1 },
       { field: 'fat-marbling-index', weight: 0.05 },
     ],
     THRALL: [
       { field: 'compliance-potential', weight: 0.35 },
-      { field: 'cortisol-level', weight: 0.20, inverted: true },
-      { field: 'weight-2', weight: 0.20 },
-      { field: 'sensory-receptivity', weight: 0.10 },
-      { field: 'tenderness-index', weight: 0.10 },
+      { field: 'cortisol-level', weight: 0.2, inverted: true },
+      { field: 'weight-2', weight: 0.2 },
+      { field: 'sensory-receptivity', weight: 0.1 },
+      { field: 'tenderness-index', weight: 0.1 },
       { field: 'fat-marbling-index', weight: 0.05 },
     ],
     DISTRIBUTED: [
-      { field: 'caloric-yield-estimate', weight: 0.40 },
+      { field: 'caloric-yield-estimate', weight: 0.4 },
       { field: 'fat-marbling-index', weight: 0.25 },
       { field: 'tenderness-index', weight: 0.15 },
-      { field: 'cortisol-level', weight: 0.10, inverted: true },
-      { field: 'weight-2', weight: 0.10 },
+      { field: 'cortisol-level', weight: 0.1, inverted: true },
+      { field: 'weight-2', weight: 0.1 },
     ],
   }
 
   const ACTOR_WEIGHTS: FieldWeight[] = [
-    { field: 'weight-1', weight: 0.30 },
-    { field: 'aggression', weight: 0.20 },
-    { field: 'hunger', weight: 0.20 },
+    { field: 'weight-1', weight: 0.3 },
+    { field: 'aggression', weight: 0.2 },
+    { field: 'hunger', weight: 0.2 },
     { field: 'patience', weight: 0.15 },
-    { field: 'metabolic-satiation', weight: 0.10, inverted: true },
+    { field: 'metabolic-satiation', weight: 0.1, inverted: true },
     { field: 'anatomical-integration', weight: 0.03 },
     { field: 'state-level', weight: 0.02 },
   ]
@@ -216,9 +308,9 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
     'metabolic-satiation': 'Metabolic-Satiation',
     'anatomical-integration': 'Anatomical-Integration',
     'state-level': 'State-Level',
-    'aggression': 'Aggression',
-    'hunger': 'Hunger',
-    'patience': 'Patience',
+    aggression: 'Aggression',
+    hunger: 'Hunger',
+    patience: 'Patience',
   }
 
   // #410 — D1 entity_attributes is the primary source of truth; any field present
@@ -230,12 +322,16 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   if (d1Attrs) {
     for (const [attrKey, attrValue] of Object.entries(d1Attrs)) {
       if (typeof attrValue === 'number') {
-        parsedFields.set(attrKey, { originalName: CANONICAL_NAMES[attrKey] ?? attrKey, value: attrValue })
+        parsedFields.set(attrKey, {
+          originalName: CANONICAL_NAMES[attrKey] ?? attrKey,
+          value: attrValue,
+        })
       }
     }
   }
 
-  const weightingTable: FieldWeight[] = entityRole === 'actor' ? ACTOR_WEIGHTS : SUBJECT_VECTORS[vector]
+  const weightingTable: FieldWeight[] =
+    entityRole === 'actor' ? ACTOR_WEIGHTS : SUBJECT_VECTORS[vector]
 
   const presentEntries: Array<{ fw: FieldWeight; field: ParsedField }> = []
   const missingFields: string[] = []
@@ -250,26 +346,37 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   }
 
   if (presentEntries.length === 0) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): Grade F — 0/100` }],
-      entity_id: key,
-      vector,
-      entity_role: entityRole,
-      grade: 'F',
-      composite_score: 0,
-      fields_analyzed: [],
-      missing_fields: weightingTable.map(fw => CANONICAL_NAMES[fw.field] ?? fw.field),
-      breakdown: [],
-      projected_yield: 'No quantifiable metrics found. Entity cannot be evaluated mechanically.',
-      d1_attributes_used: d1Keys.size > 0,
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          { type: 'text', text: `Utility analysis for "${key}" (${vector}): Grade F — 0/100` },
+        ],
+        entity_id: key,
+        vector,
+        entity_role: entityRole,
+        grade: 'F',
+        composite_score: 0,
+        fields_analyzed: [],
+        missing_fields: weightingTable.map((fw) => CANONICAL_NAMES[fw.field] ?? fw.field),
+        breakdown: [],
+        projected_yield: 'No quantifiable metrics found. Entity cannot be evaluated mechanically.',
+        d1_attributes_used: d1Keys.size > 0,
+      }),
+      200,
+    )
   }
 
   // Redistribute weights proportionally across present fields (FR4)
   const totalPresentWeight = presentEntries.reduce((sum, { fw }) => sum + fw.weight, 0)
 
   type BreakdownEntry = {
-    field: string; raw_value: number; weight: number; effective_value: number; note?: string; contribution: number; source: 'd1' | 'kv'
+    field: string
+    raw_value: number
+    weight: number
+    effective_value: number
+    note?: string
+    contribution: number
+    source: 'd1' | 'kv'
   }
 
   const breakdown: BreakdownEntry[] = []
@@ -304,11 +411,16 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
   const compositeScore = Math.min(100, Math.max(0, Math.round(compositeSum)))
 
   const grade =
-    compositeScore >= 90 ? 'S'
-      : compositeScore >= 75 ? 'A'
-        : compositeScore >= 55 ? 'B'
-          : compositeScore >= 35 ? 'C'
-            : compositeScore >= 15 ? 'D'
+    compositeScore >= 90
+      ? 'S'
+      : compositeScore >= 75
+        ? 'A'
+        : compositeScore >= 55
+          ? 'B'
+          : compositeScore >= 35
+            ? 'C'
+            : compositeScore >= 15
+              ? 'D'
               : 'F'
 
   const VECTOR_NARRATIVES: Record<string, Record<string, string>> = {
@@ -370,39 +482,54 @@ export async function handle_analyze_utility({ c, id, args }: TypedToolContext<t
     },
   }
 
-  const projectedYield = entityRole === 'actor'
-    ? `Actor capability assessment complete. Grade ${grade} indicates ${compositeScore >= 75 ? 'strong' : compositeScore >= 55 ? 'adequate' : compositeScore >= 35 ? 'limited' : 'marginal'} predation drive for ${vector} pathway.`
-    : (VECTOR_NARRATIVES[vector]?.[grade] ?? 'Utility assessment complete.')
+  const projectedYield =
+    entityRole === 'actor'
+      ? `Actor capability assessment complete. Grade ${grade} indicates ${compositeScore >= 75 ? 'strong' : compositeScore >= 55 ? 'adequate' : compositeScore >= 35 ? 'limited' : 'marginal'} predation drive for ${vector} pathway.`
+      : (VECTOR_NARRATIVES[vector]?.[grade] ?? 'Utility assessment complete.')
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Utility analysis for "${key}" (${vector}): Grade ${grade} — ${compositeScore}/100` }],
-    entity_id: key,
-    vector,
-    entity_role: entityRole,
-    grade,
-    composite_score: compositeScore,
-    fields_analyzed: breakdown.map(b => b.field),
-    missing_fields: missingFields,
-    breakdown,
-    projected_yield: projectedYield,
-    d1_attributes_used: d1Keys.size > 0,
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Utility analysis for "${key}" (${vector}): Grade ${grade} — ${compositeScore}/100`,
+        },
+      ],
+      entity_id: key,
+      vector,
+      entity_role: entityRole,
+      grade,
+      composite_score: compositeScore,
+      fields_analyzed: breakdown.map((b) => b.field),
+      missing_fields: missingFields,
+      breakdown,
+      projected_yield: projectedYield,
+      d1_attributes_used: d1Keys.size > 0,
+    }),
+    200,
+  )
 }
 
 export const mapIntegrationSchema = z.object({
   source_id: z.string().min(1),
   target_id: z.string().min(1),
-  integration_depth: z.number().min(0).max(1)
+  integration_depth: z.number().min(0).max(1),
 })
 
-export async function handle_map_integration({ c, id, args }: TypedToolContext<typeof mapIntegrationSchema>): Promise<Response> {
+export async function handle_map_integration({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof mapIntegrationSchema>): Promise<Response> {
   const sourceKey = args.source_id.trim().toLowerCase()
   const targetKey = args.target_id.trim().toLowerCase()
   const depth = args.integration_depth
 
   const [rawSource, rawTarget] = await Promise.all([kvGet(c, sourceKey), kvGet(c, targetKey)])
-  if (!rawSource) return c.json(makeError(id, -32602, `Source entity "${sourceKey}" not found`, null), 200)
-  if (!rawTarget) return c.json(makeError(id, -32602, `Target entity "${targetKey}" not found`, null), 200)
+  if (!rawSource)
+    return c.json(makeError(id, -32602, `Source entity "${sourceKey}" not found`, null), 200)
+  if (!rawTarget)
+    return c.json(makeError(id, -32602, `Target entity "${targetKey}" not found`, null), 200)
 
   const { text: sourceText } = parseKvEntry(rawSource)
   const { text: targetText, meta: targetMeta } = parseKvEntry(rawTarget)
@@ -415,55 +542,99 @@ export async function handle_map_integration({ c, id, args }: TypedToolContext<t
   }
 
   if (transferableLines.length === 0) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `No [Transferable] traits found in "${sourceKey}".` }],
-      metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth },
-      updated_traits: []
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `No [Transferable] traits found in "${sourceKey}".` }],
+        metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth },
+        updated_traits: [],
+      }),
+      200,
+    )
   }
 
   const transferCount = Math.floor(transferableLines.length * depth)
   if (transferCount === 0) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `integration_depth ${depth} yields 0 traits from ${transferableLines.length} available in "${sourceKey}".` }],
-      metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth, total_transferable: transferableLines.length },
-      updated_traits: []
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `integration_depth ${depth} yields 0 traits from ${transferableLines.length} available in "${sourceKey}".`,
+          },
+        ],
+        metadata: {
+          source_id: sourceKey,
+          target_id: targetKey,
+          integration_depth: depth,
+          total_transferable: transferableLines.length,
+        },
+        updated_traits: [],
+      }),
+      200,
+    )
   }
 
   const traitsToTransfer = transferableLines.slice(0, transferCount)
   const separator = targetText.endsWith('\n') ? '' : '\n'
-  const integrationBlock = `\n**Integrated-From:** ${sourceKey} (depth: ${depth})\n` + traitsToTransfer.join('\n')
+  const integrationBlock =
+    `\n**Integrated-From:** ${sourceKey} (depth: ${depth})\n` + traitsToTransfer.join('\n')
   const updatedTargetText = targetText + separator + integrationBlock
 
   await pushHistory(c, targetKey, rawTarget)
   const now = new Date().toISOString()
   const version = typeof targetMeta.version === 'number' ? targetMeta.version + 1 : 1
-  await kvPut(c, targetKey, JSON.stringify({
-    text: updatedTargetText,
-    meta: {
-      version, updatedAt: now,
-      createdAt: targetMeta.createdAt ?? now
-    }
-  }))
+  await kvPut(
+    c,
+    targetKey,
+    JSON.stringify({
+      text: updatedTargetText,
+      meta: {
+        version,
+        updatedAt: now,
+        createdAt: targetMeta.createdAt ?? now,
+      },
+    }),
+  )
   await appendChangelog(c, targetKey, version)
   loreDB[targetKey] = updatedTargetText
 
-
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Integrated ${traitsToTransfer.length} trait(s) from "${sourceKey}" into "${targetKey}" at depth ${depth}.` }],
-    metadata: { source_id: sourceKey, target_id: targetKey, integration_depth: depth, total_transferable: transferableLines.length, transferred_count: traitsToTransfer.length, version },
-    updated_traits: traitsToTransfer
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Integrated ${traitsToTransfer.length} trait(s) from "${sourceKey}" into "${targetKey}" at depth ${depth}.`,
+        },
+      ],
+      metadata: {
+        source_id: sourceKey,
+        target_id: targetKey,
+        integration_depth: depth,
+        total_transferable: transferableLines.length,
+        transferred_count: traitsToTransfer.length,
+        version,
+      },
+      updated_traits: traitsToTransfer,
+    }),
+    200,
+  )
 }
 
-export const generateEntitySchema = z.object({ archetype_key: z.string().min(1), location_key: z.string().optional() })
+export const generateEntitySchema = z.object({
+  archetype_key: z.string().min(1),
+  location_key: z.string().optional(),
+})
 
-export async function handle_generate_entity({ c, id, args }: TypedToolContext<typeof generateEntitySchema>): Promise<Response> {
+export async function handle_generate_entity({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof generateEntitySchema>): Promise<Response> {
   const archetypeKey = args.archetype_key.trim().toLowerCase()
   const locationKey = args.location_key?.trim().toLowerCase()
   const rawArchetype = await kvGet(c, archetypeKey)
-  if (!rawArchetype) return c.json(makeError(id, -32602, `Archetype "${archetypeKey}" not found`, null), 200)
+  if (!rawArchetype)
+    return c.json(makeError(id, -32602, `Archetype "${archetypeKey}" not found`, null), 200)
 
   const { text: archetypeText } = parseKvEntry(rawArchetype)
   let entityText = archetypeText
@@ -477,7 +648,11 @@ export async function handle_generate_entity({ c, id, args }: TypedToolContext<t
       if (typeof locDanger === 'number') {
         const currentW1 = extractFieldFromText(entityText, 'Weight-1')
         if (typeof currentW1 === 'number') {
-          entityText = updateFieldInText(entityText, 'Weight-1', Math.min(1, parseFloat((currentW1 + locDanger * 0.05).toPrecision(6))))
+          entityText = updateFieldInText(
+            entityText,
+            'Weight-1',
+            Math.min(1, parseFloat((currentW1 + locDanger * 0.05).toPrecision(6))),
+          )
         }
       }
     }
@@ -487,15 +662,33 @@ export async function handle_generate_entity({ c, id, args }: TypedToolContext<t
   const now = new Date().toISOString()
   entityText = updateFieldInText(entityText, 'Generated-At', now)
   entityText = updateFieldInText(entityText, 'Archetype', archetypeKey)
-  const newEntityKey = `entity:${(archetypeKey.split(':').pop() ?? 'entity')}-${Date.now()}`
-  await kvPut(c, newEntityKey, JSON.stringify({ text: entityText, meta: { version: 1, updatedAt: now, createdAt: now, generated_from: archetypeKey } }))
+  const newEntityKey = `entity:${archetypeKey.split(':').pop() ?? 'entity'}-${Date.now()}`
+  await kvPut(
+    c,
+    newEntityKey,
+    JSON.stringify({
+      text: entityText,
+      meta: { version: 1, updatedAt: now, createdAt: now, generated_from: archetypeKey },
+    }),
+  )
   loreDB[newEntityKey] = entityText
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Generated entity "${newEntityKey}" from archetype "${archetypeKey}"${locationKey ? ` at "${locationKey}"` : ''}.` }],
-    metadata: { retrieved, written: 1 },
-    entity_key: newEntityKey, archetype_key: archetypeKey, location_key: locationKey ?? null, entity_text: entityText
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Generated entity "${newEntityKey}" from archetype "${archetypeKey}"${locationKey ? ` at "${locationKey}"` : ''}.`,
+        },
+      ],
+      metadata: { retrieved, written: 1 },
+      entity_key: newEntityKey,
+      archetype_key: archetypeKey,
+      location_key: locationKey ?? null,
+      entity_text: entityText,
+    }),
+    200,
+  )
 }
 
 export const rollEncounterSchema = z.object({
@@ -503,11 +696,16 @@ export const rollEncounterSchema = z.object({
   threat_level: z.number().int().min(1).max(10).default(5),
 })
 
-export async function handle_roll_encounter({ c, id, args }: TypedToolContext<typeof rollEncounterSchema>): Promise<Response> {
+export async function handle_roll_encounter({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof rollEncounterSchema>): Promise<Response> {
   const locationKey = args.location_key.trim().toLowerCase()
   const threatLevel = args.threat_level
   const rawLoc = await kvGet(c, locationKey)
-  if (!rawLoc) return c.json(makeError(id, -32602, `Location "${locationKey}" not found`, null), 200)
+  if (!rawLoc)
+    return c.json(makeError(id, -32602, `Location "${locationKey}" not found`, null), 200)
 
   const { text: locText } = parseKvEntry(rawLoc)
   let tableRaw = extractRawField(locText, 'Encounter-Table')
@@ -516,62 +714,141 @@ export async function handle_roll_encounter({ c, id, args }: TypedToolContext<ty
     tableRaw = sections['Encounter-Table'] ?? null
   }
   if (!tableRaw) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `No Encounter-Table field found on "${locationKey}".` }], metadata: { retrieved: 1, written: 0 }, rolled: false }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `No Encounter-Table field found on "${locationKey}".` }],
+        metadata: { retrieved: 1, written: 0 },
+        rolled: false,
+      }),
+      200,
+    )
   }
 
   const entries: Array<{ key: string; weight: number }> = []
-  for (const part of tableRaw.split(',').map(s => s.trim()).filter(Boolean)) {
+  for (const part of tableRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     const m = part.match(/^(.+?)\s*:\s*([\d.]+)$/)
     if (m) entries.push({ key: m[1].trim(), weight: parseFloat(m[2]) })
     else entries.push({ key: part, weight: 1 })
   }
   if (entries.length === 0) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Empty encounter table on "${locationKey}".` }], metadata: { retrieved: 1, written: 0 }, rolled: false }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Empty encounter table on "${locationKey}".` }],
+        metadata: { retrieved: 1, written: 0 },
+        rolled: false,
+      }),
+      200,
+    )
   }
 
   // Higher threat_level biases toward heavier-weight entries
   const sorted = [...entries].sort((a, b) => b.weight - a.weight)
   const bias = (threatLevel - 5) * 0.1
-  const adjusted = sorted.map((e, i) => ({ ...e, w: Math.max(0.1, e.weight * (1 + bias * (sorted.length - i) / sorted.length)) }))
+  const adjusted = sorted.map((e, i) => ({
+    ...e,
+    w: Math.max(0.1, e.weight * (1 + (bias * (sorted.length - i)) / sorted.length)),
+  }))
   const total = adjusted.reduce((s, e) => s + e.w, 0)
   const roll = Math.random() * total
-  let cum = 0, selected = adjusted[0]
-  for (const e of adjusted) { cum += e.w; if (roll <= cum) { selected = e; break } }
+  let cum = 0,
+    selected = adjusted[0]
+  for (const e of adjusted) {
+    cum += e.w
+    if (roll <= cum) {
+      selected = e
+      break
+    }
+  }
 
   // New: nothing sentinel — skip archetype lookup, return clean no-encounter
   if (selected.key === 'nothing') {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `Encounter rolled at "${locationKey}" — nothing stirs.` }],
-      metadata: { retrieved: 1, written: 0 },
-      rolled: true, location_key: locationKey, threat_level: threatLevel,
-      selected_archetype: 'nothing', entity_key: null, nothing: true
-    }), 200);
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Encounter rolled at "${locationKey}" — nothing stirs.` }],
+        metadata: { retrieved: 1, written: 0 },
+        rolled: true,
+        location_key: locationKey,
+        threat_level: threatLevel,
+        selected_archetype: 'nothing',
+        entity_key: null,
+        nothing: true,
+      }),
+      200,
+    )
   }
-  const archetypeKey = selected.key.startsWith('archetype:') ? selected.key : `archetype:${selected.key}`
+  const archetypeKey = selected.key.startsWith('archetype:')
+    ? selected.key
+    : `archetype:${selected.key}`
   const rawArchetype = await kvGet(c, archetypeKey)
   if (!rawArchetype) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Rolled "${selected.key}" but archetype "${archetypeKey}" not found.` }], metadata: { retrieved: 2, written: 0 }, rolled: true, selected_archetype: selected.key, entity_key: null }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `Rolled "${selected.key}" but archetype "${archetypeKey}" not found.`,
+          },
+        ],
+        metadata: { retrieved: 2, written: 0 },
+        rolled: true,
+        selected_archetype: selected.key,
+        entity_key: null,
+      }),
+      200,
+    )
   }
 
   const { text: archetypeText } = parseKvEntry(rawArchetype)
   const now = new Date().toISOString()
   let entityText = updateFieldInText(archetypeText, 'Location', locationKey)
   entityText = updateFieldInText(entityText, 'Generated-At', now)
-  const newEntityKey = `entity:${(selected.key.split(':').pop() ?? 'encounter')}-${Date.now()}`
-  await kvPut(c, newEntityKey, JSON.stringify({ text: entityText, meta: { version: 1, updatedAt: now, createdAt: now, rolled_encounter: true, threat_level: threatLevel } }))
+  const newEntityKey = `entity:${selected.key.split(':').pop() ?? 'encounter'}-${Date.now()}`
+  await kvPut(
+    c,
+    newEntityKey,
+    JSON.stringify({
+      text: entityText,
+      meta: {
+        version: 1,
+        updatedAt: now,
+        createdAt: now,
+        rolled_encounter: true,
+        threat_level: threatLevel,
+      },
+    }),
+  )
   loreDB[newEntityKey] = entityText
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Encounter rolled at "${locationKey}" (threat: ${threatLevel}): generated "${newEntityKey}" from "${archetypeKey}".` }],
-    metadata: { retrieved: 2, written: 1 },
-    rolled: true, location_key: locationKey, threat_level: threatLevel,
-    selected_archetype: archetypeKey, entity_key: newEntityKey, entity_text: entityText
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Encounter rolled at "${locationKey}" (threat: ${threatLevel}): generated "${newEntityKey}" from "${archetypeKey}".`,
+        },
+      ],
+      metadata: { retrieved: 2, written: 1 },
+      rolled: true,
+      location_key: locationKey,
+      threat_level: threatLevel,
+      selected_archetype: archetypeKey,
+      entity_key: newEntityKey,
+      entity_text: entityText,
+    }),
+    200,
+  )
 }
 
 export const advanceStateStageSchema = z.object({ entity_key: z.string().min(1) })
 
-export async function handle_advance_state_stage({ c, id, args }: TypedToolContext<typeof advanceStateStageSchema>): Promise<Response> {
+export async function handle_advance_state_stage({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof advanceStateStageSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -579,13 +856,37 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   const { text, meta } = parseKvEntry(raw)
   const currentStage = extractFieldFromText(text, 'State-Stage')
   if (typeof currentStage !== 'number') {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Entity "${entityKey}" has no numeric State-Stage field.` }], metadata: { retrieved: 1, written: 0 }, advanced: false }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          { type: 'text', text: `Entity "${entityKey}" has no numeric State-Stage field.` },
+        ],
+        metadata: { retrieved: 1, written: 0 },
+        advanced: false,
+      }),
+      200,
+    )
   }
 
   const totalStages = extractFieldFromText(text, 'State-Total')
   const total = typeof totalStages === 'number' ? totalStages : null
   if (total !== null && currentStage >= total) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Entity "${entityKey}" is already at final stage ${currentStage}/${total}.` }], metadata: { retrieved: 1, written: 0 }, advanced: false, current_stage: currentStage, total_stages: total, is_terminal: true }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `Entity "${entityKey}" is already at final stage ${currentStage}/${total}.`,
+          },
+        ],
+        metadata: { retrieved: 1, written: 0 },
+        advanced: false,
+        current_stage: currentStage,
+        total_stages: total,
+        is_terminal: true,
+      }),
+      200,
+    )
   }
 
   const newStage = currentStage + 1
@@ -594,18 +895,31 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   if (typeof stageTimer === 'number') {
     updatedText = updateFieldInText(updatedText, 'Stage-Timer', Math.max(0, stageTimer - 1))
   }
-  const stageDescriptor = extractRawField(text, `Stage-${newStage}-Description`) ?? extractRawField(text, 'Stage-Description') ?? null
+  const stageDescriptor =
+    extractRawField(text, `Stage-${newStage}-Description`) ??
+    extractRawField(text, 'Stage-Description') ??
+    null
   const isTerminal = total !== null && newStage >= total
 
   // #411/#420 — resolve the D1 character link once, up front, so both the
   // dissolution_stage mirror and #420's terminal-stage hook can use it.
   const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
-  type CharDissolutionRow = { death_mode: string | null; dissolution_stage: number | null; dissolution_stages: number | null; dissolution_terminal: string | null; dissolution_id: string | null; world_id: string | null; hp: number | null }
+  type CharDissolutionRow = {
+    death_mode: string | null
+    dissolution_stage: number | null
+    dissolution_stages: number | null
+    dissolution_terminal: string | null
+    dissolution_id: string | null
+    world_id: string | null
+    hp: number | null
+  }
   let charRow: CharDissolutionRow | null = null
   if (characterId && c.env.RPG_DB) {
-    charRow = await c.env.RPG_DB.prepare(
-      'SELECT death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, dissolution_id, world_id, hp FROM characters WHERE id = ?'
-    ).bind(characterId).first() as CharDissolutionRow | null
+    charRow = (await c.env.RPG_DB.prepare(
+      'SELECT death_mode, dissolution_stage, dissolution_stages, dissolution_terminal, dissolution_id, world_id, hp FROM characters WHERE id = ?',
+    )
+      .bind(characterId)
+      .first()) as CharDissolutionRow | null
   }
 
   // ── Phase 0: Dissolution Primitives ────────────────────────────────────
@@ -633,11 +947,19 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
       dissolutionDetails.scent_applied = true
     }
     if (sensory.thermal.length > 0) {
-      updatedText = updateFieldInText(updatedText, 'Dissolution-Thermal', sensory.thermal.join(', '))
+      updatedText = updateFieldInText(
+        updatedText,
+        'Dissolution-Thermal',
+        sensory.thermal.join(', '),
+      )
       dissolutionDetails.thermal_applied = true
     }
     if (sensory.texture.length > 0) {
-      updatedText = updateFieldInText(updatedText, 'Dissolution-Texture', sensory.texture.join(', '))
+      updatedText = updateFieldInText(
+        updatedText,
+        'Dissolution-Texture',
+        sensory.texture.join(', '),
+      )
       dissolutionDetails.texture_applied = true
     }
     if (sensory.visual.length > 0) {
@@ -654,7 +976,11 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
       updatedText = updateFieldInText(updatedText, 'Movement-Locked', 'true')
     }
     if (mechanical.communication_penalty < 0) {
-      updatedText = updateFieldInText(updatedText, 'Communication-Penalty', mechanical.communication_penalty)
+      updatedText = updateFieldInText(
+        updatedText,
+        'Communication-Penalty',
+        mechanical.communication_penalty,
+      )
     }
     if (mechanical.knowledge_leakage) {
       updatedText = updateFieldInText(updatedText, 'Knowledge-Leakage', 'active')
@@ -693,11 +1019,27 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
     updatedText = updateFieldInText(updatedText, 'Terminal-Status', terminalDescriptor)
     // Determine conversion vector from the terminal descriptor, or default
     const vector = (charRow?.dissolution_terminal ?? '').toUpperCase()
-    const recognizedVectors = ['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']
-    const matchedVector = recognizedVectors.find(v => vector.includes(v))
+    const recognizedVectors = [
+      'GASTRIC',
+      'BUTCHERY',
+      'INCUBATION',
+      'SCULPTURE',
+      'PARASITISM',
+      'THRALL',
+      'DISTRIBUTED',
+    ]
+    const matchedVector = recognizedVectors.find((v) => vector.includes(v))
     terminalConversion = resolveTerminalConversion(matchedVector ?? 'DISTRIBUTED')
-    updatedText = updateFieldInText(updatedText, 'Dissolution-Conversion', terminalConversion.outcome)
-    updatedText = updateFieldInText(updatedText, 'Dissolution-Conversion-Label', terminalConversion.label)
+    updatedText = updateFieldInText(
+      updatedText,
+      'Dissolution-Conversion',
+      terminalConversion.outcome,
+    )
+    updatedText = updateFieldInText(
+      updatedText,
+      'Dissolution-Conversion-Label',
+      terminalConversion.label,
+    )
   }
 
   // ── HP drain (mechanical consequence) ──────────────────────────────────
@@ -711,7 +1053,14 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   await pushHistory(c, entityKey, raw)
   const now = new Date().toISOString()
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+  await kvPut(
+    c,
+    entityKey,
+    JSON.stringify({
+      text: updatedText,
+      meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
+    }),
+  )
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
 
@@ -732,10 +1081,14 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
     // Always batch update for staged characters; d1HpDrained indicates
     // the batch executed (not just HP drain occurring).
     if (hpDrainPerTick > 0) {
-      d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), hp = ?, updated_at = ? WHERE id = ?')
+      d1Statements.push(
+        'UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), hp = ?, updated_at = ? WHERE id = ?',
+      )
       d1Bindings.push([newStage, total ?? null, newHp, now, characterId])
     } else {
-      d1Statements.push('UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), updated_at = ? WHERE id = ?')
+      d1Statements.push(
+        'UPDATE characters SET dissolution_stage = ?, dissolution_stages = COALESCE(?, dissolution_stages), updated_at = ? WHERE id = ?',
+      )
       d1Bindings.push([newStage, total ?? null, now, characterId])
     }
     d1HpDrained = true
@@ -757,64 +1110,124 @@ export async function handle_advance_state_stage({ c, id, args }: TypedToolConte
   if (isTerminal && characterId && charRow?.world_id) {
     terminalTimelineEventId = crypto.randomUUID()
     const detailParts = [terminalDescriptor]
-    if (terminalConversion) detailParts.push(`Conversion: ${terminalConversion.label} (${terminalConversion.outcome})`)
-    await c.env.RPG_DB!.prepare(
-      `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      terminalTimelineEventId, charRow.world_id, 'main', now, 'dissolved', characterId, null, null,
-      `${entityKey} reached terminal stage: ${detailParts.join('; ')}`, now,
-    ).run()
+    if (terminalConversion)
+      detailParts.push(`Conversion: ${terminalConversion.label} (${terminalConversion.outcome})`)
+    await c.env
+      .RPG_DB!.prepare(
+        `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        terminalTimelineEventId,
+        charRow.world_id,
+        'main',
+        now,
+        'dissolved',
+        characterId,
+        null,
+        null,
+        `${entityKey} reached terminal stage: ${detailParts.join('; ')}`,
+        now,
+      )
+      .run()
   }
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}${stageMut ? ` [Dissolution Stage ${newStage}]` : ''}` }],
-    metadata: { retrieved: 1, written: 1 },
-    entity_key: entityKey, old_stage: currentStage, new_stage: newStage, total_stages: total,
-    is_terminal: isTerminal, stage_descriptor: stageDescriptor, advanced: true, d1_mirrored: d1Mirrored,
-    d1_hp_drained: d1HpDrained,
-    ...(Object.keys(dissolutionDetails).length > 0 ? { dissolution: dissolutionDetails } : {}),
-    ...(terminalConversion ? { terminal_conversion: terminalConversion } : {}),
-    ...(isTerminal ? { terminal_timeline_event_id: terminalTimelineEventId } : {}),
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Advancing "${entityKey}" to Stage-${newStage}${total ? `-of-${total}` : ''}. stage ${newStage}${isTerminal ? ' [TERMINAL STAGE]' : ''}${stageMut ? ` [Dissolution Stage ${newStage}]` : ''}`,
+        },
+      ],
+      metadata: { retrieved: 1, written: 1 },
+      entity_key: entityKey,
+      old_stage: currentStage,
+      new_stage: newStage,
+      total_stages: total,
+      is_terminal: isTerminal,
+      stage_descriptor: stageDescriptor,
+      advanced: true,
+      d1_mirrored: d1Mirrored,
+      d1_hp_drained: d1HpDrained,
+      ...(Object.keys(dissolutionDetails).length > 0 ? { dissolution: dissolutionDetails } : {}),
+      ...(terminalConversion ? { terminal_conversion: terminalConversion } : {}),
+      ...(isTerminal ? { terminal_timeline_event_id: terminalTimelineEventId } : {}),
+    }),
+    200,
+  )
 }
 
 export const processStageBatchSchema = z.object({ location_key: z.string().min(1) })
 
-export async function handle_process_stage_batch({ c, id, args }: TypedToolContext<typeof processStageBatchSchema>): Promise<Response> {
+export async function handle_process_stage_batch({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof processStageBatchSchema>): Promise<Response> {
   const locationKey = args.location_key.trim().toLowerCase()
-  const { keys: entityKeys, rawValues } = await resolveIndexedEntities(c, `_idx:location:${locationKey}`, 'Location', locationKey)
+  const { keys: entityKeys, rawValues } = await resolveIndexedEntities(
+    c,
+    `_idx:location:${locationKey}`,
+    'Location',
+    locationKey,
+  )
   const now = new Date().toISOString()
 
-  const batchResults = await Promise.all(entityKeys.map(async (key, i) => {
-    const raw = rawValues[i]
-    if (!raw) return null
-    const { text, meta } = parseKvEntry(raw)
+  const batchResults = await Promise.all(
+    entityKeys.map(async (key, i) => {
+      const raw = rawValues[i]
+      if (!raw) return null
+      const { text, meta } = parseKvEntry(raw)
 
-    const currentStage = extractFieldFromText(text, 'State-Stage')
-    if (typeof currentStage !== 'number') {
-      return { kind: 'skipped' as const, key, reason: 'no State-Stage field' }
-    }
-    const totalStages = extractFieldFromText(text, 'State-Total')
-    const total = typeof totalStages === 'number' ? totalStages : null
-    if (total !== null && currentStage >= total) {
-      return { kind: 'skipped' as const, key, reason: `already at terminal stage ${currentStage}/${total}` }
-    }
+      const currentStage = extractFieldFromText(text, 'State-Stage')
+      if (typeof currentStage !== 'number') {
+        return { kind: 'skipped' as const, key, reason: 'no State-Stage field' }
+      }
+      const totalStages = extractFieldFromText(text, 'State-Total')
+      const total = typeof totalStages === 'number' ? totalStages : null
+      if (total !== null && currentStage >= total) {
+        return {
+          kind: 'skipped' as const,
+          key,
+          reason: `already at terminal stage ${currentStage}/${total}`,
+        }
+      }
 
-    const newStage = currentStage + 1
-    let updatedText = updateFieldInText(text, 'State-Stage', newStage)
-    const stageTimer = extractFieldFromText(text, 'Stage-Timer')
-    if (typeof stageTimer === 'number') updatedText = updateFieldInText(updatedText, 'Stage-Timer', Math.max(0, stageTimer - 1))
+      const newStage = currentStage + 1
+      let updatedText = updateFieldInText(text, 'State-Stage', newStage)
+      const stageTimer = extractFieldFromText(text, 'Stage-Timer')
+      if (typeof stageTimer === 'number')
+        updatedText = updateFieldInText(updatedText, 'Stage-Timer', Math.max(0, stageTimer - 1))
 
-    await pushHistory(c, key, raw)
-    const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-    await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
-    await appendChangelog(c, key, version)
-    loreDB[key] = updatedText
-    return { kind: 'outcome' as const, key, old_stage: currentStage, new_stage: newStage, is_terminal: total !== null && newStage >= total }
-  }))
+      await pushHistory(c, key, raw)
+      const version = typeof meta.version === 'number' ? meta.version + 1 : 1
+      await kvPut(
+        c,
+        key,
+        JSON.stringify({
+          text: updatedText,
+          meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
+        }),
+      )
+      await appendChangelog(c, key, version)
+      loreDB[key] = updatedText
+      return {
+        kind: 'outcome' as const,
+        key,
+        old_stage: currentStage,
+        new_stage: newStage,
+        is_terminal: total !== null && newStage >= total,
+      }
+    }),
+  )
 
-  const outcomes: Array<{ key: string; old_stage: number; new_stage: number; is_terminal: boolean }> = []
+  const outcomes: Array<{
+    key: string
+    old_stage: number
+    new_stage: number
+    is_terminal: boolean
+  }> = []
   const skipped: Array<{ key: string; reason: string }> = []
   for (const r of batchResults) {
     if (!r) continue
@@ -822,64 +1235,124 @@ export async function handle_process_stage_batch({ c, id, args }: TypedToolConte
     if (r.kind === 'skipped') skipped.push(r as any)
   }
 
-  const entitiesWithStages = entityKeys.length - skipped.filter(s => s.reason === 'no State-Stage field').length
+  const entitiesWithStages =
+    entityKeys.length - skipped.filter((s) => s.reason === 'no State-Stage field').length
   let reason: string | undefined
   if (outcomes.length === 0) {
     if (entityKeys.length === 0) reason = 'No entities found at this location'
-    else if (entitiesWithStages === 0) reason = `${entityKeys.length} entity/entities at location but none have State-Stage fields`
+    else if (entitiesWithStages === 0)
+      reason = `${entityKeys.length} entity/entities at location but none have State-Stage fields`
     else reason = `All ${skipped.length} staged entity/entities are already at terminal stage`
   }
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Processed ${outcomes.length} entity/entities at "${locationKey}". ${skipped.length} skipped.${reason ? ` Reason: ${reason}` : ''}` }],
-    metadata: { retrieved: entityKeys.length, written: outcomes.length, entities_at_location: entityKeys.length, entities_with_stages: entitiesWithStages },
-    location_key: locationKey, outcomes, skipped, ...(reason ? { reason } : {})
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Processed ${outcomes.length} entity/entities at "${locationKey}". ${skipped.length} skipped.${reason ? ` Reason: ${reason}` : ''}`,
+        },
+      ],
+      metadata: {
+        retrieved: entityKeys.length,
+        written: outcomes.length,
+        entities_at_location: entityKeys.length,
+        entities_with_stages: entitiesWithStages,
+      },
+      location_key: locationKey,
+      outcomes,
+      skipped,
+      ...(reason ? { reason } : {}),
+    }),
+    200,
+  )
 }
 
 export const getSensoryProfileSchema = z.object({ entity_key: z.string().min(1) })
 
-export async function handle_get_sensory_profile({ c, id, args }: TypedToolContext<typeof getSensoryProfileSchema>): Promise<Response> {
+export async function handle_get_sensory_profile({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof getSensoryProfileSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
 
   const { text } = parseKvEntry(raw)
-  const rawSpeciesField = (extractRawField(text, 'Species') ?? extractRawField(text, 'Type'))?.trim().toLowerCase() ?? null
+  const rawSpeciesField =
+    (extractRawField(text, 'Species') ?? extractRawField(text, 'Type'))?.trim().toLowerCase() ??
+    null
   const speciesKey = rawSpeciesField
-    ? (rawSpeciesField.includes(':') ? rawSpeciesField : `species:${rawSpeciesField}`)
+    ? rawSpeciesField.includes(':')
+      ? rawSpeciesField
+      : `species:${rawSpeciesField}`
     : null
   let speciesText = ''
   let speciesSource = ''
   let retrieved = 1
   if (speciesKey) {
     const rawSpecies = await kvGet(c, speciesKey)
-    if (rawSpecies) { speciesText = parseKvEntry(rawSpecies).text; speciesSource = speciesKey; retrieved++ }
+    if (rawSpecies) {
+      speciesText = parseKvEntry(rawSpecies).text
+      speciesSource = speciesKey
+      retrieved++
+    }
   }
 
-  const get = (f: string) => extractRawField(text, f) ?? (speciesText ? extractRawField(speciesText, f) : null)
-  const compositeRaw = extractRawField(text, 'Sensory-Profile') ?? (speciesText ? extractRawField(speciesText, 'Sensory-Profile') : null)
+  const get = (f: string) =>
+    extractRawField(text, f) ?? (speciesText ? extractRawField(speciesText, f) : null)
+  const compositeRaw =
+    extractRawField(text, 'Sensory-Profile') ??
+    (speciesText ? extractRawField(speciesText, 'Sensory-Profile') : null)
   const fromComposite = compositeRaw ? inferFromSensoryComposite(compositeRaw) : {}
   const fc = (k: keyof typeof fromComposite) => fromComposite[k] ?? null
   const profile = {
     temperature: get('Temperature') ?? get('Temperature-Range') ?? fc('temperature'),
     scent: get('Scent') ?? get('Scent-Profile') ?? fc('scent'),
     texture: get('Texture') ?? get('Surface-Texture') ?? fc('texture'),
-    sound_signature: get('Sound-Signature') ?? get('Sound') ?? get('Audio-Signature') ?? fc('sound_signature'),
-    visual_descriptors: get('Visual-Descriptors') ?? get('Appearance') ?? get('Description') ?? fc('visual_descriptors'),
+    sound_signature:
+      get('Sound-Signature') ?? get('Sound') ?? get('Audio-Signature') ?? fc('sound_signature'),
+    visual_descriptors:
+      get('Visual-Descriptors') ??
+      get('Appearance') ??
+      get('Description') ??
+      fc('visual_descriptors'),
   }
-  const hasProfile = Object.values(profile).some(v => v !== null) || compositeRaw !== null
+  const hasProfile = Object.values(profile).some((v) => v !== null) || compositeRaw !== null
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: hasProfile ? `Sensory profile for "${entityKey}": ${[profile.temperature && `temp:${profile.temperature}`, profile.scent && `scent:${profile.scent}`, profile.texture && `texture:${profile.texture}`].filter(Boolean).join(', ')}.` : `No sensory profile fields found for "${entityKey}".` }],
-    metadata: { retrieved, written: 0 },
-    entity_key: entityKey, species: speciesKey, profile, sensory_profile_raw: compositeRaw, sensory_source: speciesSource ? `entity + fallback from ${speciesSource}` : 'entity'
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: hasProfile
+            ? `Sensory profile for "${entityKey}": ${[profile.temperature && `temp:${profile.temperature}`, profile.scent && `scent:${profile.scent}`, profile.texture && `texture:${profile.texture}`].filter(Boolean).join(', ')}.`
+            : `No sensory profile fields found for "${entityKey}".`,
+        },
+      ],
+      metadata: { retrieved, written: 0 },
+      entity_key: entityKey,
+      species: speciesKey,
+      profile,
+      sensory_profile_raw: compositeRaw,
+      sensory_source: speciesSource ? `entity + fallback from ${speciesSource}` : 'entity',
+    }),
+    200,
+  )
 }
 
-export const getCompatibilitySchema = z.object({ entity_a: z.string().min(1), entity_b: z.string().min(1), interaction_type: z.string().min(1) })
+export const getCompatibilitySchema = z.object({
+  entity_a: z.string().min(1),
+  entity_b: z.string().min(1),
+  interaction_type: z.string().min(1),
+})
 
-export async function handle_get_compatibility({ c, id, args }: TypedToolContext<typeof getCompatibilitySchema>): Promise<Response> {
+export async function handle_get_compatibility({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof getCompatibilitySchema>): Promise<Response> {
   const keyA = args.entity_a.trim().toLowerCase()
   const keyB = args.entity_b.trim().toLowerCase()
   const interactionType = args.interaction_type
@@ -897,8 +1370,12 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
   let sizeRatio: number | null = null
   if (typeof sizeA === 'number' && typeof sizeB === 'number' && sizeB > 0) {
     sizeRatio = Math.round((sizeA / sizeB) * 100) / 100
-    if (sizeRatio < 0.5) constraints.push(`Size ratio ${sizeRatio}: entity_a significantly smaller than entity_b`)
-    if (sizeRatio > 5) { constraints.push(`Size ratio ${sizeRatio}: entity_a far exceeds entity_b capacity`); riskScore += 2 }
+    if (sizeRatio < 0.5)
+      constraints.push(`Size ratio ${sizeRatio}: entity_a significantly smaller than entity_b`)
+    if (sizeRatio > 5) {
+      constraints.push(`Size ratio ${sizeRatio}: entity_a far exceeds entity_b capacity`)
+      riskScore += 2
+    }
   }
 
   // #410 — D1 entity_attributes takes priority over KV markdown for Weight-1/
@@ -916,26 +1393,57 @@ export async function handle_get_compatibility({ c, id, args }: TypedToolContext
   const _w2B = attrsB?.['weight-2'] ?? extractFieldFromText(textB, 'Weight-2')
   const w1A = typeof _w1A === 'number' ? normalizeWeight(_w1A) : null
   const w2B = typeof _w2B === 'number' ? normalizeWeight(_w2B) : null
-  if (w1A !== null && w1A < 0.2) { constraints.push(`Weight-1 too low (${w1A.toFixed(2)}): entity_a lacks drive`); riskScore++ }
-  if (w2B !== null && w2B > 0.9) { constraints.push(`Weight-2 very high (${w2B.toFixed(2)}): entity_b extreme resistance`); riskScore += 2 }
+  if (w1A !== null && w1A < 0.2) {
+    constraints.push(`Weight-1 too low (${w1A.toFixed(2)}): entity_a lacks drive`)
+    riskScore++
+  }
+  if (w2B !== null && w2B > 0.9) {
+    constraints.push(`Weight-2 very high (${w2B.toFixed(2)}): entity_b extreme resistance`)
+    riskScore += 2
+  }
 
   const envA = extractRawField(textA, 'Environment') ?? extractRawField(textA, 'Habitat')
   const envB = extractRawField(textB, 'Environment') ?? extractRawField(textB, 'Habitat')
-  if (envA && envB && !envA.toLowerCase().includes(envB.toLowerCase()) && !envB.toLowerCase().includes(envA.toLowerCase())) {
-    constraints.push(`Environment mismatch: "${envA}" vs "${envB}"`); riskScore++
+  if (
+    envA &&
+    envB &&
+    !envA.toLowerCase().includes(envB.toLowerCase()) &&
+    !envB.toLowerCase().includes(envA.toLowerCase())
+  ) {
+    constraints.push(`Environment mismatch: "${envA}" vs "${envB}"`)
+    riskScore++
   }
 
-  const blocking = constraints.filter(c => c.includes('far exceeds') || c.includes('lacks drive') || c.includes('extreme resistance'))
+  const blocking = constraints.filter(
+    (c) =>
+      c.includes('far exceeds') || c.includes('lacks drive') || c.includes('extreme resistance'),
+  )
   const compatible = blocking.length === 0
-  const riskLevel = riskScore === 0 ? 'low' : riskScore <= 2 ? 'moderate' : riskScore <= 4 ? 'high' : 'extreme'
+  const riskLevel =
+    riskScore === 0 ? 'low' : riskScore <= 2 ? 'moderate' : riskScore <= 4 ? 'high' : 'extreme'
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Compatibility of "${keyA}" × "${keyB}" for "${interactionType}": ${compatible ? 'COMPATIBLE' : 'INCOMPATIBLE'} (risk: ${riskLevel}). ${constraints.length} constraint(s).` }],
-    metadata: { retrieved: 2, written: 0 },
-    entity_a: keyA, entity_b: keyB, interaction_type: interactionType,
-    compatible, risk_level: riskLevel, risk_score: riskScore, size_ratio: sizeRatio, constraints,
-    weight_1_source: attrsA?.['weight-1'] !== undefined ? 'd1' : 'kv', weight_2_source: attrsB?.['weight-2'] !== undefined ? 'd1' : 'kv',
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Compatibility of "${keyA}" × "${keyB}" for "${interactionType}": ${compatible ? 'COMPATIBLE' : 'INCOMPATIBLE'} (risk: ${riskLevel}). ${constraints.length} constraint(s).`,
+        },
+      ],
+      metadata: { retrieved: 2, written: 0 },
+      entity_a: keyA,
+      entity_b: keyB,
+      interaction_type: interactionType,
+      compatible,
+      risk_level: riskLevel,
+      risk_score: riskScore,
+      size_ratio: sizeRatio,
+      constraints,
+      weight_1_source: attrsA?.['weight-1'] !== undefined ? 'd1' : 'kv',
+      weight_2_source: attrsB?.['weight-2'] !== undefined ? 'd1' : 'kv',
+    }),
+    200,
+  )
 }
 
 export const getInventorySchema = z.object({ entity_key: z.string().min(1) })
@@ -949,13 +1457,20 @@ export const getInventorySchema = z.object({ entity_key: z.string().min(1) })
 // entries with no d1_id yet. Returns null on any failure (missing binding,
 // unmigrated schema, no match) — callers fall back to KV parsing.
 export async function resolveEntityToCharacterId(
-  db: D1Database | undefined, meta: Record<string, unknown>, text: string, entityKey: string,
+  db: D1Database | undefined,
+  meta: Record<string, unknown>,
+  text: string,
+  entityKey: string,
 ): Promise<string | null> {
   if (!db) return null
   try {
     if (typeof meta.d1_id === 'string' && meta.d1_id) return meta.d1_id
-    const nameGuess = extractRawField(text, 'Name') ?? entityKey.replace(/^character:/, '').replace(/-/g, ' ')
-    const row = await db.prepare('SELECT id FROM characters WHERE LOWER(name) = ?').bind(nameGuess.trim().toLowerCase()).first() as { id: string } | null
+    const nameGuess =
+      extractRawField(text, 'Name') ?? entityKey.replace(/^character:/, '').replace(/-/g, ' ')
+    const row = (await db
+      .prepare('SELECT id FROM characters WHERE LOWER(name) = ?')
+      .bind(nameGuess.trim().toLowerCase())
+      .first()) as { id: string } | null
     return row?.id ?? null
   } catch {
     return null
@@ -973,16 +1488,22 @@ export async function resolveEntityToCharacterId(
 // (tests that never call setupRpgDb) degrades to the KV-only behavior that
 // predates #410, not an error.
 export async function resolveEntityAttributes(
-  db: D1Database | undefined, loreKey: string, characterId: string | null,
+  db: D1Database | undefined,
+  loreKey: string,
+  characterId: string | null,
 ): Promise<Record<string, number> | null> {
   if (!db) return null
   try {
-    const row = await db.prepare(
-      'SELECT attributes FROM entity_attributes WHERE lore_key = ? OR (character_id IS NOT NULL AND character_id = ?) LIMIT 1'
-    ).bind(loreKey, characterId ?? '').first() as { attributes: string } | null
+    const row = (await db
+      .prepare(
+        'SELECT attributes FROM entity_attributes WHERE lore_key = ? OR (character_id IS NOT NULL AND character_id = ?) LIMIT 1',
+      )
+      .bind(loreKey, characterId ?? '')
+      .first()) as { attributes: string } | null
     if (!row) return null
     const parsed = JSON.parse(row.attributes) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, number>
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      return parsed as Record<string, number>
     return null
   } catch {
     return null
@@ -991,7 +1512,11 @@ export async function resolveEntityAttributes(
 
 export const getEntityAttributesSchema = z.object({ entity_key: z.string().min(1) })
 
-export async function handle_get_entity_attributes({ c, id, args }: TypedToolContext<typeof getEntityAttributesSchema>): Promise<Response> {
+export async function handle_get_entity_attributes({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof getEntityAttributesSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -1000,15 +1525,30 @@ export async function handle_get_entity_attributes({ c, id, args }: TypedToolCon
   const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
   const attributes = await resolveEntityAttributes(c.env.RPG_DB, entityKey, characterId)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: attributes ? `${Object.keys(attributes).length} D1 attribute(s) found for "${entityKey}".` : `No D1 attributes for "${entityKey}" — resolve_interaction/analyze_utility fall back to KV markdown parsing.` }],
-    entity_key: entityKey, character_id: characterId, source: attributes ? 'd1' : 'none', attributes: attributes ?? {},
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: attributes
+            ? `${Object.keys(attributes).length} D1 attribute(s) found for "${entityKey}".`
+            : `No D1 attributes for "${entityKey}" — resolve_interaction/analyze_utility fall back to KV markdown parsing.`,
+        },
+      ],
+      entity_key: entityKey,
+      character_id: characterId,
+      source: attributes ? 'd1' : 'none',
+      attributes: attributes ?? {},
+    }),
+    200,
+  )
 }
 
 export const setEntityAttributesSchema = z.object({
   entity_key: z.string().min(1),
-  attributes: z.record(z.string(), z.number()).refine(a => Object.keys(a).length > 0, 'attributes must have at least one field'),
+  attributes: z
+    .record(z.string(), z.number())
+    .refine((a) => Object.keys(a).length > 0, 'attributes must have at least one field'),
   merge: z.boolean().default(true),
 })
 
@@ -1020,7 +1560,11 @@ export const setEntityAttributesSchema = z.object({
 // requiring a second write. merge:true (default) folds the given attributes
 // into whatever's already there — set a subset without clobbering the rest;
 // merge:false replaces the stored attribute set wholesale.
-export async function handle_set_entity_attributes({ c, id, args }: TypedToolContext<typeof setEntityAttributesSchema>): Promise<Response> {
+export async function handle_set_entity_attributes({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof setEntityAttributesSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -1034,7 +1578,10 @@ export async function handle_set_entity_attributes({ c, id, args }: TypedToolCon
   const { text, meta } = parseKvEntry(raw)
   const characterId = await resolveEntityToCharacterId(db, meta, text, entityKey)
 
-  const existing = await db.prepare('SELECT id, attributes FROM entity_attributes WHERE lore_key = ?').bind(entityKey).first() as { id: string; attributes: string } | null
+  const existing = (await db
+    .prepare('SELECT id, attributes FROM entity_attributes WHERE lore_key = ?')
+    .bind(entityKey)
+    .first()) as { id: string; attributes: string } | null
 
   let finalAttributes = args.attributes
   if (args.merge && existing) {
@@ -1048,20 +1595,43 @@ export async function handle_set_entity_attributes({ c, id, args }: TypedToolCon
 
   const now = new Date().toISOString()
   if (existing) {
-    await db.prepare('UPDATE entity_attributes SET attributes = ?, character_id = COALESCE(?, character_id), updated_at = ? WHERE id = ?')
-      .bind(JSON.stringify(finalAttributes), characterId, now, existing.id).run()
+    await db
+      .prepare(
+        'UPDATE entity_attributes SET attributes = ?, character_id = COALESCE(?, character_id), updated_at = ? WHERE id = ?',
+      )
+      .bind(JSON.stringify(finalAttributes), characterId, now, existing.id)
+      .run()
   } else {
-    await db.prepare('INSERT INTO entity_attributes (id, lore_key, character_id, attributes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), entityKey, characterId, JSON.stringify(finalAttributes), now, now).run()
+    await db
+      .prepare(
+        'INSERT INTO entity_attributes (id, lore_key, character_id, attributes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .bind(crypto.randomUUID(), entityKey, characterId, JSON.stringify(finalAttributes), now, now)
+      .run()
   }
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Set ${Object.keys(args.attributes).length} attribute(s) on "${entityKey}"${characterId ? ` (linked to D1 character ${characterId})` : ''}.` }],
-    entity_key: entityKey, character_id: characterId, merged: args.merge && !!existing, attributes: finalAttributes,
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Set ${Object.keys(args.attributes).length} attribute(s) on "${entityKey}"${characterId ? ` (linked to D1 character ${characterId})` : ''}.`,
+        },
+      ],
+      entity_key: entityKey,
+      character_id: characterId,
+      merged: args.merge && !!existing,
+      attributes: finalAttributes,
+    }),
+    200,
+  )
 }
 
-export async function handle_get_inventory({ c, id, args }: TypedToolContext<typeof getInventorySchema>): Promise<Response> {
+export async function handle_get_inventory({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof getInventorySchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -1075,21 +1645,55 @@ export async function handle_get_inventory({ c, id, args }: TypedToolContext<typ
   const characterId = await resolveEntityToCharacterId(c.env.RPG_DB, meta, text, entityKey)
   if (characterId) {
     try {
-      const { results } = await c.env.RPG_DB!.prepare(
-        `SELECT ii.item_id, ii.quantity, ii.equipped, ii.slot, i.name, i.type, i.weight, i.value
+      const { results } = await c.env
+        .RPG_DB!.prepare(
+          `SELECT ii.item_id, ii.quantity, ii.equipped, ii.slot, i.name, i.type, i.weight, i.value
          FROM inventory_items ii JOIN items i ON ii.item_id = i.id
-         WHERE ii.character_id = ? ORDER BY ii.equipped DESC, i.name`
-      ).bind(characterId).all()
-      const rows = results as Array<{ item_id: string; quantity: number; equipped: number; slot: string | null; name: string; type: string; weight: number | null; value: number | null }>
-      const items = rows.map(r => ({
-        item: r.name, quantity: r.quantity, condition: null as string | null,
-        item_id: r.item_id, type: r.type, weight: r.weight, value: r.value, equipped: !!r.equipped, slot: r.slot,
+         WHERE ii.character_id = ? ORDER BY ii.equipped DESC, i.name`,
+        )
+        .bind(characterId)
+        .all()
+      const rows = results as Array<{
+        item_id: string
+        quantity: number
+        equipped: number
+        slot: string | null
+        name: string
+        type: string
+        weight: number | null
+        value: number | null
+      }>
+      const items = rows.map((r) => ({
+        item: r.name,
+        quantity: r.quantity,
+        condition: null as string | null,
+        item_id: r.item_id,
+        type: r.type,
+        weight: r.weight,
+        value: r.value,
+        equipped: !!r.equipped,
+        slot: r.slot,
       }))
-      return c.json(makeResult(id, {
-        content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}" (D1): ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
-        metadata: { retrieved: 1, written: 0 },
-        entity_key: entityKey, items, raw_inventory: null, source: 'd1', character_id: characterId,
-      }), 200)
+      return c.json(
+        makeResult(id, {
+          content: [
+            {
+              type: 'text',
+              text:
+                items.length > 0
+                  ? `Inventory for "${entityKey}" (D1): ${items.map((i) => `${i.item}\xd7${i.quantity}`).join(', ')}.`
+                  : `No inventory found for "${entityKey}".`,
+            },
+          ],
+          metadata: { retrieved: 1, written: 0 },
+          entity_key: entityKey,
+          items,
+          raw_inventory: null,
+          source: 'd1',
+          character_id: characterId,
+        }),
+        200,
+      )
     } catch {
       // D1 query failed after a successful resolve (e.g. inventory_items/items
       // missing on an unmigrated schema) — fall through to KV parsing below.
@@ -1103,7 +1707,10 @@ export async function handle_get_inventory({ c, id, args }: TypedToolContext<typ
   let collecting = false
   const collected: string[] = []
   for (const line of lines) {
-    if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { collecting = true; continue }
+    if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) {
+      collecting = true
+      continue
+    }
     if (collecting) {
       if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
       const t = line.trim()
@@ -1113,11 +1720,17 @@ export async function handle_get_inventory({ c, id, args }: TypedToolContext<typ
   if (collected.length > 0) {
     invRaw = collected.join(',')
   } else {
-    invRaw = extractRawField(text, 'Inventory') ?? extractRawField(text, 'Items') ?? extractRawField(text, 'Carried-Items')
+    invRaw =
+      extractRawField(text, 'Inventory') ??
+      extractRawField(text, 'Items') ??
+      extractRawField(text, 'Carried-Items')
   }
   const items: Array<{ item: string; quantity: number; condition: string | null }> = []
   if (invRaw) {
-    const entries = invRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+    const entries = invRaw
+      .split(/[,\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
     for (const entry of entries) {
       const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
       if (m) items.push({ item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null })
@@ -1125,19 +1738,39 @@ export async function handle_get_inventory({ c, id, args }: TypedToolContext<typ
     }
   }
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: items.length > 0 ? `Inventory for "${entityKey}": ${items.map(i => `${i.item}\xd7${i.quantity}`).join(', ')}.` : `No inventory found for "${entityKey}".` }],
-    metadata: { retrieved: 1, written: 0 },
-    entity_key: entityKey, items, raw_inventory: invRaw ?? null, source: 'kv',
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text:
+            items.length > 0
+              ? `Inventory for "${entityKey}": ${items.map((i) => `${i.item}\xd7${i.quantity}`).join(', ')}.`
+              : `No inventory found for "${entityKey}".`,
+        },
+      ],
+      metadata: { retrieved: 1, written: 0 },
+      entity_key: entityKey,
+      items,
+      raw_inventory: invRaw ?? null,
+      source: 'kv',
+    }),
+    200,
+  )
 }
 
 export const transferItemSchema = z.object({
-  from_entity: z.string().min(1), to_entity: z.string().min(1),
-  item_key: z.string().min(1), quantity: z.number().int().min(1).default(1),
+  from_entity: z.string().min(1),
+  to_entity: z.string().min(1),
+  item_key: z.string().min(1),
+  quantity: z.number().int().min(1).default(1),
 })
 
-export async function handle_transfer_item({ c, id, args }: TypedToolContext<typeof transferItemSchema>): Promise<Response> {
+export async function handle_transfer_item({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof transferItemSchema>): Promise<Response> {
   const fromKey = args.from_entity.trim().toLowerCase()
   const toKey = args.to_entity.trim().toLowerCase()
   const itemKey = args.item_key.trim()
@@ -1149,18 +1782,29 @@ export async function handle_transfer_item({ c, id, args }: TypedToolContext<typ
   const { text: fromText, meta: fromMeta } = parseKvEntry(rawFrom)
   const { text: toText, meta: toMeta } = parseKvEntry(rawTo)
 
-  const parseInvStr = (raw: string): Array<{ item: string; quantity: number; condition: string | null }> =>
-    raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map(entry => {
-      const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
-      return m ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null } : { item: entry, quantity: 1, condition: null }
-    })
+  const parseInvStr = (
+    raw: string,
+  ): Array<{ item: string; quantity: number; condition: string | null }> =>
+    raw
+      .split(/[,\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const m = entry.match(/^(.+?)\s*[xX:\xd7*]\s*(\d+)(?:\s*\[([^\]]+)\])?$/)
+        return m
+          ? { item: m[1].trim(), quantity: parseInt(m[2]), condition: m[3] ?? null }
+          : { item: entry, quantity: 1, condition: null }
+      })
 
   const extractInvRaw = (t: string): string => {
     const tLines = t.split('\n')
     let tCollecting = false
     const tCollected: string[] = []
     for (const line of tLines) {
-      if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) { tCollecting = true; continue }
+      if (/^\s*\*\*(?:Inventory|Items|Carried-Items):\*\*\s*$/.test(line)) {
+        tCollecting = true
+        continue
+      }
       if (tCollecting) {
         if (/^\s*\*\*\w|^\s*#{1,3}\s/.test(line)) break
         const l = line.trim()
@@ -1168,31 +1812,65 @@ export async function handle_transfer_item({ c, id, args }: TypedToolContext<typ
       }
     }
     if (tCollected.length > 0) return tCollected.join(',')
-    return extractRawField(t, 'Inventory') ?? extractRawField(t, 'Items') ?? extractRawField(t, 'Carried-Items') ?? ''
+    return (
+      extractRawField(t, 'Inventory') ??
+      extractRawField(t, 'Items') ??
+      extractRawField(t, 'Carried-Items') ??
+      ''
+    )
   }
 
-  const fromInvFieldName = extractRawField(fromText, 'Inventory') ? 'Inventory' : extractRawField(fromText, 'Items') ? 'Items' : 'Inventory'
-  const toInvFieldName = extractRawField(toText, 'Inventory') ? 'Inventory' : extractRawField(toText, 'Items') ? 'Items' : 'Inventory'
+  const fromInvFieldName = extractRawField(fromText, 'Inventory')
+    ? 'Inventory'
+    : extractRawField(fromText, 'Items')
+      ? 'Items'
+      : 'Inventory'
+  const toInvFieldName = extractRawField(toText, 'Inventory')
+    ? 'Inventory'
+    : extractRawField(toText, 'Items')
+      ? 'Items'
+      : 'Inventory'
   const fromInvRaw = extractInvRaw(fromText)
   const fromItems = parseInvStr(fromInvRaw)
-  const itemIdx = fromItems.findIndex(i => i.item.toLowerCase() === itemKey.toLowerCase())
+  const itemIdx = fromItems.findIndex((i) => i.item.toLowerCase() === itemKey.toLowerCase())
 
   if (itemIdx === -1) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Item "${itemKey}" not found in "${fromKey}"'s inventory.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          { type: 'text', text: `Item "${itemKey}" not found in "${fromKey}"'s inventory.` },
+        ],
+        metadata: { retrieved: 2, written: 0 },
+        transferred: false,
+      }),
+      200,
+    )
   }
   if (fromItems[itemIdx].quantity < qty) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}\xd7 "${itemKey}", requested ${qty}.` }], metadata: { retrieved: 2, written: 0 }, transferred: false }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `Insufficient quantity: "${fromKey}" has ${fromItems[itemIdx].quantity}\xd7 "${itemKey}", requested ${qty}.`,
+          },
+        ],
+        metadata: { retrieved: 2, written: 0 },
+        transferred: false,
+      }),
+      200,
+    )
   }
 
   fromItems[itemIdx].quantity -= qty
-  const newFromItems = fromItems.filter(i => i.quantity > 0)
+  const newFromItems = fromItems.filter((i) => i.quantity > 0)
   const fmtItem = (i: { item: string; quantity: number; condition: string | null }) =>
     i.condition ? `${i.item}\xd7${i.quantity}[${i.condition}]` : `${i.item}\xd7${i.quantity}`
   const newFromInvStr = newFromItems.map(fmtItem).join(', ')
 
   const toInvRaw = extractRawField(toText, toInvFieldName) ?? ''
   const toItems = parseInvStr(toInvRaw)
-  const toIdx = toItems.findIndex(i => i.item.toLowerCase() === itemKey.toLowerCase())
+  const toIdx = toItems.findIndex((i) => i.item.toLowerCase() === itemKey.toLowerCase())
   if (toIdx >= 0) toItems[toIdx].quantity += qty
   else toItems.push({ item: itemKey, quantity: qty, condition: null })
   const newToInvStr = toItems.map(fmtItem).join(', ')
@@ -1205,8 +1883,22 @@ export async function handle_transfer_item({ c, id, args }: TypedToolContext<typ
   const fromVersion = typeof fromMeta.version === 'number' ? fromMeta.version + 1 : 1
   const toVersion = typeof toMeta.version === 'number' ? toMeta.version + 1 : 1
   await Promise.all([
-    kvPut(c, fromKey, JSON.stringify({ text: newFromText, meta: { version: fromVersion, updatedAt: now, createdAt: fromMeta.createdAt ?? now } })),
-    kvPut(c, toKey, JSON.stringify({ text: newToText, meta: { version: toVersion, updatedAt: now, createdAt: toMeta.createdAt ?? now } })),
+    kvPut(
+      c,
+      fromKey,
+      JSON.stringify({
+        text: newFromText,
+        meta: { version: fromVersion, updatedAt: now, createdAt: fromMeta.createdAt ?? now },
+      }),
+    ),
+    kvPut(
+      c,
+      toKey,
+      JSON.stringify({
+        text: newToText,
+        meta: { version: toVersion, updatedAt: now, createdAt: toMeta.createdAt ?? now },
+      }),
+    ),
   ])
   await Promise.all([
     appendChangelog(c, fromKey, fromVersion),
@@ -1216,27 +1908,45 @@ export async function handle_transfer_item({ c, id, args }: TypedToolContext<typ
   loreDB[toKey] = newToText
   clearRequestCache(c)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Transferred ${qty}\xd7 "${itemKey}" from "${fromKey}" to "${toKey}".` }],
-    metadata: { retrieved: 2, written: 2 },
-    transferred: true, item_key: itemKey, quantity: qty, from_entity: fromKey, to_entity: toKey
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Transferred ${qty}\xd7 "${itemKey}" from "${fromKey}" to "${toKey}".`,
+        },
+      ],
+      metadata: { retrieved: 2, written: 2 },
+      transferred: true,
+      item_key: itemKey,
+      quantity: qty,
+      from_entity: fromKey,
+      to_entity: toKey,
+    }),
+    200,
+  )
 }
 
 export const listConsumptionTimelinesSchema = z.object({
-  status_filter: z.enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed']).default('all'),
+  status_filter: z
+    .enum(['all', 'imminent', 'days-to-weeks', 'weeks-to-months', 'consumed'])
+    .default('all'),
   limit: z.number().int().min(1).max(100).default(50),
   offset: z.number().int().min(0).default(0),
 })
 
-export async function handle_list_consumption_timelines({ c, id, args }: TypedToolContext<typeof listConsumptionTimelinesSchema>): Promise<Response> {
+export async function handle_list_consumption_timelines({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof listConsumptionTimelinesSchema>): Promise<Response> {
   const { status_filter, limit, offset } = args
 
   // v0.2.0: scan ALL character:* keys via index, not just livestock/prisoner
   const characterKeys = await getIndexedKeys(c, '_idx:prefix:character')
   const paginatedKeys = characterKeys.slice(offset, offset + limit)
 
-  const rawValues = await Promise.all(paginatedKeys.map(k => kvGet(c, k)))
+  const rawValues = await Promise.all(paginatedKeys.map((k) => kvGet(c, k)))
 
   const timelines: Array<any> = []
   for (let i = 0; i < paginatedKeys.length; i++) {
@@ -1253,7 +1963,13 @@ export async function handle_list_consumption_timelines({ c, id, args }: TypedTo
       const tl = info.timeline_remaining.toLowerCase()
       if (status_filter === 'imminent' && !tl.includes('hour') && !/\b1\s*day\b/.test(tl)) continue
       if (status_filter === 'days-to-weeks' && !tl.includes('day') && !tl.includes('week')) continue
-      if (status_filter === 'weeks-to-months' && !tl.includes('week') && !tl.includes('month') && !tl.includes('year')) continue
+      if (
+        status_filter === 'weeks-to-months' &&
+        !tl.includes('week') &&
+        !tl.includes('month') &&
+        !tl.includes('year')
+      )
+        continue
       if (status_filter === 'consumed' && !tl.includes('consumed')) continue
     }
 
@@ -1262,42 +1978,54 @@ export async function handle_list_consumption_timelines({ c, id, args }: TypedTo
       current_status: info.status,
       timeline_remaining: info.timeline_remaining,
       processor: info.processor,
-      location: 'unknown'
+      location: 'unknown',
     })
   }
 
-  const text = timelines.length > 0
-    ? timelines.map(t => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
-    : 'No consumption timelines found.'
+  const text =
+    timelines.length > 0
+      ? timelines.map((t) => `${t.character_key}: ${t.timeline_remaining}`).join('\n')
+      : 'No consumption timelines found.'
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text }],
-    metadata: { count: timelines.length, total_keys: characterKeys.length, offset, limit },
-    timelines
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text }],
+      metadata: { count: timelines.length, total_keys: characterKeys.length, offset, limit },
+      timelines,
+    }),
+    200,
+  )
 }
 
 export async function handle_list_active_threads({ c, id }: ToolContext): Promise<Response> {
   const raw = await kvGet(c, 'system:active-narratives')
 
   if (!raw) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: 'No active narratives found.' }],
-      threads: [], metadata: { count: 0 }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: 'No active narratives found.' }],
+        threads: [],
+        metadata: { count: 0 },
+      }),
+      200,
+    )
   }
 
   const { text } = parseKvEntry(raw)
   const threads = extractActiveThreads(text)
-  const summaryText = threads.length > 0
-    ? threads.map(v => `${v.thread_name}: ${v.status}`).join('\n')
-    : 'No active threads found.'
+  const summaryText =
+    threads.length > 0
+      ? threads.map((v) => `${v.thread_name}: ${v.status}`).join('\n')
+      : 'No active threads found.'
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: summaryText }],
-    metadata: { count: threads.length },
-    threads
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: summaryText }],
+      metadata: { count: threads.length },
+      threads,
+    }),
+    200,
+  )
 }
 
 export const createConsumptionTimelineSchema = z.object({
@@ -1309,7 +2037,11 @@ export const createConsumptionTimelineSchema = z.object({
   current_stage: z.number().int().min(0).default(0),
 })
 
-export async function handle_create_consumption_timeline({ c, id, args }: TypedToolContext<typeof createConsumptionTimelineSchema>): Promise<Response> {
+export async function handle_create_consumption_timeline({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof createConsumptionTimelineSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const predatorKey = args.predator_key.trim().toLowerCase()
   const { stages, stage_timer, terminal_state, current_stage } = args
@@ -1320,13 +2052,22 @@ export async function handle_create_consumption_timeline({ c, id, args }: TypedT
 
   // Validate predator exists
   const rawPredator = await kvGet(c, predatorKey)
-  if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${predatorKey}" not found`, null), 200)
+  if (!rawPredator)
+    return c.json(makeError(id, -32602, `Predator "${predatorKey}" not found`, null), 200)
 
   // Check if timeline already exists
   const timelineKey = `_idx:consumption:${entityKey}`
   const existing = await kvGet(c, timelineKey)
   if (existing) {
-    return c.json(makeError(id, -32602, `Consumption timeline already exists for "${entityKey}". Use set_consumption_timeline to update.`, null), 200)
+    return c.json(
+      makeError(
+        id,
+        -32602,
+        `Consumption timeline already exists for "${entityKey}". Use set_consumption_timeline to update.`,
+        null,
+      ),
+      200,
+    )
   }
 
   const now = new Date().toISOString()
@@ -1354,15 +2095,38 @@ export async function handle_create_consumption_timeline({ c, id, args }: TypedT
 
   await pushHistory(c, entityKey, rawEntity)
   const version = typeof entityMeta.version === 'number' ? entityMeta.version + 1 : 1
-  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now } }))
+  await kvPut(
+    c,
+    entityKey,
+    JSON.stringify({
+      text: updatedText,
+      meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now },
+    }),
+  )
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Consumption timeline created for "${entityKey}" → predator "${predatorKey}": stage ${current_stage}/${stages}, timer ${stage_timer}, terminal "${terminal_state}".` }],
-    metadata: { entity_key: entityKey, predator_key: predatorKey, stages, stage_timer, current_stage, terminal_state, created_at: now },
-    timeline: timelineData,
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Consumption timeline created for "${entityKey}" → predator "${predatorKey}": stage ${current_stage}/${stages}, timer ${stage_timer}, terminal "${terminal_state}".`,
+        },
+      ],
+      metadata: {
+        entity_key: entityKey,
+        predator_key: predatorKey,
+        stages,
+        stage_timer,
+        current_stage,
+        terminal_state,
+        created_at: now,
+      },
+      timeline: timelineData,
+    }),
+    200,
+  )
 }
 
 export const setConsumptionTimelineSchema = z.object({
@@ -1374,7 +2138,11 @@ export const setConsumptionTimelineSchema = z.object({
   terminal_state: z.string().min(1).optional(),
 })
 
-export async function handle_set_consumption_timeline({ c, id, args }: TypedToolContext<typeof setConsumptionTimelineSchema>): Promise<Response> {
+export async function handle_set_consumption_timeline({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof setConsumptionTimelineSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
 
   // Validate entity exists
@@ -1385,7 +2153,15 @@ export async function handle_set_consumption_timeline({ c, id, args }: TypedTool
   const timelineKey = `_idx:consumption:${entityKey}`
   const existingRaw = await kvGet(c, timelineKey)
   if (!existingRaw) {
-    return c.json(makeError(id, -32602, `No consumption timeline exists for "${entityKey}". Use create_consumption_timeline first.`, null), 200)
+    return c.json(
+      makeError(
+        id,
+        -32602,
+        `No consumption timeline exists for "${entityKey}". Use create_consumption_timeline first.`,
+        null,
+      ),
+      200,
+    )
   }
 
   const existing = JSON.parse(existingRaw)
@@ -1404,7 +2180,11 @@ export async function handle_set_consumption_timeline({ c, id, args }: TypedTool
   // If predator_key changed, validate the new predator exists
   if (updatedTimeline.predator_key && updatedTimeline.predator_key !== existing.predator_key) {
     const rawPredator = await kvGet(c, updatedTimeline.predator_key)
-    if (!rawPredator) return c.json(makeError(id, -32602, `Predator "${updatedTimeline.predator_key}" not found`, null), 200)
+    if (!rawPredator)
+      return c.json(
+        makeError(id, -32602, `Predator "${updatedTimeline.predator_key}" not found`, null),
+        200,
+      )
   }
 
   // Check if terminal stage reached
@@ -1417,28 +2197,51 @@ export async function handle_set_consumption_timeline({ c, id, args }: TypedTool
   const { text: entityText, meta: entityMeta } = parseKvEntry(rawEntity)
   let updatedText = entityText
   if (isTerminal) {
-    updatedText = updateFieldInText(updatedText, 'Consumption-Status', updatedTimeline.terminal_state)
+    updatedText = updateFieldInText(
+      updatedText,
+      'Consumption-Status',
+      updatedTimeline.terminal_state,
+    )
   } else {
     updatedText = updateFieldInText(updatedText, 'Consumption-Status', 'active')
   }
-  updatedText = updateFieldInText(updatedText, 'Consumption-Stage', `${updatedTimeline.current_stage}-of-${updatedTimeline.stages}`)
+  updatedText = updateFieldInText(
+    updatedText,
+    'Consumption-Stage',
+    `${updatedTimeline.current_stage}-of-${updatedTimeline.stages}`,
+  )
   updatedText = updateFieldInText(updatedText, 'Consumption-Timer', updatedTimeline.stage_timer)
   updatedText = updateFieldInText(updatedText, 'Consumed-By', updatedTimeline.predator_key)
   updatedText = updateFieldInText(updatedText, 'Terminal-State', updatedTimeline.terminal_state)
 
   await pushHistory(c, entityKey, rawEntity)
   const version = typeof entityMeta.version === 'number' ? entityMeta.version + 1 : 1
-  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now } }))
+  await kvPut(
+    c,
+    entityKey,
+    JSON.stringify({
+      text: updatedText,
+      meta: { version, updatedAt: now, createdAt: entityMeta.createdAt ?? now },
+    }),
+  )
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
 
   const changedFields = Object.keys(updates)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Consumption timeline updated for "${entityKey}": stage ${updatedTimeline.current_stage}/${updatedTimeline.stages}, timer ${updatedTimeline.stage_timer}${isTerminal ? ' [TERMINAL]' : ''}. Changed: ${changedFields.join(', ') || 'none'}.` }],
-    metadata: { entity_key: entityKey, updates: changedFields, is_terminal: isTerminal },
-    timeline: updatedTimeline,
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Consumption timeline updated for "${entityKey}": stage ${updatedTimeline.current_stage}/${updatedTimeline.stages}, timer ${updatedTimeline.stage_timer}${isTerminal ? ' [TERMINAL]' : ''}. Changed: ${changedFields.join(', ') || 'none'}.`,
+        },
+      ],
+      metadata: { entity_key: entityKey, updates: changedFields, is_terminal: isTerminal },
+      timeline: updatedTimeline,
+    }),
+    200,
+  )
 }
 
 export const setSensoryProfileSchema = z.object({
@@ -1451,7 +2254,11 @@ export const setSensoryProfileSchema = z.object({
   composite: z.string().optional(),
 })
 
-export async function handle_set_sensory_profile({ c, id, args }: TypedToolContext<typeof setSensoryProfileSchema>): Promise<Response> {
+export async function handle_set_sensory_profile({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof setSensoryProfileSchema>): Promise<Response> {
   const entityKey = args.entity_key.trim().toLowerCase()
   const raw = await kvGet(c, entityKey)
   if (!raw) return c.json(makeError(id, -32602, `Entity "${entityKey}" not found`, null), 200)
@@ -1495,12 +2302,27 @@ export async function handle_set_sensory_profile({ c, id, args }: TypedToolConte
   await pushHistory(c, entityKey, raw)
   const now = new Date().toISOString()
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-  await kvPut(c, entityKey, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+  await kvPut(
+    c,
+    entityKey,
+    JSON.stringify({
+      text: updatedText,
+      meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
+    }),
+  )
   await appendChangelog(c, entityKey, version)
   loreDB[entityKey] = updatedText
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Sensory profile set for "${entityKey}": ${fieldsWritten.join(', ')}.` }],
-    metadata: { entity_key: entityKey, fields_written: fieldsWritten, version }
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Sensory profile set for "${entityKey}": ${fieldsWritten.join(', ')}.`,
+        },
+      ],
+      metadata: { entity_key: entityKey, fields_written: fieldsWritten, version },
+    }),
+    200,
+  )
 }

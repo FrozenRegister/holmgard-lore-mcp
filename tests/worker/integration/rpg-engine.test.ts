@@ -141,7 +141,11 @@ describe('RPG engine integration', () => {
 
   describe('Narrative subsystem', () => {
     it('generates narration', async () => {
-      const res = await callRpg(ctx, { sub: 'narrative', action: 'generate', prompt: 'Describe a dark forest' })
+      const res = await callRpg(ctx, {
+        sub: 'narrative',
+        action: 'generate',
+        prompt: 'Describe a dark forest',
+      })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -216,7 +220,11 @@ describe('RPG engine integration', () => {
 
   describe('Combat action subsystem', () => {
     it('defends action', async () => {
-      const res = await callRpg(ctx, { sub: 'combat_action', action: 'defend', characterId: 'char-1' })
+      const res = await callRpg(ctx, {
+        sub: 'combat_action',
+        action: 'defend',
+        characterId: 'char-1',
+      })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })
@@ -317,7 +325,12 @@ describe('RPG engine integration', () => {
 
   describe('Perception subsystem', () => {
     it('checks perception', async () => {
-      const res = await callRpg(ctx, { sub: 'perception', action: 'check', characterId: 'char-1', difficulty: 15 })
+      const res = await callRpg(ctx, {
+        sub: 'perception',
+        action: 'check',
+        characterId: 'char-1',
+        difficulty: 15,
+      })
       const body = await jsonBody(res)
       expect(body.result).toBeDefined()
     })

@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -72,7 +80,10 @@ describe('canonical fixture — faction:processing-guild (hierarchy + standing s
 describe('faction standing implicit membership via Tags (#46)', () => {
   it('get_faction_standing detects membership via Tags field', async () => {
     await seedKV('faction:house-crowmark', '# House Crowmark\nStatus: active\n')
-    await seedKV('entity:kavissa-crowmark', 'Tags: faction:house-crowmark, theme:nobility\n# Kavissa Crowmark\nAlias: disguised-merchant\n')
+    await seedKV(
+      'entity:kavissa-crowmark',
+      'Tags: faction:house-crowmark, theme:nobility\n# Kavissa Crowmark\nAlias: disguised-merchant\n',
+    )
     const res = await callTool('world_manage', {
       action: 'get_faction_standing',
       entity_key: 'entity:kavissa-crowmark',

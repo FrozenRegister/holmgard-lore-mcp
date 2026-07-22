@@ -10,7 +10,7 @@ describe('handleItemManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   it('returns guiding error for unknown action', async () => {
     const r = await handleItemManage(db(), { action: 'frobnicate' })
@@ -29,7 +29,14 @@ describe('handleItemManage', () => {
   })
 
   it('create inserts a new item', async () => {
-    const r = await handleItemManage(db(), { action: 'create', name: 'Iron Sword', type: 'weapon', weight: 3, value: 50, properties: { damage: '1d8' } })
+    const r = await handleItemManage(db(), {
+      action: 'create',
+      name: 'Iron Sword',
+      type: 'weapon',
+      weight: 3,
+      value: 50,
+      properties: { damage: '1d8' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.itemId).toBeTruthy()
@@ -83,7 +90,16 @@ describe('handleItemManage', () => {
   it('update modifies item fields', async () => {
     const c = await handleItemManage(db(), { action: 'create', name: 'Old Sword', type: 'weapon' })
     const { itemId } = JSON.parse(c.content[0].text)
-    const r = await handleItemManage(db(), { action: 'update', id: itemId, name: 'New Sword', type: 'weapon', weight: 5, value: 100, description: 'Shiny', properties: { bonus: 1 } })
+    const r = await handleItemManage(db(), {
+      action: 'update',
+      id: itemId,
+      name: 'New Sword',
+      type: 'weapon',
+      weight: 5,
+      value: 100,
+      description: 'Shiny',
+      properties: { bonus: 1 },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -109,7 +125,12 @@ describe('handleItemManage', () => {
   })
 
   it('search returns matching items', async () => {
-    await handleItemManage(db(), { action: 'create', name: 'Fire Staff', type: 'weapon', description: 'burns' })
+    await handleItemManage(db(), {
+      action: 'create',
+      name: 'Fire Staff',
+      type: 'weapon',
+      description: 'burns',
+    })
     const r = await handleItemManage(db(), { action: 'search', query: 'Fire' })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)

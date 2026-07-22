@@ -9,7 +9,12 @@ export const ALL_KEYS_INDEX = '_idx:prefix:all'
 // Maintains _idx:location:<loc>, _idx:thread:<thread>, _idx:prefix:<prefix> indexes,
 // plus the _idx:prefix:all master index.
 // Call after writing a lore entry to keep indexes in sync. Pass oldText=null on creation.
-export async function updateIndexes(c: any, key: string, newText: string, oldText: string | null): Promise<void> {
+export async function updateIndexes(
+  c: any,
+  key: string,
+  newText: string,
+  oldText: string | null,
+): Promise<void> {
   const kv = getKV(c)
   if (!kv) return
 
@@ -72,7 +77,9 @@ export async function addToIndex(c: any, indexKey: string, key: string): Promise
       keys.push(key)
       await kv.put(indexKey, JSON.stringify(keys))
     }
-  } catch (e) { console.warn(`Failed to add to index ${indexKey}`, e) }
+  } catch (e) {
+    console.warn(`Failed to add to index ${indexKey}`, e)
+  }
 }
 
 // Removes a key from an index
@@ -83,14 +90,16 @@ export async function removeFromIndex(c: any, indexKey: string, key: string): Pr
     const existing = await kv.get(indexKey)
     if (existing) {
       let keys: string[] = JSON.parse(existing)
-      keys = keys.filter(k => k !== key)
+      keys = keys.filter((k) => k !== key)
       if (keys.length > 0) {
         await kv.put(indexKey, JSON.stringify(keys))
       } else {
         await kv.delete(indexKey)
       }
     }
-  } catch (e) { console.warn(`Failed to remove from index ${indexKey}`, e) }
+  } catch (e) {
+    console.warn(`Failed to remove from index ${indexKey}`, e)
+  }
 }
 
 // Returns all lore keys via the _idx:prefix:all master index (O(1) KV read).
@@ -110,7 +119,9 @@ export async function getIndexedKeys(c: any, indexKey: string): Promise<string[]
       const keys = JSON.parse(raw)
       return Array.isArray(keys) ? keys : []
     }
-  } catch (e) { console.warn(`Failed to read index ${indexKey}`, e) }
+  } catch (e) {
+    console.warn(`Failed to read index ${indexKey}`, e)
+  }
 
   // Fallback: build filter based on index type (for test compatibility)
   if (indexKey.startsWith('_idx:prefix:')) {
@@ -120,7 +131,7 @@ export async function getIndexedKeys(c: any, indexKey: string): Promise<string[]
       return kvList(c)
     }
     const allKeys = await kvList(c)
-    return allKeys.filter(k => k.startsWith(`${prefix}:`))
+    return allKeys.filter((k) => k.startsWith(`${prefix}:`))
   }
   // Location/Thread indexes fall back to kvList + full scan (slower, but maintains compatibility)
   return []
@@ -138,7 +149,7 @@ export async function resolveIndexedEntities(
 
   if (keys.length === 0) {
     const allKeys = await kvList(c)
-    const allRaws = await Promise.all(allKeys.map(k => kvGet(c, k)))
+    const allRaws = await Promise.all(allKeys.map((k) => kvGet(c, k)))
     // Filter to entries that exist and match the target field value
     const pairs = allKeys
       .map((k, i) => ({ key: k, raw: allRaws[i] }))
@@ -147,9 +158,9 @@ export async function resolveIndexedEntities(
         const { text } = parseKvEntry(raw)
         return extractRawField(text, matchField)?.trim().toLowerCase() === matchValue.toLowerCase()
       })
-    return { keys: pairs.map(p => p.key), rawValues: pairs.map(p => p.raw) }
+    return { keys: pairs.map((p) => p.key), rawValues: pairs.map((p) => p.raw) }
   }
 
-  const rawValues = await Promise.all(keys.map(k => kvGet(c, k)))
+  const rawValues = await Promise.all(keys.map((k) => kvGet(c, k)))
   return { keys, rawValues }
 }

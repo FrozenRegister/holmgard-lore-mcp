@@ -3,19 +3,29 @@ import { describe } from './support/helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
-import { handleBiomeManage, DEFAULT_BIOMES, seedDefaultBiomes, getBiomeRegistry, effectiveMovementCost } from '@/rpg/handlers/biome-manage'
+import {
+  handleBiomeManage,
+  DEFAULT_BIOMES,
+  seedDefaultBiomes,
+  getBiomeRegistry,
+  effectiveMovementCost,
+} from '@/rpg/handlers/biome-manage'
 
 describe('handleBiomeManage', () => {
   beforeEach(async () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
   const WORLD = 'world-1'
 
   async function createWorld(id = WORLD) {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, 'Test World', 'abc123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, 'Test World', 'abc123', 100, 100, now, now)
+      .run()
   }
 
   it('returns guiding error for unknown action', async () => {
@@ -32,21 +42,34 @@ describe('handleBiomeManage', () => {
 
   it('register rejects invalid name pattern', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'Bad-Name' })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'Bad-Name',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('lowercase')
   })
 
   it('register returns not found for unknown world', async () => {
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: 'no-world', name: 'bog' })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: 'no-world',
+      name: 'bog',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('register rejects a glyph that is not exactly 1 character', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog', glyph: 'xx' })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'bog',
+      glyph: 'xx',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('1 character')
@@ -54,7 +77,12 @@ describe('handleBiomeManage', () => {
 
   it('register rejects an invalid colorHex', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog', colorHex: 'not-a-color' })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'bog',
+      colorHex: 'not-a-color',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('hex color')
@@ -62,7 +90,12 @@ describe('handleBiomeManage', () => {
 
   it('register rejects a negative movementCost (Zod schema-level .min(0))', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog', movementCost: -1 })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'bog',
+      movementCost: -1,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -83,8 +116,15 @@ describe('handleBiomeManage', () => {
   it('register creates a biome with explicit fields', async () => {
     await createWorld()
     const r = await handleBiomeManage(db(), {
-      action: 'register', worldId: WORLD, name: 'limestone_karst', glyph: 'K',
-      category: 'terrain', colorHex: '#AABBCC', movementCost: 2.5, baseThreat: 15, description: 'Jagged karst formations',
+      action: 'register',
+      worldId: WORLD,
+      name: 'limestone_karst',
+      glyph: 'K',
+      category: 'terrain',
+      colorHex: '#AABBCC',
+      movementCost: 2.5,
+      baseThreat: 15,
+      description: 'Jagged karst formations',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -145,7 +185,10 @@ describe('handleBiomeManage', () => {
 
   it('get fetches by id', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
     const r = await handleBiomeManage(db(), { action: 'get', id: created.biomeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -176,7 +219,10 @@ describe('handleBiomeManage', () => {
 
   it('update rejects an invalid glyph', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
     const r = await handleBiomeManage(db(), { action: 'update', id: created.biomeId, glyph: 'xx' })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
@@ -184,30 +230,55 @@ describe('handleBiomeManage', () => {
 
   it('update rejects an invalid colorHex', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
-    const r = await handleBiomeManage(db(), { action: 'update', id: created.biomeId, colorHex: 'nope' })
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
+    const r = await handleBiomeManage(db(), {
+      action: 'update',
+      id: created.biomeId,
+      colorHex: 'nope',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('update rejects a negative movementCost (Zod schema-level .min(0))', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
-    const r = await handleBiomeManage(db(), { action: 'update', id: created.biomeId, movementCost: -5 })
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
+    const r = await handleBiomeManage(db(), {
+      action: 'update',
+      id: created.biomeId,
+      movementCost: -5,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('update applies all fields', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
     const r = await handleBiomeManage(db(), {
-      action: 'update', id: created.biomeId, glyph: 'B', category: 'hazard',
-      colorHex: '#112233', movementCost: 4, baseThreat: 25, description: 'Sucking mud',
+      action: 'update',
+      id: created.biomeId,
+      glyph: 'B',
+      category: 'hazard',
+      colorHex: '#112233',
+      movementCost: 4,
+      baseThreat: 25,
+      description: 'Sucking mud',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    const fetched = JSON.parse((await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text,
+    )
     expect(fetched.biome.glyph).toBe('B')
     expect(fetched.biome.category).toBe('hazard')
     expect(fetched.biome.color_hex).toBe('#112233')
@@ -231,19 +302,30 @@ describe('handleBiomeManage', () => {
 
   it('delete removes an unreferenced biome', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
     const r = await handleBiomeManage(db(), { action: 'delete', id: created.biomeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    const fetched = JSON.parse((await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text,
+    )
     expect(fetched.error).toBe(true)
   })
 
   it('delete rejects removal of a biome referenced by an existing hex', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })).content[0].text)
-    await env.RPG_DB.prepare('INSERT INTO hexes (q, r, map_id, world_id, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(1, 1, 'main', WORLD, 'bog', 0, 50, 15).run()
+    const created = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' }))
+        .content[0].text,
+    )
+    await env.RPG_DB.prepare(
+      'INSERT INTO hexes (q, r, map_id, world_id, biome, elevation, moisture, temperature) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(1, 1, 'main', WORLD, 'bog', 0, 50, 15)
+      .run()
     const r = await handleBiomeManage(db(), { action: 'delete', id: created.biomeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
@@ -352,7 +434,12 @@ describe('handleBiomeManage', () => {
   it('getBiomeRegistry also exposes baseThreat, defaulting to 0 (#280)', async () => {
     await createWorld()
     await seedDefaultBiomes(env.RPG_DB, WORLD)
-    await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'limestone_karst', baseThreat: 20 })
+    await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'limestone_karst',
+      baseThreat: 20,
+    })
     const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
     expect(registry.get('forest')?.baseThreat).toBe(0)
     expect(registry.get('limestone_karst')?.baseThreat).toBe(20)
@@ -362,7 +449,11 @@ describe('handleBiomeManage', () => {
 
   it('register defaults modeCosts to an empty object', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'grass_429' })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'grass_429',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.modeCosts).toEqual({})
@@ -372,7 +463,13 @@ describe('handleBiomeManage', () => {
 
   it('register stores explicit modeCosts', async () => {
     await createWorld()
-    const r = await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'river_429', movementCost: 2.0, modeCosts: { carriage: 0, car: 0, horse: 3.0 } })
+    const r = await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'river_429',
+      movementCost: 2.0,
+      modeCosts: { carriage: 0, car: 0, horse: 3.0 },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.modeCosts).toEqual({ carriage: 0, car: 0, horse: 3.0 })
@@ -382,23 +479,47 @@ describe('handleBiomeManage', () => {
 
   it('update shallow-merges modeCosts without clobbering pre-existing modes', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), {
-      action: 'register', worldId: WORLD, name: 'river_429b', modeCosts: { carriage: 0, horse: 3.0 },
-    })).content[0].text)
-    const r = await handleBiomeManage(db(), { action: 'update', id: created.biomeId, modeCosts: { car: 0 } })
+    const created = JSON.parse(
+      (
+        await handleBiomeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'river_429b',
+          modeCosts: { carriage: 0, horse: 3.0 },
+        })
+      ).content[0].text,
+    )
+    const r = await handleBiomeManage(db(), {
+      action: 'update',
+      id: created.biomeId,
+      modeCosts: { car: 0 },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.modeCosts).toEqual({ carriage: 0, horse: 3.0, car: 0 })
-    const fetched = JSON.parse((await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleBiomeManage(db(), { action: 'get', id: created.biomeId })).content[0].text,
+    )
     expect(JSON.parse(fetched.biome.mode_costs)).toEqual({ carriage: 0, horse: 3.0, car: 0 })
   })
 
   it('update can overwrite a specific mode while leaving others intact', async () => {
     await createWorld()
-    const created = JSON.parse((await handleBiomeManage(db(), {
-      action: 'register', worldId: WORLD, name: 'heath_429', modeCosts: { horse: 2.0 },
-    })).content[0].text)
-    await handleBiomeManage(db(), { action: 'update', id: created.biomeId, modeCosts: { horse: 5.0 } })
+    const created = JSON.parse(
+      (
+        await handleBiomeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'heath_429',
+          modeCosts: { horse: 2.0 },
+        })
+      ).content[0].text,
+    )
+    await handleBiomeManage(db(), {
+      action: 'update',
+      id: created.biomeId,
+      modeCosts: { horse: 5.0 },
+    })
     const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
     expect(registry.get('heath_429')?.modeCosts).toEqual({ horse: 5.0 })
   })
@@ -416,8 +537,23 @@ describe('handleBiomeManage', () => {
   it('getBiomeRegistry tolerates a malformed mode_costs value by treating it as empty', async () => {
     await createWorld()
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind('biome-malformed', WORLD, 'malformed_429', '?', 'terrain', '#888888', 1.0, 0, 'not-json', now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        'biome-malformed',
+        WORLD,
+        'malformed_429',
+        '?',
+        'terrain',
+        '#888888',
+        1.0,
+        0,
+        'not-json',
+        now,
+        now,
+      )
+      .run()
     const registry = await getBiomeRegistry(env.RPG_DB, WORLD)
     expect(registry.get('malformed_429')?.modeCosts).toEqual({})
   })

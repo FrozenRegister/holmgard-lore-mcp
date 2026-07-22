@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -159,7 +167,7 @@ describe('resolve_interaction', () => {
       action_type: 'hunt',
     })
     expect(res.error).toBeUndefined()
-    expect(res.result.metadata.weight_1).toBeCloseTo(0.30, 5)
+    expect(res.result.metadata.weight_1).toBeCloseTo(0.3, 5)
     expect(res.result.metadata.weight_2).toBeCloseTo(0.55, 5)
     expect(res.result.metadata.weight_1_raw).toBe(30)
     expect(res.result.metadata.weight_2_raw).toBe(55)
@@ -185,7 +193,10 @@ describe('resolve_interaction', () => {
   })
 
   it('reads weights from markdown-header loose format (# Field: value)', async () => {
-    await seedKV('character:header-attacker', '# Entity: subject-alpha\nWeight-1: 0.9\nState-Level: 0')
+    await seedKV(
+      'character:header-attacker',
+      '# Entity: subject-alpha\nWeight-1: 0.9\nState-Level: 0',
+    )
     await seedKV('character:header-defender', '# Entity: prey-beta\nWeight-2: 0.1')
     const res = await callTool('entity_manage', {
       action: 'resolve_interaction',
@@ -200,7 +211,10 @@ describe('resolve_interaction', () => {
 
   it('reads float weights from bullet-style descriptor fields', async () => {
     // Format used in real character lore: - **Weight-1 (Aggression/Predator-Drive):** 0.9
-    await seedKV('character:bullet-attacker', '- **Weight-1 (Aggression/Predator-Drive):** 0.9\n**State-Level:** 0')
+    await seedKV(
+      'character:bullet-attacker',
+      '- **Weight-1 (Aggression/Predator-Drive):** 0.9\n**State-Level:** 0',
+    )
     await seedKV('character:bullet-defender', '- **Weight-2 (Resilience):** 0.1')
     const res = await callTool('entity_manage', {
       action: 'resolve_interaction',

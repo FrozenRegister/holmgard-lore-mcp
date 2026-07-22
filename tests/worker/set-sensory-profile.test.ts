@@ -3,7 +3,10 @@ import { expect, it } from 'vitest'
 
 describe('set_sensory_profile', () => {
   it('writes individual sensory fields to an entity', async () => {
-    await seedKV('character:test-subject', '**Name:** Test Subject\n**Location:** location:test-room')
+    await seedKV(
+      'character:test-subject',
+      '**Name:** Test Subject\n**Location:** location:test-room',
+    )
     const res = await callTool('entity_manage', {
       action: 'set_sensory_profile',
       entity_key: 'character:test-subject',

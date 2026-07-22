@@ -7,5 +7,7 @@ export const ok = (data: unknown): McpResponse => ({
 })
 
 export const err = (message: string, extra?: Record<string, unknown>): McpResponse => ({
-  content: [{ type: 'text' as const, text: JSON.stringify({ error: true, message, ...extra }, null, 2) }],
+  content: [
+    { type: 'text' as const, text: JSON.stringify({ error: true, message, ...extra }, null, 2) },
+  ],
 })

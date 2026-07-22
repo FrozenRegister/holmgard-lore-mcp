@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -44,7 +52,10 @@ describe('canonical fixture — entity:subject-beta (Stage-3-of-4, modified-cons
   })
 
   it('advance_state_stage reads Stage-3-of-4 from Status and advances to Stage-4-of-4 (terminal)', async () => {
-    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'entity:subject-beta' })
+    const res = await callTool('entity_manage', {
+      action: 'advance_stage',
+      entity_key: 'entity:subject-beta',
+    })
     expect(res.result.advanced).toBe(true)
     expect(res.result.old_stage).toBe(3)
     expect(res.result.new_stage).toBe(4)
@@ -64,13 +75,16 @@ describe('canonical fixture — entity:subject-beta (Stage-3-of-4, modified-cons
     })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.weight_1_raw).toBe(10)
-    expect(res.result.metadata.weight_1).toBeCloseTo(0.10, 5)
+    expect(res.result.metadata.weight_1).toBeCloseTo(0.1, 5)
     // P = (0.10 * 0.7) - (0.20 * 0.3) = 0.07 - 0.06 = 0.01
     expect(res.result.metadata.probability).toBeCloseTo(0.01, 3)
   })
 
   it('thread_tick on secondary-processing-cycle decrements subject-beta Timeline-Value', async () => {
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'secondary-processing-cycle' })
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'secondary-processing-cycle',
+    })
     expect(res.result.metadata.entities_ticked).toBe(1)
     const lore = await callTool('lore_manage', { action: 'get', query: 'entity:subject-beta' })
     expect(lore.result.text).toContain('Timeline-Value: 47')

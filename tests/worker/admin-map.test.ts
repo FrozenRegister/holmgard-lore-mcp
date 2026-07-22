@@ -22,8 +22,10 @@ describe('admin map routes', () => {
   async function createWorld(id: string) {
     const now = new Date().toISOString()
     await env.RPG_DB.prepare(
-      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(id, id, 'seed', 10, 10, now, now).run()
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, id, 'seed', 10, 10, now, now)
+      .run()
   }
 
   // ── world_id/biome/climate columns (#319, Phase 1 of #308) ──────────────────
@@ -31,11 +33,13 @@ describe('admin map routes', () => {
   innerDescribe('world_id/biome/climate columns', () => {
     it('hexes: world_id and biome default null, elevation/moisture/temperature default correctly', async () => {
       await env.RPG_DB.prepare(
-        "INSERT INTO hexes (q, r, map_id, terrain, label, data, updated_at) VALUES (0, 0, 'default-test', 'forest', 'Thornwood', '{}', datetime('now'))"
+        "INSERT INTO hexes (q, r, map_id, terrain, label, data, updated_at) VALUES (0, 0, 'default-test', 'forest', 'Thornwood', '{}', datetime('now'))",
       ).run()
-      const row = await env.RPG_DB.prepare(
-        'SELECT world_id, biome, elevation, moisture, temperature FROM hexes WHERE q = 0 AND r = 0 AND map_id = ?'
-      ).bind('default-test').first() as Record<string, unknown>
+      const row = (await env.RPG_DB.prepare(
+        'SELECT world_id, biome, elevation, moisture, temperature FROM hexes WHERE q = 0 AND r = 0 AND map_id = ?',
+      )
+        .bind('default-test')
+        .first()) as Record<string, unknown>
       expect(row.world_id).toBeNull()
       expect(row.biome).toBeNull()
       expect(row.elevation).toBe(0)
@@ -46,29 +50,35 @@ describe('admin map routes', () => {
     it('hexes: accepts a world_id referencing an existing world', async () => {
       await createWorld('world-hex-fk')
       await env.RPG_DB.prepare(
-        "INSERT INTO hexes (q, r, map_id, terrain, world_id, updated_at) VALUES (1, 1, 'fk-test', 'plains', ?, datetime('now'))"
-      ).bind('world-hex-fk').run()
-      const row = await env.RPG_DB.prepare(
-        'SELECT world_id FROM hexes WHERE q = 1 AND r = 1 AND map_id = ?'
-      ).bind('fk-test').first() as Record<string, unknown>
+        "INSERT INTO hexes (q, r, map_id, terrain, world_id, updated_at) VALUES (1, 1, 'fk-test', 'plains', ?, datetime('now'))",
+      )
+        .bind('world-hex-fk')
+        .run()
+      const row = (await env.RPG_DB.prepare(
+        'SELECT world_id FROM hexes WHERE q = 1 AND r = 1 AND map_id = ?',
+      )
+        .bind('fk-test')
+        .first()) as Record<string, unknown>
       expect(row.world_id).toBe('world-hex-fk')
     })
 
     it('hexes: rejects a world_id that does not reference an existing world', async () => {
       await expect(
         env.RPG_DB.prepare(
-          "INSERT INTO hexes (q, r, map_id, world_id, updated_at) VALUES (2, 2, 'fk-fail', 'nonexistent-world', datetime('now'))"
-        ).run()
+          "INSERT INTO hexes (q, r, map_id, world_id, updated_at) VALUES (2, 2, 'fk-fail', 'nonexistent-world', datetime('now'))",
+        ).run(),
       ).rejects.toThrow()
     })
 
     it('landmarks: world_id/region_id/zone columns default null, population defaults 0', async () => {
       await env.RPG_DB.prepare(
-        "INSERT INTO landmarks (id, map_id, q, r, name, category, updated_at) VALUES ('lm-default', 'default-test', 0, 0, 'A Landmark', 'poi', datetime('now'))"
+        "INSERT INTO landmarks (id, map_id, q, r, name, category, updated_at) VALUES ('lm-default', 'default-test', 0, 0, 'A Landmark', 'poi', datetime('now'))",
       ).run()
-      const row = await env.RPG_DB.prepare(
-        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?'
-      ).bind('lm-default').first() as Record<string, unknown>
+      const row = (await env.RPG_DB.prepare(
+        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?',
+      )
+        .bind('lm-default')
+        .first()) as Record<string, unknown>
       expect(row.world_id).toBeNull()
       expect(row.region_id).toBeNull()
       expect(row.population).toBe(0)
@@ -83,11 +93,15 @@ describe('admin map routes', () => {
       await createWorld('world-lm-fk')
       await env.RPG_DB.prepare(
         `INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank, updated_at)
-         VALUES ('lm-zone', 'fk-test', 3, 3, 'Wolf Den', 'zone', ?, 'region-1', 12, 'territory', '{"type":"circle","radius":3}', 'wolf', 4, 2, datetime('now'))`
-      ).bind('world-lm-fk').run()
-      const row = await env.RPG_DB.prepare(
-        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?'
-      ).bind('lm-zone').first() as Record<string, unknown>
+         VALUES ('lm-zone', 'fk-test', 3, 3, 'Wolf Den', 'zone', ?, 'region-1', 12, 'territory', '{"type":"circle","radius":3}', 'wolf', 4, 2, datetime('now'))`,
+      )
+        .bind('world-lm-fk')
+        .run()
+      const row = (await env.RPG_DB.prepare(
+        'SELECT world_id, region_id, population, zone_type, zone_shape, predator_ref, threat_level, dominance_rank FROM landmarks WHERE id = ?',
+      )
+        .bind('lm-zone')
+        .first()) as Record<string, unknown>
       expect(row.world_id).toBe('world-lm-fk')
       expect(row.region_id).toBe('region-1')
       expect(row.population).toBe(12)
@@ -101,8 +115,8 @@ describe('admin map routes', () => {
     it('landmarks: rejects a world_id that does not reference an existing world', async () => {
       await expect(
         env.RPG_DB.prepare(
-          "INSERT INTO landmarks (id, map_id, q, r, name, world_id, updated_at) VALUES ('lm-fk-fail', 'fk-fail', 4, 4, 'Bad Ref', 'nonexistent-world', datetime('now'))"
-        ).run()
+          "INSERT INTO landmarks (id, map_id, q, r, name, world_id, updated_at) VALUES ('lm-fk-fail', 'fk-fail', 4, 4, 'Bad Ref', 'nonexistent-world', datetime('now'))",
+        ).run(),
       ).rejects.toThrow()
     })
   })
@@ -123,7 +137,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.count).toBe(2)
     })
@@ -134,16 +148,22 @@ describe('admin map routes', () => {
 
       const res = await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'test-map', hexes: [{ q: 0, r: 0, terrain: 'mountains', name: 'Rockpeak', description: 'v2' }] },
+        {
+          mapId: 'test-map',
+          hexes: [{ q: 0, r: 0, terrain: 'mountains', name: 'Rockpeak', description: 'v2' }],
+        },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.count).toBe(1)
 
-      const row = await env.RPG_DB.prepare('SELECT terrain, label FROM hexes WHERE q=0 AND r=0 AND map_id=?')
-        .bind('test-map').first<{ terrain: string; label: string }>()
+      const row = await env.RPG_DB.prepare(
+        'SELECT terrain, label FROM hexes WHERE q=0 AND r=0 AND map_id=?',
+      )
+        .bind('test-map')
+        .first<{ terrain: string; label: string }>()
       expect(row?.terrain).toBe('mountains')
       expect(row?.label).toBe('Rockpeak')
     })
@@ -154,18 +174,26 @@ describe('admin map routes', () => {
     it('preserves an existing world_id/biome across a repeated push that omits them', async () => {
       await createWorld('world-preserve')
       await env.RPG_DB.prepare(
-        "INSERT INTO hexes (q, r, map_id, terrain, world_id, biome, updated_at) VALUES (0, 0, 'preserve-test', 'forest', ?, 'forest', datetime('now'))"
-      ).bind('world-preserve').run()
+        "INSERT INTO hexes (q, r, map_id, terrain, world_id, biome, updated_at) VALUES (0, 0, 'preserve-test', 'forest', ?, 'forest', datetime('now'))",
+      )
+        .bind('world-preserve')
+        .run()
 
       const res = await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'preserve-test', hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Renamed', description: '' }] },
+        {
+          mapId: 'preserve-test',
+          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Renamed', description: '' }],
+        },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
 
-      const row = await env.RPG_DB.prepare('SELECT world_id, biome, label FROM hexes WHERE q=0 AND r=0 AND map_id=?')
-        .bind('preserve-test').first<{ world_id: string; biome: string; label: string }>()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id, biome, label FROM hexes WHERE q=0 AND r=0 AND map_id=?',
+      )
+        .bind('preserve-test')
+        .first<{ world_id: string; biome: string; label: string }>()
       expect(row?.world_id).toBe('world-preserve')
       expect(row?.biome).toBe('forest')
       expect(row?.label).toBe('Renamed')
@@ -175,12 +203,28 @@ describe('admin map routes', () => {
       await createWorld('world-set')
       const res = await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'set-test', hexes: [{ q: 0, r: 0, terrain: 'plains', name: 'Greenfield', description: '', worldId: 'world-set', biome: 'plains' }] },
+        {
+          mapId: 'set-test',
+          hexes: [
+            {
+              q: 0,
+              r: 0,
+              terrain: 'plains',
+              name: 'Greenfield',
+              description: '',
+              worldId: 'world-set',
+              biome: 'plains',
+            },
+          ],
+        },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const row = await env.RPG_DB.prepare('SELECT world_id, biome FROM hexes WHERE q=0 AND r=0 AND map_id=?')
-        .bind('set-test').first<{ world_id: string; biome: string }>()
+      const row = await env.RPG_DB.prepare(
+        'SELECT world_id, biome FROM hexes WHERE q=0 AND r=0 AND map_id=?',
+      )
+        .bind('set-test')
+        .first<{ world_id: string; biome: string }>()
       expect(row?.world_id).toBe('world-set')
       expect(row?.biome).toBe('plains')
     })
@@ -192,15 +236,20 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const row = await env.RPG_DB.prepare('SELECT map_id FROM hexes WHERE q=2 AND r=3 AND map_id="main"')
-        .first<{ map_id: string }>()
+      const row = await env.RPG_DB.prepare(
+        'SELECT map_id FROM hexes WHERE q=2 AND r=3 AND map_id="main"',
+      ).first<{ map_id: string }>()
       expect(row?.map_id).toBe('main')
     })
 
     it('returns ok:true with count 0 for empty hexes array', async () => {
-      const res = await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes: [] }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'test-map', hexes: [] },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.count).toBe(0)
     })
@@ -208,11 +257,15 @@ describe('admin map routes', () => {
     it('stores description in the data JSON column', async () => {
       await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'test-map', hexes: [{ q: 5, r: 5, terrain: 'tundra', name: 'Frostfield', description: 'Very cold' }] },
+        {
+          mapId: 'test-map',
+          hexes: [{ q: 5, r: 5, terrain: 'tundra', name: 'Frostfield', description: 'Very cold' }],
+        },
         ADMIN_SECRET,
       )
       const row = await env.RPG_DB.prepare('SELECT data FROM hexes WHERE q=5 AND r=5 AND map_id=?')
-        .bind('test-map').first<{ data: string }>()
+        .bind('test-map')
+        .first<{ data: string }>()
       expect(JSON.parse(row!.data).description).toBe('Very cold')
     })
 
@@ -235,9 +288,13 @@ describe('admin map routes', () => {
     })
 
     it('returns 401 with wrong secret', async () => {
-      const res = await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes: [] }, 'wrong-secret')
+      const res = await mapPost(
+        '/admin/map/push-hexes',
+        { mapId: 'test-map', hexes: [] },
+        'wrong-secret',
+      )
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -256,28 +313,70 @@ describe('admin map routes', () => {
         {
           mapId: 'test-map',
           landmarks: [
-            { id: 'lm-1', q: 0, r: 0, name: 'Thornkeep', type: 'castle', notes: 'Old fortress', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: 'location:thornkeep' },
-            { id: 'lm-2', q: 1, r: 1, name: 'Saltwell', type: 'well', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
+            {
+              id: 'lm-1',
+              q: 0,
+              r: 0,
+              name: 'Thornkeep',
+              type: 'castle',
+              notes: 'Old fortress',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: 'location:thornkeep',
+            },
+            {
+              id: 'lm-2',
+              q: 1,
+              r: 1,
+              name: 'Saltwell',
+              type: 'well',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null,
+            },
           ],
         },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.count).toBe(2)
     })
 
     it('upserts landmarks on repeated push', async () => {
-      const base = { id: 'lm-1', q: 0, r: 0, name: 'Thornkeep', type: 'castle', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }
-      await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks: [base] }, ADMIN_SECRET)
+      const base = {
+        id: 'lm-1',
+        q: 0,
+        r: 0,
+        name: 'Thornkeep',
+        type: 'castle',
+        notes: '',
+        attributes: '{}',
+        linkedMapId: null,
+        visible: true,
+        linkedLoreKey: null,
+      }
+      await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'test-map', landmarks: [base] },
+        ADMIN_SECRET,
+      )
 
       const updated = { ...base, name: 'Thornkeep Ruins', type: 'ruin' }
-      const res = await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks: [updated] }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'test-map', landmarks: [updated] },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
 
       const row = await env.RPG_DB.prepare('SELECT name, category FROM landmarks WHERE id=?')
-        .bind('lm-1').first<{ name: string; category: string }>()
+        .bind('lm-1')
+        .first<{ name: string; category: string }>()
       expect(row?.name).toBe('Thornkeep Ruins')
       expect(row?.category).toBe('ruin')
     })
@@ -288,18 +387,45 @@ describe('admin map routes', () => {
       await createWorld('world-lm-preserve')
       await env.RPG_DB.prepare(
         `INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, zone_type, zone_shape, threat_level, updated_at)
-         VALUES ('lm-zone-1', 'lm-preserve-test', 0, 0, 'Wolf Den', 'zone', ?, 'territory', '{"type":"circle","radius":3}', 4, datetime('now'))`
-      ).bind('world-lm-preserve').run()
+         VALUES ('lm-zone-1', 'lm-preserve-test', 0, 0, 'Wolf Den', 'zone', ?, 'territory', '{"type":"circle","radius":3}', 4, datetime('now'))`,
+      )
+        .bind('world-lm-preserve')
+        .run()
 
       const res = await mapPost(
         '/admin/map/push-landmarks',
-        { mapId: 'lm-preserve-test', landmarks: [{ id: 'lm-zone-1', q: 0, r: 0, name: 'Wolf Den Renamed', type: 'zone', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }] },
+        {
+          mapId: 'lm-preserve-test',
+          landmarks: [
+            {
+              id: 'lm-zone-1',
+              q: 0,
+              r: 0,
+              name: 'Wolf Den Renamed',
+              type: 'zone',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null,
+            },
+          ],
+        },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
 
-      const row = await env.RPG_DB.prepare('SELECT name, world_id, zone_type, zone_shape, threat_level FROM landmarks WHERE id=?')
-        .bind('lm-zone-1').first<{ name: string; world_id: string; zone_type: string; zone_shape: string; threat_level: number }>()
+      const row = await env.RPG_DB.prepare(
+        'SELECT name, world_id, zone_type, zone_shape, threat_level FROM landmarks WHERE id=?',
+      )
+        .bind('lm-zone-1')
+        .first<{
+          name: string
+          world_id: string
+          zone_type: string
+          zone_shape: string
+          threat_level: number
+        }>()
       expect(row?.name).toBe('Wolf Den Renamed')
       expect(row?.world_id).toBe('world-lm-preserve')
       expect(row?.zone_type).toBe('territory')
@@ -310,19 +436,39 @@ describe('admin map routes', () => {
     it('defaults map_id to "main" when mapId is absent', async () => {
       const res = await mapPost(
         '/admin/map/push-landmarks',
-        { landmarks: [{ id: 'lm-x', q: 0, r: 0, name: 'Test', type: 'well', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }] },
+        {
+          landmarks: [
+            {
+              id: 'lm-x',
+              q: 0,
+              r: 0,
+              name: 'Test',
+              type: 'well',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null,
+            },
+          ],
+        },
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
       const row = await env.RPG_DB.prepare('SELECT map_id FROM landmarks WHERE id=?')
-        .bind('lm-x').first<{ map_id: string }>()
+        .bind('lm-x')
+        .first<{ map_id: string }>()
       expect(row?.map_id).toBe('main')
     })
 
     it('returns ok:true with count 0 for empty landmarks array', async () => {
-      const res = await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks: [] }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'test-map', landmarks: [] },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.count).toBe(0)
     })
@@ -332,12 +478,26 @@ describe('admin map routes', () => {
         '/admin/map/push-landmarks',
         {
           mapId: 'test-map',
-          landmarks: [{ id: 'lm-d', q: 0, r: 0, name: 'Hall', type: 'hall', notes: 'grand hall', attributes: '{"size":3}', linkedMapId: 'inner-map', visible: false, linkedLoreKey: 'location:hall' }],
+          landmarks: [
+            {
+              id: 'lm-d',
+              q: 0,
+              r: 0,
+              name: 'Hall',
+              type: 'hall',
+              notes: 'grand hall',
+              attributes: '{"size":3}',
+              linkedMapId: 'inner-map',
+              visible: false,
+              linkedLoreKey: 'location:hall',
+            },
+          ],
         },
         ADMIN_SECRET,
       )
       const row = await env.RPG_DB.prepare('SELECT data FROM landmarks WHERE id=?')
-        .bind('lm-d').first<{ data: string }>()
+        .bind('lm-d')
+        .first<{ data: string }>()
       const data = JSON.parse(row!.data)
       expect(data.notes).toBe('grand hall')
       expect(data.attributes).toBe('{"size":3}')
@@ -347,9 +507,13 @@ describe('admin map routes', () => {
     })
 
     it('returns 401 with wrong secret', async () => {
-      const res = await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks: [] }, 'wrong')
+      const res = await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'test-map', landmarks: [] },
+        'wrong',
+      )
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -368,7 +532,9 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'test-map',
-          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'Dense forest' }],
+          hexes: [
+            { q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'Dense forest' },
+          ],
         },
         ADMIN_SECRET,
       )
@@ -397,7 +563,7 @@ describe('admin map routes', () => {
       // Readback
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
 
       // Check hexes
@@ -429,7 +595,7 @@ describe('admin map routes', () => {
     it('returns empty arrays for non-existent map', async () => {
       const res = await mapPost('/internal/map-readback', { mapId: 'nonexistent' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.hexes).toEqual([])
       expect(body.landmarks).toEqual([])
@@ -445,14 +611,17 @@ describe('admin map routes', () => {
       // Push to other map
       await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'other-map', hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Otherpeak', description: '' }] },
+        {
+          mapId: 'other-map',
+          hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Otherpeak', description: '' }],
+        },
         ADMIN_SECRET,
       )
 
       // Readback main (implicit, default)
       const res = await mapPost('/internal/map-readback', { mapId: 'main' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(1)
       expect(body.hexes[0].name).toBe('Mainfield')
     })
@@ -474,7 +643,7 @@ describe('admin map routes', () => {
     it('returns 400 when mapId is missing', async () => {
       const res = await mapPost('/internal/map-readback', {}, ADMIN_SECRET)
       expect(res.status).toBe(400)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -486,14 +655,14 @@ describe('admin map routes', () => {
     it('handles hexes with missing data field', async () => {
       // Directly insert hex with minimal fields to test rowToHex defaults
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)',
       )
         .bind('test-map', 2, 3, 'mountain', 'Peak')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.q).toBe(2)
@@ -506,14 +675,14 @@ describe('admin map routes', () => {
     it('handles landmarks with all optional fields null', async () => {
       // Insert landmark with minimal fields to test defaults in rowToLandmark
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'lm-minimal', 1, 2, 'Minimal', 'ruin')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(1)
       const landmark = body.landmarks[0]
       expect(landmark.id).toBe('lm-minimal')
@@ -552,7 +721,7 @@ describe('admin map routes', () => {
 
       const readRes = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(readRes.status).toBe(200)
-      const body = await readRes.json() as Record<string, any>
+      const body = (await readRes.json()) as Record<string, any>
       expect(body.landmarks[0].visible).toBe(false)
     })
 
@@ -567,9 +736,14 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(4)
-      expect(body.hexes.map((h: any) => h.terrain).sort()).toEqual(['forest', 'mountain', 'plains', 'water'])
+      expect(body.hexes.map((h: any) => h.terrain).sort()).toEqual([
+        'forest',
+        'mountain',
+        'plains',
+        'water',
+      ])
     })
 
     it('handles multiple landmarks with different types and lore links', async () => {
@@ -603,7 +777,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(2)
 
       const capital = body.landmarks.find((l: any) => l.id === 'city1')
@@ -647,7 +821,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks[0].attributes).toEqual(JSON.stringify(complexAttributes))
       expect(JSON.parse(body.landmarks[0].attributes)).toEqual(complexAttributes)
     })
@@ -661,7 +835,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes[0].description).toBe('Has a description')
       expect(body.hexes[1].description).toBe('')
     })
@@ -691,7 +865,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks[0].linkedLoreKey).toBe('location:somewhere')
       expect(body.landmarks[0].linkedMapId).toBeNull()
     })
@@ -703,16 +877,49 @@ describe('admin map routes', () => {
         { q: 0, r: 0, terrain: 'g', name: 'H3' },
       ]
       const landmarks = [
-        { id: 'z', q: 0, r: 0, name: 'Zebra', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
-        { id: 'a', q: 0, r: 0, name: 'Apple', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
-        { id: 'm', q: 0, r: 0, name: 'Middle', type: 'city', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null },
+        {
+          id: 'z',
+          q: 0,
+          r: 0,
+          name: 'Zebra',
+          type: 'city',
+          notes: '',
+          attributes: '{}',
+          linkedMapId: null,
+          visible: true,
+          linkedLoreKey: null,
+        },
+        {
+          id: 'a',
+          q: 0,
+          r: 0,
+          name: 'Apple',
+          type: 'city',
+          notes: '',
+          attributes: '{}',
+          linkedMapId: null,
+          visible: true,
+          linkedLoreKey: null,
+        },
+        {
+          id: 'm',
+          q: 0,
+          r: 0,
+          name: 'Middle',
+          type: 'city',
+          notes: '',
+          attributes: '{}',
+          linkedMapId: null,
+          visible: true,
+          linkedLoreKey: null,
+        },
       ]
       await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
       await mapPost('/admin/map/push-landmarks', { mapId: 'test-map', landmarks }, ADMIN_SECRET)
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
 
       // Hexes should be ordered by q, r
       expect(body.hexes.map((h: any) => `${h.q},${h.r}`)).toEqual(['0,0', '0,1', '1,0'])
@@ -731,16 +938,16 @@ describe('admin map routes', () => {
               r: 20,
               terrain: 'volcanic',
               name: 'Mount Doom',
-              description: 'A very dark mountain with molten lava flows'
-            }
-          ]
+              description: 'A very dark mountain with molten lava flows',
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const hex = body.hexes[0]
       expect(hex.q).toBe(10)
       expect(hex.r).toBe(20)
@@ -753,7 +960,7 @@ describe('admin map routes', () => {
       const res = await SELF.fetch('http://example.com/internal/map-readback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapId: 'test-map' })
+        body: JSON.stringify({ mapId: 'test-map' }),
       })
       expect(res.status).toBe(401)
     })
@@ -766,14 +973,14 @@ describe('admin map routes', () => {
     it('handles landmarks without all optional fields', async () => {
       // Insert landmark with only required fields via D1
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'lm-sparse', 5, 5, 'Sparse Landmark', 'monument')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(1)
       const landmark = body.landmarks[0]
       expect(landmark.id).toBe('lm-sparse')
@@ -791,24 +998,24 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'map-a',
-          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Forest A', description: '' }]
+          hexes: [{ q: 0, r: 0, terrain: 'forest', name: 'Forest A', description: '' }],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
       await mapPost(
         '/admin/map/push-hexes',
         {
           mapId: 'map-b',
-          hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Mountain B', description: '' }]
+          hexes: [{ q: 1, r: 1, terrain: 'mountain', name: 'Mountain B', description: '' }],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const resA = await mapPost('/internal/map-readback', { mapId: 'map-a' }, ADMIN_SECRET)
       const resB = await mapPost('/internal/map-readback', { mapId: 'map-b' }, ADMIN_SECRET)
 
-      const bodyA = await resA.json() as Record<string, any>
-      const bodyB = await resB.json() as Record<string, any>
+      const bodyA = (await resA.json()) as Record<string, any>
+      const bodyB = (await resB.json()) as Record<string, any>
 
       expect(bodyA.hexes).toHaveLength(1)
       expect(bodyA.hexes[0].name).toBe('Forest A')
@@ -825,18 +1032,21 @@ describe('admin map routes', () => {
           hexes: [
             { q: 0, r: 0, terrain: 'lava', name: 'Hot', description: 'Burning hot' },
             { q: 1, r: 0, terrain: 'ice', name: 'Cold', description: '' },
-            { q: 0, r: 1, terrain: 'dirt', name: 'Plain', description: 'Nothing special' }
-          ]
+            { q: 0, r: 1, terrain: 'dirt', name: 'Plain', description: 'Nothing special' },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
 
       expect(body.hexes).toHaveLength(3)
-      expect(body.hexes.map((h: any) => [h.terrain, h.description])).toContainEqual(['lava', 'Burning hot'])
+      expect(body.hexes.map((h: any) => [h.terrain, h.description])).toContainEqual([
+        'lava',
+        'Burning hot',
+      ])
       expect(body.hexes.map((h: any) => [h.terrain, h.description])).toContainEqual(['ice', ''])
     })
 
@@ -859,7 +1069,7 @@ describe('admin map routes', () => {
               attributes: JSON.stringify(attrs1),
               linkedMapId: 'map-inner',
               visible: true,
-              linkedLoreKey: 'location:ruin1'
+              linkedLoreKey: 'location:ruin1',
             },
             {
               id: 'lm2',
@@ -871,16 +1081,16 @@ describe('admin map routes', () => {
               attributes: JSON.stringify(attrs2),
               linkedMapId: null,
               visible: false,
-              linkedLoreKey: null
-            }
-          ]
+              linkedLoreKey: null,
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
 
       expect(body.landmarks).toHaveLength(2)
       const lm1 = body.landmarks.find((l: any) => l.id === 'lm1')
@@ -898,13 +1108,13 @@ describe('admin map routes', () => {
       const hexes = [
         { q: -5, r: 3, terrain: 'swamp', name: 'NW', description: '' },
         { q: 5, r: -2, terrain: 'desert', name: 'SE', description: '' },
-        { q: 0, r: 0, terrain: 'center', name: 'Center', description: '' }
+        { q: 0, r: 0, terrain: 'center', name: 'Center', description: '' },
       ]
 
       await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
 
       expect(body.hexes).toHaveLength(3)
       const nw = body.hexes.find((h: any) => h.q === -5 && h.r === 3)
@@ -920,19 +1130,32 @@ describe('admin map routes', () => {
       await mapPost(
         '/admin/map/push-hexes',
         { mapId: 'special-map', hexes: [{ q: 0, r: 0, terrain: 'g', name: 'H', description: '' }] },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
       await mapPost(
         '/admin/map/push-landmarks',
         {
           mapId: 'special-map',
-          landmarks: [{ id: 'lm', q: 0, r: 0, name: 'L', type: 't', notes: '', attributes: '{}', linkedMapId: null, visible: true, linkedLoreKey: null }]
+          landmarks: [
+            {
+              id: 'lm',
+              q: 0,
+              r: 0,
+              name: 'L',
+              type: 't',
+              notes: '',
+              attributes: '{}',
+              linkedMapId: null,
+              visible: true,
+              linkedLoreKey: null,
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'special-map' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
 
       expect(body.hexes.every((h: any) => h.mapId === 'special-map')).toBe(true)
       expect(body.landmarks.every((l: any) => l.mapId === 'special-map')).toBe(true)
@@ -941,14 +1164,14 @@ describe('admin map routes', () => {
     it('handles null and undefined fields in hex data column', async () => {
       // Directly insert hex with null data to test default handling
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, NULL)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, NULL)',
       )
         .bind('test-map', 10, 20, 'swamp', 'NullDataHex')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(1)
       expect(body.hexes[0].q).toBe(10)
       expect(body.hexes[0].r).toBe(20)
@@ -958,14 +1181,14 @@ describe('admin map routes', () => {
     it('handles null and undefined fields in landmark data column', async () => {
       // Directly insert landmark with null data
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, NULL)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, NULL)',
       )
         .bind('test-map', 'null-lm', 5, 5, 'NullData', 'unknown')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.notes).toBe('')
@@ -991,15 +1214,15 @@ describe('admin map routes', () => {
               attributes: '{}',
               linkedMapId: null,
               visible: true,
-              linkedLoreKey: null
-            }
-          ]
+              linkedLoreKey: null,
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks[0].attributes).toBe('{}')
       expect(JSON.parse(body.landmarks[0].attributes)).toEqual({})
     })
@@ -1007,12 +1230,15 @@ describe('admin map routes', () => {
     it('handles hex with zero values for q and r', async () => {
       await mapPost(
         '/admin/map/push-hexes',
-        { mapId: 'test-map', hexes: [{ q: 0, r: 0, terrain: 'center', name: 'Origin', description: '' }] },
-        ADMIN_SECRET
+        {
+          mapId: 'test-map',
+          hexes: [{ q: 0, r: 0, terrain: 'center', name: 'Origin', description: '' }],
+        },
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const hex = body.hexes[0]
       expect(hex.q).toBe(0)
       expect(hex.r).toBe(0)
@@ -1036,15 +1262,15 @@ describe('admin map routes', () => {
               attributes: '{}',
               linkedMapId: null,
               visible: false,
-              linkedLoreKey: null
-            }
-          ]
+              linkedLoreKey: null,
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks[0]
       expect(lm.linkedMapId).toBeNull()
       expect(lm.visible).toBe(false)
@@ -1056,19 +1282,19 @@ describe('admin map routes', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Admin-Secret': ADMIN_SECRET
+          'X-Admin-Secret': ADMIN_SECRET,
         },
-        body: 'not valid json {'
+        body: 'not valid json {',
       })
       expect(res.status).toBe(400)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
     it('returns error when mapId is whitespace only', async () => {
       const res = await mapPost('/internal/map-readback', { mapId: '   ' }, ADMIN_SECRET)
       expect(res.status).toBe(400)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -1088,16 +1314,16 @@ describe('admin map routes', () => {
               attributes: '{}',
               linkedMapId: null,
               visible: true,
-              linkedLoreKey: null
-            }
-          ]
+              linkedLoreKey: null,
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'landmarks-only' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.hexes).toEqual([])
       expect(body.landmarks).toHaveLength(1)
@@ -1108,14 +1334,14 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'hexes-only',
-          hexes: [{ q: 0, r: 0, terrain: 'grass', name: 'Solo', description: '' }]
+          hexes: [{ q: 0, r: 0, terrain: 'grass', name: 'Solo', description: '' }],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'hexes-only' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
       expect(body.landmarks).toEqual([])
@@ -1124,14 +1350,14 @@ describe('admin map routes', () => {
     it('handles landmark with only required fields from DB', async () => {
       // Insert with minimal required fields via D1 to test conversion defaults
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'minimal-lm', 0, 0, 'Minimal', 'monument')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.id).toBe('minimal-lm')
@@ -1148,14 +1374,14 @@ describe('admin map routes', () => {
     it('handles hex with only required fields from DB', async () => {
       // Insert with minimal required fields via D1 to test conversion defaults
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label) VALUES (?, ?, ?, ?, ?)',
       )
         .bind('test-map', 1, 2, 'mountain', 'MinimalHex')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.q).toBe(1)
@@ -1170,20 +1396,22 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'full-hex-test',
-          hexes: [{
-            q: 10,
-            r: 20,
-            terrain: 'volcanic',
-            name: 'VolcanicPeak',
-            description: 'Smoking mountain'
-          }]
+          hexes: [
+            {
+              q: 10,
+              r: 20,
+              terrain: 'volcanic',
+              name: 'VolcanicPeak',
+              description: 'Smoking mountain',
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'full-hex-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.mapId).toBe('full-hex-test')
@@ -1199,25 +1427,27 @@ describe('admin map routes', () => {
         '/admin/map/push-landmarks',
         {
           mapId: 'full-lm-test',
-          landmarks: [{
-            id: 'full-test',
-            q: 5,
-            r: 10,
-            name: 'FullLandmark',
-            type: 'ancient-ruin',
-            notes: 'Very old structure',
-            attributes: '{"age": 1000, "preserved": true}',
-            linkedMapId: 'inner-realm',
-            visible: true,
-            linkedLoreKey: 'ruin:ancient-one'
-          }]
+          landmarks: [
+            {
+              id: 'full-test',
+              q: 5,
+              r: 10,
+              name: 'FullLandmark',
+              type: 'ancient-ruin',
+              notes: 'Very old structure',
+              attributes: '{"age": 1000, "preserved": true}',
+              linkedMapId: 'inner-realm',
+              visible: true,
+              linkedLoreKey: 'ruin:ancient-one',
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'full-lm-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.mapId).toBe('full-lm-test')
@@ -1241,14 +1471,16 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'error-test-map',
-          hexes: [{ q: 0, r: 0, terrain: 'grass', name: 'Test', description: 'Testing error handling' }]
+          hexes: [
+            { q: 0, r: 0, terrain: 'grass', name: 'Test', description: 'Testing error handling' },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'error-test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
     })
@@ -1260,15 +1492,19 @@ describe('admin map routes', () => {
           mapId: 'negative-coords',
           hexes: [
             { q: -10, r: -20, terrain: 'abyss', name: 'DeepPlace', description: 'Far below' },
-            { q: -5, r: 0, terrain: 'shadow', name: 'Twilight', description: '' }
-          ]
+            { q: -5, r: 0, terrain: 'shadow', name: 'Twilight', description: '' },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
-      const res = await mapPost('/internal/map-readback', { mapId: 'negative-coords' }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'negative-coords' },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(2)
       const deep = body.hexes.find((h: any) => h.q === -10)
       const twilight = body.hexes.find((h: any) => h.q === -5)
@@ -1281,14 +1517,22 @@ describe('admin map routes', () => {
     it('landmark with null visible becomes true default', async () => {
       // Insert landmark without visible field to test default
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-        .bind('test-map', 'null-visible', 0, 0, 'NullVis', 'point', JSON.stringify({ visible: null }))
+        .bind(
+          'test-map',
+          'null-visible',
+          0,
+          0,
+          'NullVis',
+          'point',
+          JSON.stringify({ visible: null }),
+        )
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks.find((l: any) => l.id === 'null-visible')
       expect(lm?.visible).toBe(true)
     })
@@ -1301,17 +1545,19 @@ describe('admin map routes', () => {
           hexes: [
             { q: 0, r: 0, terrain: 'origin', name: 'Zero', description: '' },
             { q: 100, r: 200, terrain: 'far', name: 'Distance', description: 'Very far away' },
-            { q: -100, r: -200, terrain: 'opposite', name: 'Opposite', description: '' }
-          ]
+            { q: -100, r: -200, terrain: 'opposite', name: 'Opposite', description: '' },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'numeric-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(3)
-      expect(body.hexes.every((h: any) => typeof h.q === 'number' && typeof h.r === 'number')).toBe(true)
+      expect(body.hexes.every((h: any) => typeof h.q === 'number' && typeof h.r === 'number')).toBe(
+        true,
+      )
     })
 
     it('landmark visible:false through complex attributes', async () => {
@@ -1320,25 +1566,27 @@ describe('admin map routes', () => {
         '/admin/map/push-landmarks',
         {
           mapId: 'complex-test',
-          landmarks: [{
-            id: 'complex',
-            q: 0,
-            r: 0,
-            name: 'Complex',
-            type: 'artifact',
-            notes: 'Test',
-            attributes: JSON.stringify(complexAttrs),
-            linkedMapId: 'nowhere',
-            visible: false,
-            linkedLoreKey: 'artifact:test'
-          }]
+          landmarks: [
+            {
+              id: 'complex',
+              q: 0,
+              r: 0,
+              name: 'Complex',
+              type: 'artifact',
+              notes: 'Test',
+              attributes: JSON.stringify(complexAttrs),
+              linkedMapId: 'nowhere',
+              visible: false,
+              linkedLoreKey: 'artifact:test',
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'complex-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks[0]
       expect(lm.visible).toBe(false)
       expect(JSON.parse(lm.attributes)).toEqual(complexAttrs)
@@ -1348,7 +1596,7 @@ describe('admin map routes', () => {
     it('handles malformed JSON data in hex gracefully', async () => {
       // Insert hex with invalid JSON in data column to trigger error handling
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('bad-json-map', 0, 0, 'grass', 'BadHex', 'not valid json {')
         .run()
@@ -1356,7 +1604,7 @@ describe('admin map routes', () => {
       const res = await mapPost('/internal/map-readback', { mapId: 'bad-json-map' }, ADMIN_SECRET)
       // Should return error due to JSON parse failure in rowToHex
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(body.error).toBeDefined()
     })
@@ -1364,15 +1612,19 @@ describe('admin map routes', () => {
     it('handles malformed JSON data in landmark gracefully', async () => {
       // Insert landmark with invalid JSON in data column
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
         .bind('bad-landmark-json', 'bad-lm', 0, 0, 'BadLandmark', 'point', 'invalid { json ')
         .run()
 
-      const res = await mapPost('/internal/map-readback', { mapId: 'bad-landmark-json' }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'bad-landmark-json' },
+        ADMIN_SECRET,
+      )
       // Should return error due to JSON parse failure in rowToLandmark
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(body.error).toBeDefined()
     })
@@ -1380,14 +1632,14 @@ describe('admin map routes', () => {
     it('handles hex with empty JSON object data column', async () => {
       // Insert hex with empty JSON object data
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 3, 4, 'empty-data', 'EmptyData', '{}')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const hex = body.hexes.find((h: any) => h.q === 3)
       expect(hex).toBeDefined()
       expect(hex?.description).toBe('')
@@ -1396,14 +1648,14 @@ describe('admin map routes', () => {
     it('handles landmark with empty JSON object data column', async () => {
       // Insert landmark with empty JSON object data
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'empty-data-lm', 5, 6, 'EmptyData', 'marker', '{}')
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks.find((l: any) => l.id === 'empty-data-lm')
       expect(lm).toBeDefined()
       expect(lm?.notes).toBe('')
@@ -1413,14 +1665,14 @@ describe('admin map routes', () => {
     it('hex with all fields explicitly set in data JSON', async () => {
       const dataJson = JSON.stringify({ description: 'Detailed description' })
       await env.RPG_DB.prepare(
-        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO hexes (map_id, q, r, terrain, label, data) VALUES (?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 7, 8, 'detailed', 'Detailed', dataJson)
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const hex = body.hexes.find((h: any) => h.q === 7)
       expect(hex?.description).toBe('Detailed description')
     })
@@ -1431,17 +1683,17 @@ describe('admin map routes', () => {
         attributes: '{"key":"value"}',
         linkedMapId: 'link-map',
         visible: false,
-        linkedLoreKey: 'key:value'
+        linkedLoreKey: 'key:value',
       })
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'detailed-lm', 9, 10, 'Detailed', 'artifact', dataJson)
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks.find((l: any) => l.id === 'detailed-lm')
       expect(lm?.notes).toBe('Detailed notes')
       expect(lm?.visible).toBe(false)
@@ -1457,15 +1709,19 @@ describe('admin map routes', () => {
           hexes: [
             { q: 0, r: 0, terrain: 'zero', name: 'Z', description: '' },
             { q: 1, r: -1, terrain: 'mixed', name: 'M', description: '' },
-            { q: -10, r: 10, terrain: 'neg', name: 'N', description: '' }
-          ]
+            { q: -10, r: 10, terrain: 'neg', name: 'N', description: '' },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
-      const res = await mapPost('/internal/map-readback', { mapId: 'numeric-type-test' }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'numeric-type-test' },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       body.hexes.forEach((h: any) => {
         expect(typeof h.q).toBe('number')
         expect(typeof h.r).toBe('number')
@@ -1477,14 +1733,14 @@ describe('admin map routes', () => {
     it('landmark visible explicitly true through conversion', async () => {
       const dataJson = JSON.stringify({ visible: true })
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'explicit-visible', 11, 12, 'VisibleTrue', 'marker', dataJson)
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks.find((l: any) => l.id === 'explicit-visible')
       expect(lm?.visible).toBe(true)
     })
@@ -1495,17 +1751,17 @@ describe('admin map routes', () => {
         attributes: '{"size":"large"}',
         linkedMapId: 'link-destination',
         visible: true,
-        linkedLoreKey: 'complete:landmark'
+        linkedLoreKey: 'complete:landmark',
       })
       await env.RPG_DB.prepare(
-        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO landmarks (map_id, id, q, r, name, category, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
         .bind('test-map', 'complete', 20, 21, 'Complete', 'temple', dataJson)
         .run()
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks.find((l: any) => l.id === 'complete')
       expect(lm?.notes).toBe('Complete landmark')
       expect(lm?.attributes).toBe('{"size":"large"}')
@@ -1519,19 +1775,19 @@ describe('admin map routes', () => {
         '/admin/map/push-hexes',
         {
           mapId: 'whitespace-test',
-          hexes: [{ q: 0, r: 0, terrain: 'g', name: 'Test', description: '' }]
+          hexes: [{ q: 0, r: 0, terrain: 'g', name: 'Test', description: '' }],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       // Test with leading/trailing whitespace that gets trimmed
       const res = await mapPost(
         '/internal/map-readback',
         { mapId: '  whitespace-test  ' },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
     })
@@ -1540,10 +1796,10 @@ describe('admin map routes', () => {
       const res = await mapPost(
         '/internal/map-readback',
         { mapId: 'nonexistent-map-for-arrays' },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(Array.isArray(body.hexes)).toBe(true)
       expect(Array.isArray(body.landmarks)).toBe(true)
       expect(body.hexes).toEqual([])
@@ -1552,11 +1808,7 @@ describe('admin map routes', () => {
 
     it('safeJson handles request body parsing correctly', async () => {
       // Valid JSON body
-      const validRes = await mapPost(
-        '/internal/map-readback',
-        { mapId: 'test' },
-        ADMIN_SECRET
-      )
+      const validRes = await mapPost('/internal/map-readback', { mapId: 'test' }, ADMIN_SECRET)
       expect([200, 400]).toContain(validRes.status) // Either valid or invalid mapId, but parsed
     })
 
@@ -1565,7 +1817,7 @@ describe('admin map routes', () => {
       const noSecretRes = await SELF.fetch('http://example.com/internal/map-readback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapId: 'test' })
+        body: JSON.stringify({ mapId: 'test' }),
       })
       expect(noSecretRes.status).toBe(401)
 
@@ -1574,7 +1826,11 @@ describe('admin map routes', () => {
       expect(wrongSecretRes.status).toBe(401)
 
       // Correct secret
-      const correctSecretRes = await mapPost('/internal/map-readback', { mapId: 'test' }, ADMIN_SECRET)
+      const correctSecretRes = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'test' },
+        ADMIN_SECRET,
+      )
       // Will be 200 (no data) or 400 (invalid mapId logic)
       expect([200, 400]).toContain(correctSecretRes.status)
     })
@@ -1585,13 +1841,13 @@ describe('admin map routes', () => {
         r: i * 2,
         terrain: `terrain-${i % 3}`,
         name: `Hex-${i}`,
-        description: `Hex number ${i}`
+        description: `Hex number ${i}`,
       }))
       await mapPost('/admin/map/push-hexes', { mapId: 'large-batch', hexes }, ADMIN_SECRET)
 
       const res = await mapPost('/internal/map-readback', { mapId: 'large-batch' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.hexes).toHaveLength(50)
       expect(body.hexes.every((h: any) => typeof h.q === 'number')).toBe(true)
       expect(body.hexes.every((h: any) => typeof h.terrain === 'string')).toBe(true)
@@ -1608,13 +1864,21 @@ describe('admin map routes', () => {
         attributes: JSON.stringify({ index: i }),
         linkedMapId: i % 2 === 0 ? `map-${i}` : null,
         visible: i % 3 !== 0,
-        linkedLoreKey: i % 4 === 0 ? `key:${i}` : null
+        linkedLoreKey: i % 4 === 0 ? `key:${i}` : null,
       }))
-      await mapPost('/admin/map/push-landmarks', { mapId: 'large-landmarks', landmarks }, ADMIN_SECRET)
+      await mapPost(
+        '/admin/map/push-landmarks',
+        { mapId: 'large-landmarks', landmarks },
+        ADMIN_SECRET,
+      )
 
-      const res = await mapPost('/internal/map-readback', { mapId: 'large-landmarks' }, ADMIN_SECRET)
+      const res = await mapPost(
+        '/internal/map-readback',
+        { mapId: 'large-landmarks' },
+        ADMIN_SECRET,
+      )
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.landmarks).toHaveLength(30)
       expect(body.landmarks.every((l: any) => typeof l.id === 'string')).toBe(true)
       expect(body.landmarks.every((l: any) => typeof l.visible === 'boolean')).toBe(true)
@@ -1625,20 +1889,20 @@ describe('admin map routes', () => {
       await mapPost(
         '/admin/map/push-hexes',
         { mapId: 'map1', hexes: [{ q: 0, r: 0, terrain: 'g', name: 'H1', description: '' }] },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
       // Create different hex data in map2
       await mapPost(
         '/admin/map/push-hexes',
         { mapId: 'map2', hexes: [{ q: 1, r: 1, terrain: 'h', name: 'H2', description: '' }] },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res1 = await mapPost('/internal/map-readback', { mapId: 'map1' }, ADMIN_SECRET)
       const res2 = await mapPost('/internal/map-readback', { mapId: 'map2' }, ADMIN_SECRET)
 
-      const body1 = await res1.json() as Record<string, any>
-      const body2 = await res2.json() as Record<string, any>
+      const body1 = (await res1.json()) as Record<string, any>
+      const body2 = (await res2.json()) as Record<string, any>
 
       expect(body1.hexes[0].name).toBe('H1')
       expect(body2.hexes[0].name).toBe('H2')
@@ -1650,11 +1914,11 @@ describe('admin map routes', () => {
       await mapPost(
         '/admin/map/push-hexes',
         { mapId: 'ok-test', hexes: [{ q: 0, r: 0, terrain: 'g', name: 'T', description: '' }] },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'ok-test' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body).toHaveProperty('ok')
       expect(body.ok).toBe(true)
       expect(body).toHaveProperty('hexes')
@@ -1666,24 +1930,26 @@ describe('admin map routes', () => {
         '/admin/map/push-landmarks',
         {
           mapId: 'structure-test',
-          landmarks: [{
-            id: 'lm-struct',
-            q: 0,
-            r: 0,
-            name: 'Struct',
-            type: 'test',
-            notes: 'Test',
-            attributes: '{}',
-            linkedMapId: 'test-map',
-            visible: true,
-            linkedLoreKey: 'test:key'
-          }]
+          landmarks: [
+            {
+              id: 'lm-struct',
+              q: 0,
+              r: 0,
+              name: 'Struct',
+              type: 'test',
+              notes: 'Test',
+              attributes: '{}',
+              linkedMapId: 'test-map',
+              visible: true,
+              linkedLoreKey: 'test:key',
+            },
+          ],
         },
-        ADMIN_SECRET
+        ADMIN_SECRET,
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'structure-test' }, ADMIN_SECRET)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const lm = body.landmarks[0]
 
       expect(lm).toHaveProperty('mapId')

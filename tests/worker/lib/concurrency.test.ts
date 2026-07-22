@@ -6,13 +6,19 @@ const c = { env } as any
 
 describe('checkForConcurrentWrite', () => {
   it('reports no conflict when the version matches', async () => {
-    await env.LORE_DB.put('test:concurrency-match', JSON.stringify({ text: 'x', meta: { version: 3 } }))
+    await env.LORE_DB.put(
+      'test:concurrency-match',
+      JSON.stringify({ text: 'x', meta: { version: 3 } }),
+    )
     const result = await checkForConcurrentWrite(c, 'test:concurrency-match', 3)
     expect(result).toEqual({ conflict: false })
   })
 
   it('reports a conflict when the version has moved on', async () => {
-    await env.LORE_DB.put('test:concurrency-mismatch', JSON.stringify({ text: 'x', meta: { version: 5 } }))
+    await env.LORE_DB.put(
+      'test:concurrency-mismatch',
+      JSON.stringify({ text: 'x', meta: { version: 5 } }),
+    )
     const result = await checkForConcurrentWrite(c, 'test:concurrency-mismatch', 3)
     expect(result).toEqual({ conflict: true, currentVersion: 5 })
   })

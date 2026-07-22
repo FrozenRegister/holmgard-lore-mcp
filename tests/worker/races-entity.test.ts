@@ -11,28 +11,37 @@ describe('Races entity reads', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  async function seedRace(overrides: Partial<{
-    id: string; name: string; description: string; is_extinct: number; parent_race_id: string | null
-  }> = {}): Promise<string> {
+  async function seedRace(
+    overrides: Partial<{
+      id: string
+      name: string
+      description: string
+      is_extinct: number
+      parent_race_id: string | null
+    }> = {},
+  ): Promise<string> {
     const id = overrides.id ?? crypto.randomUUID()
     const now = new Date().toISOString()
     await env.RPG_DB.prepare(
-      'INSERT INTO races (id, name, description, is_extinct, parent_race_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
-      id,
-      overrides.name ?? 'Elf',
-      overrides.description ?? 'A long-lived ancestry.',
-      overrides.is_extinct ?? 0,
-      overrides.parent_race_id ?? null,
-      now, now
-    ).run()
+      'INSERT INTO races (id, name, description, is_extinct, parent_race_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        id,
+        overrides.name ?? 'Elf',
+        overrides.description ?? 'A long-lived ancestry.',
+        overrides.is_extinct ?? 0,
+        overrides.parent_race_id ?? null,
+        now,
+        now,
+      )
+      .run()
     return id
   }
 
   innerDescribe('GET /api/entities/races', () => {
     it('returns an empty list when no races exist', async () => {
       const res = await SELF.fetch('http://example.com/api/entities/races')
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.races).toEqual([])
       expect(body.total).toBe(0)
     })
@@ -41,7 +50,7 @@ describe('Races entity reads', () => {
       await seedRace({ name: 'Zephyrian' })
       await seedRace({ name: 'Aelthari' })
       const res = await SELF.fetch('http://example.com/api/entities/races')
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.total).toBe(2)
       expect(body.races.map((r: any) => r.name)).toEqual(['Aelthari', 'Zephyrian'])
     })
@@ -50,7 +59,7 @@ describe('Races entity reads', () => {
       const parentId = await seedRace({ name: 'Ancient Ones', is_extinct: 1 })
       await seedRace({ name: 'Descendants', parent_race_id: parentId })
       const res = await SELF.fetch('http://example.com/api/entities/races')
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       const ancient = body.races.find((r: any) => r.name === 'Ancient Ones')
       const descendant = body.races.find((r: any) => r.name === 'Descendants')
       expect(ancient.is_extinct).toBe(true)
@@ -65,7 +74,7 @@ describe('Races entity reads', () => {
       const id = await seedRace({ name: 'Dwarf', description: 'Stout and sturdy.' })
       const res = await SELF.fetch(`http://example.com/api/entities/races/${id}`)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.race.name).toBe('Dwarf')
       expect(body.race.description).toBe('Stout and sturdy.')
     })
@@ -73,7 +82,7 @@ describe('Races entity reads', () => {
     it('returns 404 for an unknown race', async () => {
       const res = await SELF.fetch('http://example.com/api/entities/races/nonexistent')
       expect(res.status).toBe(404)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.error).toBe('Not found')
     })
   })

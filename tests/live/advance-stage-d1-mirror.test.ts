@@ -17,12 +17,21 @@ describe.skipIf(!MCP_API_KEY)('entity_manage advance_stage D1 mirror (#411)', ()
     const charRes = parseResult(await tool('character_manage', { action: 'create', name }))
     expect(charRes.success).toBe(true)
     const characterId = charRes.characterId
-    await tool('character_manage', { action: 'update', characterId, deathMode: 'staged', dissolutionStage: 2, dissolutionStages: 5 })
+    await tool('character_manage', {
+      action: 'update',
+      characterId,
+      deathMode: 'staged',
+      dissolutionStage: 2,
+      dissolutionStages: 5,
+    })
 
     const entityKey = `character:${name.toLowerCase().replace(/\s+/g, '-')}`
     await setLore(entityKey, '**State-Stage:** 2\n**State-Total:** 5\n**Stage-Timer:** 1')
 
-    const advanceRes = await tool('entity_manage', { action: 'advance_stage', entity_key: entityKey })
+    const advanceRes = await tool('entity_manage', {
+      action: 'advance_stage',
+      entity_key: entityKey,
+    })
     expect(advanceRes.result.advanced).toBe(true)
     expect(advanceRes.result.new_stage).toBe(3)
     expect(advanceRes.result.d1_mirrored).toBe(true)

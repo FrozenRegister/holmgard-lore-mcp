@@ -24,7 +24,9 @@ function main() {
     execSync('git config core.hooksPath scripts', { stdio: 'ignore' })
     console.log('setup-git-hooks: core.hooksPath set to scripts/ — local pre-commit gate is active')
   } catch (err) {
-    console.log(`setup-git-hooks: could not configure git hooks (${err.message}) — continuing anyway`)
+    console.log(
+      `setup-git-hooks: could not configure git hooks (${err.message}) — continuing anyway`,
+    )
   }
 }
 

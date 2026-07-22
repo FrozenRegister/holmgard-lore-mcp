@@ -9,11 +9,14 @@ import { expect, it } from 'vitest'
 
 const STREAMABLE_HEADERS = {
   'Content-Type': 'application/json',
-  'Accept': 'application/json, text/event-stream',
+  Accept: 'application/json, text/event-stream',
   'X-Api-Key': 'test-api-key-xyz',
 }
 
-async function mcpPost(body: unknown, extra: Record<string, string> = {}): Promise<{
+async function mcpPost(
+  body: unknown,
+  extra: Record<string, string> = {},
+): Promise<{
   status: number
   headers: Headers
   data: any
@@ -78,7 +81,7 @@ describe('DO transport — Streamable HTTP routing', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
+        Accept: 'application/json, text/event-stream',
         'X-Api-Key': 'wrong-key',
       },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
@@ -91,7 +94,7 @@ describe('DO transport — Streamable HTTP routing', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
+        Accept: 'application/json, text/event-stream',
       },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
     })
@@ -123,7 +126,7 @@ describe('DO transport — tools/list', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     const tools: Array<{ name: string }> = data.result?.tools ?? []
     expect(tools).toHaveLength(9)
@@ -133,7 +136,7 @@ describe('DO transport — tools/list', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     const names = (data.result?.tools ?? []).map((t: { name: string }) => t.name)
     // Consolidated tools
@@ -152,13 +155,13 @@ describe('WebSocket reconnect rate limit', () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'GET',
       headers: {
-        'Upgrade': 'websocket',
-        'Connection': 'Upgrade',
+        Upgrade: 'websocket',
+        Connection: 'Upgrade',
         'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
         'Sec-WebSocket-Version': '13',
         'CF-Connecting-IP': '1.2.3.1',
         'X-Api-Key': 'test-api-key-xyz',
-        'Accept': 'text/event-stream',
+        Accept: 'text/event-stream',
         'Mcp-Session-Id': 'test-session-rate-limit-1',
       },
     })
@@ -169,13 +172,13 @@ describe('WebSocket reconnect rate limit', () => {
   it('returns 429 with Retry-After after exceeding the reconnect limit', async () => {
     const ip = '1.2.3.99'
     const headers = {
-      'Upgrade': 'websocket',
-      'Connection': 'Upgrade',
+      Upgrade: 'websocket',
+      Connection: 'Upgrade',
       'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
       'Sec-WebSocket-Version': '13',
       'CF-Connecting-IP': ip,
       'X-Api-Key': 'test-api-key-xyz',
-      'Accept': 'text/event-stream',
+      Accept: 'text/event-stream',
       'Mcp-Session-Id': 'test-session-rate-limit-2',
     }
     // Fire 10 requests to exhaust the WS_RECONNECT_LIMIT (10)
@@ -186,7 +189,7 @@ describe('WebSocket reconnect rate limit', () => {
     const res = await SELF.fetch('http://example.com/mcp', { method: 'GET', headers })
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
-    const body = await res.json() as { error: string }
+    const body = (await res.json()) as { error: string }
     expect(body.error).toMatch(/reconnect/i)
   })
 
@@ -196,13 +199,13 @@ describe('WebSocket reconnect rate limit', () => {
     // is caught and swallowed. Response must still be 429 (notification is best-effort).
     const ip = '1.2.3.100'
     const headers = {
-      'Upgrade': 'websocket',
-      'Connection': 'Upgrade',
+      Upgrade: 'websocket',
+      Connection: 'Upgrade',
       'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
       'Sec-WebSocket-Version': '13',
       'CF-Connecting-IP': ip,
       'X-Api-Key': 'test-api-key-xyz',
-      'Accept': 'text/event-stream',
+      Accept: 'text/event-stream',
       'Mcp-Session-Id': 'test-session-rate-limit-3',
     }
     for (let i = 0; i < 10; i++) {
@@ -219,7 +222,7 @@ describe('WebSocket reconnect rate limit', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
+        Accept: 'application/json, text/event-stream',
         'CF-Connecting-IP': '1.2.3.99',
         'X-Api-Key': 'test-api-key-xyz',
       },
@@ -234,10 +237,12 @@ describe('DO transport — tools/call', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
-        jsonrpc: '2.0', id: 3, method: 'tools/call',
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
         params: { name: 'lore_manage', arguments: { action: 'ping' } },
       },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     expect(data.result?.content?.[0]?.text).toBe('pong')
   })
@@ -246,10 +251,12 @@ describe('DO transport — tools/call', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
-        jsonrpc: '2.0', id: 3, method: 'tools/call',
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
         params: { name: 'lore_manage', arguments: { action: 'auth_check' } },
       },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     expect(data.result?.content?.[0]?.text).toContain('Authenticated')
   })
@@ -258,10 +265,12 @@ describe('DO transport — tools/call', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
-        jsonrpc: '2.0', id: 3, method: 'tools/call',
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
         params: { name: 'lore_manage', arguments: { action: 'list' } },
       },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     // Empty KV is fine — just check for a valid tool result shape
     expect(data.result?.content).toBeDefined()
@@ -272,10 +281,12 @@ describe('DO transport — tools/call', () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       {
-        jsonrpc: '2.0', id: 3, method: 'tools/call',
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
         params: { name: 'nonexistent_tool_xyz', arguments: {} },
       },
-      { 'Mcp-Session-Id': sessionId }
+      { 'Mcp-Session-Id': sessionId },
     )
     expect(data.result?.isError).toBe(true)
   })

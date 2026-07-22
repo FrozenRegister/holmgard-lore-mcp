@@ -27,7 +27,7 @@ describe('request id propagation', () => {
       body: '{not valid json',
     })
     expect(res.status).toBe(500)
-    const body = await res.json() as Record<string, any>
+    const body = (await res.json()) as Record<string, any>
     expect(res.headers.get('X-Request-Id')).toBe('admin-trace-789')
     expect(body.request_id).toBe('admin-trace-789')
   })

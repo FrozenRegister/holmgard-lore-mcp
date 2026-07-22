@@ -16,18 +16,40 @@ describe.skipIf(!MCP_API_KEY)('rpg travel move_hex mode passability (#429)', () 
   const createdPartyIds: string[] = []
 
   afterEach(async () => {
-    await Promise.all(createdPartyIds.splice(0).map(partyId => tool('rpg', { sub: 'party', action: 'delete', id: partyId })))
-    await Promise.all(createdWorldIds.splice(0).map(worldId => tool('rpg', { sub: 'world', action: 'delete', worldId })))
+    await Promise.all(
+      createdPartyIds
+        .splice(0)
+        .map((partyId) => tool('rpg', { sub: 'party', action: 'delete', id: partyId })),
+    )
+    await Promise.all(
+      createdWorldIds
+        .splice(0)
+        .map((worldId) => tool('rpg', { sub: 'world', action: 'delete', worldId })),
+    )
   })
 
   async function createWorld() {
-    const world = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `TravelModeWorld ${uid()}`, theme: 'fantasy' }))
+    const world = parseResult(
+      await tool('rpg', {
+        sub: 'world',
+        action: 'create',
+        name: `TravelModeWorld ${uid()}`,
+        theme: 'fantasy',
+      }),
+    )
     createdWorldIds.push(world.worldId)
     return world.worldId as string
   }
 
   async function createParty(worldId: string) {
-    const party = parseResult(await tool('rpg', { sub: 'party', action: 'create', name: `Travel Mode Party ${uid()}`, worldId }))
+    const party = parseResult(
+      await tool('rpg', {
+        sub: 'party',
+        action: 'create',
+        name: `Travel Mode Party ${uid()}`,
+        worldId,
+      }),
+    )
     createdPartyIds.push(party.partyId)
     return party.partyId as string
   }
@@ -36,10 +58,23 @@ describe.skipIf(!MCP_API_KEY)('rpg travel move_hex mode passability (#429)', () 
     const worldId = await createWorld()
     const partyId = await createParty(worldId)
     const biomeName = `grass_live_${uid()}`
-    await tool('rpg', { sub: 'biome', action: 'register', worldId, name: biomeName, movementCost: 1.0 })
-    await tool('rpg', { sub: 'world_map', action: 'patch', worldId, hexes: [{ q: 11, r: 11, biome: biomeName }] })
+    await tool('rpg', {
+      sub: 'biome',
+      action: 'register',
+      worldId,
+      name: biomeName,
+      movementCost: 1.0,
+    })
+    await tool('rpg', {
+      sub: 'world_map',
+      action: 'patch',
+      worldId,
+      hexes: [{ q: 11, r: 11, biome: biomeName }],
+    })
 
-    const res = parseResult(await tool('rpg', { sub: 'travel', action: 'move_hex', partyId, worldId, toQ: 11, toR: 11 }))
+    const res = parseResult(
+      await tool('rpg', { sub: 'travel', action: 'move_hex', partyId, worldId, toQ: 11, toR: 11 }),
+    )
     expect(res.success).toBe(true)
     expect(res.mode).toBe('foot')
     expect(res.effectiveSpeedKmPerDay).toBe(5)
@@ -49,14 +84,46 @@ describe.skipIf(!MCP_API_KEY)('rpg travel move_hex mode passability (#429)', () 
     const worldId = await createWorld()
     const partyId = await createParty(worldId)
     const biomeName = `river_live_${uid()}`
-    await tool('rpg', { sub: 'biome', action: 'register', worldId, name: biomeName, movementCost: 2.0, modeCosts: { carriage: 0, car: 0 } })
-    await tool('rpg', { sub: 'world_map', action: 'patch', worldId, hexes: [{ q: 12, r: 12, biome: biomeName }] })
+    await tool('rpg', {
+      sub: 'biome',
+      action: 'register',
+      worldId,
+      name: biomeName,
+      movementCost: 2.0,
+      modeCosts: { carriage: 0, car: 0 },
+    })
+    await tool('rpg', {
+      sub: 'world_map',
+      action: 'patch',
+      worldId,
+      hexes: [{ q: 12, r: 12, biome: biomeName }],
+    })
 
-    const blocked = parseResult(await tool('rpg', { sub: 'travel', action: 'move_hex', partyId, worldId, toQ: 12, toR: 12, mode: 'car' }))
+    const blocked = parseResult(
+      await tool('rpg', {
+        sub: 'travel',
+        action: 'move_hex',
+        partyId,
+        worldId,
+        toQ: 12,
+        toR: 12,
+        mode: 'car',
+      }),
+    )
     expect(blocked.error).toBe(true)
     expect(blocked.message).toContain('impassable')
 
-    const allowed = parseResult(await tool('rpg', { sub: 'travel', action: 'move_hex', partyId, worldId, toQ: 12, toR: 12, mode: 'foot' }))
+    const allowed = parseResult(
+      await tool('rpg', {
+        sub: 'travel',
+        action: 'move_hex',
+        partyId,
+        worldId,
+        toQ: 12,
+        toR: 12,
+        mode: 'foot',
+      }),
+    )
     expect(allowed.success).toBe(true)
     expect(allowed.effectiveSpeedKmPerDay).toBe(5 / 2.0)
   })

@@ -9,18 +9,45 @@
 // CHECK constraint with no world_id column to scope against).
 
 import { z } from 'zod'
-import { matchAction, isGuidingError, formatGuidingError, CRUD_ALIASES, similarity } from '../utils/fuzzy-enum'
+import {
+  matchAction,
+  isGuidingError,
+  formatGuidingError,
+  CRUD_ALIASES,
+  similarity,
+} from '../utils/fuzzy-enum'
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const CATEGORIES = ['terrain', 'aquatic', 'urban', 'hazard', 'magical', 'coastal', 'subterranean', 'void', 'custom'] as const
-type BiomeCategory = typeof CATEGORIES[number]
+const CATEGORIES = [
+  'terrain',
+  'aquatic',
+  'urban',
+  'hazard',
+  'magical',
+  'coastal',
+  'subterranean',
+  'void',
+  'custom',
+] as const
+type BiomeCategory = (typeof CATEGORIES)[number]
 
-export const ACTIONS = ['register', 'list', 'get', 'update', 'delete', 'validate', 'seed_defaults'] as const
-type BiomeManageAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'register',
+  'list',
+  'get',
+  'update',
+  'delete',
+  'validate',
+  'seed_defaults',
+] as const
+type BiomeManageAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, BiomeManageAction> = {
   ...CRUD_ALIASES,
-  register: 'register', check: 'validate', seed: 'seed_defaults', seed_default: 'seed_defaults',
+  register: 'register',
+  check: 'validate',
+  seed: 'seed_defaults',
+  seed_default: 'seed_defaults',
 } as Record<string, BiomeManageAction>
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
@@ -55,7 +82,11 @@ const InputSchema = z.object({
 // newly-created world (world_manage.create/generate) so existing behavior
 // is preserved by default; pre-existing worlds can opt in via seed_defaults.
 export const DEFAULT_BIOMES: ReadonlyArray<{
-  name: string; glyph: string; category: BiomeCategory; colorHex: string; movementCost: number
+  name: string
+  glyph: string
+  category: BiomeCategory
+  colorHex: string
+  movementCost: number
 }> = [
   { name: 'grass', glyph: '.', category: 'terrain', colorHex: '#8B9A46', movementCost: 1.0 },
   { name: 'forest', glyph: 'T', category: 'terrain', colorHex: '#1A472A', movementCost: 1.5 },
@@ -77,26 +108,79 @@ export const DEFAULT_BIOMES: ReadonlyArray<{
 /** Idempotent — only inserts biomes not already registered for this world. Returns count actually inserted. */
 export async function seedDefaultBiomes(db: D1Database, worldId: string): Promise<number> {
   const now = new Date().toISOString()
-  const { results: existingRows } = await db.prepare('SELECT name FROM biomes WHERE world_id = ?').bind(worldId).all() as { results: Array<{ name: string }> }
-  const existing = new Set(existingRows.map(r => r.name))
+  const { results: existingRows } = (await db
+    .prepare('SELECT name FROM biomes WHERE world_id = ?')
+    .bind(worldId)
+    .all()) as { results: Array<{ name: string }> }
+  const existing = new Set(existingRows.map((r) => r.name))
   let seeded = 0
   for (const b of DEFAULT_BIOMES) {
     if (existing.has(b.name)) continue
-    await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), worldId, b.name, b.glyph, b.category, b.colorHex, b.movementCost, null, now, now).run()
+    await db
+      .prepare(
+        'INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        crypto.randomUUID(),
+        worldId,
+        b.name,
+        b.glyph,
+        b.category,
+        b.colorHex,
+        b.movementCost,
+        null,
+        now,
+        now,
+      )
+      .run()
     seeded++
   }
   return seeded
 }
 
 /** Used by world_map.ts and encounter-manage.ts. A world with zero registered biomes is treated as unrestricted (backward compatible). */
-export async function getBiomeRegistry(db: D1Database, worldId: string): Promise<Map<string, { glyph: string; colorHex: string; movementCost: number; baseThreat: number; modeCosts: Record<string, number> }>> {
-  const { results } = await db.prepare('SELECT name, glyph, color_hex, movement_cost, base_threat, mode_costs FROM biomes WHERE world_id = ?').bind(worldId).all() as
-    { results: Array<{ name: string; glyph: string; color_hex: string; movement_cost: number; base_threat: number; mode_costs: string }> }
-  return new Map(results.map(r => [r.name, {
-    glyph: r.glyph, colorHex: r.color_hex, movementCost: r.movement_cost, baseThreat: r.base_threat,
-    modeCosts: parseModeCosts(r.mode_costs),
-  }]))
+export async function getBiomeRegistry(
+  db: D1Database,
+  worldId: string,
+): Promise<
+  Map<
+    string,
+    {
+      glyph: string
+      colorHex: string
+      movementCost: number
+      baseThreat: number
+      modeCosts: Record<string, number>
+    }
+  >
+> {
+  const { results } = (await db
+    .prepare(
+      'SELECT name, glyph, color_hex, movement_cost, base_threat, mode_costs FROM biomes WHERE world_id = ?',
+    )
+    .bind(worldId)
+    .all()) as {
+    results: Array<{
+      name: string
+      glyph: string
+      color_hex: string
+      movement_cost: number
+      base_threat: number
+      mode_costs: string
+    }>
+  }
+  return new Map(
+    results.map((r) => [
+      r.name,
+      {
+        glyph: r.glyph,
+        colorHex: r.color_hex,
+        movementCost: r.movement_cost,
+        baseThreat: r.base_threat,
+        modeCosts: parseModeCosts(r.mode_costs),
+      },
+    ]),
+  )
 }
 
 // mode_costs is NOT NULL DEFAULT '{}' at the schema level — the only failure
@@ -113,14 +197,20 @@ function parseModeCosts(raw: string): Record<string, number> {
 // #429 — a mode absent from a biome's mode_costs falls back to movementCost
 // (the pre-existing, mode-agnostic cost). Shared by travel-manage.ts (move_hex
 // passability) and world-map.ts (distance/pathfind terrain cost).
-export function effectiveMovementCost(entry: { movementCost: number; modeCosts: Record<string, number> } | undefined, mode: string): number {
+export function effectiveMovementCost(
+  entry: { movementCost: number; modeCosts: Record<string, number> } | undefined,
+  mode: string,
+): number {
   if (!entry) return 1.0
   return entry.modeCosts[mode] ?? entry.movementCost
 }
 
-export async function handleBiomeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleBiomeManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -130,95 +220,211 @@ export async function handleBiomeManage(env: AppBindings, args: Record<string, u
   switch (match.matched) {
     case 'register': {
       if (!a.worldId || !a.name) return err('"worldId" and "name" are required')
-      if (!NAME_PATTERN.test(a.name)) return err('"name" must be lowercase, start with a letter, and contain only letters/digits/underscore')
+      if (!NAME_PATTERN.test(a.name))
+        return err(
+          '"name" must be lowercase, start with a letter, and contain only letters/digits/underscore',
+        )
       const world = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(a.worldId).first()
       if (!world) return err(`World not found: ${a.worldId}`)
       const glyph = a.glyph ?? '?'
       if ([...glyph].length !== 1) return err('"glyph" must be exactly 1 character')
       const colorHex = a.colorHex ?? '#888888'
-      if (!HEX_COLOR.test(colorHex)) return err('"colorHex" must be a 6-digit hex color like #A1B2C3')
+      if (!HEX_COLOR.test(colorHex))
+        return err('"colorHex" must be a 6-digit hex color like #A1B2C3')
       const movementCost = a.movementCost ?? 1.0
       const category = a.category ?? 'terrain'
       const baseThreat = a.baseThreat ?? 0
       const modeCosts = a.modeCosts ?? {}
-      const existing = await db.prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
+      const existing = await db
+        .prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?')
+        .bind(a.worldId, a.name)
+        .first()
       if (existing) return err(`Biome "${a.name}" already exists for this world`)
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.name, glyph, category, colorHex, movementCost, baseThreat, JSON.stringify(modeCosts), a.description ?? null, now, now).run()
-      return ok({ success: true, actionType: 'register', biomeId: id, worldId: a.worldId, name: a.name, glyph, category, colorHex, movementCost, baseThreat, modeCosts })
+      await db
+        .prepare(
+          'INSERT INTO biomes (id, world_id, name, glyph, category, color_hex, movement_cost, base_threat, mode_costs, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(
+          id,
+          a.worldId,
+          a.name,
+          glyph,
+          category,
+          colorHex,
+          movementCost,
+          baseThreat,
+          JSON.stringify(modeCosts),
+          a.description ?? null,
+          now,
+          now,
+        )
+        .run()
+      return ok({
+        success: true,
+        actionType: 'register',
+        biomeId: id,
+        worldId: a.worldId,
+        name: a.name,
+        glyph,
+        category,
+        colorHex,
+        movementCost,
+        baseThreat,
+        modeCosts,
+      })
     }
     case 'list': {
       if (!a.worldId) return err('"worldId" is required')
-      const { results } = await db.prepare('SELECT id, name, glyph, category, color_hex, movement_cost, base_threat, description FROM biomes WHERE world_id = ? ORDER BY name').bind(a.worldId).all()
-      return ok({ success: true, actionType: 'list', worldId: a.worldId, biomes: results, count: results.length })
+      const { results } = await db
+        .prepare(
+          'SELECT id, name, glyph, category, color_hex, movement_cost, base_threat, description FROM biomes WHERE world_id = ? ORDER BY name',
+        )
+        .bind(a.worldId)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'list',
+        worldId: a.worldId,
+        biomes: results,
+        count: results.length,
+      })
     }
     case 'get': {
       const targetId = a.id ?? a.biomeId
-      if (!targetId && !(a.worldId && a.name)) return err('"id"/"biomeId", or "worldId" + "name", is required')
+      if (!targetId && !(a.worldId && a.name))
+        return err('"id"/"biomeId", or "worldId" + "name", is required')
       const row = targetId
         ? await db.prepare('SELECT * FROM biomes WHERE id = ?').bind(targetId).first()
-        : await db.prepare('SELECT * FROM biomes WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
+        : await db
+            .prepare('SELECT * FROM biomes WHERE world_id = ? AND name = ?')
+            .bind(a.worldId, a.name)
+            .first()
       if (!row) return err('Biome not found')
       return ok({ success: true, actionType: 'get', biome: row })
     }
     case 'update': {
       const targetId = a.id ?? a.biomeId
       if (!targetId) return err('"id" or "biomeId" is required')
-      const existing = await db.prepare('SELECT id, mode_costs FROM biomes WHERE id = ?').bind(targetId).first() as { id: string; mode_costs: string } | null
+      const existing = (await db
+        .prepare('SELECT id, mode_costs FROM biomes WHERE id = ?')
+        .bind(targetId)
+        .first()) as { id: string; mode_costs: string } | null
       if (!existing) return err(`Biome not found: ${targetId}`)
       const sets: string[] = ['updated_at = ?']
       const vals: unknown[] = [now]
       if (a.glyph !== undefined) {
         if ([...a.glyph].length !== 1) return err('"glyph" must be exactly 1 character')
-        sets.push('glyph = ?'); vals.push(a.glyph)
+        sets.push('glyph = ?')
+        vals.push(a.glyph)
       }
-      if (a.category !== undefined) { sets.push('category = ?'); vals.push(a.category) }
+      if (a.category !== undefined) {
+        sets.push('category = ?')
+        vals.push(a.category)
+      }
       if (a.colorHex !== undefined) {
-        if (!HEX_COLOR.test(a.colorHex)) return err('"colorHex" must be a 6-digit hex color like #A1B2C3')
-        sets.push('color_hex = ?'); vals.push(a.colorHex)
+        if (!HEX_COLOR.test(a.colorHex))
+          return err('"colorHex" must be a 6-digit hex color like #A1B2C3')
+        sets.push('color_hex = ?')
+        vals.push(a.colorHex)
       }
-      if (a.movementCost !== undefined) { sets.push('movement_cost = ?'); vals.push(a.movementCost) }
-      if (a.baseThreat !== undefined) { sets.push('base_threat = ?'); vals.push(a.baseThreat) }
-      if (a.description !== undefined) { sets.push('description = ?'); vals.push(a.description) }
+      if (a.movementCost !== undefined) {
+        sets.push('movement_cost = ?')
+        vals.push(a.movementCost)
+      }
+      if (a.baseThreat !== undefined) {
+        sets.push('base_threat = ?')
+        vals.push(a.baseThreat)
+      }
+      if (a.description !== undefined) {
+        sets.push('description = ?')
+        vals.push(a.description)
+      }
       let mergedModeCosts: Record<string, number> | undefined
       if (a.modeCosts !== undefined) {
         mergedModeCosts = { ...parseModeCosts(existing.mode_costs), ...a.modeCosts }
-        sets.push('mode_costs = ?'); vals.push(JSON.stringify(mergedModeCosts))
+        sets.push('mode_costs = ?')
+        vals.push(JSON.stringify(mergedModeCosts))
       }
       vals.push(targetId)
-      await db.prepare(`UPDATE biomes SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
-      return ok({ success: true, actionType: 'update', biomeId: targetId, ...(mergedModeCosts ? { modeCosts: mergedModeCosts } : {}) })
+      await db
+        .prepare(`UPDATE biomes SET ${sets.join(', ')} WHERE id = ?`)
+        .bind(...vals)
+        .run()
+      return ok({
+        success: true,
+        actionType: 'update',
+        biomeId: targetId,
+        ...(mergedModeCosts ? { modeCosts: mergedModeCosts } : {}),
+      })
     }
     case 'delete': {
       const targetId = a.id ?? a.biomeId
       if (!targetId) return err('"id" or "biomeId" is required')
-      const biome = await db.prepare('SELECT world_id, name FROM biomes WHERE id = ?').bind(targetId).first() as { world_id: string; name: string } | null
+      const biome = (await db
+        .prepare('SELECT world_id, name FROM biomes WHERE id = ?')
+        .bind(targetId)
+        .first()) as { world_id: string; name: string } | null
       if (!biome) return err(`Biome not found: ${targetId}`)
       // #320 — the RPG engine's terrain grid is now the hex-axial `hexes`
       // table (unified with the map editor, #308/#319).
-      const hexRef = await db.prepare('SELECT 1 FROM hexes WHERE world_id = ? AND biome = ? LIMIT 1').bind(biome.world_id, biome.name).first()
-      if (hexRef) return err(`Cannot delete biome "${biome.name}" — referenced by existing hexes in this world`)
+      const hexRef = await db
+        .prepare('SELECT 1 FROM hexes WHERE world_id = ? AND biome = ? LIMIT 1')
+        .bind(biome.world_id, biome.name)
+        .first()
+      if (hexRef)
+        return err(
+          `Cannot delete biome "${biome.name}" — referenced by existing hexes in this world`,
+        )
       await db.prepare('DELETE FROM biomes WHERE id = ?').bind(targetId).run()
       return ok({ success: true, actionType: 'delete', biomeId: targetId })
     }
     case 'validate': {
       if (!a.worldId || !a.name) return err('"worldId" and "name" are required')
-      const row = await db.prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?').bind(a.worldId, a.name).first()
-      if (row) return ok({ success: true, actionType: 'validate', worldId: a.worldId, name: a.name, valid: true })
-      const { results } = await db.prepare('SELECT name FROM biomes WHERE world_id = ?').bind(a.worldId).all() as { results: Array<{ name: string }> }
+      const row = await db
+        .prepare('SELECT id FROM biomes WHERE world_id = ? AND name = ?')
+        .bind(a.worldId, a.name)
+        .first()
+      if (row)
+        return ok({
+          success: true,
+          actionType: 'validate',
+          worldId: a.worldId,
+          name: a.name,
+          valid: true,
+        })
+      const { results } = (await db
+        .prepare('SELECT name FROM biomes WHERE world_id = ?')
+        .bind(a.worldId)
+        .all()) as { results: Array<{ name: string }> }
       const scored = results
-        .map(r => ({ name: r.name, similarity: similarity(a.name!, r.name) }))
+        .map((r) => ({ name: r.name, similarity: similarity(a.name!, r.name) }))
         .sort((x, y) => y.similarity - x.similarity)
-      const didYouMean = scored.filter(s => s.similarity >= 0.5).slice(0, 3).map(s => s.name)
-      return ok({ success: true, actionType: 'validate', worldId: a.worldId, name: a.name, valid: false, didYouMean })
+      const didYouMean = scored
+        .filter((s) => s.similarity >= 0.5)
+        .slice(0, 3)
+        .map((s) => s.name)
+      return ok({
+        success: true,
+        actionType: 'validate',
+        worldId: a.worldId,
+        name: a.name,
+        valid: false,
+        didYouMean,
+      })
     }
     case 'seed_defaults': {
       if (!a.worldId) return err('"worldId" is required')
       const world = await db.prepare('SELECT id FROM worlds WHERE id = ?').bind(a.worldId).first()
       if (!world) return err(`World not found: ${a.worldId}`)
       const seeded = await seedDefaultBiomes(db, a.worldId)
-      return ok({ success: true, actionType: 'seed_defaults', worldId: a.worldId, seeded, totalDefaults: DEFAULT_BIOMES.length })
+      return ok({
+        success: true,
+        actionType: 'seed_defaults',
+        worldId: a.worldId,
+        seeded,
+        totalDefaults: DEFAULT_BIOMES.length,
+      })
     }
   }
 }

@@ -9,7 +9,12 @@ import type { AppBindings } from '../../types'
 
 const InputSchema = z.object({
   toolName: z.string().min(1).describe('Exact tool name to retrieve the schema for'),
-  sub: z.string().optional().describe('For the "rpg" tool only — the sub-system to get the schema for (e.g. "corpse", "combat", "quest"). Returns that sub\'s input schema.'),
+  sub: z
+    .string()
+    .optional()
+    .describe(
+      'For the "rpg" tool only — the sub-system to get the schema for (e.g. "corpse", "combat", "quest"). Returns that sub\'s input schema.',
+    ),
 })
 
 interface ToolSchema {
@@ -40,9 +45,14 @@ export function registerRpgAlias(aliasSub: string, canonicalSub: string): void {
   _rpgAliasIndex[aliasSub] = canonicalSub
 }
 
-export function setSchemaIndex(tools: Array<{ name: string; inputSchema: unknown; description: string }>) {
+export function setSchemaIndex(
+  tools: Array<{ name: string; inputSchema: unknown; description: string }>,
+) {
   _schemaIndex = Object.fromEntries(
-    tools.map(t => [t.name, { name: t.name, description: t.description, inputSchema: t.inputSchema }]),
+    tools.map((t) => [
+      t.name,
+      { name: t.name, description: t.description, inputSchema: t.inputSchema },
+    ]),
   )
 }
 
@@ -66,9 +76,12 @@ export function registerRpgSubSchema(
   }
 }
 
-export async function handleLoadToolSchema(_env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleLoadToolSchema(
+  _env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   if (!_schemaIndex) return err('Schema index not yet initialized')
 
   const { toolName, sub } = parsed.data
@@ -83,11 +96,18 @@ export async function handleLoadToolSchema(_env: AppBindings, args: Record<strin
     const suggestions = findCloseMatches(sub, allSubs, 0.3, 5)
     if (suggestions.length > 0) {
       return err(
-        `RPG sub "${sub}" not found in schema index. Did you mean: ${suggestions.map(s => `${s.name} (${(s.score * 100).toFixed(0)}%)`).join(', ')}?`,
-        { toolName, sub, didYouMean: suggestions.map(s => ({ name: s.name, confidence: s.score })) },
+        `RPG sub "${sub}" not found in schema index. Did you mean: ${suggestions.map((s) => `${s.name} (${(s.score * 100).toFixed(0)}%)`).join(', ')}?`,
+        {
+          toolName,
+          sub,
+          didYouMean: suggestions.map((s) => ({ name: s.name, confidence: s.score })),
+        },
       )
     }
-    return err(`RPG sub "${sub}" not found in schema index. Use load_tool_schema({ toolName: "search_tools", query: "corpse" }) or check rpg.definitions.ts for the full sub list.`, { toolName, sub })
+    return err(
+      `RPG sub "${sub}" not found in schema index. Use load_tool_schema({ toolName: "search_tools", query: "corpse" }) or check rpg.definitions.ts for the full sub list.`,
+      { toolName, sub },
+    )
   }
 
   const schema = _schemaIndex[toolName]
@@ -107,15 +127,14 @@ export async function handleLoadToolSchema(_env: AppBindings, args: Record<strin
   const suggestions = findCloseMatches(toolName, allNames, 0.5, 5)
 
   if (suggestions.length === 0) {
-    return err(
-      `Tool "${toolName}" not found. Use search_tools to discover available tools.`,
-      { toolName, availableToolCount: allNames.length },
-    )
+    return err(`Tool "${toolName}" not found. Use search_tools to discover available tools.`, {
+      toolName,
+      availableToolCount: allNames.length,
+    })
   }
 
   return err(
-    `Tool "${toolName}" not found. Did you mean: ${suggestions.map(s => `${s.name} (${(s.score * 100).toFixed(0)}%)`).join(', ')}?`,
-    { toolName, didYouMean: suggestions.map(s => ({ name: s.name, confidence: s.score })) },
+    `Tool "${toolName}" not found. Did you mean: ${suggestions.map((s) => `${s.name} (${(s.score * 100).toFixed(0)}%)`).join(', ')}?`,
+    { toolName, didYouMean: suggestions.map((s) => ({ name: s.name, confidence: s.score })) },
   )
 }
-

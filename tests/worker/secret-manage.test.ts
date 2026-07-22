@@ -10,12 +10,16 @@ describe('handleSecretManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
   const WORLD = 'world-1'
 
   beforeEach(async () => {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(WORLD, WORLD, 'seed', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(WORLD, WORLD, 'seed', 100, 100, now, now)
+      .run()
   })
 
   it('returns guiding error for unknown action', async () => {
@@ -31,9 +35,15 @@ describe('handleSecretManage', () => {
 
   it('create inserts a new secret', async () => {
     const r = await handleSecretManage(db(), {
-      action: 'create', worldId: WORLD, name: 'Hidden Vault',
-      publicDescription: 'A mysterious door', secretDescription: 'Contains gold', sensitivity: 'high',
-      revealConditions: ['Find the key'], linkedEntityId: 'loc-1', linkedEntityType: 'location',
+      action: 'create',
+      worldId: WORLD,
+      name: 'Hidden Vault',
+      publicDescription: 'A mysterious door',
+      secretDescription: 'Contains gold',
+      sensitivity: 'high',
+      revealConditions: ['Find the key'],
+      linkedEntityId: 'loc-1',
+      linkedEntityType: 'location',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -53,7 +63,13 @@ describe('handleSecretManage', () => {
   })
 
   it('get returns secret with parsed arrays', async () => {
-    const c = await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'Key', publicDescription: 'A key', secretDescription: 'Opens vault' })
+    const c = await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'Key',
+      publicDescription: 'A key',
+      secretDescription: 'Opens vault',
+    })
     const { secretId } = JSON.parse(c.content[0].text)
     const r = await handleSecretManage(db(), { action: 'get', id: secretId })
     const body = JSON.parse(r.content[0].text)
@@ -62,7 +78,13 @@ describe('handleSecretManage', () => {
   })
 
   it('list returns secrets for world', async () => {
-    await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'S1', publicDescription: 'p', secretDescription: 's' })
+    await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'S1',
+      publicDescription: 'p',
+      secretDescription: 's',
+    })
     const r = await handleSecretManage(db(), { action: 'list', worldId: WORLD })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -70,13 +92,21 @@ describe('handleSecretManage', () => {
   })
 
   it('list filters by revealed status', async () => {
-    const r = await handleSecretManage(db(), { action: 'list', worldId: WORLD, filter: { revealed: false } })
+    const r = await handleSecretManage(db(), {
+      action: 'list',
+      worldId: WORLD,
+      filter: { revealed: false },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
 
   it('list filters by linkedEntityId', async () => {
-    const r = await handleSecretManage(db(), { action: 'list', worldId: WORLD, filter: { linkedEntityId: 'loc-1' } })
+    const r = await handleSecretManage(db(), {
+      action: 'list',
+      worldId: WORLD,
+      filter: { linkedEntityId: 'loc-1' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -88,9 +118,23 @@ describe('handleSecretManage', () => {
   })
 
   it('update modifies secret fields', async () => {
-    const c = await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'Old', publicDescription: 'p', secretDescription: 's' })
+    const c = await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'Old',
+      publicDescription: 'p',
+      secretDescription: 's',
+    })
     const { secretId } = JSON.parse(c.content[0].text)
-    const r = await handleSecretManage(db(), { action: 'update', id: secretId, name: 'New', publicDescription: 'np', secretDescription: 'ns', sensitivity: 'low', revealConditions: ['cond'] })
+    const r = await handleSecretManage(db(), {
+      action: 'update',
+      id: secretId,
+      name: 'New',
+      publicDescription: 'np',
+      secretDescription: 'ns',
+      sensitivity: 'low',
+      revealConditions: ['cond'],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -102,7 +146,13 @@ describe('handleSecretManage', () => {
   })
 
   it('delete removes secret', async () => {
-    const c = await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'Del', publicDescription: 'p', secretDescription: 's' })
+    const c = await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'Del',
+      publicDescription: 'p',
+      secretDescription: 's',
+    })
     const { secretId } = JSON.parse(c.content[0].text)
     const r = await handleSecretManage(db(), { action: 'delete', id: secretId })
     const body = JSON.parse(r.content[0].text)
@@ -116,9 +166,19 @@ describe('handleSecretManage', () => {
   })
 
   it('reveal marks secret as revealed', async () => {
-    const c = await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'Rev', publicDescription: 'p', secretDescription: 's' })
+    const c = await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'Rev',
+      publicDescription: 'p',
+      secretDescription: 's',
+    })
     const { secretId } = JSON.parse(c.content[0].text)
-    const r = await handleSecretManage(db(), { action: 'reveal', id: secretId, revealedBy: 'player-1' })
+    const r = await handleSecretManage(db(), {
+      action: 'reveal',
+      id: secretId,
+      revealedBy: 'player-1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.revealedAt).toBeTruthy()
@@ -137,7 +197,14 @@ describe('handleSecretManage', () => {
   })
 
   it('check_reveal returns reveal conditions', async () => {
-    const c = await handleSecretManage(db(), { action: 'create', worldId: WORLD, name: 'Chk', publicDescription: 'p', secretDescription: 's', revealConditions: ['cond-a'] })
+    const c = await handleSecretManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      name: 'Chk',
+      publicDescription: 'p',
+      secretDescription: 's',
+      revealConditions: ['cond-a'],
+    })
     const { secretId } = JSON.parse(c.content[0].text)
     const r = await handleSecretManage(db(), { action: 'check_reveal', id: secretId })
     const body = JSON.parse(r.content[0].text)

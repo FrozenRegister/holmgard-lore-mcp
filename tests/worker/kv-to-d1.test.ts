@@ -7,7 +7,7 @@ import { parseKvCharToD1, formatD1CharToLore } from '@/rpg/utils/kv-to-d1'
 
 const ELOWEN_LORE = [
   '# Character:Elowen "Lo" Thorne',
-  '**Alias:** Lo (Zira\'s nickname for her), The Sky-Princess (circus moniker)',
+  "**Alias:** Lo (Zira's nickname for her), The Sky-Princess (circus moniker)",
   '**Age:** 25',
   '**Gender:** Female',
   '**Orientation:** Homosexual',
@@ -175,10 +175,19 @@ describe('formatD1CharToLore', () => {
       name: 'Test Character',
       alias: 'TC',
       age: '30',
-      hp: 16, max_hp: 16, ac: 12, level: 2, xp: 300,
-      character_class: 'Rogue', race: 'Elf',
-      weight_1: 0.6, weight_2: 0.4, perception_float: 0.7,
-      thread_id: 'thread:test', state_stage: 2, state_stage_timer: 0,
+      hp: 16,
+      max_hp: 16,
+      ac: 12,
+      level: 2,
+      xp: 300,
+      character_class: 'Rogue',
+      race: 'Elf',
+      weight_1: 0.6,
+      weight_2: 0.4,
+      perception_float: 0.7,
+      thread_id: 'thread:test',
+      state_stage: 2,
+      state_stage_timer: 0,
       conditions: '["Stealthy"]',
       stats: '{"str":8,"dex":16,"con":10,"int":12,"wis":10,"cha":14}',
       resource_pools: '{}',
@@ -198,17 +207,32 @@ describe('formatD1CharToLore', () => {
   // #226 Phase 2 — co-habitation host_body_id/active fields
   it('renders Host-Body and Active: false lines when set, omits them otherwise', () => {
     const passenger = {
-      name: 'Bellona Keel', hp: 10, max_hp: 10, ac: 12, level: 3,
-      character_class: 'Fighter', race: 'Human', stats: '{}', resource_pools: '{}',
-      host_body_id: 'char-kat-sloane', active: 0,
+      name: 'Bellona Keel',
+      hp: 10,
+      max_hp: 10,
+      ac: 12,
+      level: 3,
+      character_class: 'Fighter',
+      race: 'Human',
+      stats: '{}',
+      resource_pools: '{}',
+      host_body_id: 'char-kat-sloane',
+      active: 0,
     }
     const passengerText = formatD1CharToLore(passenger as Record<string, unknown>)
     expect(passengerText).toContain('**Host-Body:** char-kat-sloane')
     expect(passengerText).toContain('**Active:** false')
 
     const ordinary = {
-      name: 'Ordinary Villager', hp: 10, max_hp: 10, ac: 10, level: 1,
-      character_class: 'Commoner', race: 'Human', stats: '{}', resource_pools: '{}',
+      name: 'Ordinary Villager',
+      hp: 10,
+      max_hp: 10,
+      ac: 10,
+      level: 1,
+      character_class: 'Commoner',
+      race: 'Human',
+      stats: '{}',
+      resource_pools: '{}',
       active: 1,
     }
     const ordinaryText = formatD1CharToLore(ordinary as Record<string, unknown>)

@@ -54,13 +54,28 @@ function applyMigrations() {
 }
 
 function appliedMigrationNames() {
-  const out = run(['d1', 'execute', DB, '--local', '--json', '--command', 'SELECT name FROM d1_migrations'])
+  const out = run([
+    'd1',
+    'execute',
+    DB,
+    '--local',
+    '--json',
+    '--command',
+    'SELECT name FROM d1_migrations',
+  ])
   const parsed = JSON.parse(out)
   return new Set(parsed[0].results.map((r) => r.name))
 }
 
 function markMigrationApplied(name) {
-  run(['d1', 'execute', DB, '--local', '--command', `INSERT INTO d1_migrations (name) VALUES ('${name}')`])
+  run([
+    'd1',
+    'execute',
+    DB,
+    '--local',
+    '--command',
+    `INSERT INTO d1_migrations (name) VALUES ('${name}')`,
+  ])
 }
 
 function main() {
@@ -79,9 +94,8 @@ function main() {
       return
     }
 
-    const isBenignConflict = /duplicate column name|table .* already exists|index .* already exists/i.test(
-      result.text,
-    )
+    const isBenignConflict =
+      /duplicate column name|table .* already exists|index .* already exists/i.test(result.text)
     if (!isBenignConflict) {
       console.error('\nMigration apply failed with an unexpected error — not auto-skipping.')
       process.exit(1)

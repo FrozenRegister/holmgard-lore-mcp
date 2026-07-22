@@ -50,7 +50,11 @@ describe('lore_manage invalid params include schema_hint and example', () => {
   })
 
   it('append_section: missing section', async () => {
-    const res = await callTool('lore_manage', { action: 'append_section', key: 'character:a', text: 'hello' })
+    const res = await callTool('lore_manage', {
+      action: 'append_section',
+      key: 'character:a',
+      text: 'hello',
+    })
     expectSchemaHintError(res)
   })
 

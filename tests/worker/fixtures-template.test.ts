@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -32,7 +40,10 @@ describe('canonical fixture — template:standard-subject as generate_entity arc
   })
 
   it('generate_entity creates a new entity from the template archetype', async () => {
-    const res = await callTool('entity_manage', { action: 'generate', archetype_key: 'template:standard-subject' })
+    const res = await callTool('entity_manage', {
+      action: 'generate',
+      archetype_key: 'template:standard-subject',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.entity_key).toMatch(/^entity:standard-subject-\d+$/)
     expect(res.result.entity_text).toContain('Weight-1')
@@ -40,7 +51,10 @@ describe('canonical fixture — template:standard-subject as generate_entity arc
   })
 
   it('generated entity is retrievable and inherits integer weight values', async () => {
-    const gen = await callTool('entity_manage', { action: 'generate', archetype_key: 'template:standard-subject' })
+    const gen = await callTool('entity_manage', {
+      action: 'generate',
+      archetype_key: 'template:standard-subject',
+    })
     const lore = await callTool('lore_manage', { action: 'get', query: gen.result.entity_key })
     expect(lore.error).toBeUndefined()
     expect(lore.result.text).toContain('30')

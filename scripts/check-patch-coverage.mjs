@@ -93,7 +93,11 @@ function main() {
 
     const entry = findCoverageEntry(coverage, relPath)
     if (!entry) {
-      failures.push({ file: relPath, lines: [...lines].sort((a, b) => a - b), reason: 'no coverage data — file not tracked by any test' })
+      failures.push({
+        file: relPath,
+        lines: [...lines].sort((a, b) => a - b),
+        reason: 'no coverage data — file not tracked by any test',
+      })
       continue
     }
 
@@ -110,12 +114,18 @@ function main() {
   }
 
   if (failures.length > 0) {
-    console.error('\n✗ Patch coverage failed — the following changed lines are not covered by tests:\n')
+    console.error(
+      '\n✗ Patch coverage failed — the following changed lines are not covered by tests:\n',
+    )
     for (const f of failures) {
       const lineWord = f.lines.length > 1 ? 'lines' : 'line'
-      console.error(`  ${f.file}: ${lineWord} ${f.lines.join(', ')}${f.reason ? ` (${f.reason})` : ''}`)
+      console.error(
+        `  ${f.file}: ${lineWord} ${f.lines.join(', ')}${f.reason ? ` (${f.reason})` : ''}`,
+      )
     }
-    console.error(`\n${failures.length} file(s) with uncovered changed lines. This repo requires 100% patch coverage — see CLAUDE.md.\n`)
+    console.error(
+      `\n${failures.length} file(s) with uncovered changed lines. This repo requires 100% patch coverage — see CLAUDE.md.\n`,
+    )
     writeReport({ passed: false, baseRef, checkedFiles: changed.size, failures })
     process.exit(1)
   }

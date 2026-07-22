@@ -10,7 +10,7 @@ describe('handleNpcManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   it('returns guiding error for unknown action', async () => {
     const r = await handleNpcManage(db(), { action: 'zap' })
@@ -24,7 +24,16 @@ describe('handleNpcManage', () => {
   })
 
   it('create inserts a new NPC', async () => {
-    const r = await handleNpcManage(db(), { action: 'create', name: 'Innkeeper', class: 'Commoner', race: 'Human', level: 1, hp: 8, maxHp: 8, stats: { str: 10, dex: 10, con: 12, int: 11, wis: 13, cha: 14 } })
+    const r = await handleNpcManage(db(), {
+      action: 'create',
+      name: 'Innkeeper',
+      class: 'Commoner',
+      race: 'Human',
+      level: 1,
+      hp: 8,
+      maxHp: 8,
+      stats: { str: 10, dex: 10, con: 12, int: 11, wis: 13, cha: 14 },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.name).toBe('Innkeeper')
@@ -58,7 +67,11 @@ describe('handleNpcManage', () => {
   })
 
   it('get_relationship returns null for no existing relationship', async () => {
-    const r = await handleNpcManage(db(), { action: 'get_relationship', characterId: 'c1', npcId: 'n1' })
+    const r = await handleNpcManage(db(), {
+      action: 'get_relationship',
+      characterId: 'c1',
+      npcId: 'n1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.relationship).toBeNull()
@@ -71,27 +84,57 @@ describe('handleNpcManage', () => {
   })
 
   it('update_relationship creates new relationship', async () => {
-    const r = await handleNpcManage(db(), { action: 'update_relationship', characterId: 'c1', npcId: 'n1', familiarity: 'friend', disposition: 'friendly', notes: 'Old pal' })
+    const r = await handleNpcManage(db(), {
+      action: 'update_relationship',
+      characterId: 'c1',
+      npcId: 'n1',
+      familiarity: 'friend',
+      disposition: 'friendly',
+      notes: 'Old pal',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.familiarity).toBe('friend')
   })
 
   it('update_relationship updates existing relationship', async () => {
-    await handleNpcManage(db(), { action: 'update_relationship', characterId: 'c2', npcId: 'n2', familiarity: 'stranger' })
-    const r = await handleNpcManage(db(), { action: 'update_relationship', characterId: 'c2', npcId: 'n2', familiarity: 'acquaintance', disposition: 'neutral', notes: 'Met again' })
+    await handleNpcManage(db(), {
+      action: 'update_relationship',
+      characterId: 'c2',
+      npcId: 'n2',
+      familiarity: 'stranger',
+    })
+    const r = await handleNpcManage(db(), {
+      action: 'update_relationship',
+      characterId: 'c2',
+      npcId: 'n2',
+      familiarity: 'acquaintance',
+      disposition: 'neutral',
+      notes: 'Met again',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
 
   it('record_memory requires characterId, npcId, summary', async () => {
-    const r = await handleNpcManage(db(), { action: 'record_memory', characterId: 'c1', npcId: 'n1' })
+    const r = await handleNpcManage(db(), {
+      action: 'record_memory',
+      characterId: 'c1',
+      npcId: 'n1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('record_memory stores conversation memory', async () => {
-    const r = await handleNpcManage(db(), { action: 'record_memory', characterId: 'c1', npcId: 'n1', summary: 'Talked about the quest', importance: 'high', topics: ['quest', 'dragon'] })
+    const r = await handleNpcManage(db(), {
+      action: 'record_memory',
+      characterId: 'c1',
+      npcId: 'n1',
+      summary: 'Talked about the quest',
+      importance: 'high',
+      topics: ['quest', 'dragon'],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -103,7 +146,13 @@ describe('handleNpcManage', () => {
   })
 
   it('get_history returns memories', async () => {
-    await handleNpcManage(db(), { action: 'record_memory', characterId: 'c3', npcId: 'n3', summary: 'First meeting', importance: 'low' })
+    await handleNpcManage(db(), {
+      action: 'record_memory',
+      characterId: 'c3',
+      npcId: 'n3',
+      summary: 'First meeting',
+      importance: 'low',
+    })
     const r = await handleNpcManage(db(), { action: 'get_history', characterId: 'c3', npcId: 'n3' })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -151,7 +200,12 @@ describe('handleNpcManage', () => {
   })
 
   it('interact records interaction', async () => {
-    const r = await handleNpcManage(db(), { action: 'interact', characterId: 'c5', npcId: 'n5', context: 'Bought a potion' })
+    const r = await handleNpcManage(db(), {
+      action: 'interact',
+      characterId: 'c5',
+      npcId: 'n5',
+      context: 'Bought a potion',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.interactionRecorded).toBe(true)
@@ -207,9 +261,19 @@ describe('handleNpcManage', () => {
   })
 
   it('update modifies NPC state', async () => {
-    const c = await handleNpcManage(db(), { action: 'create', name: 'Rogue', disposition: 'neutral' })
+    const c = await handleNpcManage(db(), {
+      action: 'create',
+      name: 'Rogue',
+      disposition: 'neutral',
+    })
     const { characterId } = JSON.parse(c.content[0].text)
-    const r = await handleNpcManage(db(), { action: 'update', npcId: characterId, name: 'Master Rogue', disposition: 'friendly', hp: 15 })
+    const r = await handleNpcManage(db(), {
+      action: 'update',
+      npcId: characterId,
+      name: 'Master Rogue',
+      disposition: 'friendly',
+      hp: 15,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.updated).toBeGreaterThan(0)
@@ -224,7 +288,11 @@ describe('handleNpcManage', () => {
   it('assign_to_location places NPC at location_key', async () => {
     const c = await handleNpcManage(db(), { action: 'create', name: 'Guard' })
     const { characterId } = JSON.parse(c.content[0].text)
-    const r = await handleNpcManage(db(), { action: 'assign_to_location', npcId: characterId, locationKey: 'location:tavern' })
+    const r = await handleNpcManage(db(), {
+      action: 'assign_to_location',
+      npcId: characterId,
+      locationKey: 'location:tavern',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.locationKey).toBe('location:tavern')
@@ -233,7 +301,12 @@ describe('handleNpcManage', () => {
   it('assign_to_location places NPC at hex coordinates', async () => {
     const c = await handleNpcManage(db(), { action: 'create', name: 'Scout' })
     const { characterId } = JSON.parse(c.content[0].text)
-    const r = await handleNpcManage(db(), { action: 'assign_to_location', npcId: characterId, hexQ: 5, hexR: 7 })
+    const r = await handleNpcManage(db(), {
+      action: 'assign_to_location',
+      npcId: characterId,
+      hexQ: 5,
+      hexR: 7,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.hexQ).toBe(5)

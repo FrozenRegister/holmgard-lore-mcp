@@ -3,19 +3,28 @@ import { describe } from './support/helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
-import { handleZoneTypeManage, DEFAULT_ZONE_TYPES, seedDefaultZoneTypes, getZoneTypeRegistry } from '@/rpg/handlers/zone-type-manage'
+import {
+  handleZoneTypeManage,
+  DEFAULT_ZONE_TYPES,
+  seedDefaultZoneTypes,
+  getZoneTypeRegistry,
+} from '@/rpg/handlers/zone-type-manage'
 
 describe('handleZoneTypeManage', () => {
   beforeEach(async () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
   const WORLD = 'world-1'
 
   async function createWorld(id = WORLD) {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, 'Test World', 'abc123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, 'Test World', 'abc123', 100, 100, now, now)
+      .run()
   }
 
   it('returns guiding error for unknown action', async () => {
@@ -32,21 +41,34 @@ describe('handleZoneTypeManage', () => {
 
   it('register rejects invalid name pattern', async () => {
     await createWorld()
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'Bad-Name' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'Bad-Name',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('lowercase')
   })
 
   it('register returns not found for unknown world', async () => {
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: 'no-world', name: 'sacred_ground' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: 'no-world',
+      name: 'sacred_ground',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('register rejects a glyph that is not exactly 1 character', async () => {
     await createWorld()
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground', glyph: 'xx' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+      glyph: 'xx',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('1 character')
@@ -54,7 +76,12 @@ describe('handleZoneTypeManage', () => {
 
   it('register accepts a null glyph (informational-only, no overlay)', async () => {
     await createWorld()
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground', glyph: null })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+      glyph: null,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.glyph).toBeNull()
@@ -62,7 +89,12 @@ describe('handleZoneTypeManage', () => {
 
   it('register rejects an invalid colorHex', async () => {
     await createWorld()
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground', colorHex: 'not-a-color' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+      colorHex: 'not-a-color',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('hex color')
@@ -70,7 +102,11 @@ describe('handleZoneTypeManage', () => {
 
   it('register creates a zone type with null defaults', async () => {
     await createWorld()
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.glyph).toBeNull()
@@ -81,7 +117,12 @@ describe('handleZoneTypeManage', () => {
   it('register creates a zone type with explicit fields', async () => {
     await createWorld()
     const r = await handleZoneTypeManage(db(), {
-      action: 'register', worldId: WORLD, name: 'sacred_ground', glyph: 'S', colorHex: '#AABBCC', description: 'A shrine site',
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+      glyph: 'S',
+      colorHex: '#AABBCC',
+      description: 'A shrine site',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -92,7 +133,11 @@ describe('handleZoneTypeManage', () => {
   it('register rejects a duplicate name for the same world', async () => {
     await createWorld()
     await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
-    const r = await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'sacred_ground',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('already exists')
@@ -140,7 +185,15 @@ describe('handleZoneTypeManage', () => {
 
   it('get fetches by id', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
     const r = await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -150,7 +203,11 @@ describe('handleZoneTypeManage', () => {
   it('get fetches by worldId + name', async () => {
     await createWorld()
     await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
-    const r = await handleZoneTypeManage(db(), { action: 'get', worldId: WORLD, name: 'sacred_ground' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'get',
+      worldId: WORLD,
+      name: 'sacred_ground',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.zoneType.name).toBe('sacred_ground')
@@ -164,36 +221,78 @@ describe('handleZoneTypeManage', () => {
   })
 
   it('update returns not found for an unknown id', async () => {
-    const r = await handleZoneTypeManage(db(), { action: 'update', id: 'no-such-zone-type', glyph: 'X' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'update',
+      id: 'no-such-zone-type',
+      glyph: 'X',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('update rejects an invalid glyph', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
-    const r = await handleZoneTypeManage(db(), { action: 'update', id: created.zoneTypeId, glyph: 'xx' })
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
+    const r = await handleZoneTypeManage(db(), {
+      action: 'update',
+      id: created.zoneTypeId,
+      glyph: 'xx',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('update rejects an invalid colorHex', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
-    const r = await handleZoneTypeManage(db(), { action: 'update', id: created.zoneTypeId, colorHex: 'nope' })
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
+    const r = await handleZoneTypeManage(db(), {
+      action: 'update',
+      id: created.zoneTypeId,
+      colorHex: 'nope',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('update applies all fields', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
     const r = await handleZoneTypeManage(db(), {
-      action: 'update', id: created.zoneTypeId, glyph: 'S', colorHex: '#112233', description: 'Updated description',
+      action: 'update',
+      id: created.zoneTypeId,
+      glyph: 'S',
+      colorHex: '#112233',
+      description: 'Updated description',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    const fetched = JSON.parse((await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text,
+    )
     expect(fetched.zoneType.glyph).toBe('S')
     expect(fetched.zoneType.color_hex).toBe('#112233')
     expect(fetched.zoneType.description).toBe('Updated description')
@@ -201,9 +300,20 @@ describe('handleZoneTypeManage', () => {
 
   it('update can clear glyph back to null', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground', glyph: 'S' })).content[0].text)
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+          glyph: 'S',
+        })
+      ).content[0].text,
+    )
     await handleZoneTypeManage(db(), { action: 'update', id: created.zoneTypeId, glyph: null })
-    const fetched = JSON.parse((await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text,
+    )
     expect(fetched.zoneType.glyph).toBeNull()
   })
 
@@ -222,21 +332,52 @@ describe('handleZoneTypeManage', () => {
 
   it('delete removes an unreferenced zone type', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
     const r = await handleZoneTypeManage(db(), { action: 'delete', id: created.zoneTypeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    const fetched = JSON.parse((await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text)
+    const fetched = JSON.parse(
+      (await handleZoneTypeManage(db(), { action: 'get', id: created.zoneTypeId })).content[0].text,
+    )
     expect(fetched.error).toBe(true)
   })
 
   it('delete rejects removal of a zone type referenced by an existing landmark', async () => {
     await createWorld()
-    const created = JSON.parse((await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })).content[0].text)
+    const created = JSON.parse(
+      (
+        await handleZoneTypeManage(db(), {
+          action: 'register',
+          worldId: WORLD,
+          name: 'sacred_ground',
+        })
+      ).content[0].text,
+    )
     const now = new Date().toISOString()
     await env.RPG_DB.prepare(
-      'INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, zone_type, zone_shape, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind('lm-1', 'main', 1, 1, 'Shrine', 'landmark', WORLD, 'sacred_ground', JSON.stringify({ type: 'circle', circle: { radius: 2 } }), now).run()
+      'INSERT INTO landmarks (id, map_id, q, r, name, category, world_id, zone_type, zone_shape, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        'lm-1',
+        'main',
+        1,
+        1,
+        'Shrine',
+        'landmark',
+        WORLD,
+        'sacred_ground',
+        JSON.stringify({ type: 'circle', circle: { radius: 2 } }),
+        now,
+      )
+      .run()
     const r = await handleZoneTypeManage(db(), { action: 'delete', id: created.zoneTypeId })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
@@ -253,7 +394,11 @@ describe('handleZoneTypeManage', () => {
   it('validate returns valid: true for an existing zone type', async () => {
     await createWorld()
     await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
-    const r = await handleZoneTypeManage(db(), { action: 'validate', worldId: WORLD, name: 'sacred_ground' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'validate',
+      worldId: WORLD,
+      name: 'sacred_ground',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.valid).toBe(true)
@@ -262,7 +407,11 @@ describe('handleZoneTypeManage', () => {
   it('validate returns valid: false with didYouMean suggestions for a near-miss', async () => {
     await createWorld()
     await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'sacred_ground' })
-    const r = await handleZoneTypeManage(db(), { action: 'validate', worldId: WORLD, name: 'sacred_grond' })
+    const r = await handleZoneTypeManage(db(), {
+      action: 'validate',
+      worldId: WORLD,
+      name: 'sacred_grond',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.valid).toBe(false)
@@ -311,7 +460,12 @@ describe('handleZoneTypeManage', () => {
 
   it('seed_defaults only seeds missing defaults when some already exist', async () => {
     await createWorld()
-    await handleZoneTypeManage(db(), { action: 'register', worldId: WORLD, name: 'perimeter', glyph: '⚡' })
+    await handleZoneTypeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'perimeter',
+      glyph: '⚡',
+    })
     const r = await handleZoneTypeManage(db(), { action: 'seed_defaults', worldId: WORLD })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)

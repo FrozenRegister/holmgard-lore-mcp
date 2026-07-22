@@ -10,12 +10,16 @@ describe('handleNarrativeManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
   const WORLD = 'world-1'
 
   beforeEach(async () => {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(WORLD, WORLD, 'seed', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(WORLD, WORLD, 'seed', 100, 100, now, now)
+      .run()
   })
 
   it('returns guiding error for unknown action', async () => {
@@ -30,7 +34,15 @@ describe('handleNarrativeManage', () => {
   })
 
   it('create inserts a new narrative note', async () => {
-    const r = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'The heroes arrived', type: 'session_log', tags: ['combat'], entityId: 'char-1', entityType: 'character' })
+    const r = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'The heroes arrived',
+      type: 'session_log',
+      tags: ['combat'],
+      entityId: 'char-1',
+      entityType: 'character',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.noteId).toBeTruthy()
@@ -50,7 +62,12 @@ describe('handleNarrativeManage', () => {
   })
 
   it('get returns note with parsed fields', async () => {
-    const c = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'Dragon appeared', metadata: { importance: 'high' } })
+    const c = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'Dragon appeared',
+      metadata: { importance: 'high' },
+    })
     const { noteId } = JSON.parse(c.content[0].text)
     const r = await handleNarrativeManage(db(), { action: 'get', id: noteId })
     const body = JSON.parse(r.content[0].text)
@@ -67,19 +84,31 @@ describe('handleNarrativeManage', () => {
   })
 
   it('list filters by type', async () => {
-    const r = await handleNarrativeManage(db(), { action: 'list', worldId: WORLD, filter: { type: 'plot_thread' } })
+    const r = await handleNarrativeManage(db(), {
+      action: 'list',
+      worldId: WORLD,
+      filter: { type: 'plot_thread' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
 
   it('list filters by status', async () => {
-    const r = await handleNarrativeManage(db(), { action: 'list', worldId: WORLD, filter: { status: 'active' } })
+    const r = await handleNarrativeManage(db(), {
+      action: 'list',
+      worldId: WORLD,
+      filter: { status: 'active' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
 
   it('list filters by entityId', async () => {
-    const r = await handleNarrativeManage(db(), { action: 'list', worldId: WORLD, filter: { entityId: 'char-1' } })
+    const r = await handleNarrativeManage(db(), {
+      action: 'list',
+      worldId: WORLD,
+      filter: { entityId: 'char-1' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -91,9 +120,21 @@ describe('handleNarrativeManage', () => {
   })
 
   it('update modifies note fields', async () => {
-    const c = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'Old content' })
+    const c = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'Old content',
+    })
     const { noteId } = JSON.parse(c.content[0].text)
-    const r = await handleNarrativeManage(db(), { action: 'update', id: noteId, content: 'New content', visibility: 'player_visible', tags: ['updated'], status: 'dormant', metadata: { key: 'val' } })
+    const r = await handleNarrativeManage(db(), {
+      action: 'update',
+      id: noteId,
+      content: 'New content',
+      visibility: 'player_visible',
+      tags: ['updated'],
+      status: 'dormant',
+      metadata: { key: 'val' },
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -105,7 +146,11 @@ describe('handleNarrativeManage', () => {
   })
 
   it('delete removes note', async () => {
-    const c = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'To delete' })
+    const c = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'To delete',
+    })
     const { noteId } = JSON.parse(c.content[0].text)
     const r = await handleNarrativeManage(db(), { action: 'delete', id: noteId })
     const body = JSON.parse(r.content[0].text)
@@ -119,7 +164,11 @@ describe('handleNarrativeManage', () => {
   })
 
   it('archive marks note as archived', async () => {
-    const c = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'Archive me' })
+    const c = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'Archive me',
+    })
     const { noteId } = JSON.parse(c.content[0].text)
     const r = await handleNarrativeManage(db(), { action: 'archive', id: noteId })
     const body = JSON.parse(r.content[0].text)
@@ -134,7 +183,11 @@ describe('handleNarrativeManage', () => {
   })
 
   it('resolve marks note as resolved', async () => {
-    const c = await handleNarrativeManage(db(), { action: 'create', worldId: WORLD, content: 'Resolve me' })
+    const c = await handleNarrativeManage(db(), {
+      action: 'create',
+      worldId: WORLD,
+      content: 'Resolve me',
+    })
     const { noteId } = JSON.parse(c.content[0].text)
     const r = await handleNarrativeManage(db(), { action: 'resolve', id: noteId })
     const body = JSON.parse(r.content[0].text)

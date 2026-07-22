@@ -14,7 +14,12 @@ describe('agent_manage tool', () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
     })
 
     // Clone the response so we can read it multiple times
@@ -23,7 +28,7 @@ describe('agent_manage tool', () => {
     // Handle both JSON and text responses
     let json: Record<string, any>
     try {
-      json = await res.json() as Record<string, any>
+      json = (await res.json()) as Record<string, any>
     } catch (e) {
       const text = await resClone.text()
       // Check if it's an error response
@@ -70,7 +75,7 @@ describe('agent_manage tool', () => {
       action: 'create',
       characterId: charId,
       provider: 'openai',
-      model: 'gpt-4o-mini'
+      model: 'gpt-4o-mini',
     })
     expect(r.success).toBe(true)
     expect(r.agent).toBeTruthy()
@@ -120,13 +125,20 @@ describe('agent_manage tool', () => {
 
   it('list with status filter', async () => {
     const charId1 = await seedCharacter()
-    const charId2 = await callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then((r: any) => r.characterId)
+    const charId2 = await callTool('rpg', {
+      sub: 'character',
+      action: 'create',
+      name: 'Mira',
+    }).then((r: any) => r.characterId)
 
     await callTool('agent_manage', { action: 'create', characterId: charId1 })
     await callTool('agent_manage', { action: 'create', characterId: charId2 })
 
     // Pause one agent
-    const { agentId: agentId2 } = await callTool('agent_manage', { action: 'get', characterId: charId2 })
+    const { agentId: agentId2 } = await callTool('agent_manage', {
+      action: 'get',
+      characterId: charId2,
+    })
     await callTool('agent_manage', { action: 'update', agentId: agentId2, status: 'paused' })
 
     const paused = await callTool('agent_manage', { action: 'list', status: 'paused' })
@@ -136,7 +148,12 @@ describe('agent_manage tool', () => {
   it('update model and temperature', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const r = await callTool('agent_manage', { action: 'update', agentId, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', temperature: 0.9 })
+    const r = await callTool('agent_manage', {
+      action: 'update',
+      agentId,
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      temperature: 0.9,
+    })
     expect(r.success).toBe(true)
     const got = await callTool('agent_manage', { action: 'get', agentId })
     expect(got.agent.model).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast')
@@ -171,7 +188,11 @@ describe('agent_manage tool', () => {
   it('resume closes circuit and resets failures', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare("UPDATE agents SET consecutive_failures = 3, circuit_state = 'open' WHERE id = ?").bind(agentId).run()
+    await env.RPG_DB.prepare(
+      "UPDATE agents SET consecutive_failures = 3, circuit_state = 'open' WHERE id = ?",
+    )
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'resume', agentId })
     expect(r.success).toBe(true)
     const got = await callTool('agent_manage', { action: 'get', agentId })
@@ -195,7 +216,7 @@ describe('agent_manage tool', () => {
     const { agentId } = await callTool('agent_manage', {
       action: 'create',
       characterId: charId,
-      budgetTokens: 1000
+      budgetTokens: 1000,
     })
     const r = await callTool('agent_manage', { action: 'health', agentId })
     expect(r.agentId).toBe(agentId)
@@ -207,7 +228,9 @@ describe('agent_manage tool', () => {
   it('health reports canInvoke false when circuit open', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?").bind(agentId).run()
+    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?")
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'health', agentId })
     expect(r.canInvoke).toBe(false)
   })
@@ -235,7 +258,12 @@ describe('agent_manage tool', () => {
   it('set_slice inserts a prompt slice', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const r = await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'You are a stern knight.' })
+    const r = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'You are a stern knight.',
+    })
     expect(r.success).toBe(true)
     expect(r.sliceId).toBeTruthy()
   })
@@ -245,13 +273,31 @@ describe('agent_manage tool', () => {
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
 
     // Valid kinds should work
-    for (const kind of ['persona', 'directive', 'secrets', 'narrative_feed', 'recent', 'character_state', 'custom']) {
-      const r = await callTool('agent_manage', { action: 'set_slice', agentId, kind, content: 'test' })
+    for (const kind of [
+      'persona',
+      'directive',
+      'secrets',
+      'narrative_feed',
+      'recent',
+      'character_state',
+      'custom',
+    ]) {
+      const r = await callTool('agent_manage', {
+        action: 'set_slice',
+        agentId,
+        kind,
+        content: 'test',
+      })
       expect(r.success, `kind=${kind} should be valid`).toBe(true)
     }
 
     // Invalid kind should fail
-    const r = await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'invalid_kind', content: 'test' })
+    const r = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'invalid_kind',
+      content: 'test',
+    })
     expect(r.error).toBe(true)
   })
 
@@ -263,13 +309,13 @@ describe('agent_manage tool', () => {
       action: 'set_slice',
       agentId,
       kind: 'persona',
-      content: 'v1'
+      content: 'v1',
     })
     const second = await callTool('agent_manage', {
       action: 'set_slice',
       agentId,
       kind: 'persona',
-      content: 'v2'
+      content: 'v2',
     })
     expect(first.sliceId).toBe(second.sliceId)
     expect(second.success).toBe(true)
@@ -278,8 +324,20 @@ describe('agent_manage tool', () => {
   it('list_slices returns ordered slices', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'Persona text.', orderIndex: 0 })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'directive', content: 'Directive text.', orderIndex: 1 })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'Persona text.',
+      orderIndex: 0,
+    })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'directive',
+      content: 'Directive text.',
+      orderIndex: 1,
+    })
     const r = await callTool('agent_manage', { action: 'list_slices', agentId })
     expect(r.count).toBe(2)
     expect(r.slices[0].kind).toBe('persona')
@@ -288,10 +346,24 @@ describe('agent_manage tool', () => {
   it('list_slices with kind filter', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'Persona text.' })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'directive', content: 'Directive text.' })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'Persona text.',
+    })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'directive',
+      content: 'Directive text.',
+    })
 
-    const personas = await callTool('agent_manage', { action: 'list_slices', agentId, kind: 'persona' })
+    const personas = await callTool('agent_manage', {
+      action: 'list_slices',
+      agentId,
+      kind: 'persona',
+    })
     expect(personas.count).toBe(1)
     expect(personas.slices[0].kind).toBe('persona')
   })
@@ -299,7 +371,12 @@ describe('agent_manage tool', () => {
   it('toggle_slice disables a slice', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const { sliceId } = await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'Persona.' })
+    const { sliceId } = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'Persona.',
+    })
     await callTool('agent_manage', { action: 'toggle_slice', sliceId, enabled: false })
     const r = await callTool('agent_manage', { action: 'list_slices', agentId, filter: 'enabled' })
     expect(r.count).toBe(0)
@@ -308,7 +385,12 @@ describe('agent_manage tool', () => {
   it('remove_slice deletes a slice', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const { sliceId } = await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'Persona.' })
+    const { sliceId } = await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'Persona.',
+    })
     await callTool('agent_manage', { action: 'remove_slice', sliceId })
     const r = await callTool('agent_manage', { action: 'list_slices', agentId })
     expect(r.count).toBe(0)
@@ -317,7 +399,11 @@ describe('agent_manage tool', () => {
   it('narrate appends a narrative_feed slice', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const r = await callTool('agent_manage', { action: 'narrate', agentId, observation: 'The guards just entered the hall.' })
+    const r = await callTool('agent_manage', {
+      action: 'narrate',
+      agentId,
+      observation: 'The guards just entered the hall.',
+    })
     expect(r.success).toBe(true)
     const slices = await callTool('agent_manage', { action: 'list_slices', agentId })
     expect(slices.count).toBe(1)
@@ -331,7 +417,7 @@ describe('agent_manage tool', () => {
       action: 'narrate',
       agentId,
       observation: 'The guards just entered the hall.',
-      label: 'guard_arrival'
+      label: 'guard_arrival',
     })
     expect(r.success).toBe(true)
     const slices = await callTool('agent_manage', { action: 'list_slices', agentId })
@@ -341,13 +427,19 @@ describe('agent_manage tool', () => {
   it('broadcast narrates to multiple agents', async () => {
     const [c1, c2] = await Promise.all([
       seedCharacter(),
-      callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then((r: any) => r.characterId),
+      callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then(
+        (r: any) => r.characterId,
+      ),
     ])
     const [{ agentId: a1 }, { agentId: a2 }] = await Promise.all([
       callTool('agent_manage', { action: 'create', characterId: c1 }),
       callTool('agent_manage', { action: 'create', characterId: c2 }),
     ])
-    const r = await callTool('agent_manage', { action: 'broadcast', agentIds: [a1, a2], observation: 'The gate is breached.' })
+    const r = await callTool('agent_manage', {
+      action: 'broadcast',
+      agentIds: [a1, a2],
+      observation: 'The gate is breached.',
+    })
     expect(r.success).toBe(true)
     expect(r.count).toBe(2)
     const s1 = await callTool('agent_manage', { action: 'list_slices', agentId: a1 })
@@ -358,8 +450,12 @@ describe('agent_manage tool', () => {
 
   it('broadcast skips characters without agents', async () => {
     const c1 = await seedCharacter()
-    const c2 = await callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then((r: any) => r.characterId)
-    const c3 = await callTool('rpg', { sub: 'character', action: 'create', name: 'NoAgent' }).then((r: any) => r.characterId)
+    const c2 = await callTool('rpg', { sub: 'character', action: 'create', name: 'Mira' }).then(
+      (r: any) => r.characterId,
+    )
+    const c3 = await callTool('rpg', { sub: 'character', action: 'create', name: 'NoAgent' }).then(
+      (r: any) => r.characterId,
+    )
 
     const { agentId: a1 } = await callTool('agent_manage', { action: 'create', characterId: c1 })
     const { agentId: a2 } = await callTool('agent_manage', { action: 'create', characterId: c2 })
@@ -368,7 +464,7 @@ describe('agent_manage tool', () => {
     const r = await callTool('agent_manage', {
       action: 'broadcast',
       agentIds: [a1, a2, 'non-existent-agent'],
-      observation: 'A bell tolls.'
+      observation: 'A bell tolls.',
     })
     expect(r.count).toBe(2)
   })
@@ -376,8 +472,17 @@ describe('agent_manage tool', () => {
   it('preview_prompt returns messages array without calling AI', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'You are a knight.' })
-    const r = await callTool('agent_manage', { action: 'preview_prompt', agentId, situation: 'A dragon attacks.' })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'You are a knight.',
+    })
+    const r = await callTool('agent_manage', {
+      action: 'preview_prompt',
+      agentId,
+      situation: 'A dragon attacks.',
+    })
     expect(r.success).toBe(true)
     expect(r.messages).toHaveLength(2)
     expect(r.messages[0].role).toBe('system')
@@ -391,7 +496,12 @@ describe('agent_manage tool', () => {
   it('add_secret / list_secrets / remove_secret round-trip', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const { secretId } = await callTool('agent_manage', { action: 'add_secret', agentId, content: 'Knows the king is a shapeshifter.', importance: 'critical' })
+    const { secretId } = await callTool('agent_manage', {
+      action: 'add_secret',
+      agentId,
+      content: 'Knows the king is a shapeshifter.',
+      importance: 'critical',
+    })
     expect(secretId).toBeTruthy()
 
     const listed = await callTool('agent_manage', { action: 'list_secrets', agentId })
@@ -400,13 +510,19 @@ describe('agent_manage tool', () => {
 
     // Test direct database access
     const db = env.RPG_DB
-    const beforeDelete = await db.prepare('SELECT * FROM agent_secrets WHERE id = ?').bind(secretId).first()
+    const beforeDelete = await db
+      .prepare('SELECT * FROM agent_secrets WHERE id = ?')
+      .bind(secretId)
+      .first()
     expect(!!beforeDelete).toBe(true)
 
     const removeResult = await callTool('agent_manage', { action: 'remove_secret', secretId })
     expect(removeResult.success).toBe(true)
 
-    const afterDelete = await db.prepare('SELECT * FROM agent_secrets WHERE id = ?').bind(secretId).first()
+    const afterDelete = await db
+      .prepare('SELECT * FROM agent_secrets WHERE id = ?')
+      .bind(secretId)
+      .first()
     expect(!!afterDelete).toBe(false)
 
     const after = await callTool('agent_manage', { action: 'list_secrets', agentId })
@@ -423,7 +539,7 @@ describe('agent_manage tool', () => {
         action: 'add_secret',
         agentId,
         content: `Secret ${importance}`,
-        importance
+        importance,
       })
       expect(r.success, `importance=${importance} should be valid`).toBe(true)
     }
@@ -433,7 +549,7 @@ describe('agent_manage tool', () => {
       action: 'add_secret',
       agentId,
       content: 'Invalid secret',
-      importance: 'invalid'
+      importance: 'invalid',
     })
     expect(r.error).toBe(true)
   })
@@ -446,19 +562,19 @@ describe('agent_manage tool', () => {
       action: 'add_secret',
       agentId,
       content: 'High priority secret',
-      importance: 'high'
+      importance: 'high',
     })
     await callTool('agent_manage', {
       action: 'add_secret',
       agentId,
       content: 'Critical secret',
-      importance: 'critical'
+      importance: 'critical',
     })
 
     const critical = await callTool('agent_manage', {
       action: 'list_secrets',
       agentId,
-      filter: 'critical'
+      filter: 'critical',
     })
     expect(critical.count).toBe(1)
     expect(critical.secrets[0].importance).toBe('critical')
@@ -469,7 +585,12 @@ describe('agent_manage tool', () => {
   it('add_journal / get_journal round-trip', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await callTool('agent_manage', { action: 'add_journal', agentId, content: 'I chose to hold the gate.', journalKind: 'plan' })
+    await callTool('agent_manage', {
+      action: 'add_journal',
+      agentId,
+      content: 'I chose to hold the gate.',
+      journalKind: 'plan',
+    })
     const r = await callTool('agent_manage', { action: 'get_journal', agentId })
     expect(r.count).toBe(1)
     expect(r.entries[0].kind).toBe('plan')
@@ -485,7 +606,7 @@ describe('agent_manage tool', () => {
         action: 'add_journal',
         agentId,
         content: `Journal entry ${kind}`,
-        journalKind: kind
+        journalKind: kind,
       })
       expect(r.success, `kind=${kind} should be valid`).toBe(true)
     }
@@ -495,7 +616,7 @@ describe('agent_manage tool', () => {
       action: 'add_journal',
       agentId,
       content: 'Invalid journal entry',
-      journalKind: 'invalid'
+      journalKind: 'invalid',
     })
     expect(r.error).toBe(true)
   })
@@ -508,7 +629,7 @@ describe('agent_manage tool', () => {
       action: 'add_journal',
       agentId,
       content: 'Observation entry',
-      journalKind: 'observation'
+      journalKind: 'observation',
     })
     await callTool('agent_manage', {
       action: 'add_journal',
@@ -516,13 +637,13 @@ describe('agent_manage tool', () => {
       content: 'Plan entry',
       journalKind: 'plan',
       encounterId: 'enc-1',
-      round: 2
+      round: 2,
     })
 
     const plans = await callTool('agent_manage', {
       action: 'get_journal',
       agentId,
-      filter: 'plan'
+      filter: 'plan',
     })
     expect(plans.count).toBe(1)
     expect(plans.entries[0].kind).toBe('plan')
@@ -533,9 +654,18 @@ describe('agent_manage tool', () => {
   it('invoke always returns a callId when agent is valid', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await callTool('agent_manage', { action: 'set_slice', agentId, kind: 'persona', content: 'You are a stern knight.' })
+    await callTool('agent_manage', {
+      action: 'set_slice',
+      agentId,
+      kind: 'persona',
+      content: 'You are a stern knight.',
+    })
 
-    const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'The bandits demand tribute.' })
+    const r = await callTool('agent_manage', {
+      action: 'invoke',
+      agentId,
+      situation: 'The bandits demand tribute.',
+    })
     // callId is always returned for valid agents regardless of AI availability.
     // status is 'ok' when real Cloudflare AI is reachable; 'error' in CI where the
     // miniflare AI stub throws "Binding AI needs to be run remotely" (no auth token).
@@ -547,7 +677,9 @@ describe('agent_manage tool', () => {
   it('invoke with open circuit returns circuit_open without calling AI', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?").bind(agentId).run()
+    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?")
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'Test.' })
     expect(r.success).toBe(false)
     expect(r.status).toBe('circuit_open')
@@ -556,7 +688,9 @@ describe('agent_manage tool', () => {
   it('invoke with exhausted budget returns budget_exhausted', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare('UPDATE agents SET budget_tokens = 10, tokens_used = 10 WHERE id = ?').bind(agentId).run()
+    await env.RPG_DB.prepare('UPDATE agents SET budget_tokens = 10, tokens_used = 10 WHERE id = ?')
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'Test.' })
     expect(r.success).toBe(false)
     expect(r.status).toBe('budget_exhausted')
@@ -565,9 +699,15 @@ describe('agent_manage tool', () => {
   it('invoke writes an agent_calls audit row', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    const { callId } = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'What do you do?' })
+    const { callId } = await callTool('agent_manage', {
+      action: 'invoke',
+      agentId,
+      situation: 'What do you do?',
+    })
 
-    const row = await env.RPG_DB.prepare('SELECT * FROM agent_calls WHERE id = ?').bind(callId).first()
+    const row = await env.RPG_DB.prepare('SELECT * FROM agent_calls WHERE id = ?')
+      .bind(callId)
+      .first()
     expect(row).not.toBeNull()
     expect((row as any).agent_id).toBe(agentId)
     // status is 'ok' with real AI, 'error' in CI (miniflare AI stub throws without Cloudflare auth)
@@ -577,7 +717,9 @@ describe('agent_manage tool', () => {
   it('invoke with open circuit returns circuit_open without calling AI', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?").bind(agentId).run()
+    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?")
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'Test.' })
     expect(r.success).toBe(false)
     expect(r.status).toBe('circuit_open')
@@ -586,7 +728,9 @@ describe('agent_manage tool', () => {
   it('invoke with exhausted budget returns budget_exhausted', async () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
-    await env.RPG_DB.prepare('UPDATE agents SET budget_tokens = 10, tokens_used = 10 WHERE id = ?').bind(agentId).run()
+    await env.RPG_DB.prepare('UPDATE agents SET budget_tokens = 10, tokens_used = 10 WHERE id = ?')
+      .bind(agentId)
+      .run()
     const r = await callTool('agent_manage', { action: 'invoke', agentId, situation: 'Test.' })
     expect(r.success).toBe(false)
     expect(r.status).toBe('budget_exhausted')
@@ -594,15 +738,23 @@ describe('agent_manage tool', () => {
 
   it('invoke circuit breaker opens after 3 consecutive failures', async () => {
     const charId = await seedCharacter()
-    const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId, model: '__force_error__' })
+    const { agentId } = await callTool('agent_manage', {
+      action: 'create',
+      characterId: charId,
+      model: '__force_error__',
+    })
     // Drive consecutive_failures to 2 manually, then one more failure should open the circuit
-    await env.RPG_DB.prepare('UPDATE agents SET consecutive_failures = 2 WHERE id = ?').bind(agentId).run()
+    await env.RPG_DB.prepare('UPDATE agents SET consecutive_failures = 2 WHERE id = ?')
+      .bind(agentId)
+      .run()
     // The __force_error__ model causes the AI mock to either fail or return something;
     // if miniflare doesn't throw, simulate via direct DB manipulation and verify resume works
     const healthBefore = await callTool('agent_manage', { action: 'health', agentId })
     expect(healthBefore.consecutiveFailures).toBe(2)
     // Manually open circuit to validate resume path
-    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?").bind(agentId).run()
+    await env.RPG_DB.prepare("UPDATE agents SET circuit_state = 'open' WHERE id = ?")
+      .bind(agentId)
+      .run()
     const healthOpen = await callTool('agent_manage', { action: 'health', agentId })
     expect(healthOpen.canInvoke).toBe(false)
     // Resume resets it
@@ -626,8 +778,19 @@ describe('agent_manage tool', () => {
       { role: 'user', content: 'What do you do?' },
     ])
     await env.RPG_DB.prepare(
-      'INSERT INTO agent_calls (id, agent_id, request_id, provider, model, messages_json, status, created_at) VALUES (?,?,?,?,?,?,?,?)'
-    ).bind(originalCallId, agentId, null, 'cloudflare', '@cf/meta/llama-3.1-8b-instruct', messages, 'ok', seedNow).run()
+      'INSERT INTO agent_calls (id, agent_id, request_id, provider, model, messages_json, status, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    )
+      .bind(
+        originalCallId,
+        agentId,
+        null,
+        'cloudflare',
+        '@cf/meta/llama-3.1-8b-instruct',
+        messages,
+        'ok',
+        seedNow,
+      )
+      .run()
 
     const r = await callTool('agent_manage', { action: 'replay', callId: originalCallId })
     // Replay always creates a new callId and echoes originalCallId regardless of AI availability.
@@ -637,7 +800,9 @@ describe('agent_manage tool', () => {
     expect(r.actionType).toBe('replay')
 
     // Two audit rows: the seeded original + the new replay row
-    const { results } = await env.RPG_DB.prepare('SELECT id FROM agent_calls WHERE agent_id = ?').bind(agentId).all()
+    const { results } = await env.RPG_DB.prepare('SELECT id FROM agent_calls WHERE agent_id = ?')
+      .bind(agentId)
+      .all()
     expect(results).toHaveLength(2)
   })
 
@@ -652,7 +817,7 @@ describe('agent_manage tool', () => {
     const charId = await seedCharacter()
     const r = await callTool('agent_manage', {
       action: 'bind',
-      characterId: charId
+      characterId: charId,
     })
     expect(r.success).toBe(true)
     expect(r.actionType).toBe('create')
@@ -674,7 +839,7 @@ describe('agent_manage tool', () => {
       action: 'set_slice',
       agentId,
       kind: 'persona',
-      content: 'v1'
+      content: 'v1',
     })
     const firstId = first.sliceId
 
@@ -682,7 +847,7 @@ describe('agent_manage tool', () => {
       action: 'set_slice',
       agentId,
       kind: 'persona',
-      content: 'v2'
+      content: 'v2',
     })
     const secondId = second.sliceId
     expect(firstId).toBe(secondId)
@@ -696,12 +861,20 @@ describe('agent_manage tool', () => {
     const charId = await seedCharacter()
     const { agentId } = await callTool('agent_manage', { action: 'create', characterId: charId })
 
-    for (const kind of ['persona', 'directive', 'secrets', 'narrative_feed', 'recent', 'character_state', 'custom']) {
+    for (const kind of [
+      'persona',
+      'directive',
+      'secrets',
+      'narrative_feed',
+      'recent',
+      'character_state',
+      'custom',
+    ]) {
       const r = await callTool('agent_manage', {
         action: 'set_slice',
         agentId,
         kind,
-        content: `Content for ${kind}`
+        content: `Content for ${kind}`,
       })
       expect(r.success).toBe(true)
     }
@@ -715,32 +888,32 @@ describe('agent_manage tool', () => {
       action: 'set_slice',
       agentId,
       kind: 'persona',
-      content: 'Enabled'
+      content: 'Enabled',
     })
     const slice2 = await callTool('agent_manage', {
       action: 'set_slice',
       agentId,
       kind: 'directive',
-      content: 'Disabled soon'
+      content: 'Disabled soon',
     })
 
     await callTool('agent_manage', {
       action: 'toggle_slice',
       sliceId: slice2.sliceId,
-      enabled: false
+      enabled: false,
     })
 
     const enabled = await callTool('agent_manage', {
       action: 'list_slices',
       agentId,
-      filter: 'enabled'
+      filter: 'enabled',
     })
     expect(enabled.count).toBe(1)
 
     const disabled = await callTool('agent_manage', {
       action: 'list_slices',
       agentId,
-      filter: 'disabled'
+      filter: 'disabled',
     })
     expect(disabled.count).toBe(1)
   })
@@ -752,7 +925,7 @@ describe('agent_manage tool', () => {
     const r = await callTool('agent_manage', {
       action: 'add_secret',
       agentId,
-      content: 'No importance specified'
+      content: 'No importance specified',
     })
     expect(r.success).toBe(true)
     expect(r.secretId).toBeTruthy()
@@ -766,26 +939,30 @@ describe('agent_manage tool', () => {
       action: 'add_secret',
       agentId,
       content: 'Low secret',
-      importance: 'low'
+      importance: 'low',
     })
     await callTool('agent_manage', {
       action: 'add_secret',
       agentId,
       content: 'Medium secret',
-      importance: 'medium'
+      importance: 'medium',
     })
     await callTool('agent_manage', {
       action: 'add_secret',
       agentId,
       content: 'High secret',
-      importance: 'high'
+      importance: 'high',
     })
 
     const low = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'low' })
     expect(low.count).toBe(1)
     expect(low.secrets[0].importance).toBe('low')
 
-    const medium = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'medium' })
+    const medium = await callTool('agent_manage', {
+      action: 'list_secrets',
+      agentId,
+      filter: 'medium',
+    })
     expect(medium.count).toBe(1)
 
     const high = await callTool('agent_manage', { action: 'list_secrets', agentId, filter: 'high' })
@@ -802,7 +979,7 @@ describe('agent_manage tool', () => {
       content: 'Fought goblins in round 3',
       journalKind: 'observation',
       encounterId: 'goblin-cave-001',
-      round: 3
+      round: 3,
     })
     expect(r.success).toBe(true)
     expect(r.entryId).toBeTruthy()
@@ -817,20 +994,20 @@ describe('agent_manage tool', () => {
       agentId,
       content: 'Encounter 1 event',
       journalKind: 'observation',
-      encounterId: 'enc-001'
+      encounterId: 'enc-001',
     })
     await callTool('agent_manage', {
       action: 'add_journal',
       agentId,
       content: 'Encounter 2 event',
       journalKind: 'observation',
-      encounterId: 'enc-002'
+      encounterId: 'enc-002',
     })
 
     const enc1 = await callTool('agent_manage', {
       action: 'get_journal',
       agentId,
-      encounterId: 'enc-001'
+      encounterId: 'enc-001',
     })
     expect(enc1.count).toBe(1)
   })
@@ -844,14 +1021,14 @@ describe('agent_manage tool', () => {
         action: 'add_journal',
         agentId,
         content: `Entry ${i}`,
-        journalKind: 'observation'
+        journalKind: 'observation',
       })
     }
 
     const limit2 = await callTool('agent_manage', {
       action: 'get_journal',
       agentId,
-      limit: 2
+      limit: 2,
     })
     expect(limit2.entries.length).toBeLessThanOrEqual(2)
   })
@@ -874,7 +1051,7 @@ describe('agent_manage tool', () => {
     const r = await callTool('agent_manage', {
       action: 'broadcast',
       agentIds: [agentId],
-      observation: 'Single broadcast'
+      observation: 'Single broadcast',
     })
     expect(r.success).toBe(true)
     expect(r.count).toBe(1)
@@ -884,7 +1061,7 @@ describe('agent_manage tool', () => {
     const r = await callTool('agent_manage', {
       action: 'broadcast',
       agentIds: [],
-      observation: 'Will fail'
+      observation: 'Will fail',
     })
     expect(r.error).toBe(true)
   })
@@ -896,20 +1073,20 @@ describe('agent_manage tool', () => {
     const secret = await callTool('agent_manage', {
       action: 'add_secret',
       agentId,
-      content: 'Temporary secret'
+      content: 'Temporary secret',
     })
 
     // First removal should succeed
     const firstRemove = await callTool('agent_manage', {
       action: 'remove_secret',
-      secretId: secret.secretId
+      secretId: secret.secretId,
     })
     expect(firstRemove.success).toBe(true)
 
     // Second removal should fail (secret already gone)
     const secondRemove = await callTool('agent_manage', {
       action: 'remove_secret',
-      secretId: secret.secretId
+      secretId: secret.secretId,
     })
     expect(secondRemove.error).toBe(true)
     expect(secondRemove.message).toContain('not found')
@@ -923,7 +1100,7 @@ describe('agent_manage tool', () => {
       action: 'set_slice',
       characterId: charId,
       kind: 'persona',
-      content: 'Via characterId'
+      content: 'Via characterId',
     })
     expect(r.success).toBe(true)
     expect(r.sliceId).toBeTruthy()
@@ -937,7 +1114,7 @@ describe('agent_manage tool', () => {
       action: 'narrate',
       characterId: charId,
       observation: 'Something happened',
-      label: 'important_event'
+      label: 'important_event',
     })
     expect(r.success).toBe(true)
     expect(r.sliceId).toBeTruthy()
@@ -977,9 +1154,21 @@ describe('agent_manage tool', () => {
     const charId2 = await seedCharacter()
     const charId3 = await seedCharacter()
 
-    const { agentId: agent1 } = await callTool('agent_manage', { action: 'create', characterId: charId1, status: 'active' })
-    const { agentId: agent2 } = await callTool('agent_manage', { action: 'create', characterId: charId2, status: 'paused' })
-    const { agentId: agent3 } = await callTool('agent_manage', { action: 'create', characterId: charId3, status: 'retired' })
+    const { agentId: agent1 } = await callTool('agent_manage', {
+      action: 'create',
+      characterId: charId1,
+      status: 'active',
+    })
+    const { agentId: agent2 } = await callTool('agent_manage', {
+      action: 'create',
+      characterId: charId2,
+      status: 'paused',
+    })
+    const { agentId: agent3 } = await callTool('agent_manage', {
+      action: 'create',
+      characterId: charId3,
+      status: 'retired',
+    })
 
     // List only paused agents using filter parameter
     const r = await callTool('agent_manage', { action: 'list', filter: 'paused' })
@@ -1011,7 +1200,7 @@ describe('agent_manage tool', () => {
       action: 'add_secret',
       characterId: charId,
       content: 'Secret content',
-      importance: 'invalid_level'
+      importance: 'invalid_level',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('Invalid enum value')
@@ -1025,7 +1214,7 @@ describe('agent_manage tool', () => {
       action: 'add_journal',
       characterId: charId,
       content: 'Journal entry',
-      journalKind: 'invalid_kind'
+      journalKind: 'invalid_kind',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('Invalid enum value')
@@ -1035,7 +1224,7 @@ describe('agent_manage tool', () => {
     const r = await callTool('agent_manage', {
       action: 'set_slice',
       kind: 'persona',
-      content: 'Some content'
+      content: 'Some content',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
@@ -1050,7 +1239,7 @@ describe('agent_manage tool', () => {
   it('narrate without characterId or agentId returns error', async () => {
     const r = await callTool('agent_manage', {
       action: 'narrate',
-      observation: 'Some observation'
+      observation: 'Some observation',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
@@ -1059,7 +1248,7 @@ describe('agent_manage tool', () => {
   it('add_secret without characterId or agentId returns error', async () => {
     const r = await callTool('agent_manage', {
       action: 'add_secret',
-      content: 'Secret'
+      content: 'Secret',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
@@ -1074,7 +1263,7 @@ describe('agent_manage tool', () => {
   it('add_journal without characterId or agentId returns error', async () => {
     const r = await callTool('agent_manage', {
       action: 'add_journal',
-      content: 'Journal entry'
+      content: 'Journal entry',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
