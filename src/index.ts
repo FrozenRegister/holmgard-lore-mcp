@@ -11,6 +11,7 @@ import { requestIdMiddleware, type RequestIdVariables } from './middleware/reque
 import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
 import { coerceTransportArgs } from './lib/coerce-transport-args'
+import { normalizeParamCasing } from './lib/normalize-param-casing'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
@@ -1900,7 +1901,9 @@ app.post('/mcp', async (c) => {
     // ── tools/call ────────────────────────────────────────────────────────────
     if (method === 'tools/call') {
       const toolName = params?.name
-      const args = coerceTransportArgs((params?.arguments ?? {}) as Record<string, any>)
+      const args = normalizeParamCasing(
+        coerceTransportArgs((params?.arguments ?? {}) as Record<string, any>),
+      )
       if (!toolName || typeof toolName !== 'string')
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
