@@ -97,4 +97,25 @@ describe('transport arg coercion end-to-end (#505)', () => {
 
     expect(res.hexesInserted).toBe(2)
   })
+
+  it('lore_manage.set: a bracket-looking-but-invalid-JSON string field is stored verbatim, not parsed', async () => {
+    // Starts/ends with [ ] so it passes the "looks like JSON" heuristic in
+    // coerceTransportArgs, but the trailing comma makes it invalid JSON —
+    // exercises the JSON.parse() catch fallback (must stay a plain string).
+    const malformed = '[1, 2,]'
+    await callTool('lore_manage', { action: 'set', key: 'test:malformed-json-text', text: malformed })
+
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'get_lore',
+        params: { key: 'test:malformed-json-text' },
+      }),
+    })
+    const json = (await res.json()) as { result?: { text?: string } }
+    expect(json.result?.text).toBe(malformed)
+  })
 })

@@ -54,6 +54,13 @@ describe('coerceTransportArgs (#505)', () => {
     expect(coerceTransportArgs(input)).toEqual(input)
   })
 
+  it('leaves a string that looks bracketed but fails to parse untouched (JSON.parse throws)', () => {
+    // Starts/ends with [ ] so it passes the "looks like JSON" heuristic, but
+    // the trailing comma makes it invalid JSON — exercises the catch fallback.
+    const input = { note: '[1, 2,]' }
+    expect(coerceTransportArgs(input)).toEqual(input)
+  })
+
   it('leaves an empty string untouched', () => {
     expect(coerceTransportArgs({ note: '' })).toEqual({ note: '' })
   })
