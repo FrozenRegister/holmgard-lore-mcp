@@ -53,7 +53,13 @@ beforeEach(() => {
     const mockStmt: any = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn(),
-      run: vi.fn().mockResolvedValue({ success: true }),
+      // world_locks: acquireWorldLock/releaseWorldLock (#512) check
+      // meta.changes to detect whether the conditional UPSERT/DELETE actually
+      // touched a row — the generic { success: true } default (no meta) would
+      // make every acquireWorldLock call look like a failed lock acquisition.
+      run: query.includes('world_locks')
+        ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+        : vi.fn().mockResolvedValue({ success: true }),
       all: vi.fn().mockResolvedValue({ results: [] }),
       raw: vi.fn().mockResolvedValue([]),
     }

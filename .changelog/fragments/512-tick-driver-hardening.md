@@ -1,0 +1,9 @@
+### Hardened the tick driver ahead of Phase 3 (Creature AI, #445) — closes #512
+
+- **D1-backed world lock, replacing the in-memory `WORLD_LOCKS` Map.** `/mcp` has two independent paths to the same `tools/call` handlers — the Streamable HTTP transport (routed through the `HolmgardMCP` Durable Object, genuinely serialized) and a separate "legacy hand-rolled JSON-RPC" handler that dispatches identically but never touches the DO. The in-memory Map only ever protected the first path; the second (used by every test in this repo, and plausibly most real callers) had zero cross-isolate protection. New `world_locks` table (migration `0043`) + an atomic conditional UPSERT, reusing the same pattern `setClaim` proved out in #444.
+- **`dry_run` now actually prevents mutating hooks from writing.** New `HookConfig.mutates` flag; `runTickDriver` rejects `dry_run: true` combined with any selected mutating hook outright, instead of letting the hook's own D1 writes commit before the dry_run check ever ran.
+- **A hook failure no longer wipes results from hooks that already succeeded earlier in the same tick.** Previously a throw reset `resolved`/`flagged` to empty arrays even though earlier hooks in the same call had already run (and, for a mutating hook, already written). Now those results are preserved, plus a new `hook_failures` array with the real error message.
+- **Per-hook failures are now audited** via `timeline_events` (the same table `continuity_manage`'s `append_event` uses — no new schema needed).
+- **`conflict_resolutions` and `hook_failures` are now actually reachable through `time.advance`'s response.** Both were computed by `runTickDriver` but never wired into `time-manage.ts`'s `tick_driver` object.
+
+See #512 for the full investigation, including a correction to #515's original WORLD_LOCKS proposal (moving the Map into the DO instance would only have fixed the transport path that already worked).

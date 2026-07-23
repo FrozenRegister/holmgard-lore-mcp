@@ -1,6 +1,13 @@
 // Tick Driver: Hook runner + Phase 1 hooks for time.advance (#442).
-// Shadow state cloning, batched/per-day execution, checkpoint+rollback atomicity,
-// world-level locking, feature flags, and structured observability.
+//
+// What's actually implemented (this comment previously overclaimed several of
+// these — see #475/#512): topological hook ordering, a D1-backed world-level
+// lock, dry_run rejection for mutating hooks, per-hook failure isolation with
+// audit logging, and the log_only feature flag. NOT implemented: per-day
+// batching (a call always runs hooks exactly once regardless of the
+// startDate–endDate gap) and true shadow-state diff/rollback across multiple
+// hooks in one tick — a thrown hook stops the remaining hooks in that tick but
+// does not undo whatever earlier hooks in the same call already wrote.
 
 import type { AppBindings } from '../../types'
 
@@ -31,6 +38,12 @@ export interface HookConfig {
   enabled: boolean
   log_only?: boolean
   batch_mode?: boolean
+  // Marks a hook as performing real, unconditional writes (e.g. #445's
+  // creature_ai_tick calling setClaim() / moving creatures on the map).
+  // dry_run rejects any tick selecting a mutating hook outright (#512) —
+  // without this, a hook that writes directly to D1 inside execute() would
+  // already have committed by the time the dry_run check ran.
+  mutates?: boolean
 }
 
 export interface HookRunner {
@@ -47,22 +60,44 @@ export interface HookRunner {
 }
 
 // ── World-Level Lock (Concurrency Control) ──────────────────────────────────
-
-const WORLD_LOCKS = new Map<string, { holderId: string; expiresAt: number }>()
+//
+// D1-backed, not in-memory (#512). /mcp has two independent request paths to
+// the same tools/call handlers: the Streamable HTTP transport (routed through
+// the HolmgardMCP Durable Object, single-threaded per instance) and a separate
+// "legacy hand-rolled JSON-RPC" handler (app.post('/mcp') in src/index.ts)
+// that dispatches the identical handlers directly from whatever Worker isolate
+// received the request — never touching the DO. An in-memory Map is only a
+// real mutex for the first path; every test in this repo (and plausibly most
+// real callers) uses the second, where a module-level Map gives zero
+// cross-isolate protection. A D1 row is authoritative regardless of which
+// isolate or transport handles the request.
 
 export async function acquireWorldLock(
+  db: D1Database,
   worldId: string,
   holderId: string = 'tick-driver',
 ): Promise<boolean> {
-  const now = Date.now()
-  const lock = WORLD_LOCKS.get(worldId)
-  if (lock && lock.expiresAt > now) return false
-  WORLD_LOCKS.set(worldId, { holderId, expiresAt: now + 30000 }) // 30s TTL
-  return true
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 30000).toISOString() // 30s TTL
+
+  // Atomic conditional UPSERT — same pattern as setClaim's collision check
+  // (#444): the UPDATE branch only applies (and only then does meta.changes
+  // report a row touched) when the existing lock has already expired, so two
+  // concurrent callers can't both acquire the same world's lock.
+  const result = await db
+    .prepare(
+      `INSERT INTO world_locks (world_id, holder_id, expires_at) VALUES (?, ?, ?)
+       ON CONFLICT(world_id) DO UPDATE SET holder_id = excluded.holder_id, expires_at = excluded.expires_at
+       WHERE world_locks.expires_at <= ?`,
+    )
+    .bind(worldId, holderId, expiresAt, now.toISOString())
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
 }
 
-export function releaseWorldLock(worldId: string): void {
-  WORLD_LOCKS.delete(worldId)
+export async function releaseWorldLock(db: D1Database, worldId: string): Promise<void> {
+  await db.prepare('DELETE FROM world_locks WHERE world_id = ?').bind(worldId).run()
 }
 
 // ── Shadow State System ───────────────────────────────────────────────────────
@@ -249,6 +284,44 @@ export interface TickDriverOutput {
     sourceEntityKey: string
     narrativeContext?: string
   }>
+  hook_failures?: Array<{ hook: string; error: string }>
+}
+
+/**
+ * Best-effort audit entry for a hook failure, via the same timeline_events
+ * table continuity_manage's append_event uses (#512) — no new schema needed.
+ * Never throws: a logging failure must not mask the real tick error it's
+ * trying to record.
+ */
+async function logTickFailureEvent(
+  db: D1Database,
+  worldId: string,
+  hookName: string,
+  errorMessage: string,
+  tickTimestamp: string,
+): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO timeline_events (id, world_id, thread_id, event_at, verb, entity_id, object_entity, location_id, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        worldId,
+        'main',
+        tickTimestamp,
+        'tick_hook_failure',
+        null,
+        hookName,
+        null,
+        errorMessage,
+        new Date().toISOString(),
+      )
+      .run()
+  } catch {
+    // Best-effort — see doc comment above.
+  }
 }
 
 export async function runTickDriver(
@@ -266,9 +339,25 @@ export async function runTickDriver(
     return { success: true, resolved: [], flagged: [] }
   }
 
+  // Reject dry_run combined with a mutating hook (#512) before doing any
+  // work — a hook marked `mutates: true` writes directly to D1 inside its own
+  // execute(), so letting it run under dry_run would silently commit real
+  // writes during what's supposed to be a preview call.
+  if (dry_run) {
+    const mutatingHooks = hooks.filter((name) => HOOK_REGISTRY.get(name)?.config.mutates)
+    if (mutatingHooks.length > 0) {
+      return {
+        success: false,
+        resolved: [],
+        flagged: [],
+        narrator_summary: `dry_run is not supported with mutating hook(s): ${mutatingHooks.join(', ')}`,
+      }
+    }
+  }
+
   // Acquire world-level lock
   const lockId = `tick-driver-${Date.now()}`
-  const lockAcquired = await acquireWorldLock(worldId, lockId)
+  const lockAcquired = await acquireWorldLock(db, worldId, lockId)
   if (!lockAcquired) {
     return { success: false, resolved: [], flagged: [] }
   }
@@ -328,12 +417,19 @@ export async function runTickDriver(
         }
         if (result.narrator_summary) summaries.push(result.narrator_summary)
       } catch (e) {
-        // Hook failure → abort entire advance, restore snapshot, return error
+        // Hook failure → stop processing remaining hooks (later hooks may
+        // depend on this one's output) but preserve resolved/flagged from
+        // hooks that already succeeded earlier in this same tick, instead of
+        // discarding them (#512) — they already ran, and for a mutating hook,
+        // already wrote.
+        const errorMessage = (e as Error).message
+        await logTickFailureEvent(db, worldId, hookName, errorMessage, startDate)
         return {
           success: false,
-          resolved: [],
-          flagged: [],
-          narrator_summary: `Hook ${hookName} failed: ${(e as Error).message}`,
+          resolved,
+          flagged,
+          narrator_summary: `Hook ${hookName} failed: ${errorMessage}`,
+          hook_failures: [{ hook: hookName, error: errorMessage }],
         }
       }
     }
@@ -366,8 +462,12 @@ export async function runTickDriver(
       }
     }
 
-    // Apply mutations to real world state (single transaction)
-    // TODO: Wrap in D1 transaction once per-day logic is complete
+    // Hooks write directly to D1 inside their own execute() — there is no
+    // separate "apply" step here. #512 deliberately chose per-hook failure
+    // isolation (above) over wrapping this whole loop in a D1 transaction:
+    // the world-level lock already serializes ticks per world, so the only
+    // real risk was "one bad hook wipes/poisons everything," not concurrent
+    // corruption — see #512 for the full reasoning.
 
     return {
       success: true,
@@ -377,6 +477,6 @@ export async function runTickDriver(
       conflict_resolutions: conflictResolutions.length > 0 ? conflictResolutions : undefined,
     }
   } finally {
-    releaseWorldLock(worldId)
+    await releaseWorldLock(db, worldId)
   }
 }

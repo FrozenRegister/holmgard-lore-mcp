@@ -461,6 +461,11 @@ export async function handleTimeManage(
           flagged: tickResult.flagged,
           narrator_summary: tickResult.narrator_summary,
           mutations: tickResult.mutations,
+          // #512 — these were computed by runTickDriver since #444/this fix
+          // respectively, but never actually reached the caller through this
+          // response before now.
+          conflict_resolutions: tickResult.conflict_resolutions,
+          hook_failures: tickResult.hook_failures,
         }
       }
 
