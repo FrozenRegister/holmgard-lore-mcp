@@ -228,7 +228,7 @@ jobs:
         # Merges blob reports from all 4 shards into unified coverage-final.json
         # and lcov.info (issue #483). This replaces the previous approach of
         # running the full suite a second time with --coverage.
-        run: pnpm exec vitest --merge-reports .vitest-reports/
+        run: pnpm exec vitest --merge-reports .vitest-reports/ --config vitest.config.ts
       - name: Enforce patch coverage (changed lines must be tested)
         if: always() && github.event_name == 'pull_request'
         env:
