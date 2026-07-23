@@ -5,7 +5,7 @@ on:
     paths:
       - 'src/**/*.ts'
       - 'tests/**/*.ts'
-      - 'scripts/**/*.mjs'
+      - 'scripts/*.mjs'
       - '*.ts'
       - '*.mjs'
 
@@ -37,4 +37,4 @@ jobs:
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'style: auto-fix code formatting'
-          file_pattern: 'src/**/*.ts tests/**/*.ts scripts/**/*.mjs *.ts *.mjs'
+          file_pattern: 'src/**/*.ts tests/**/*.ts scripts/*.mjs *.ts *.mjs'
