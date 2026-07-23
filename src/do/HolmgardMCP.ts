@@ -6,6 +6,7 @@ import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
 import { toolRegistry } from '../tools/registry'
 import { coerceTransportArgs } from '../lib/coerce-transport-args'
+import { normalizeParamCasing } from '../lib/normalize-param-casing'
 import { makeSyntheticContext } from './context-adapter'
 
 export class HolmgardMCP extends McpAgent<DOEnv> {
@@ -22,7 +23,9 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name
-      const args = coerceTransportArgs((request.params.arguments ?? {}) as Record<string, unknown>)
+      const args = normalizeParamCasing(
+        coerceTransportArgs((request.params.arguments ?? {}) as Record<string, unknown>),
+      )
 
       if (toolName === 'lore_manage') {
         const action = typeof args?.action === 'string' ? args.action : null
