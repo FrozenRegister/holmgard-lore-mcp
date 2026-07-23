@@ -275,8 +275,16 @@ jobs:
         # No checkout needed — this only reads GitHub's own Jobs API for the
         # run this job is already part of. By the time our `needs:` list is
         # satisfied, every job/step listed there has a real started_at/
-        # completed_at; jq computes each duration in seconds. Steps that never
-        # ran (skipped via an `if:`) have null timestamps, guarded below.
+        # completed_at; jq computes each duration in seconds. Two separate
+        # null cases, both guarded: (1) a step that never ran (skipped via an
+        # `if:`) has null timestamps, so duration_seconds falls back to null
+        # instead of erroring; (2) `.jobs[]` also includes sibling jobs NOT
+        # in our needs: list (notify, trigger-auto-merge, this job itself)
+        # that may still be queued/not-yet-started when we query — the Jobs
+        # API returns `steps: null` (not `[]`) for those, and `.steps[]`
+        # unguarded throws "Cannot iterate over null" and kills the whole
+        # filter. `(.steps // [])[]` verified against a mock with exactly
+        # this shape before relying on it here.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -288,7 +296,7 @@ jobs:
               started_at: .started_at,
               completed_at: .completed_at,
               duration_seconds: (if .started_at and .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else null end),
-              steps: [.steps[] | {
+              steps: [(.steps // [])[] | {
                 name: .name,
                 status: .status,
                 conclusion: .conclusion,
