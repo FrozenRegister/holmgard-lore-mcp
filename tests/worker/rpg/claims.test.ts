@@ -265,6 +265,49 @@ describe('Claims System', () => {
       expect(result.success).toBe(true)
       expect(testCharacter.claimed_by).toBe('creature:shaper-alpha')
     })
+
+    it('reports a conflict when the atomic write loses the race', async () => {
+      // Simulate a race: the initial read (and its fast-path check) sees the
+      // character as unclaimed, but by the time the guarded UPDATE actually
+      // runs, another concurrent setClaim call has already won — the WHERE
+      // guard fails to match despite the pre-check passing, so meta.changes
+      // comes back 0 even though the statement itself succeeded.
+      vi.mocked(mockDb.prepare).mockImplementationOnce(
+        () =>
+          ({
+            bind: () => ({
+              run: async () => ({ success: true, meta: { changes: 0 } }),
+            }),
+          }) as unknown as ReturnType<D1Database['prepare']>,
+      )
+
+      vi.spyOn(characterManage, 'getCharacter')
+        .mockImplementationOnce(async () => ({
+          ...testCharacter,
+          claimed_by: null,
+          claimed_until: null,
+        }))
+        .mockImplementationOnce(async () => ({
+          ...testCharacter,
+          claimed_by: 'creature:shaper-winner',
+          claimed_until: '2187-01-20T00:00:00Z',
+        }))
+
+      const result = await setClaim(
+        mockEnv,
+        mockDb,
+        'char-1',
+        'creature:shaper-alpha',
+        '2187-01-15T00:00:00Z',
+        '2187-01-10T00:00:00Z',
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.conflict).toEqual({
+        claimerKey: 'creature:shaper-winner',
+        claimedUntil: '2187-01-20T00:00:00Z',
+      })
+    })
   })
 
   describe('clearClaim', () => {
