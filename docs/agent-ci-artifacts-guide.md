@@ -10,15 +10,17 @@ See #479 and #480 for the design history and rationale (including the fact that 
 
 ## What gets generated, on every push
 
-| Artifact name | Job it comes from | Files inside | Answers |
-|---|---|---|---|
-| `coverage-report` | `coverage` | `lcov.info`, `coverage-final.json`, `coverage-summary.json`, `patch-coverage-report.json` | "Did patch coverage pass? Which exact lines are uncovered?" |
-| `lint-report-{sha}` | `lint` | `eslint-report.json` | "Which lint rule fired, in which file, on which line?" |
-| `typecheck-report-{sha}` | `type-check` | `tsc-diagnostics.txt` | "What are the exact compiler errors?" |
-| `test-results-unit-{sha}` | `unit-tests` | `test-results-unit.json` | "Which pure-function unit test failed, and why?" |
-| `test-results-shard-{1..4}-{sha}` | `test` (one per shard) | `test-results-shard-{N}.json` | "Which integration test failed, in which shard, and why?" |
+| Artifact name | Job it comes from | Files inside | Answers | If absent |
+|---|---|---|---|---|
+| `coverage-report` | `coverage` | `lcov.info`, `coverage-final.json`, `coverage-summary.json`, `patch-coverage-report.json` | "Did patch coverage pass? Which exact lines are uncovered?" | Shouldn't happen — the upload step runs with `if: always()`. Its absence means the job crashed before that step, an infra problem. |
+| `lint-report-{sha}` | `lint` | `eslint-report.json` | "Which lint rule fired, in which file, on which line?" | Same — shouldn't happen; infra problem if it does. |
+| `typecheck-report-{sha}` | `type-check` | `tsc-diagnostics.txt` | "What are the exact compiler errors?" | Same. |
+| `test-results-unit-{sha}` | `unit-tests` | `test-results-unit.json` | "Which pure-function unit test failed, and why?" | Same. |
+| `test-results-shard-{1..4}-{sha}` | `test` (one per shard) | `test-results-shard-{N}.json` | "Which integration test failed, in which shard, and why?" | Same, per shard. |
+| `build-diff-{sha}` | `build` | `pkg-diff.txt` (diff of `package.json` only), `diff-stat.txt` (whole-PR `--stat` summary) | "Did dependencies change? How big is this PR overall?" | **Expected on `push` events** (a direct push to `main`/`develop`, not a PR) — diffing a branch against itself is meaningless, so the generating step is gated to `pull_request` only. Absence there is normal, not a failure signal. `pkg-diff.txt` existing but *empty* means `package.json` didn't change — also normal, not missing data. |
+| `job-durations-{sha}` | `job-durations` (runs after `test-layout`, `unit-tests`, `test`, `type-check`, `lint`, `build`, `coverage` all complete) | `job-durations.json` | "Did any job/step take anomalously long? (e.g. a shard silently running the full suite instead of its 1/4 slice — see #482/#483)" | Genuinely rare: the job does no checkout or install, just one `gh api` call against this same run's own Jobs endpoint. Absence means that call itself failed (permissions, API outage) — check the job's own log, not the jobs it's reporting on. |
 
-`{sha}` is the commit SHA of the head commit CI ran against (`github.sha`). All artifacts have **7-day retention**. Every artifact-producing step in these jobs runs with `if: always()`, so a job *failing* still produces its artifact — that's the case you need it most.
+`{sha}` is the commit SHA of the head commit CI ran against (`github.sha`). All artifacts have **7-day retention**. Every artifact-producing step in the first five jobs runs with `if: always()`, so a job *failing* still produces its artifact — that's the case you need it most. `build-diff-{sha}` and `job-durations-{sha}` are informational, not tied to a pass/fail gate — see the "If absent" column above for their own (different) absence semantics. Unlike `build-diff-{sha}` (PR-only), `job-durations-{sha}` is also generated on push-to-main events — useful there for duration baseline tracking over time, not just PR review.
 
 ---
 
@@ -49,6 +51,8 @@ This repo's GitHub MCP toolset already supports listing and downloading workflow
 | `Type Check` | `typecheck-report-{sha}` | `tsc-diagnostics.txt` |
 | `Unit Tests (pure functions, no Workers runtime)` | `test-results-unit-{sha}` | `test-results-unit.json` |
 | `Tests (Node 22, shard N/4)` | `test-results-shard-{N}-{sha}` | `test-results-shard-{N}.json` |
+
+**`build-diff-{sha}` and `job-durations-{sha}` don't map to a failing check** — neither `Build` nor `Job Durations` gates merge; they're informational. Reach for them when you're reviewing a PR's overall shape (`build-diff-{sha}`) or something *felt* slow/off in CI without an actual failure (`job-durations-{sha}`), not in response to a red X.
 
 ---
 
@@ -89,6 +93,30 @@ Plain text, `tsc --noEmit --pretty false` output, capped at 5000 lines. An **emp
 ### `test-results-unit.json` / `test-results-shard-{N}.json`
 
 Vitest's built-in JSON reporter (`--reporter=json`), verified locally to produce: `numTotalTestSuites`, `numPassedTestSuites`, `numFailedTestSuites`, `numTotalTests`, `numPassedTests`, `numFailedTests`, `success` (boolean), and a `testResults` array with per-suite `assertionResults` — each including `status` (`passed`/`failed`), `title`, `fullName`, and `failureMessages` (the actual assertion error / stack trace) when failed. This is the exact same information the job's console log has, just parseable without regex.
+
+### `pkg-diff.txt` / `diff-stat.txt`
+
+Both plain `git diff` output (unified diff for the former, `--stat` summary for the latter), against the PR's actual base ref (`origin/<base-branch>`, not hardcoded to `main` — works correctly for PRs targeting `develop` too). `pkg-diff.txt` is scoped to `package.json` only — empty file means dependencies didn't change, a valid signal, not missing data. `diff-stat.txt` covers the whole PR, the same summary `git diff --stat` prints locally, useful for "how big is this change" without checking out the branch.
+
+### `job-durations.json`
+
+```json
+[
+  {
+    "name": "Test Layout",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-07-23T01:20:37Z",
+    "completed_at": "2026-07-23T01:20:45Z",
+    "duration_seconds": 8,
+    "steps": [
+      { "name": "Checkout", "status": "completed", "conclusion": "success", "started_at": "...", "completed_at": "...", "duration_seconds": 2 }
+    ]
+  }
+]
+```
+
+One entry per job GitHub's own Jobs API reports for this run (`test-layout`, `unit-tests`, `test` × 4 shards, `type-check`, `lint`, `build`, `coverage`), each with a nested `steps` array at the same shape. `duration_seconds` is computed from `started_at`/`completed_at` — both `null` (and thus `duration_seconds: null`) for a step that never ran because its own `if:` skipped it; that's a valid "didn't run" signal, not missing data. This is the artifact to check when a run *felt* slow without an actual test failure — e.g. comparing the four `test` shard entries' `duration_seconds` against each other catches a silently-unbalanced or no-op shard (the exact bug class from PR #482/#483) directly, instead of requiring a human to notice the timing felt off.
 
 ---
 

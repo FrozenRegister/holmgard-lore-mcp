@@ -66,32 +66,45 @@ function isExcludedFromCoverage(relPath) {
 
 const IGNORE_REVS_PATH = '.git-blame-ignore-revs'
 const hasIgnoreRevs = existsSync(IGNORE_REVS_PATH)
+const ignoreRevsWarnings = []
+
+// A rebase, or this repo's standard squash-merge (every PR becomes exactly
+// one new commit on main — verified: main is a straight line of "<title>
+// (#N)" commits, no individual PR commits survive), rewrites commit SHAs
+// and silently orphans any entry in .git-blame-ignore-revs still pointing at
+// the old one. This has now happened twice for two different reasons (a
+// rebase during this mechanism's own introduction, then squash-merge on the
+// very next merge). An earlier version of this check hard process.exit(1)'d
+// on a bad SHA — which sounds safer but is actually worse: it silently broke
+// patch-coverage-report.json's "written unconditionally" guarantee (the
+// artifact just didn't exist) and hard-failed the Coverage job on every PR
+// afterward, regardless of that PR's own content. Degrade instead: drop only
+// the bad SHA (isPreExistingLine simply won't match it — patch-coverage gets
+// stricter for reformatted regions specifically, not for every PR), and warn
+// loudly in both console output and the JSON report so a human notices and
+// fixes the file, without blocking unrelated work over it.
 const ignoredRevSet = hasIgnoreRevs
   ? new Set(
       readFileSync(IGNORE_REVS_PATH, 'utf8')
         .split('\n')
         .map((l) => l.trim())
-        .filter((l) => l && !l.startsWith('#')),
+        .filter((l) => l && !l.startsWith('#'))
+        .filter((sha) => {
+          try {
+            execSync(`git cat-file -e ${sha}^{commit}`, { stdio: 'ignore' })
+            return true
+          } catch {
+            const warning =
+              `${IGNORE_REVS_PATH} lists ${sha}, which doesn't resolve to a commit in this checkout ` +
+              `— a rebase/squash-merge likely rewrote it. Update the file with the new SHA ` +
+              `(git log --format=%H --grep=<commit message>).`
+            console.error(`check-patch-coverage: WARNING: ${warning}`)
+            ignoreRevsWarnings.push(warning)
+            return false
+          }
+        }),
     )
   : new Set()
-
-// A rebase or squash rewrites commit SHAs, silently orphaning any entry in
-// .git-blame-ignore-revs that still points at the old, now-nonexistent SHA —
-// this is exactly what happened once already (a rebase during this file's
-// own introduction). The failure mode is silent: isPreExistingLine() below
-// just stops excluding anything, and patch-coverage fails on 100+ pre-existing
-// lines with no hint why. Fail loudly and immediately instead.
-for (const sha of ignoredRevSet) {
-  try {
-    execSync(`git cat-file -e ${sha}^{commit}`, { stdio: 'ignore' })
-  } catch {
-    console.error(
-      `check-patch-coverage: ${IGNORE_REVS_PATH} lists ${sha}, which doesn't resolve to a commit in this checkout. ` +
-        `A rebase/squash likely rewrote it — update the file with the new SHA (git log --format=%H --grep=<message>).`,
-    )
-    process.exit(1)
-  }
-}
 
 // A mass mechanical reformat (e.g. introducing Prettier for the first time)
 // touches the *text* of thousands of pre-existing lines without changing
@@ -150,14 +163,27 @@ function main() {
   const changed = getChangedLines(baseRef)
   if (changed.size === 0) {
     console.log(`check-patch-coverage: no changed .ts files vs ${baseRef} — nothing to check`)
-    writeReport({ passed: true, baseRef, checkedFiles: 0, failures: [] })
+    writeReport({
+      passed: true,
+      baseRef,
+      checkedFiles: 0,
+      failures: [],
+      warnings: ignoreRevsWarnings,
+    })
     return
   }
 
   if (!existsSync(coveragePath)) {
     const message = `${coveragePath} not found — did the coverage reporter include 'json'?`
     console.error(`check-patch-coverage: ${message}`)
-    writeReport({ passed: false, baseRef, checkedFiles: 0, failures: [], error: message })
+    writeReport({
+      passed: false,
+      baseRef,
+      checkedFiles: 0,
+      failures: [],
+      error: message,
+      warnings: ignoreRevsWarnings,
+    })
     process.exit(1)
   }
   const coverage = JSON.parse(readFileSync(coveragePath, 'utf8'))
@@ -222,6 +248,7 @@ function main() {
       checkedFiles: changed.size,
       failures,
       excludedAsPreExisting,
+      warnings: ignoreRevsWarnings,
     })
     process.exit(1)
   }
@@ -233,6 +260,7 @@ function main() {
     checkedFiles: changed.size,
     failures: [],
     excludedAsPreExisting,
+    warnings: ignoreRevsWarnings,
   })
 }
 

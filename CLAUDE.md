@@ -132,6 +132,8 @@ The short version:
 | `Unit Tests` | `test-results-unit-{sha}` | `test-results-unit.json` | Structured pass/fail + failure messages |
 | `Tests (shard N/4)` | `test-results-shard-{N}-{sha}` | `test-results-shard-{N}.json` | Same, per shard |
 
+Two more, not tied to a failing check — informational, not gates: `build-diff-{sha}` (`pkg-diff.txt` + `diff-stat.txt`, PR-only) answers "did dependencies change, how big is this PR"; `job-durations-{sha}` (`job-durations.json`, per-job + per-step wall-clock time from GitHub's own Jobs API) answers "did anything take anomalously long" — e.g. would have caught #482/#483's silently no-op-sharded test job directly. See `docs/agent-ci-artifacts-guide.md` for full file formats and the "if absent" semantics for every artifact.
+
 Find and download via the GitHub MCP tools already available in-session — no `gh` CLI, no new auth: `actions_list(method: "list_workflow_run_artifacts", resource_id: <run_id>)` to find the artifact (its response includes `workflow_run.head_sha` — check this against the PR's current head before trusting it, no download needed), then `actions_get(method: "download_workflow_run_artifact", resource_id: <artifact_id>)` for the download URL.
 
 **Rerunning locally is fine when you're actively iterating on a fix** (write code, run the one file you touched, repeat) — it's only wasteful when you're using it to find out why an *already-completed* CI run failed, which the artifacts above already answer.
