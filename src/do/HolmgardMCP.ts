@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
 import { toolRegistry } from '../tools/registry'
+import { coerceTransportArgs } from '../lib/coerce-transport-args'
 import { makeSyntheticContext } from './context-adapter'
 
 export class HolmgardMCP extends McpAgent<DOEnv> {
@@ -21,7 +22,9 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name
-      const args = (request.params.arguments ?? {}) as Record<string, unknown>
+      const args = coerceTransportArgs(
+        (request.params.arguments ?? {}) as Record<string, unknown>,
+      )
 
       if (toolName === 'lore_manage') {
         const action = typeof args?.action === 'string' ? args.action : null

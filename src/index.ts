@@ -10,6 +10,7 @@ import rateLimitMiddleware, { wsReconnectRateLimit } from './middleware/rate-lim
 import { requestIdMiddleware, type RequestIdVariables } from './middleware/request-id'
 import { toolDefinitions } from './tools/definitions'
 import { toolRegistry } from './tools/registry'
+import { coerceTransportArgs } from './lib/coerce-transport-args'
 import adminRoutes from './admin/routes'
 import changesRouter from './changes/route'
 import { HolmgardMCP } from './do/HolmgardMCP'
@@ -1899,7 +1900,7 @@ app.post('/mcp', async (c) => {
     // ── tools/call ────────────────────────────────────────────────────────────
     if (method === 'tools/call') {
       const toolName = params?.name
-      const args = (params?.arguments ?? {}) as Record<string, any>
+      const args = coerceTransportArgs((params?.arguments ?? {}) as Record<string, any>)
       if (!toolName || typeof toolName !== 'string')
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
