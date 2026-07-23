@@ -1779,6 +1779,16 @@ const getIsAuthenticated = (c: any): boolean => {
   return !key || c.req.header('X-Api-Key') === key
 }
 
+// #498 — single auth guard for all bare-method handlers (was 5 copies in two styles).
+// Returns null when authenticated, or a 401 JSON-RPC error response to return directly.
+const unauthorizedIfNeeded = (
+  c: any,
+  id: string | number | null,
+): ReturnType<typeof c.json> | null =>
+  getIsAuthenticated(c)
+    ? null
+    : c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+
 // Pre-built Streamable HTTP handler — routes spec-compliant MCP SDK clients to
 // the HolmgardMCP DO via the agents SDK session management.
 const mcpServeHandler = HolmgardMCP.serve('/mcp', {
@@ -1827,12 +1837,7 @@ app.use('/mcp', async (c, next) => {
 
   if (!isStreamableHttp || !c.env.MCP_OBJECT) return next()
 
-  const apiKey = c.env.MCP_API_KEY
-  if (apiKey && c.req.header('X-Api-Key') !== apiKey) {
-    return c.json({ error: 'Unauthorized: valid X-Api-Key header required' }, 401)
-  }
-
-  return mcpServeHandler.fetch(c.req.raw, c.env as any, c.executionCtx as any)
+  return unauthorizedIfNeeded(c, null) ?? mcpServeHandler.fetch(c.req.raw, c.env as any, c.executionCtx as any)
 })
 
 app.get('/mcp', (c) => {
@@ -1939,9 +1944,8 @@ app.post('/mcp', async (c) => {
         // fall through to auth guard + registry for all other lore_manage actions
       }
 
-      if (!isAuthenticated) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
 
       const handler = toolRegistry[toolName]
       if (handler) {
@@ -1955,17 +1959,15 @@ app.post('/mcp', async (c) => {
     // In production (MCP_API_KEY is set) require same auth check as tools/call.
 
     if (method === 'list_topics') {
-      if (!getIsAuthenticated(c)) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
       const keys = await kvList(c)
       return c.json(makeResult(id, { keys }), 200)
     }
 
     if (method === 'get_lore') {
-      if (!getIsAuthenticated(c)) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
       const key = (params?.key ?? params?.query ?? '').toString().toLowerCase()
       if (!key) return c.json(makeError(id, -32602, 'Invalid params: missing key'), 200)
 
@@ -1977,9 +1979,8 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_world_biomes') {
-      if (!getIsAuthenticated(c)) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
       const worldId = (params?.worldId ?? '').toString()
       if (!worldId) return c.json(makeError(id, -32602, 'Invalid params: missing worldId'), 200)
       if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
@@ -2000,10 +2001,8 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_lore_batch') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
       const keys: string[] = Array.isArray(params?.keys)
         ? params.keys.map((k: string) => k.trim().toLowerCase())
         : []
@@ -2018,10 +2017,8 @@ app.post('/mcp', async (c) => {
     }
 
     if (method === 'get_topic_histories') {
-      const MCP_LEGACY_API_KEY = c.env.MCP_API_KEY
-      if (MCP_LEGACY_API_KEY && c.req.header('X-Api-Key') !== MCP_LEGACY_API_KEY) {
-        return c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
-      }
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
       const keys: string[] = Array.isArray(params?.keys)
         ? params.keys.map((k: string) => k.trim().toLowerCase())
         : []
