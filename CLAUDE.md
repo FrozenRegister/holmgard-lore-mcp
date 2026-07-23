@@ -232,6 +232,19 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 - `hex_to_latlon` — Convert hex coords to real-world lat/lon (only works if world is geo-calibrated)
 - Status: #341 is largely resolved (q/r already required); `lat`/`lon` remain required per migration 0021 schema
 
+### Simulation Layer — Tick Driver and Claims (#440, Phases 0.5–2 shipped)
+
+**`tick-hooks.ts`** (`runTickDriver`, #442) — the `time.advance` heartbeat. Runs a topologically-sorted set of hooks once per call (not once per day in the `startDate`–`endDate` range — multi-day batching from #440 §3.2 was never implemented; every call executes hooks exactly once regardless of day count). A world-level in-memory lock (`WORLD_LOCKS`) serializes concurrent ticks per `world_id`.
+
+**`claims.ts`** (`getClaim`/`setClaim`/`clearClaim`/`resolveTickConflicts`, #444) — cross-tick resource locks on `characters.claimed_by`/`claimed_until`/`claimed_at`, plus in-memory-per-tick conflict resolution for flagged events. Known behavior, not obvious from a quick read:
+
+- **`claimed_at`/`claimed_until` are in-game simulation time, not wall-clock.** Every caller must pass the tick driver's in-game clock value, never `Date.now()` / D1's `CURRENT_TIMESTAMP` — a claim timestamped with real-world time is meaningless once the simulation is centuries removed from it.
+- **`resolveTickConflicts` returns one entry per *resource lock*, not one per event.** An event with `resourceLocks: ['a', 'b']` is evaluated independently against whatever else targets `a` and whatever else targets `b`, and can end up with a `resolved` verdict on one lock and a `modified`/`deferred` verdict on the other — both entries reference the same event id. `runTickDriver`'s `conflict_resolutions` output passes this through unreconciled, so a consumer that expects "one verdict per event" needs to handle (or explicitly ignore) this multi-entry case.
+- **Stale claims are only ever detected reactively.** `resolveTickConflicts` treats an expired `claimed_until` as unclaimed the moment it's checked, but nothing proactively clears `claimed_by` on a dead/removed claimant — that's explicitly deferred to `clearDeadPredatorClaims()` (currently a `#445` Phase 3 stub that only logs).
+- **`setClaim`'s collision check is atomic** (a conditional `UPDATE ... WHERE (claimed_by IS NULL OR claimed_until <= ?)`, checked via `meta.changes`) — two concurrent `setClaim` calls on the same target can't both succeed.
+
+**⚠️ Known gap, tracked for Phase 3 (#445) readiness — see #512:** neither of the above two systems currently makes `dry_run: true` on `time.advance` structurally safe, nor wraps a tick's hook executions in a rollback boundary. #512 has the game plan (three candidate approaches) and the open questions blocking a decision — resolve it before creature AI hooks start performing real per-tick D1 writes.
+
 ## Documenting Discoveries (Capture Institutional Knowledge)
 
 **Whenever you uncover something about how this system works that isn't obvious from a quick read of the code, write it down.** Don't let it get lost in the chat context.
