@@ -288,4 +288,154 @@ describe('Tick Hooks - Conflict Resolution', () => {
     // Clean up
     HOOK_REGISTRY.delete('test_hook')
   })
+
+  // ── Coverage: disabled hook skip (line 280) ──────────────────────────────────
+
+  it('should skip disabled hooks', async () => {
+    const { HOOK_REGISTRY } = await import('./tick-hooks')
+
+    const disabledHook = {
+      name: 'disabled_hook',
+      config: { enabled: false, batch_mode: false },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'resolved' as const,
+        data: { should: 'never appear' },
+        narrator_summary: 'Should not run'
+      })
+    }
+
+    HOOK_REGISTRY.set('disabled_hook', disabledHook)
+
+    try {
+      const result = await runTickDriver(
+        mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11',
+        { hooks: ['disabled_hook'] }
+      )
+
+      expect(result.success).toBe(true)
+      expect(result.resolved).toHaveLength(0)
+      expect(result.flagged).toHaveLength(0)
+    } finally {
+      HOOK_REGISTRY.delete('disabled_hook')
+    }
+  })
+
+  // ── Coverage: log_only hook (line 286) ───────────────────────────────────────
+
+  it('should handle log_only hooks without mutating', async () => {
+    const { HOOK_REGISTRY } = await import('./tick-hooks')
+
+    const logOnlyHook = {
+      name: 'log_only_hook',
+      config: { enabled: true, batch_mode: false, log_only: true },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'flagged' as const,
+        data: {
+          events: [{
+            id: 'log-ev-1',
+            eventType: 'log_test',
+            priority: 'HIGH' as const,
+            targetKey: 'char-1',
+            sourceEntityKey: 'entity:log-test',
+            payload: {},
+            resourceLocks: ['char-1']
+          }]
+        },
+        narrator_summary: 'Log-only test'
+      })
+    }
+
+    HOOK_REGISTRY.set('log_only_hook', logOnlyHook)
+
+    try {
+      const result = await runTickDriver(
+        mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11',
+        { hooks: ['log_only_hook'] }
+      )
+
+      expect(result.success).toBe(true)
+    } finally {
+      HOOK_REGISTRY.delete('log_only_hook')
+    }
+  })
+
+  // ── Coverage: hook throws → abort entire advance (lines 301-306) ──────────────
+
+  it('should abort entire advance when a hook throws', async () => {
+    const { HOOK_REGISTRY } = await import('./tick-hooks')
+
+    const throwingHook = {
+      name: 'throwing_hook',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => {
+        throw new Error('Catastrophic hook failure')
+      }
+    }
+
+    HOOK_REGISTRY.set('throwing_hook', throwingHook)
+
+    try {
+      const result = await runTickDriver(
+        mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11',
+        { hooks: ['throwing_hook'] }
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.narrator_summary).toContain('Hook throwing_hook failed')
+      expect(result.narrator_summary).toContain('Catastrophic hook failure')
+      expect(result.resolved).toHaveLength(0)
+      expect(result.flagged).toHaveLength(0)
+    } finally {
+      HOOK_REGISTRY.delete('throwing_hook')
+    }
+  })
+
+  // ── Coverage: circular dependency → topological sort failure ──────────────────
+
+  it('should handle circular dependencies gracefully', async () => {
+    const { HOOK_REGISTRY } = await import('./tick-hooks')
+
+    const hookA = {
+      name: 'circ_a',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: ['circ_b'],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'resolved' as const, data: {}, narrator_summary: 'A'
+      })
+    }
+    const hookB = {
+      name: 'circ_b',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: ['circ_a'],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'resolved' as const, data: {}, narrator_summary: 'B'
+      })
+    }
+
+    HOOK_REGISTRY.set('circ_a', hookA)
+    HOOK_REGISTRY.set('circ_b', hookB)
+
+    try {
+      const result = await runTickDriver(
+        mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11',
+        { hooks: ['circ_a', 'circ_b'] }
+      )
+
+      expect(result.success).toBe(false)
+      expect(result.narrator_summary).toContain('Hook sort failed')
+      expect(result.narrator_summary).toContain('Circular dependency')
+    } finally {
+      HOOK_REGISTRY.delete('circ_a')
+      HOOK_REGISTRY.delete('circ_b')
+    }
+  })
+
 })

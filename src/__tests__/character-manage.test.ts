@@ -1689,4 +1689,95 @@ describe('character_manage tool', () => {
       claimed_by: 'entity:test'
     })).rejects.toThrow('Character not found: character:NonExistent')
   })
+
+
+  // ── Coverage: ambiguous name → KV fallback (lines 197-211) ──────────────────
+
+  it('getCharacter resolves ambiguous names (multiple characters same name)', async () => {
+    // Create two characters with the same name
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'KVAmbiguous',
+      characterType: 'npc'
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'KVAmbiguous',
+      characterType: 'npc'
+    })
+
+    const { getCharacter } = await import('../rpg/handlers/character-manage')
+    // Should not throw — falls back to KV D1-ID matching, then defaults to first result
+    const result = await getCharacter(env, env.RPG_DB, 'character:KVAmbiguous')
+    expect(result).toBeTruthy()
+    expect(result.name).toBe('KVAmbiguous')
+  })
+
+  // ── Coverage: updateCharacter skips undefined/null values (line 243) ─────────
+
+  it('updateCharacter skips undefined and null update values', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'SkipNullChar',
+      characterType: 'npc',
+      level: 1
+    })
+    expect(create.success).toBe(true)
+
+    const { updateCharacter } = await import('../rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:SkipNullChar', {
+      level: 5,
+      claimed_by: undefined,
+      claimed_until: null,
+    })
+
+    expect(updated).toBeTruthy()
+  })
+
+  // ── Coverage: updateCharacter default branch for non-claim fields (lines 261-265) ──
+
+  it('updateCharacter handles non-claim fields through default branch', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'DefaultBranchChar',
+      characterType: 'npc',
+      level: 1,
+      hp: 10
+    })
+    expect(create.success).toBe(true)
+
+    const { updateCharacter } = await import('../rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:DefaultBranchChar', {
+      level: 5,
+      hp: 42,
+      ac: 18,
+      character_type: 'pc',
+    })
+
+    expect(updated).toBeTruthy()
+  })
+
+  // ── Coverage: character not found after update (line 278) ────────────────────
+
+  it('updateCharacter throws when character vanishes after update', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'VanishChar',
+      characterType: 'npc'
+    })
+    expect(create.success).toBe(true)
+
+    // Delete the character, then try to update it — the initial getCharacter
+    // inside updateCharacter will return null
+    await callTool('character_manage', {
+      action: 'delete',
+      name: 'VanishChar'
+    })
+
+    const { updateCharacter } = await import('../rpg/handlers/character-manage')
+    await expect(updateCharacter(env, env.RPG_DB, 'character:VanishChar', {
+      level: 2
+    })).rejects.toThrow('Character not found: character:VanishChar')
+  })
+
 })

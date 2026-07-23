@@ -433,4 +433,135 @@ describe('Claims System', () => {
       consoleSpy.mockRestore()
     })
   })
+
+  // ── Coverage: setClaim throws for non-existent character (line 97) ───────────
+
+  it('should throw error for non-existent character in setClaim', async () => {
+    await expect(setClaim(
+      mockEnv,
+      mockDb,
+      'char:nonexistent',
+      'creature:shaper-alpha',
+      '2187-01-15T00:00:00Z',
+      '2187-01-10T00:00:00Z'
+    )).rejects.toThrow('Character not found: char:nonexistent')
+  })
+
+  // ── Coverage: highest-priority event conflicts with active claim from different entity (lines 222-234) ──
+
+  it('should modify highest-priority event when active claim belongs to different entity', async () => {
+    testCharacter.claimed_by = 'creature:shaper-beta'
+    testCharacter.claimed_until = '2187-01-20T00:00:00Z'
+    testCharacter.claimed_at = '2187-01-10T00:00:00Z'
+
+    const currentTickTime = '2187-01-10T00:00:00Z'
+
+    const events: FlaggedEvent[] = [{
+      id: 'event-solo',
+      eventType: 'hunt',
+      priority: 'CRITICAL' as Priority,
+      targetKey: 'char-1',
+      sourceEntityKey: 'creature:shaper-alpha',
+      payload: {},
+      resourceLocks: ['char-1']
+    }]
+
+    const results = await resolveTickConflicts(events, currentTickTime, mockEnv, mockDb)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('modified')
+    if (results[0].status === 'modified') {
+      expect(results[0].modification.narrativeContext).toContain('already claimed by creature:shaper-beta')
+      expect(results[0].modification.conflictWith.claimerKey).toBe('creature:shaper-beta')
+      expect(results[0].modification.conflictWith.claimedUntil).toBe('2187-01-20T00:00:00Z')
+    }
+  })
+
+  // ── Coverage: lower-priority event conflicts with active claim → modified (lines 242-256) ──
+
+  it('should modify lower-priority events when active claim exists', async () => {
+    testCharacter.claimed_by = 'creature:shaper-alpha'
+    testCharacter.claimed_until = '2187-01-20T00:00:00Z'
+    testCharacter.claimed_at = '2187-01-10T00:00:00Z'
+
+    const currentTickTime = '2187-01-10T00:00:00Z'
+
+    const events: FlaggedEvent[] = [
+      {
+        id: 'event-winner',
+        eventType: 'tenderize',
+        priority: 'CRITICAL' as Priority,
+        targetKey: 'char-1',
+        sourceEntityKey: 'creature:shaper-alpha',
+        payload: {},
+        resourceLocks: ['char-1']
+      },
+      {
+        id: 'event-loser',
+        eventType: 'hunt',
+        priority: 'LOW' as Priority,
+        targetKey: 'char-1',
+        sourceEntityKey: 'party:adventurers',
+        payload: {},
+        resourceLocks: ['char-1']
+      }
+    ]
+
+    const results = await resolveTickConflicts(events, currentTickTime, mockEnv, mockDb)
+
+    expect(results).toHaveLength(2)
+
+    const winner = results.find(r => r.event.id === 'event-winner')
+    expect(winner?.status).toBe('resolved')
+
+    const loser = results.find(r => r.event.id === 'event-loser')
+    expect(loser?.status).toBe('modified')
+    if (loser?.status === 'modified') {
+      expect(loser.modification.narrativeContext).toContain('already claimed by creature:shaper-alpha')
+    }
+  })
+
+  // ── Coverage: lower-priority event deferred when no active claim (lines 257-263) ──
+
+  it('should defer lower-priority events when no active claim exists', async () => {
+    testCharacter.claimed_by = null
+    testCharacter.claimed_until = null
+
+    const currentTickTime = '2187-01-10T00:00:00Z'
+
+    const events: FlaggedEvent[] = [
+      {
+        id: 'event-high',
+        eventType: 'tenderize',
+        priority: 'CRITICAL' as Priority,
+        targetKey: 'char-1',
+        sourceEntityKey: 'creature:shaper-alpha',
+        payload: {},
+        resourceLocks: ['char-1']
+      },
+      {
+        id: 'event-low',
+        eventType: 'hunt',
+        priority: 'LOW' as Priority,
+        targetKey: 'char-1',
+        sourceEntityKey: 'party:adventurers',
+        payload: {},
+        resourceLocks: ['char-1']
+      }
+    ]
+
+    const results = await resolveTickConflicts(events, currentTickTime, mockEnv, mockDb)
+
+    expect(results).toHaveLength(2)
+
+    const highResult = results.find(r => r.event.id === 'event-high')
+    expect(highResult?.status).toBe('resolved')
+
+    const lowResult = results.find(r => r.event.id === 'event-low')
+    expect(lowResult?.status).toBe('deferred')
+    if (lowResult?.status === 'deferred') {
+      expect(lowResult.retryAt).toBe(currentTickTime)
+    }
+  })
+
 })
