@@ -80,18 +80,25 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run tests
-        # See the unit-tests job for why this calls vitest directly instead of
-        # `pnpm test -- --shard=...`: pnpm's `--` forwarding was silently
-        # swallowing --shard too, so every "sharded" job was likely running
-        # the full suite instead of its 1/4 slice.
-        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile.json=test-results-shard-${{ matrix.shard }}.json
+      - name: Run tests with coverage
+        # Each shard runs with --reporter=blob --coverage to produce blob
+        # reports that can be merged later. The merge step happens in the
+        # `coverage` job using vitest --merge-reports, eliminating the need for
+        # a separate full suite run (see issue #483).
+        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --reporter=blob --coverage --outputFile.json=test-results-shard-${{ matrix.shard }}.json
       - name: Upload shard test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-shard-${{ matrix.shard }}.json
+          retention-days: 7
+      - name: Upload shard blob report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-blob-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .vitest-reports/
           retention-days: 7
 
   type-check:
@@ -191,6 +198,7 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -211,8 +219,16 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run tests with coverage
-        run: pnpm test:coverage
+      - name: Download blob reports from all shards
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-blob-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .vitest-reports/
+      - name: Merge coverage from sharded test runs
+        # Merges blob reports from all 4 shards into unified coverage-final.json
+        # and lcov.info (issue #483). This replaces the previous approach of
+        # running the full suite a second time with --coverage.
+        run: pnpm exec vitest --merge-reports .vitest-reports/
       - name: Enforce patch coverage (changed lines must be tested)
         if: always() && github.event_name == 'pull_request'
         env:
