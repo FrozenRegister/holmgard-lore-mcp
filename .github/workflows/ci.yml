@@ -80,18 +80,30 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run tests
-        # See the unit-tests job for why this calls vitest directly instead of
-        # `pnpm test -- --shard=...`: pnpm's `--` forwarding was silently
-        # swallowing --shard too, so every "sharded" job was likely running
-        # the full suite instead of its 1/4 slice.
-        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --outputFile.json=test-results-shard-${{ matrix.shard }}.json
+      - name: Run tests with coverage
+        # Each shard runs with --coverage. Coverage reports are generated to
+        # coverage/ and renamed with shard suffix, then merged in the coverage
+        # job (see issue #483).
+        run: |
+          pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --coverage --outputFile.json=test-results-shard-${{ matrix.shard }}.json
+          # Rename coverage files to include shard number for later merging
+          if [ -f coverage/coverage-final.json ]; then
+            mkdir -p coverage-shards
+            cp coverage/coverage-final.json coverage-shards/coverage-${{ matrix.shard }}.json
+          fi
       - name: Upload shard test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-shard-${{ matrix.shard }}.json
+          retention-days: 7
+      - name: Upload shard coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: coverage-shards/coverage-${{ matrix.shard }}.json
           retention-days: 7
 
   type-check:
@@ -191,6 +203,7 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -211,8 +224,25 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run tests with coverage
-        run: pnpm test:coverage
+      - name: Download coverage reports from all shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ./coverage-shards-downloads/
+          merge-multiple: true
+      - name: Prepare coverage for merging
+        # Move downloaded coverage files into coverage-shards/ directory with
+        # standard names for the merge script
+        run: |
+          mkdir -p coverage-shards
+          # Find all coverage-*.json files and move them into coverage-shards
+          find coverage-shards-downloads -name "coverage-*.json" -exec cp {} coverage-shards/ \;
+          ls -la coverage-shards/ || true
+      - name: Merge coverage from sharded test runs
+        # Merges coverage files from all 4 shards into a unified report
+        # using the merge-coverage script (issue #483). This replaces the
+        # previous approach of running the full suite a second time with --coverage.
+        run: node scripts/merge-coverage.mjs
       - name: Enforce patch coverage (changed lines must be tested)
         if: always() && github.event_name == 'pull_request'
         env:
