@@ -22,9 +22,7 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name
-      const args = coerceTransportArgs(
-        (request.params.arguments ?? {}) as Record<string, unknown>,
-      )
+      const args = coerceTransportArgs((request.params.arguments ?? {}) as Record<string, unknown>)
 
       if (toolName === 'lore_manage') {
         const action = typeof args?.action === 'string' ? args.action : null

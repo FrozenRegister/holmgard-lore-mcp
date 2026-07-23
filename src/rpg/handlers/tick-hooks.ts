@@ -14,6 +14,9 @@ export interface HookResult {
   narrator_summary?: string
 }
 
+// Import claims system for conflict resolution
+import { resolveTickConflicts, type FlaggedEvent } from '../utils/claims'
+
 export interface WorldSnapshot {
   date: string
   parties: Map<string, any>
@@ -191,7 +194,7 @@ const dissolutionFlagHook: HookRunner = {
 
 // ── Hook Registry & Topological Sort ──────────────────────────────────────────
 
-const HOOK_REGISTRY = new Map<string, HookRunner>([
+export const HOOK_REGISTRY = new Map<string, HookRunner>([
   ['weather_update', weatherUpdateHook],
   ['resource_consume', resourceConsumeHook],
   ['encounter_check', encounterCheckHook],
@@ -239,6 +242,13 @@ export interface TickDriverOutput {
   flagged: HookResult[]
   narrator_summary?: string
   mutations?: Record<string, unknown>
+  conflict_resolutions?: Array<{
+    status: 'resolved' | 'modified' | 'deferred'
+    eventType: string
+    targetKey: string
+    sourceEntityKey: string
+    narrativeContext?: string
+  }>
 }
 
 export async function runTickDriver(
@@ -284,6 +294,16 @@ export async function runTickDriver(
     const resolved: HookResult[] = []
     const flagged: HookResult[] = []
     const summaries: string[] = []
+    const conflictResolutions: Array<{
+      status: 'resolved' | 'modified' | 'deferred'
+      eventType: string
+      targetKey: string
+      sourceEntityKey: string
+      narrativeContext?: string
+    }> = []
+
+    // Collect flagged events for conflict resolution
+    const flaggedEvents: FlaggedEvent[] = []
 
     for (const hookName of sortedHooks) {
       const hook = HOOK_REGISTRY.get(hookName)
@@ -297,7 +317,15 @@ export async function runTickDriver(
           console.log(`[tick-driver-log-only] ${hookName}: ${JSON.stringify(result)}`)
         }
         if (result.category === 'resolved') resolved.push(result)
-        if (result.category === 'flagged') flagged.push(result)
+        if (result.category === 'flagged') {
+          flagged.push(result)
+
+          // Extract flagged events for conflict resolution
+          if (result.data && typeof result.data === 'object' && 'events' in result.data) {
+            const events = (result.data as { events: FlaggedEvent[] }).events
+            flaggedEvents.push(...events)
+          }
+        }
         if (result.narrator_summary) summaries.push(result.narrator_summary)
       } catch (e) {
         // Hook failure → abort entire advance, restore snapshot, return error
@@ -307,6 +335,23 @@ export async function runTickDriver(
           flagged: [],
           narrator_summary: `Hook ${hookName} failed: ${(e as Error).message}`,
         }
+      }
+    }
+
+    // Resolve conflicts between flagged events
+    if (flaggedEvents.length > 0) {
+      const resolutionResults = await resolveTickConflicts(flaggedEvents, startDate, env, db)
+
+      // Process resolution results
+      for (const resolution of resolutionResults) {
+        conflictResolutions.push({
+          status: resolution.status,
+          eventType: resolution.event.eventType,
+          targetKey: resolution.event.targetKey,
+          sourceEntityKey: resolution.event.sourceEntityKey,
+          narrativeContext:
+            resolution.status === 'modified' ? resolution.modification.narrativeContext : undefined,
+        })
       }
     }
 
@@ -329,6 +374,7 @@ export async function runTickDriver(
       resolved,
       flagged,
       narrator_summary: summaries.join(' '),
+      conflict_resolutions: conflictResolutions.length > 0 ? conflictResolutions : undefined,
     }
   } finally {
     releaseWorldLock(worldId)

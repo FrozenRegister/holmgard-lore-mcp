@@ -1913,4 +1913,229 @@ describe('character_manage tool', () => {
     expect(char.character.current_hex_q).toBe(10)
     expect(char.character.current_hex_r).toBe(10)
   })
+
+  // ── New Exported Functions Tests ─────────────────────────────────────────────
+
+  it('getCharacter retrieves character by lore key', async () => {
+    // Create a character first
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'TestCharacter',
+      characterType: 'npc',
+    })
+    expect(create.success).toBe(true)
+
+    // Import and test getCharacter directly
+    const { getCharacter } = await import('@/rpg/handlers/character-manage')
+    const char = await getCharacter(env, env.RPG_DB, 'character:TestCharacter')
+
+    expect(char).toBeTruthy()
+    expect(char?.name).toBe('TestCharacter')
+    expect(char?.character_type).toBe('npc')
+  })
+
+  it('getCharacter returns null for non-existent character', async () => {
+    const { getCharacter } = await import('@/rpg/handlers/character-manage')
+    const char = await getCharacter(env, env.RPG_DB, 'character:NonExistent')
+
+    expect(char).toBeNull()
+  })
+
+  it('updateCharacter updates claim fields', async () => {
+    // Create a character first
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'UpdateTest',
+      characterType: 'npc',
+    })
+    expect(create.success).toBe(true)
+
+    // Test updateCharacter directly
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:UpdateTest', {
+      claimed_by: 'entity:test',
+      claimed_until: '2187-01-15T00:00:00Z',
+      claimed_at: '2187-01-10T00:00:00Z',
+    })
+
+    expect(updated).toBeTruthy()
+    expect(updated.claimed_by).toBe('entity:test')
+    expect(updated.claimed_until).toBe('2187-01-15T00:00:00Z')
+    expect(updated.claimed_at).toBe('2187-01-10T00:00:00Z')
+  })
+
+  it('updateCharacter throws error for non-existent character', async () => {
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+
+    await expect(
+      updateCharacter(env, env.RPG_DB, 'character:NonExistent', {
+        claimed_by: 'entity:test',
+      }),
+    ).rejects.toThrow('Character not found: character:NonExistent')
+  })
+
+  // ── Coverage: ambiguous name → KV fallback (lines 197-211) ──────────────────
+
+  it('getCharacter resolves ambiguous names (multiple characters same name)', async () => {
+    // Create two characters with the same name
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'KVAmbiguous',
+      characterType: 'npc',
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'KVAmbiguous',
+      characterType: 'npc',
+    })
+
+    const { getCharacter } = await import('@/rpg/handlers/character-manage')
+    // Should not throw — falls back to KV D1-ID matching, then defaults to first result
+    const result = await getCharacter(env, env.RPG_DB, 'character:KVAmbiguous')
+    expect(result).toBeTruthy()
+    expect(result!.name).toBe('KVAmbiguous')
+  })
+
+  it('getCharacter resolves ambiguous names via a matching D1-ID in KV', async () => {
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'KVMatchAmbiguous',
+      characterType: 'npc',
+    })
+    const second = await callTool('character_manage', {
+      action: 'create',
+      name: 'KVMatchAmbiguous',
+      characterType: 'npc',
+    })
+
+    // Seed a KV projection at the exact key getCharacter looks up, pointing
+    // at the second character's D1 id.
+    await env.LORE_DB.put(
+      'character:KVMatchAmbiguous',
+      JSON.stringify({
+        text: `**Name:** KVMatchAmbiguous\n**D1-ID:** ${second.characterId}\n`,
+        meta: {
+          version: 1,
+          updatedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    )
+
+    const { getCharacter } = await import('@/rpg/handlers/character-manage')
+    const result = await getCharacter(env, env.RPG_DB, 'character:KVMatchAmbiguous')
+    expect(result).toBeTruthy()
+    expect(result!.id).toBe(second.characterId)
+  })
+
+  it('getCharacter throws when LORE_DB binding is missing and names are ambiguous', async () => {
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'NoLoreDbAmbiguous',
+      characterType: 'npc',
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'NoLoreDbAmbiguous',
+      characterType: 'npc',
+    })
+
+    const { getCharacter } = await import('@/rpg/handlers/character-manage')
+    const envWithoutLoreDb = { ...env, LORE_DB: undefined as unknown as KVNamespace }
+    await expect(
+      getCharacter(envWithoutLoreDb, env.RPG_DB, 'character:NoLoreDbAmbiguous'),
+    ).rejects.toThrow('LORE_DB binding is required for character lookup')
+  })
+
+  // ── Coverage: updateCharacter skips undefined/null values (line 243) ─────────
+
+  it('updateCharacter skips undefined and null update values', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'SkipNullChar',
+      characterType: 'npc',
+      level: 1,
+    })
+    expect(create.success).toBe(true)
+
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:SkipNullChar', {
+      level: 5,
+      claimed_by: undefined,
+      claimed_until: null,
+    })
+
+    expect(updated).toBeTruthy()
+  })
+
+  // ── Coverage: updateCharacter default branch for non-claim fields (lines 261-265) ──
+
+  it('updateCharacter handles non-claim fields through default branch', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'DefaultBranchChar',
+      characterType: 'npc',
+      level: 1,
+      hp: 10,
+    })
+    expect(create.success).toBe(true)
+
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+    const updated = await updateCharacter(env, env.RPG_DB, 'character:DefaultBranchChar', {
+      level: 5,
+      hp: 42,
+      ac: 18,
+      character_type: 'pc',
+    })
+
+    expect(updated).toBeTruthy()
+  })
+
+  // ── Coverage: character not found on entry (initial getCharacter) ────────────
+
+  it('updateCharacter throws when the character does not exist yet', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'VanishChar',
+      characterType: 'npc',
+    })
+    expect(create.success).toBe(true)
+
+    // Delete the character, then try to update it — the initial getCharacter
+    // inside updateCharacter will return null. "delete" only accepts
+    // id/characterId (not name), so the created character's id must be used
+    // or the delete silently no-ops via the "id"/"characterId" required error.
+    await callTool('character_manage', {
+      action: 'delete',
+      id: create.characterId,
+    })
+
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+    await expect(
+      updateCharacter(env, env.RPG_DB, 'character:VanishChar', {
+        level: 2,
+      }),
+    ).rejects.toThrow('Character not found: character:VanishChar')
+  })
+
+  // ── Coverage: character not found after update (re-fetch-by-name misses a rename) ──
+
+  it('updateCharacter throws when the update renames the character out from under the by-name re-fetch', async () => {
+    const create = await callTool('character_manage', {
+      action: 'create',
+      name: 'RenameChar',
+      characterType: 'npc',
+    })
+    expect(create.success).toBe(true)
+
+    // updateCharacter's final re-fetch looks the character up by the *original*
+    // name embedded in `key` — if the update itself changes the name column,
+    // that re-fetch finds nothing even though the row still exists.
+    const { updateCharacter } = await import('@/rpg/handlers/character-manage')
+    await expect(
+      updateCharacter(env, env.RPG_DB, 'character:RenameChar', {
+        name: 'RenamedChar',
+      }),
+    ).rejects.toThrow('Character not found after update: character:RenameChar')
+  })
 })

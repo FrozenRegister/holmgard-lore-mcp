@@ -250,6 +250,108 @@ function parseChar(row: Record<string, unknown>) {
   }
 }
 
+/**
+ * Get a character by lore key (e.g., "character:john-doe")
+ * @param env - App bindings
+ * @param db - D1 database
+ * @param key - Character lore key
+ * @returns Character data or null if not found
+ */
+export async function getCharacter(
+  env: AppBindings,
+  db: D1Database,
+  key: string,
+): Promise<Record<string, unknown> | null> {
+  // Extract character name from lore key (e.g., "character:john-doe" -> "john-doe")
+  const name = key.replace(/^character:/, '')
+
+  // Try to find by exact name first
+  const { results } = await db
+    .prepare('SELECT * FROM characters WHERE name = ? LIMIT 2')
+    .bind(name)
+    .all()
+
+  if (results.length === 0) {
+    return null
+  }
+
+  if (results.length > 1) {
+    // If multiple characters have the same name, try to find one with matching D1-ID in KV
+    // This is a fallback for ambiguous names
+    if (!env.LORE_DB) throw new Error('LORE_DB binding is required for character lookup')
+    const kvKey = `character:${name}`
+    const kvData = await env.LORE_DB.get(kvKey)
+    if (kvData) {
+      const { text } = parseKvEntry(kvData)
+      const d1Id = extractRawField(text, 'D1-ID')
+      if (d1Id) {
+        const exactMatch = results.find((row: any) => row.id === d1Id)
+        if (exactMatch) {
+          return parseChar(exactMatch as Record<string, unknown>)
+        }
+      }
+    }
+    // If still ambiguous, return the first one
+    return parseChar(results[0] as Record<string, unknown>)
+  }
+
+  return parseChar(results[0] as Record<string, unknown>)
+}
+
+/**
+ * Update a character by ID
+ * @param env - App bindings
+ * @param db - D1 database
+ * @param key - Character lore key
+ * @param updates - Fields to update
+ * @returns Updated character data
+ */
+export async function updateCharacter(
+  env: AppBindings,
+  db: D1Database,
+  key: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const char = await getCharacter(env, db, key)
+  if (!char) {
+    throw new Error(`Character not found: ${key}`)
+  }
+
+  const charId = char.id as string
+  const now = new Date().toISOString()
+  const sets: string[] = ['updated_at = ?']
+  const vals: unknown[] = [now]
+
+  // Route every field (including claimed_by/claimed_until/claimed_at, none of
+  // which are blacklisted) through the shared applyDynamicFields() validator —
+  // see src/rpg/utils/dynamic-fields.ts. Column names can't be parameterized
+  // as `?` bindings the way values can, so its blacklist + SAFE_COLUMN_NAME
+  // shape check is the actual injection boundary for this generic passthrough;
+  // hand-rolling the same check here would just reopen that hole for whatever
+  // future caller forwards a less-trusted `updates` object.
+  const definedUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined),
+  )
+  applyDynamicFields(definedUpdates, CHARACTER_FIELDS_BLACKLIST, sets, vals)
+
+  if (sets.length > 1) {
+    // More than just updated_at
+    vals.push(charId)
+    await db
+      .prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`)
+      .bind(...vals)
+      .run()
+    await syncCharacterToKv(env, charId)
+  }
+
+  // Return the updated character
+  const updatedChar = await getCharacter(env, db, key)
+  if (!updatedChar) {
+    throw new Error(`Character not found after update: ${key}`)
+  }
+  return updatedChar
+}
+
 export async function handleCharacterManage(
   env: AppBindings,
   args: Record<string, unknown>,
