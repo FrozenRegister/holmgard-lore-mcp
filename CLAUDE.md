@@ -88,6 +88,7 @@ and markdown formatting, but leaves the full suite to CI.
 | **Touched test file(s)** | Local | `pnpm test -- tests/worker/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | `coverage` CI job is the enforced gate — fails if patch coverage drops below 100%. Codecov upload is advisory only. |
+| **Coverage gaps backlog** | CI (push to `main` only) | `scripts/report-coverage-gaps.mjs` updates the pinned [Coverage Gaps (auto-updated)](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/504) issue with the current worst-covered files, sorted worst-first — a standing, agent-actionable backlog for downtime. Not a merge gate. |
 | **Documentation** | CI | PRs must either modify `docs/` files OR include a `## Documentation` section in PR body. Dependencies-only and internal refactors can use `skip-quality-checks` label. |
 
 ### Pre-Commit Checklist (Before Pushing)

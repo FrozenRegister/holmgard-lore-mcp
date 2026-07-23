@@ -15,6 +15,10 @@
 
 If none of these fit, blank issues are still enabled.
 
+## Looking for something to do?
+
+Check the pinned [Coverage Gaps (auto-updated)](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/504) issue — a standing backlog of the worst-covered files in `src/`, sorted worst-first, refreshed on every push to `main`. Good default pick-up work when you (human or agent) have downtime and no specific issue assigned.
+
 ## Before you open a PR
 
 Read [CLAUDE.md](./CLAUDE.md) for storage selection (KV vs. D1), API surface conventions (MCP reads vs. `/admin/*` writes), branch naming, and the CI gates enforced on every PR. Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) — it lists every gate from `ci.yml` and `pr-quality.yml`.
