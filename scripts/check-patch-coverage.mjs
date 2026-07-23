@@ -75,6 +75,24 @@ const ignoredRevSet = hasIgnoreRevs
     )
   : new Set()
 
+// A rebase or squash rewrites commit SHAs, silently orphaning any entry in
+// .git-blame-ignore-revs that still points at the old, now-nonexistent SHA —
+// this is exactly what happened once already (a rebase during this file's
+// own introduction). The failure mode is silent: isPreExistingLine() below
+// just stops excluding anything, and patch-coverage fails on 100+ pre-existing
+// lines with no hint why. Fail loudly and immediately instead.
+for (const sha of ignoredRevSet) {
+  try {
+    execSync(`git cat-file -e ${sha}^{commit}`, { stdio: 'ignore' })
+  } catch {
+    console.error(
+      `check-patch-coverage: ${IGNORE_REVS_PATH} lists ${sha}, which doesn't resolve to a commit in this checkout. ` +
+        `A rebase/squash likely rewrote it — update the file with the new SHA (git log --format=%H --grep=<message>).`,
+    )
+    process.exit(1)
+  }
+}
+
 // A mass mechanical reformat (e.g. introducing Prettier for the first time)
 // touches the *text* of thousands of pre-existing lines without changing
 // their logic. A raw git diff can't tell "reformatted" apart from "new", so

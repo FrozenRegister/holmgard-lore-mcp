@@ -1,0 +1,4 @@
+### Fixed a stale SHA in `.git-blame-ignore-revs` and added a guard against it recurring
+
+- Rebasing this PR onto `main` rewrote the reformat commit's SHA, silently orphaning the entry in `.git-blame-ignore-revs` that pointed at the old one. The failure was invisible: `check-patch-coverage.mjs`'s exclusion logic just stopped excluding anything (`git blame`'s subprocess call failed on the unresolvable SHA, swallowed by the catch block), and this PR's own Coverage job went back to failing on the same 57 files / ~198 lines the original fix resolved.
+- Fixed the SHA, and added a check that fails loudly and immediately if any SHA in `.git-blame-ignore-revs` doesn't resolve to a commit in the current checkout — this exact failure mode (rebase/squash rewrites a listed SHA) will now surface as a clear, actionable error instead of a silent, hard-to-diagnose coverage regression.
