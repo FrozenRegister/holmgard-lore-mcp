@@ -33,6 +33,31 @@ Handlers with this bridge:
 
 Other RPG subs that accept `worldId` (but don't yet have the `world_id` alias) will be updated incrementally. The `time` sub was the first to get this treatment (#336).
 
+**This per-handler approach only ever covered 5 of ~40 RPG handlers** (#511 tracked the remainder) and only ever bridged `worldId`/`world_id` — every other camelCase/snake_case pair (`entityKey`/`entity_key`, `locationKey`/`location_key`, `sceneKey`/`scene_key`, `factionKey`/`faction_key`, ...) was still silently dropped by whichever tool didn't expect the casing it was given. See the global bridge below, which supersedes this for anything going through `tools/call`.
+
+## Global Parameter-Casing Bridge (#511)
+
+As of #511, casing normalization happens once, at the transport boundary — in `src/index.ts`'s `tools/call` handler, via `normalizeParamCasing()` (`src/lib/normalize-param-casing.ts`) — for **every** tool, not just the 5 RPG handlers above:
+
+```typescript
+const args = normalizeParamCasing(
+  coerceTransportArgs((params?.arguments ?? {}) as Record<string, any>),
+)
+```
+
+For every top-level key in the incoming arguments, it adds the other casing's alias if that alias isn't already present:
+
+- `world_id: "w1"` → also sets `worldId: "w1"`
+- `entityKey: "character:yune"` → also sets `entity_key: "character:yune"`
+
+It does **not** inspect any tool's Zod schema to decide whether to add an alias — an alias a schema doesn't recognize is simply an extra key that gets silently stripped during validation, exactly as unrecognized keys always have been. This means the bridge works uniformly for every RPG sub and every non-RPG tool with zero per-handler changes, and any new handler gets it automatically.
+
+**Collision safety:** if a caller supplies *both* casings for the same concept (e.g. both `worldId` and `world_id`), normalization is skipped for that key — neither value is touched or overwritten. This has never been a case where the two forms carried different meanings anywhere in this codebase.
+
+**Scope:** this only bridges *top-level* argument keys, same as the 5 handler-level bridges it generalizes. It does not recurse into nested objects or array elements.
+
+**The 5 existing per-handler bridges are now redundant but were deliberately left in place** — they matter for the (mostly test-only) callers that invoke a handler function directly (e.g. `handleTimeManage(env, {...})`) rather than going through `POST /mcp`'s `tools/call`, which is the only place `normalizeParamCasing()` runs.
+
 ## Entity Reference Naming
 
 The same character can be referenced by five different parameter names depending on which tool you're calling:
