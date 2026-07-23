@@ -104,10 +104,13 @@ function isPreExistingLine(relPath, line, ref) {
   if (!hasIgnoreRevs) return false
   try {
     const ignoreArg = `--ignore-revs-file ${IGNORE_REVS_PATH}`
-    const blameOut = execSync(`git blame ${ignoreArg} --porcelain -L ${line},${line} -- "${relPath}" HEAD`, {
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024 * 8,
-    })
+    const blameOut = execSync(
+      `git blame ${ignoreArg} --porcelain -L ${line},${line} -- "${relPath}" HEAD`,
+      {
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 8,
+      },
+    )
     const sha = blameOut.split('\n', 1)[0].split(' ')[0]
     if (!/^[0-9a-f]{40}$/.test(sha)) return false
     if (ignoredRevSet.has(sha)) return true
@@ -195,12 +198,24 @@ function main() {
     console.error(
       `\n${failures.length} file(s) with uncovered changed lines. This repo requires 100% patch coverage — see CLAUDE.md.\n`,
     )
-    writeReport({ passed: false, baseRef, checkedFiles: changed.size, failures, excludedAsPreExisting })
+    writeReport({
+      passed: false,
+      baseRef,
+      checkedFiles: changed.size,
+      failures,
+      excludedAsPreExisting,
+    })
     process.exit(1)
   }
 
   console.log(`check-patch-coverage: all changed lines across ${changed.size} file(s) are covered.`)
-  writeReport({ passed: true, baseRef, checkedFiles: changed.size, failures: [], excludedAsPreExisting })
+  writeReport({
+    passed: true,
+    baseRef,
+    checkedFiles: changed.size,
+    failures: [],
+    excludedAsPreExisting,
+  })
 }
 
 main()
