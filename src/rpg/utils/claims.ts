@@ -7,8 +7,8 @@
  */
 
 import type { AppBindings } from '../../types'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getCharacter, updateCharacter } from '../handlers/character-manage'
+import { syncCharacterToKv } from './character-sync'
 
 // Priority tiers for conflict resolution
 export type Priority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
@@ -47,7 +47,7 @@ export interface EventModification {
 export async function getClaim(
   env: AppBindings,
   db: D1Database,
-  targetKey: string
+  targetKey: string,
 ): Promise<{ claimedBy: string | null; claimedUntil: string | null; claimedAt: string | null }> {
   const char = await getCharacter(env, db, targetKey)
   if (!char) {
@@ -57,7 +57,7 @@ export async function getClaim(
   return {
     claimedBy: char.claimed_by as string | null,
     claimedUntil: char.claimed_until as string | null,
-    claimedAt: char.claimed_at as string | null
+    claimedAt: char.claimed_at as string | null,
   }
 }
 
@@ -80,7 +80,7 @@ export async function setClaim(
   claimerKey: string,
   until: string,
   tickTimestamp: string,
-  allowSelfClaim: boolean = false
+  allowSelfClaim: boolean = false,
 ): Promise<{ success: boolean; conflict?: { claimerKey: string; claimedUntil: string } }> {
   // Validate claimer key
   if (!claimerKey || claimerKey.trim() === '') {
@@ -97,7 +97,8 @@ export async function setClaim(
     throw new Error(`Character not found: ${targetKey}`)
   }
 
-  // Check for existing active claim
+  // Fast-path rejection based on the read above — avoids a wasted write in
+  // the common (non-racing) case.
   if (char.claimed_by && char.claimed_until) {
     const now = new Date(tickTimestamp)
     const claimedUntil = new Date(char.claimed_until as string)
@@ -108,19 +109,42 @@ export async function setClaim(
         success: false,
         conflict: {
           claimerKey: char.claimed_by as string,
-          claimedUntil: char.claimed_until as string
-        }
+          claimedUntil: char.claimed_until as string,
+        },
       }
     }
   }
 
-  // Set the claim
-  await updateCharacter(env, db, targetKey, {
-    claimed_by: claimerKey,
-    claimed_until: until,
-    claimed_at: tickTimestamp
-  })
+  const charId = char.id as string
+  const now = new Date().toISOString()
 
+  // Atomic conditional write: the WHERE guard re-checks "no active claim" in
+  // the same statement as the write, closing the read-then-write race between
+  // the check above and this write. Without it, two concurrent setClaim calls
+  // can both pass the check above and both write — the second silently
+  // overwriting the first while both callers see { success: true }.
+  const result = await db
+    .prepare(
+      `UPDATE characters SET claimed_by = ?, claimed_until = ?, claimed_at = ?, updated_at = ?
+       WHERE id = ? AND (claimed_by IS NULL OR claimed_until <= ?)`,
+    )
+    .bind(claimerKey, until, tickTimestamp, now, charId, tickTimestamp)
+    .run()
+
+  if ((result.meta?.changes ?? 0) === 0) {
+    // Lost the race: another claim was set between our read and this write.
+    // Re-fetch so the conflict we report reflects the claim that actually won.
+    const current = await getCharacter(env, db, targetKey)
+    return {
+      success: false,
+      conflict: {
+        claimerKey: current?.claimed_by as string,
+        claimedUntil: current?.claimed_until as string,
+      },
+    }
+  }
+
+  await syncCharacterToKv(env, charId)
   return { success: true }
 }
 
@@ -130,12 +154,12 @@ export async function setClaim(
 export async function clearClaim(
   env: AppBindings,
   db: D1Database,
-  targetKey: string
+  targetKey: string,
 ): Promise<void> {
   await updateCharacter(env, db, targetKey, {
     claimed_by: null,
     claimed_until: null,
-    claimed_at: null
+    claimed_at: null,
   })
 }
 
@@ -163,7 +187,7 @@ export async function resolveTickConflicts(
   events: FlaggedEvent[],
   currentTickTime: string,
   env: AppBindings,
-  db: D1Database
+  db: D1Database,
 ): Promise<ResolutionResult[]> {
   // Group events by target resource
   const eventsByTarget = new Map<string, FlaggedEvent[]>()
@@ -178,14 +202,11 @@ export async function resolveTickConflicts(
 
   const results: ResolutionResult[] = []
 
-  // Process each target with multiple events
+  // Process each target resource. Even a lone event on a target must still be
+  // checked against an active claim below — it can't shortcut straight to
+  // "resolved" just because nothing else is competing for the same lock this
+  // tick.
   for (const [targetKey, targetEvents] of eventsByTarget) {
-    if (targetEvents.length === 1) {
-      // No conflict - resolve normally
-      results.push({ status: 'resolved', event: targetEvents[0] })
-      continue
-    }
-
     // Sort events by priority then FIFO
     const sortedEvents = [...targetEvents].sort((a, b) => {
       // First by priority
@@ -193,7 +214,7 @@ export async function resolveTickConflicts(
         CRITICAL: 0,
         HIGH: 1,
         MEDIUM: 2,
-        LOW: 3
+        LOW: 3,
       }
       if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
         return priorityOrder[a.priority] - priorityOrder[b.priority]
@@ -228,9 +249,9 @@ export async function resolveTickConflicts(
                 conflictWith: {
                   claimerKey: claim.claimedBy || '',
                   claimedAt: claim.claimedAt || '',
-                  claimedUntil: claim.claimedUntil || ''
-                }
-              }
+                  claimedUntil: claim.claimedUntil || '',
+                },
+              },
             })
           }
         } else {
@@ -250,16 +271,16 @@ export async function resolveTickConflicts(
               conflictWith: {
                 claimerKey: claim.claimedBy || '',
                 claimedAt: claim.claimedAt || '',
-                claimedUntil: claim.claimedUntil || ''
-              }
-            }
+                claimedUntil: claim.claimedUntil || '',
+              },
+            },
           })
         } else {
           // Conflict with higher priority event - defer
           results.push({
             status: 'deferred',
             event,
-            retryAt: currentTickTime // Retry next tick
+            retryAt: currentTickTime, // Retry next tick
           })
         }
       }
@@ -280,10 +301,12 @@ export async function resolveTickConflicts(
 export function clearDeadPredatorClaims(
   env: AppBindings,
   db: D1Database,
-  currentTickTime: string
+  currentTickTime: string,
 ): void {
   // This will be implemented in Phase 3 (creature AI)
   // For now, we rely on the stale-claim check in resolveTickConflicts
-  void env; void db; void currentTickTime;
+  void env
+  void db
+  void currentTickTime
   console.log('clearDeadPredatorClaims: Phase 3 implementation pending')
 }

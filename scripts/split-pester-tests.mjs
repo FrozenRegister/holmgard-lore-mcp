@@ -58,7 +58,7 @@ function findBlockEnd(startLine1) {
     const line = lines[i]
     for (let j = 0; j < line.length; j++) {
       const ch = line[j]
-      const prev = j > 0 ? line[j-1] : ''
+      const prev = j > 0 ? line[j - 1] : ''
 
       if (inString) {
         if (ch === stringChar && prev !== '\\') inString = false
@@ -68,7 +68,11 @@ function findBlockEnd(startLine1) {
         // Skip until '@ at start of line
         continue
       }
-      if (ch === "'" || ch === '"') { inString = true; stringChar = ch; continue }
+      if (ch === "'" || ch === '"') {
+        inString = true
+        stringChar = ch
+        continue
+      }
 
       if (ch === '{') depth++
       if (ch === '}') depth--
@@ -82,7 +86,7 @@ function findBlockEnd(startLine1) {
 }
 
 // Compute end lines
-const blocks = describeBlocks.map(b => ({
+const blocks = describeBlocks.map((b) => ({
   name: b.name,
   start: b.start,
   end: findBlockEnd(b.start),
@@ -95,21 +99,26 @@ for (const b of blocks) {
 
 // File grouping (map of output filename -> block names)
 const grouping = {
-  'protocol': ['Core MCP Methods', 'Basic Tool Operations'],
-  'timeline': ['Consumption Timelines', 'Thread Operations'],
-  'crud': ['Topic Validation', 'Search Operations', 'Lore CRUD Operations'],
-  'mutations': ['Field Increment Operations', 'Patch Operations', 'Batch Operations'],
-  'resolve': ['Resolve Interaction', 'Resolve Interaction - Bullet Format Weights'],
-  'analysis': ['Analyze Utility', 'Map Integration'],
+  protocol: ['Core MCP Methods', 'Basic Tool Operations'],
+  timeline: ['Consumption Timelines', 'Thread Operations'],
+  crud: ['Topic Validation', 'Search Operations', 'Lore CRUD Operations'],
+  mutations: ['Field Increment Operations', 'Patch Operations', 'Batch Operations'],
+  resolve: ['Resolve Interaction', 'Resolve Interaction - Bullet Format Weights'],
+  analysis: ['Analyze Utility', 'Map Integration'],
   'thread-tick': ['Thread Tick Operations'],
   'field-extraction': ['Field Extraction - Bullet + Descriptor Format'],
-  'entities': ['Direct-Read Tools', 'Entity Generation and Encounters', 'Compatibility Operations', 'Location and Exit Operations'],
-  'inventory': ['Inventory Transfer Operations'],
-  'scenes': ['Scene Operations', 'State Stage Operations'],
-  'sensory': ['Sensory Profile Operations'],
-  'narrative': ['Append to Section Operations'],
-  'fixtures': ['Canonical Fixture Tests', 'Weight Integer Boundaries'],
-  'admin': ['Admin Endpoints'],
+  entities: [
+    'Direct-Read Tools',
+    'Entity Generation and Encounters',
+    'Compatibility Operations',
+    'Location and Exit Operations',
+  ],
+  inventory: ['Inventory Transfer Operations'],
+  scenes: ['Scene Operations', 'State Stage Operations'],
+  sensory: ['Sensory Profile Operations'],
+  narrative: ['Append to Section Operations'],
+  fixtures: ['Canonical Fixture Tests', 'Weight Integer Boundaries'],
+  admin: ['Admin Endpoints'],
 }
 
 // Write each group to its own file
@@ -117,7 +126,7 @@ for (const [filename, blockNames] of Object.entries(grouping)) {
   let output = '. $PSScriptRoot\\common.ps1\n\n'
 
   for (const name of blockNames) {
-    const block = blocks.find(b => b.name === name)
+    const block = blocks.find((b) => b.name === name)
     if (!block) {
       console.error(`MISSING block: ${name}`)
       continue

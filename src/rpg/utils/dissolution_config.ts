@@ -23,13 +23,7 @@ export interface StageMutation {
 }
 
 export type UtilityVector =
-  | 'GASTRIC'
-  | 'BUTCHERY'
-  | 'INCUBATION'
-  | 'SCULPTURE'
-  | 'PARASITISM'
-  | 'THRALL'
-  | 'DISTRIBUTED'
+  'GASTRIC' | 'BUTCHERY' | 'INCUBATION' | 'SCULPTURE' | 'PARASITISM' | 'THRALL' | 'DISTRIBUTED'
 
 export interface TerminalConversion {
   /** Human-readable label for the terminal object state */
@@ -85,7 +79,7 @@ export const DEFAULT_DISSOLUTION_CONFIG: DissolutionConfig = {
         sound: null,
       },
       mechanical: {
-        resistance_decrement: 0.10,
+        resistance_decrement: 0.1,
         movement_locked: true,
         communication_penalty: 0,
         hp_drain_per_tick: 0,
@@ -119,7 +113,7 @@ export const DEFAULT_DISSOLUTION_CONFIG: DissolutionConfig = {
         sound: 'voice_degradation, internal_hum',
       },
       mechanical: {
-        resistance_decrement: 0.20,
+        resistance_decrement: 0.2,
         movement_locked: true,
         communication_penalty: -6,
         hp_drain_per_tick: 4,
@@ -136,7 +130,7 @@ export const DEFAULT_DISSOLUTION_CONFIG: DissolutionConfig = {
         sound: 'silence',
       },
       mechanical: {
-        resistance_decrement: 0.30,
+        resistance_decrement: 0.3,
         movement_locked: true,
         communication_penalty: -10,
         hp_drain_per_tick: 8,
@@ -166,36 +160,43 @@ export const TERMINAL_CONVERSIONS: Record<UtilityVector, TerminalConversion> = {
   GASTRIC: {
     label: 'Nutrient Slurry',
     outcome: 'consumed-nutrient',
-    description: 'Entity reduced to basic caloric slurry — optimal for enzymatic assimilation over 5–8 days. No consciousness remnant detected.',
+    description:
+      'Entity reduced to basic caloric slurry — optimal for enzymatic assimilation over 5–8 days. No consciousness remnant detected.',
   },
   BUTCHERY: {
     label: 'Material Yield',
     outcome: 'consumed-material',
-    description: 'Harvest yields cut of usable material — marbling grade determines quality. Cortisol taint assessed post-mortem.',
+    description:
+      'Harvest yields cut of usable material — marbling grade determines quality. Cortisol taint assessed post-mortem.',
   },
   INCUBATION: {
     label: 'Brood Vessel',
     outcome: 'consumed-vessel',
-    description: 'Entity becomes incubation chamber — clutch viability contingent on host compliance throughout term. Consciousness repurposed as brood matrix.',
+    description:
+      'Entity becomes incubation chamber — clutch viability contingent on host compliance throughout term. Consciousness repurposed as brood matrix.',
   },
   SCULPTURE: {
     label: 'Living Ornament',
     outcome: 'consumed-ornament',
-    description: 'Entity frozen in expressive state — permanent living artwork. Consciousness persists in locked state, aware but unable to act.',
+    description:
+      'Entity frozen in expressive state — permanent living artwork. Consciousness persists in locked state, aware but unable to act.',
   },
   PARASITISM: {
     label: 'Hijacked Host',
     outcome: 'consumed-host',
-    description: 'Neural substrate displaced — predator consciousness now occupies host body. Residual identity fragments may surface under stress.',
+    description:
+      'Neural substrate displaced — predator consciousness now occupies host body. Residual identity fragments may surface under stress.',
   },
   THRALL: {
     label: 'Permanent Thrall',
     outcome: 'consumed-thrall',
-    description: 'Entity permanently conditioned — will serves predator absolutely. No resistance potential detected. Reinforce conditioning at standard intervals.',
+    description:
+      'Entity permanently conditioned — will serves predator absolutely. No resistance potential detected. Reinforce conditioning at standard intervals.',
   },
   DISTRIBUTED: {
     label: 'Industrial Base',
     outcome: 'consumed-distributed',
-    description: 'Entity rendered into batch component — processed into distributed substrate for industrial use. Caloric density and marbling determine batch grade.',
+    description:
+      'Entity rendered into batch component — processed into distributed substrate for industrial use. Caloric density and marbling determine batch grade.',
   },
 }

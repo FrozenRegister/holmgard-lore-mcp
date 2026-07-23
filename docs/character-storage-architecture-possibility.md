@@ -1,5 +1,20 @@
 # Character Storage Architecture Summary (Holmgard)
 
+**Status:** Historical design doc — substantially implemented, not an open proposal. The
+Markdown ↔ D1 pattern this doc argues for is largely built: a `characters` D1 table
+(`schema/rpg-schema.sql`), a markdown→D1 parser (`src/rpg/utils/kv-to-d1.ts`), a bulk
+KV→D1 migration utility with `## D1-Migrated: true` redirect markers
+(`src/rpg/utils/migrate-kv-to-d1-bulk.ts`), and a D1→markdown projection sync
+(`src/rpg/utils/character-sync.ts`'s `syncCharacterToKv`) all exist and are wired in
+(see #154/#231). **For the current, authoritative KV-vs-D1 decision framework, see
+`docs/storage-selection-kv-vs-d1.md`** — this doc is kept because that one still cites
+its "Unknown Fields" section (below) as the live pattern for splitting a topic's
+structured fields (→ D1 columns) from its freeform narrative fields (→ stays in KV
+markdown text). Treat everything else below as historical rationale, not a live
+"possibility" still being decided.
+
+---
+
 ## Executive Summary
 
 The editor should remain **Markdown-first**, while the backend evolves toward **structured D1-first storage**.

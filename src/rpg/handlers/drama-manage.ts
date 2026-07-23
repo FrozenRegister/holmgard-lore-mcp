@@ -10,19 +10,25 @@ import { handleMathManage } from './math-manage'
 import { handleEventManage } from './event-manage'
 import { resolveEffectiveStats } from '../utils/cohabitation'
 
-export const ACTIONS = ['roll_ability', 'opposed_check', 'group_check', 'social_combat', 'dramatic_conflict'] as const
-type DramaAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'roll_ability',
+  'opposed_check',
+  'group_check',
+  'social_combat',
+  'dramatic_conflict',
+] as const
+type DramaAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, DramaAction> = {
-  ability:    'roll_ability',
-  roll:       'roll_ability',
-  oppose:     'opposed_check',
-  duel:       'opposed_check',
-  group:      'group_check',
-  pool:       'group_check',
-  social:     'social_combat',
-  negotiate:  'social_combat',
-  conflict:   'dramatic_conflict',
-  campaign:   'dramatic_conflict',
+  ability: 'roll_ability',
+  roll: 'roll_ability',
+  oppose: 'opposed_check',
+  duel: 'opposed_check',
+  group: 'group_check',
+  pool: 'group_check',
+  social: 'social_combat',
+  negotiate: 'social_combat',
+  conflict: 'dramatic_conflict',
+  campaign: 'dramatic_conflict',
 }
 
 const SideEntrySchema = z.object({
@@ -98,7 +104,9 @@ async function fetchCharD1(db: D1Database, id: string): Promise<CharRow | null> 
   return { id, name: resolved.name, stats: resolved.stats }
 }
 
-async function rollD20Once(env: AppBindings): Promise<{ roll: number; isNat1: boolean; isNat20: boolean }> {
+async function rollD20Once(
+  env: AppBindings,
+): Promise<{ roll: number; isNat1: boolean; isNat20: boolean }> {
   const resp = await handleMathManage(env, { action: 'roll', expression: '1d20' })
   const data = JSON.parse(resp.content[0].text) as { total: number }
   const roll = data.total
@@ -128,9 +136,12 @@ async function emitEvent(env: AppBindings, payload: Record<string, unknown>): Pr
   })
 }
 
-export async function handleDramaManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleDramaManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
 
   const match = matchAction(a.action, ACTIONS, ALIASES)
@@ -150,7 +161,18 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
       const hasDis = a.disadvantage === true || a.disadvantage === 'true'
       const { roll, isNat1, isNat20 } = await rollD20(env, hasAdv, hasDis)
       const total = roll + mod
-      return ok({ success: true, actionType: 'roll_ability', character: char.name, ability: a.ability.toLowerCase(), score, modifier: mod, roll, total, isNat1, isNat20 })
+      return ok({
+        success: true,
+        actionType: 'roll_ability',
+        character: char.name,
+        ability: a.ability.toLowerCase(),
+        score,
+        modifier: mod,
+        roll,
+        total,
+        isNat1,
+        isNat20,
+      })
     }
 
     case 'opposed_check': {
@@ -174,12 +196,39 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
       const winner = totalA > totalB ? 'a' : totalB > totalA ? 'b' : 'tie'
       const margin = Math.abs(totalA - totalB)
 
-      await emitEvent(env, { type: 'opposed_check', winner, margin, character_a: charA.name, character_b: charB.name })
+      await emitEvent(env, {
+        type: 'opposed_check',
+        winner,
+        margin,
+        character_a: charA.name,
+        character_b: charB.name,
+      })
 
       return ok({
-        success: true, actionType: 'opposed_check', winner, margin,
-        a: { character: charA.name, ability: a.ability_a.toLowerCase(), score: getScore(charA.stats, a.ability_a), modifier: modA, roll: diceA.roll, total: totalA, isNat1: diceA.isNat1, isNat20: diceA.isNat20 },
-        b: { character: charB.name, ability: a.ability_b.toLowerCase(), score: getScore(charB.stats, a.ability_b), modifier: modB, roll: diceB.roll, total: totalB, isNat1: diceB.isNat1, isNat20: diceB.isNat20 },
+        success: true,
+        actionType: 'opposed_check',
+        winner,
+        margin,
+        a: {
+          character: charA.name,
+          ability: a.ability_a.toLowerCase(),
+          score: getScore(charA.stats, a.ability_a),
+          modifier: modA,
+          roll: diceA.roll,
+          total: totalA,
+          isNat1: diceA.isNat1,
+          isNat20: diceA.isNat20,
+        },
+        b: {
+          character: charB.name,
+          ability: a.ability_b.toLowerCase(),
+          score: getScore(charB.stats, a.ability_b),
+          modifier: modB,
+          roll: diceB.roll,
+          total: totalB,
+          isNat1: diceB.isNat1,
+          isNat20: diceB.isNat20,
+        },
       })
     }
 
@@ -187,26 +236,51 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
       if (!a.side_a || a.side_a.length === 0) return err('"side_a" must be a non-empty array')
       if (!a.side_b || a.side_b.length === 0) return err('"side_b" must be a non-empty array')
 
-      const allIds = [...a.side_a.map(e => e.character), ...a.side_b.map(e => e.character)]
-      const charRows = await Promise.all(allIds.map(id => fetchCharD1(db, id)))
+      const allIds = [...a.side_a.map((e) => e.character), ...a.side_b.map((e) => e.character)]
+      const charRows = await Promise.all(allIds.map((id) => fetchCharD1(db, id)))
       const charMap = new Map<string, CharRow>()
-      for (const c of charRows) { if (c) charMap.set(c.id, c) }
+      for (const c of charRows) {
+        if (c) charMap.set(c.id, c)
+      }
 
       async function rollSide(entries: Array<{ character: string; ability: string }>) {
-        return Promise.all(entries.map(async e => {
-          const c = charMap.get(e.character)
-          if (!c) return { character: e.character, name: null as string | null, ability: e.ability.toLowerCase(), score: 10, modifier: 0, roll: 0, total: 0, notFound: true }
-          const score = getScore(c.stats, e.ability)
-          const mod = abilityMod(score)
-          const { roll, isNat1, isNat20 } = await rollD20Once(env)
-          return { character: e.character, name: c.name, ability: e.ability.toLowerCase(), score, modifier: mod, roll, total: roll + mod, isNat1, isNat20, notFound: false }
-        }))
+        return Promise.all(
+          entries.map(async (e) => {
+            const c = charMap.get(e.character)
+            if (!c)
+              return {
+                character: e.character,
+                name: null as string | null,
+                ability: e.ability.toLowerCase(),
+                score: 10,
+                modifier: 0,
+                roll: 0,
+                total: 0,
+                notFound: true,
+              }
+            const score = getScore(c.stats, e.ability)
+            const mod = abilityMod(score)
+            const { roll, isNat1, isNat20 } = await rollD20Once(env)
+            return {
+              character: e.character,
+              name: c.name,
+              ability: e.ability.toLowerCase(),
+              score,
+              modifier: mod,
+              roll,
+              total: roll + mod,
+              isNat1,
+              isNat20,
+              notFound: false,
+            }
+          }),
+        )
       }
 
       const [rollsA, rollsB] = await Promise.all([rollSide(a.side_a), rollSide(a.side_b)])
 
       function aggregate(rolls: Awaited<ReturnType<typeof rollSide>>): number {
-        const totals = rolls.filter(r => !r.notFound).map(r => r.total)
+        const totals = rolls.filter((r) => !r.notFound).map((r) => r.total)
         if (totals.length === 0) return 0
         if (a.mode === 'sum') return totals.reduce((s, t) => s + t, 0)
         if (a.mode === 'pool') {
@@ -222,29 +296,63 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
 
       await emitEvent(env, { type: 'group_check', winner, mode: a.mode })
 
-      return ok({ success: true, actionType: 'group_check', winner, mode: a.mode, pooled_score_a: scoreA, pooled_score_b: scoreB, rolls_a: rollsA, rolls_b: rollsB })
+      return ok({
+        success: true,
+        actionType: 'group_check',
+        winner,
+        mode: a.mode,
+        pooled_score_a: scoreA,
+        pooled_score_b: scoreB,
+        rolls_a: rollsA,
+        rolls_b: rollsB,
+      })
     }
 
     case 'social_combat': {
       if (!a.participants || a.participants.length < 2)
         return err('"participants" must have at least 2 entries')
 
-      const leverages = a.participants.map(p => p.leverage)
+      const leverages = a.participants.map((p) => p.leverage)
       const initialLeverages = [...leverages]
 
-      type RoundRoll = { character: string; name: string; roll: number; modifier: number; leverageBonus: number; total: number; isNat1: boolean; isNat20: boolean }
-      type RoundResult = { round: number; rolls: RoundRoll[]; winner_idx: number; leverage_after: number[] }
+      type RoundRoll = {
+        character: string
+        name: string
+        roll: number
+        modifier: number
+        leverageBonus: number
+        total: number
+        isNat1: boolean
+        isNat20: boolean
+      }
+      type RoundResult = {
+        round: number
+        rolls: RoundRoll[]
+        winner_idx: number
+        leverage_after: number[]
+      }
       const roundResults: RoundResult[] = []
 
       for (let r = 0; r < a.rounds; r++) {
-        const rolls: RoundRoll[] = await Promise.all(a.participants.map(async (p, i) => {
-          const char = await fetchCharD1(db, p.character)
-          const chaScore = char ? getScore(char.stats, 'cha') : 10
-          const mod = abilityMod(chaScore)
-          const { roll, isNat1, isNat20 } = await rollD20Once(env)
-          const levBonus = leverages[i]
-          return { character: p.character, name: char?.name ?? p.character, roll, modifier: mod, leverageBonus: levBonus, total: roll + mod + levBonus, isNat1, isNat20 }
-        }))
+        const rolls: RoundRoll[] = await Promise.all(
+          a.participants.map(async (p, i) => {
+            const char = await fetchCharD1(db, p.character)
+            const chaScore = char ? getScore(char.stats, 'cha') : 10
+            const mod = abilityMod(chaScore)
+            const { roll, isNat1, isNat20 } = await rollD20Once(env)
+            const levBonus = leverages[i]
+            return {
+              character: p.character,
+              name: char?.name ?? p.character,
+              roll,
+              modifier: mod,
+              leverageBonus: levBonus,
+              total: roll + mod + levBonus,
+              isNat1,
+              isNat20,
+            }
+          }),
+        )
 
         let bestIdx = 0
         for (let i = 1; i < rolls.length; i++) {
@@ -253,7 +361,12 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
         const shift = rolls[bestIdx].isNat20 ? 2 : 1
         leverages[bestIdx] += shift
 
-        roundResults.push({ round: r + 1, rolls, winner_idx: bestIdx, leverage_after: [...leverages] })
+        roundResults.push({
+          round: r + 1,
+          rolls,
+          winner_idx: bestIdx,
+          leverage_after: [...leverages],
+        })
       }
 
       let winnerIdx = 0
@@ -263,41 +376,72 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
       const winnerChar = a.participants[winnerIdx]
       const leverage_delta = leverages.map((l, i) => l - initialLeverages[i])
 
-      await emitEvent(env, { type: 'social_combat', winner: winnerChar.character, rounds: a.rounds, arena: a.arena ?? null, stakes: a.stakes ?? null })
+      await emitEvent(env, {
+        type: 'social_combat',
+        winner: winnerChar.character,
+        rounds: a.rounds,
+        arena: a.arena ?? null,
+        stakes: a.stakes ?? null,
+      })
 
       return ok({
-        success: true, actionType: 'social_combat',
-        winner: winnerChar.character, winner_goal: winnerChar.goal ?? null,
-        rounds: roundResults, final_leverage: leverages, leverage_delta,
-        arena: a.arena ?? null, stakes: a.stakes ?? null,
+        success: true,
+        actionType: 'social_combat',
+        winner: winnerChar.character,
+        winner_goal: winnerChar.goal ?? null,
+        rounds: roundResults,
+        final_leverage: leverages,
+        leverage_delta,
+        arena: a.arena ?? null,
+        stakes: a.stakes ?? null,
       })
     }
 
     case 'dramatic_conflict': {
-      if (!a.sides || a.sides.length < 2)
-        return err('"sides" must have at least 2 entries')
+      if (!a.sides || a.sides.length < 2) return err('"sides" must have at least 2 entries')
 
-      const momentums = a.sides.map(s => s.momentum)
+      const momentums = a.sides.map((s) => s.momentum)
       const initialMomentums = [...momentums]
 
-      type TickSideResult = { side: string; best_roll: number; momentum_bonus: number; external_bonus: number; total: number }
-      type TickResult = { tick: number; side_results: TickSideResult[]; winner_name: string; momentum_after: number[] }
+      type TickSideResult = {
+        side: string
+        best_roll: number
+        momentum_bonus: number
+        external_bonus: number
+        total: number
+      }
+      type TickResult = {
+        tick: number
+        side_results: TickSideResult[]
+        winner_name: string
+        momentum_after: number[]
+      }
       const tickResults: TickResult[] = []
 
       for (let t = 0; t < a.ticks; t++) {
-        const sideResults: TickSideResult[] = await Promise.all(a.sides.map(async (side, si) => {
-          const actorRolls = await Promise.all(side.actors.map(async actorId => {
-            const char = await fetchCharD1(db, actorId)
-            const score = char ? getScore(char.stats, side.primary_ability) : 10
-            const { roll } = await rollD20Once(env)
-            return roll + abilityMod(score)
-          }))
-          const bestRoll = actorRolls.length > 0 ? Math.max(...actorRolls) : 10
-          const externalBonus = (a.external_factors ?? [])
-            .filter(f => f.affects === side.name)
-            .reduce((sum, f) => sum + f.modifier, 0)
-          return { side: side.name, best_roll: bestRoll, momentum_bonus: momentums[si], external_bonus: externalBonus, total: bestRoll + momentums[si] + externalBonus }
-        }))
+        const sideResults: TickSideResult[] = await Promise.all(
+          a.sides.map(async (side, si) => {
+            const actorRolls = await Promise.all(
+              side.actors.map(async (actorId) => {
+                const char = await fetchCharD1(db, actorId)
+                const score = char ? getScore(char.stats, side.primary_ability) : 10
+                const { roll } = await rollD20Once(env)
+                return roll + abilityMod(score)
+              }),
+            )
+            const bestRoll = actorRolls.length > 0 ? Math.max(...actorRolls) : 10
+            const externalBonus = (a.external_factors ?? [])
+              .filter((f) => f.affects === side.name)
+              .reduce((sum, f) => sum + f.modifier, 0)
+            return {
+              side: side.name,
+              best_roll: bestRoll,
+              momentum_bonus: momentums[si],
+              external_bonus: externalBonus,
+              total: bestRoll + momentums[si] + externalBonus,
+            }
+          }),
+        )
 
         let bestSi = 0
         for (let i = 1; i < sideResults.length; i++) {
@@ -305,7 +449,12 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
         }
         momentums[bestSi] += 1
 
-        tickResults.push({ tick: t + 1, side_results: sideResults, winner_name: sideResults[bestSi].side, momentum_after: [...momentums] })
+        tickResults.push({
+          tick: t + 1,
+          side_results: sideResults,
+          winner_name: sideResults[bestSi].side,
+          momentum_after: [...momentums],
+        })
       }
 
       let winSi = 0
@@ -314,12 +463,20 @@ export async function handleDramaManage(env: AppBindings, args: Record<string, u
       }
       const momentum_shift = momentums.map((m, i) => m - initialMomentums[i])
 
-      await emitEvent(env, { type: 'dramatic_conflict', title: a.title ?? null, winner: a.sides[winSi].name })
+      await emitEvent(env, {
+        type: 'dramatic_conflict',
+        title: a.title ?? null,
+        winner: a.sides[winSi].name,
+      })
 
       return ok({
-        success: true, actionType: 'dramatic_conflict',
-        title: a.title ?? null, winner: a.sides[winSi].name,
-        ticks: tickResults, final_momentum: momentums, momentum_shift,
+        success: true,
+        actionType: 'dramatic_conflict',
+        title: a.title ?? null,
+        winner: a.sides[winSi].name,
+        ticks: tickResults,
+        final_momentum: momentums,
+        momentum_shift,
       })
     }
   }

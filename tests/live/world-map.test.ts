@@ -15,11 +15,22 @@ describe.skipIf(!MCP_API_KEY)('rpg world_map / zone_type (#320)', () => {
   const createdWorldIds: string[] = []
 
   afterEach(async () => {
-    await Promise.all(createdWorldIds.splice(0).map(worldId => tool('rpg', { sub: 'world', action: 'delete', worldId })))
+    await Promise.all(
+      createdWorldIds
+        .splice(0)
+        .map((worldId) => tool('rpg', { sub: 'world', action: 'delete', worldId })),
+    )
   })
 
   async function createWorld() {
-    const world = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `LiveMapWorld ${uid()}`, theme: 'fantasy' }))
+    const world = parseResult(
+      await tool('rpg', {
+        sub: 'world',
+        action: 'create',
+        name: `LiveMapWorld ${uid()}`,
+        theme: 'fantasy',
+      }),
+    )
     createdWorldIds.push(world.worldId)
     return world.worldId as string
   }
@@ -33,38 +44,92 @@ describe.skipIf(!MCP_API_KEY)('rpg world_map / zone_type (#320)', () => {
 
   it('patch upserts a hex by q/r and preview renders its registered biome glyph', async () => {
     const worldId = await createWorld()
-    const patch = parseResult(await tool('rpg', {
-      sub: 'world_map', action: 'patch', worldId, hexes: [{ q: 0, r: 0, biome: 'forest' }],
-    }))
+    const patch = parseResult(
+      await tool('rpg', {
+        sub: 'world_map',
+        action: 'patch',
+        worldId,
+        hexes: [{ q: 0, r: 0, biome: 'forest' }],
+      }),
+    )
     expect(patch.success).toBe(true)
     expect(patch.hexesUpdated).toBe(1)
 
-    const preview = parseResult(await tool('rpg', { sub: 'world_map', action: 'preview', worldId, q: 0, r: 0, width: 1, height: 1 }))
+    const preview = parseResult(
+      await tool('rpg', {
+        sub: 'world_map',
+        action: 'preview',
+        worldId,
+        q: 0,
+        r: 0,
+        width: 1,
+        height: 1,
+      }),
+    )
     expect(preview.success).toBe(true)
     expect(preview.ascii).toBe('T')
   })
 
   it('suggest_poi creates a zone and preview overlays its registered zone-type glyph', async () => {
     const worldId = await createWorld()
-    await tool('rpg', { sub: 'world_map', action: 'patch', worldId, hexes: [{ q: 5, r: 5, biome: 'grass' }] })
-    const poi = parseResult(await tool('rpg', {
-      sub: 'world_map', action: 'suggest_poi', worldId, query: `Live Territory ${uid()}`, q: 5, r: 5, radius: 2, zoneType: 'territory',
-    }))
+    await tool('rpg', {
+      sub: 'world_map',
+      action: 'patch',
+      worldId,
+      hexes: [{ q: 5, r: 5, biome: 'grass' }],
+    })
+    const poi = parseResult(
+      await tool('rpg', {
+        sub: 'world_map',
+        action: 'suggest_poi',
+        worldId,
+        query: `Live Territory ${uid()}`,
+        q: 5,
+        r: 5,
+        radius: 2,
+        zoneType: 'territory',
+      }),
+    )
     expect(poi.success).toBe(true)
     expect(poi.hasZone).toBe(true)
 
-    const preview = parseResult(await tool('rpg', { sub: 'world_map', action: 'preview', worldId, q: 5, r: 5, width: 1, height: 1 }))
+    const preview = parseResult(
+      await tool('rpg', {
+        sub: 'world_map',
+        action: 'preview',
+        worldId,
+        q: 5,
+        r: 5,
+        width: 1,
+        height: 1,
+      }),
+    )
     expect(preview.ascii).toBe('@')
 
-    const zoneQuery = parseResult(await tool('rpg', { sub: 'world_map', action: 'query_zone', worldId, q: 5, r: 5 }))
+    const zoneQuery = parseResult(
+      await tool('rpg', { sub: 'world_map', action: 'query_zone', worldId, q: 5, r: 5 }),
+    )
     expect(zoneQuery.zones).toHaveLength(1)
     expect(zoneQuery.zones[0].zoneType).toBe('territory')
   })
 
   it('render_svg returns a well-formed SVG for a hex map', async () => {
     const worldId = await createWorld()
-    await tool('rpg', { sub: 'world_map', action: 'patch', worldId, hexes: [{ q: 0, r: 0, biome: 'water' }] })
-    const svgResult = parseResult(await tool('rpg', { sub: 'world_map', action: 'render_svg', worldId, renderWidth: 5, renderHeight: 5 }))
+    await tool('rpg', {
+      sub: 'world_map',
+      action: 'patch',
+      worldId,
+      hexes: [{ q: 0, r: 0, biome: 'water' }],
+    })
+    const svgResult = parseResult(
+      await tool('rpg', {
+        sub: 'world_map',
+        action: 'render_svg',
+        worldId,
+        renderWidth: 5,
+        renderHeight: 5,
+      }),
+    )
     expect(svgResult.success).toBe(true)
     expect(svgResult.svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)
     expect(svgResult.hexCount).toBe(1)
@@ -72,15 +137,25 @@ describe.skipIf(!MCP_API_KEY)('rpg world_map / zone_type (#320)', () => {
 
   it('zone_type register/get/delete round-trip', async () => {
     const worldId = await createWorld()
-    const registered = parseResult(await tool('rpg', {
-      sub: 'zone_type', action: 'register', worldId, name: `live_zone_${uid()}`, glyph: 'L',
-    }))
+    const registered = parseResult(
+      await tool('rpg', {
+        sub: 'zone_type',
+        action: 'register',
+        worldId,
+        name: `live_zone_${uid()}`,
+        glyph: 'L',
+      }),
+    )
     expect(registered.success).toBe(true)
 
-    const fetched = parseResult(await tool('rpg', { sub: 'zone_type', action: 'get', id: registered.zoneTypeId }))
+    const fetched = parseResult(
+      await tool('rpg', { sub: 'zone_type', action: 'get', id: registered.zoneTypeId }),
+    )
     expect(fetched.zoneType.glyph).toBe('L')
 
-    const deleted = parseResult(await tool('rpg', { sub: 'zone_type', action: 'delete', id: registered.zoneTypeId }))
+    const deleted = parseResult(
+      await tool('rpg', { sub: 'zone_type', action: 'delete', id: registered.zoneTypeId }),
+    )
     expect(deleted.success).toBe(true)
   })
 })

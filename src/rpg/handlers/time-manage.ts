@@ -9,50 +9,59 @@ import type { AppBindings } from '../../types'
 import { handleEventManage } from './event-manage'
 import { runTickDriver, type TickDriverInput } from './tick-hooks'
 
-export const ACTIONS = ['set_date', 'get_date', 'get_age', 'advance', 'get_timeline', 'jump_to', 'set_owner', 'get_owner'] as const
-type TimeAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'set_date',
+  'get_date',
+  'get_age',
+  'advance',
+  'get_timeline',
+  'jump_to',
+  'set_owner',
+  'get_owner',
+] as const
+type TimeAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, TimeAction> = {
-  set:      'set_date',
-  date:     'get_date',
-  age:      'get_age',
-  tick:     'advance',
-  forward:  'advance',
-  clock:    'get_date',
+  set: 'set_date',
+  date: 'get_date',
+  age: 'get_age',
+  tick: 'advance',
+  forward: 'advance',
+  clock: 'get_date',
   timeline: 'get_timeline',
-  events:   'get_timeline',
-  jump:     'jump_to',
-  goto:     'jump_to',
-  claim:    'set_owner',
-  lock:     'set_owner',
-  owner:    'get_owner',
+  events: 'get_timeline',
+  jump: 'jump_to',
+  goto: 'jump_to',
+  claim: 'set_owner',
+  lock: 'set_owner',
+  owner: 'get_owner',
   who_owns: 'get_owner',
 }
 
 const InputSchema = z.object({
-  action:       z.string(),
-  world_id:     z.string().optional(),
+  action: z.string(),
+  world_id: z.string().optional(),
   // #336 — every other rpg sub accepts camelCase worldId; time was the one
   // snake_case-only outlier. Accept both, normalized to world_id below,
   // since all of this handler's internal logic already reads a.world_id.
-  worldId:      z.string().optional(),
-  date:         z.string().optional(),
-  era:          z.string().optional(),
+  worldId: z.string().optional(),
+  date: z.string().optional(),
+  era: z.string().optional(),
   character_id: z.string().optional(),
-  by:           z.string().optional(),
-  from:         z.string().optional(),
-  to:           z.string().optional(),
-  thread:       z.string().optional(),
-  mode:         z.enum(['observe', 'play']).optional(),
-  limit:        z.number().int().min(1).max(500).optional(),
+  by: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  thread: z.string().optional(),
+  mode: z.enum(['observe', 'play']).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
   // #312 — agent-ownership clock lock. Identifies the calling agent (e.g.
   // "archisector", "calder-architect") so `advance` can guard against a
   // different agent moving the same world's clock underneath it.
-  owner:        z.string().nullable().optional(),
+  owner: z.string().nullable().optional(),
   // #442 — tick driver hooks. Optional array of hook names to run after date advance.
-  hooks:        z.array(z.string()).optional(),
+  hooks: z.array(z.string()).optional(),
   // #442 — dry_run mode. If true, hooks run against shadow state and return summary
   // without persisting mutations.
-  dry_run:      z.boolean().optional(),
+  dry_run: z.boolean().optional(),
 })
 
 // ── Date arithmetic helpers ───────────────────────────────────────────────────
@@ -74,19 +83,31 @@ function addToDate(dateStr: string, amount: number, unit: 'days' | 'months' | 'y
     d = Math.min(d, daysInMonth(y, m))
   } else if (unit === 'months') {
     m += amount
-    while (m > 12) { m -= 12; y++ }
-    while (m < 1)  { m += 12; y-- }
+    while (m > 12) {
+      m -= 12
+      y++
+    }
+    while (m < 1) {
+      m += 12
+      y--
+    }
     d = Math.min(d, daysInMonth(y, m))
   } else {
     d += amount
     while (d > daysInMonth(y, m)) {
       d -= daysInMonth(y, m)
       m++
-      if (m > 12) { m = 1; y++ }
+      if (m > 12) {
+        m = 1
+        y++
+      }
     }
     while (d < 1) {
       m--
-      if (m < 1) { m = 12; y-- }
+      if (m < 1) {
+        m = 12
+        y--
+      }
       d += daysInMonth(y, m)
     }
   }
@@ -118,13 +139,19 @@ function dateDiff(fromStr: string, toStr: string): number {
   // Days remaining in current month
   totalDays += daysInMonth(y, m) - d
   m++
-  if (m > 12) { m = 1; y++ }
+  if (m > 12) {
+    m = 1
+    y++
+  }
 
   // Complete months until target month/year
   while (y < ty || (y === ty && m < tm)) {
     totalDays += daysInMonth(y, m)
     m++
-    if (m > 12) { m = 1; y++ }
+    if (m > 12) {
+      m = 1
+      y++
+    }
   }
 
   // Days in target month
@@ -134,9 +161,9 @@ function dateDiff(fromStr: string, toStr: string): number {
 }
 
 function season(month: number): string {
-  if (month <= 2)  return 'winter'
-  if (month <= 5)  return 'spring'
-  if (month <= 8)  return 'summer'
+  if (month <= 2) return 'winter'
+  if (month <= 5) return 'spring'
+  if (month <= 8) return 'summer'
   if (month <= 11) return 'autumn'
   return 'winter'
 }
@@ -162,7 +189,10 @@ function nextBirthday(born: string, currentDate: string): string | null {
   return `${cy + 1}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`
 }
 
-function computeAge(born: string, currentDate: string): { years: number; months: number | null; days: number | null } {
+function computeAge(
+  born: string,
+  currentDate: string,
+): { years: number; months: number | null; days: number | null } {
   const [by, bm, bd] = parseDateParts(born)
   const [cy, cm, cd] = parseDateParts(currentDate)
 
@@ -178,7 +208,7 @@ function computeAge(born: string, currentDate: string): { years: number; months:
   if (days < 0) {
     months--
     const prevMonth = cm === 1 ? 12 : cm - 1
-    const prevYear  = cm === 1 ? cy - 1 : cy
+    const prevYear = cm === 1 ? cy - 1 : cy
     days += daysInMonth(prevYear, prevMonth)
   }
   if (months < 0) {
@@ -194,7 +224,11 @@ function parseByString(by: string): { amount: number; unit: 'days' | 'months' | 
   if (!m) return null
   const amount = parseInt(m[1], 10)
   const raw = m[2].toLowerCase()
-  const unit: 'days' | 'months' | 'years' = raw.startsWith('y') ? 'years' : raw.startsWith('mo') ? 'months' : 'days'
+  const unit: 'days' | 'months' | 'years' = raw.startsWith('y')
+    ? 'years'
+    : raw.startsWith('mo')
+      ? 'months'
+      : 'days'
   return { amount, unit }
 }
 
@@ -215,19 +249,22 @@ export async function seedWorldState(db: D1Database, worldId: string): Promise<v
  * @returns Current date string or null if world not found
  */
 export async function getCurrentDate(db: D1Database, worldId: string): Promise<string | null> {
-  const row = await db
+  const row = (await db
     .prepare('SELECT "current_date" FROM world_state WHERE world_id = ?')
     .bind(worldId)
-    .first() as { current_date: string } | null
+    .first()) as { current_date: string } | null
 
   return row?.current_date ?? null
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-export async function handleTimeManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleTimeManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   if (a.world_id === undefined && a.worldId !== undefined) a.world_id = a.worldId
 
@@ -239,33 +276,42 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
   switch (match.matched) {
     case 'set_date': {
       if (!a.world_id) return err('"world_id" is required')
-      if (!a.date)     return err('"date" is required')
+      if (!a.date) return err('"date" is required')
       await db
-        .prepare(`INSERT INTO world_state (world_id, "current_date", era)
+        .prepare(
+          `INSERT INTO world_state (world_id, "current_date", era)
                   VALUES (?, ?, ?)
                   ON CONFLICT(world_id) DO UPDATE SET
                     "current_date" = excluded."current_date",
-                    era            = COALESCE(excluded.era, world_state.era)`)
+                    era            = COALESCE(excluded.era, world_state.era)`,
+        )
         .bind(a.world_id, a.date, a.era ?? null)
         .run()
-      const row = await db
+      const row = (await db
         .prepare('SELECT "current_date", era FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first() as { current_date: string; era: string | null } | null
-      return ok({ success: true, actionType: 'set_date', world_id: a.world_id, current_date: row?.current_date, era: row?.era ?? null })
+        .first()) as { current_date: string; era: string | null } | null
+      return ok({
+        success: true,
+        actionType: 'set_date',
+        world_id: a.world_id,
+        current_date: row?.current_date,
+        era: row?.era ?? null,
+      })
     }
 
     case 'get_date': {
       if (!a.world_id) return err('"world_id" is required')
-      const row = await db
+      const row = (await db
         .prepare('SELECT "current_date", era FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first() as { current_date: string; era: string | null } | null
+        .first()) as { current_date: string; era: string | null } | null
       if (!row) return err(`No world_state found for world_id: ${a.world_id}`)
       const [, month] = parseDateParts(row.current_date)
       const [year] = parseDateParts(row.current_date)
       return ok({
-        success: true, actionType: 'get_date',
+        success: true,
+        actionType: 'get_date',
         world_id: a.world_id,
         current_date: row.current_date,
         era: row.era ?? null,
@@ -275,24 +321,40 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
     }
 
     case 'get_age': {
-      if (!a.world_id)     return err('"world_id" is required')
+      if (!a.world_id) return err('"world_id" is required')
       if (!a.character_id) return err('"character_id" is required')
       const [ws, char] = await Promise.all([
-        db.prepare('SELECT "current_date" FROM world_state WHERE world_id = ?').bind(a.world_id).first() as Promise<{ current_date: string } | null>,
-        db.prepare('SELECT id, name, born FROM characters WHERE id = ?').bind(a.character_id).first() as Promise<{ id: string; name: string; born: string | null } | null>,
+        db
+          .prepare('SELECT "current_date" FROM world_state WHERE world_id = ?')
+          .bind(a.world_id)
+          .first() as Promise<{ current_date: string } | null>,
+        db
+          .prepare('SELECT id, name, born FROM characters WHERE id = ?')
+          .bind(a.character_id)
+          .first() as Promise<{ id: string; name: string; born: string | null } | null>,
       ])
-      if (!ws)   return err(`No world_state found for world_id: ${a.world_id}`)
+      if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
       if (!char) return err(`Character not found: ${a.character_id}`)
       if (!char.born) {
-        return ok({ success: true, actionType: 'get_age', character: char.name, age: null, birthday: null, next_birthday: null, is_birthday_today: false })
+        return ok({
+          success: true,
+          actionType: 'get_age',
+          character: char.name,
+          age: null,
+          birthday: null,
+          next_birthday: null,
+          is_birthday_today: false,
+        })
       }
       const age = computeAge(char.born, ws.current_date)
       const bday = nextBirthday(char.born, ws.current_date)
       const isPartialDate = bday === null
       const isToday = !isPartialDate && ws.current_date.slice(5) === char.born.slice(5)
       return ok({
-        success: true, actionType: 'get_age',
-        character: char.name, character_id: char.id,
+        success: true,
+        actionType: 'get_age',
+        character: char.name,
+        character_id: char.id,
         born: char.born,
         age,
         next_birthday: bday,
@@ -303,14 +365,15 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
 
     case 'advance': {
       if (!a.world_id) return err('"world_id" is required')
-      if (!a.by)       return err('"by" is required (e.g. "3 months", "1 year", "7 days")')
+      if (!a.by) return err('"by" is required (e.g. "3 months", "1 year", "7 days")')
       const parsed_by = parseByString(a.by)
-      if (!parsed_by) return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
+      if (!parsed_by)
+        return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
 
-      const ws = await db
+      const ws = (await db
         .prepare('SELECT "current_date", time_owner FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first() as { current_date: string; time_owner: string | null } | null
+        .first()) as { current_date: string; time_owner: string | null } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
 
       // #312 — ownership guard. Only enforced when the caller identifies itself
@@ -322,7 +385,7 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       if (identifiedOwner !== null && ws.time_owner !== null && ws.time_owner !== identifiedOwner) {
         return err(
           `World clock for "${a.world_id}" is owned by "${ws.time_owner}" — cannot advance as "${identifiedOwner}". ` +
-          `Coordinate with that agent, or release ownership via rpg{sub:"time", action:"set_owner", world_id:"${a.world_id}", owner:null}.`,
+            `Coordinate with that agent, or release ownership via rpg{sub:"time", action:"set_owner", world_id:"${a.world_id}", owner:null}.`,
         )
       }
       const willClaim = identifiedOwner !== null && ws.time_owner === null
@@ -333,19 +396,23 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
 
       if (willClaim) {
         await db
-          .prepare('UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ? WHERE world_id = ?')
+          .prepare(
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ? WHERE world_id = ?',
+          )
           .bind(newDate, now, identifiedOwner, now, a.world_id)
           .run()
       } else {
         await db
-          .prepare('UPDATE world_state SET "current_date" = ?, last_advanced_at = ? WHERE world_id = ?')
+          .prepare(
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ? WHERE world_id = ?',
+          )
           .bind(newDate, now, a.world_id)
           .run()
       }
 
-      const chars = await db
+      const chars = (await db
         .prepare('SELECT id, name, born FROM characters WHERE born IS NOT NULL')
-        .all() as { results: Array<{ id: string; name: string; born: string }> }
+        .all()) as { results: Array<{ id: string; name: string; born: string }> }
 
       const birthdaysTriggered: Array<{ id: string; name: string; born: string }> = []
       for (const c of chars.results) {
@@ -354,7 +421,13 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
           await handleEventManage(env, {
             action: 'emit',
             eventType: 'world_change',
-            payload: { type: 'birthday', character_id: c.id, character_name: c.name, born: c.born, current_date: newDate },
+            payload: {
+              type: 'birthday',
+              character_id: c.id,
+              character_name: c.name,
+              born: c.born,
+              current_date: newDate,
+            },
             sourceType: 'system',
             sourceId: 'time',
           })
@@ -362,7 +435,8 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       }
 
       const result: Record<string, unknown> = {
-        success: true, actionType: 'advance',
+        success: true,
+        actionType: 'advance',
         world_id: a.world_id,
         old_date: oldDate,
         new_date: newDate,
@@ -398,37 +472,65 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
       const limit = a.limit ?? 100
       const parts: string[] = ['SELECT * FROM timeline_events WHERE world_id = ?']
       const binds: unknown[] = [a.world_id]
-      if (a.thread) { parts.push('AND thread_id = ?'); binds.push(a.thread) }
-      if (a.from)   { parts.push('AND event_at >= ?'); binds.push(a.from) }
-      if (a.to)     { parts.push('AND event_at <= ?'); binds.push(a.to) }
-      parts.push('ORDER BY event_at ASC LIMIT ?'); binds.push(limit)
-      const rows = await db.prepare(parts.join(' ')).bind(...binds).all() as { results: unknown[] }
-      return ok({ success: true, actionType: 'get_timeline', world_id: a.world_id, count: rows.results.length, events: rows.results })
+      if (a.thread) {
+        parts.push('AND thread_id = ?')
+        binds.push(a.thread)
+      }
+      if (a.from) {
+        parts.push('AND event_at >= ?')
+        binds.push(a.from)
+      }
+      if (a.to) {
+        parts.push('AND event_at <= ?')
+        binds.push(a.to)
+      }
+      parts.push('ORDER BY event_at ASC LIMIT ?')
+      binds.push(limit)
+      const rows = (await db
+        .prepare(parts.join(' '))
+        .bind(...binds)
+        .all()) as { results: unknown[] }
+      return ok({
+        success: true,
+        actionType: 'get_timeline',
+        world_id: a.world_id,
+        count: rows.results.length,
+        events: rows.results,
+      })
     }
 
     case 'jump_to': {
       if (!a.world_id) return err('"world_id" is required')
-      if (!a.date)     return err('"date" is required')
+      if (!a.date) return err('"date" is required')
       const mode = a.mode ?? 'observe'
       const [beforeRow, afterRow] = await Promise.all([
-        db.prepare(
-          'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at <= ? ORDER BY event_at DESC LIMIT 1'
-        ).bind(a.world_id, a.date).first() as Promise<unknown>,
-        db.prepare(
-          'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at > ? ORDER BY event_at ASC LIMIT 1'
-        ).bind(a.world_id, a.date).first() as Promise<unknown>,
+        db
+          .prepare(
+            'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at <= ? ORDER BY event_at DESC LIMIT 1',
+          )
+          .bind(a.world_id, a.date)
+          .first() as Promise<unknown>,
+        db
+          .prepare(
+            'SELECT * FROM timeline_events WHERE world_id = ? AND is_canonical = 1 AND event_at > ? ORDER BY event_at ASC LIMIT 1',
+          )
+          .bind(a.world_id, a.date)
+          .first() as Promise<unknown>,
       ])
-      const presentChars = await db
-        .prepare('SELECT DISTINCT entity_id FROM timeline_events WHERE world_id = ? AND event_at <= ? AND entity_id IS NOT NULL')
+      const presentChars = (await db
+        .prepare(
+          'SELECT DISTINCT entity_id FROM timeline_events WHERE world_id = ? AND event_at <= ? AND entity_id IS NOT NULL',
+        )
         .bind(a.world_id, a.date)
-        .all() as { results: Array<{ entity_id: string }> }
+        .all()) as { results: Array<{ entity_id: string }> }
       const result: Record<string, unknown> = {
-        success: true, actionType: 'jump_to',
+        success: true,
+        actionType: 'jump_to',
         world_id: a.world_id,
         date: a.date,
         mode,
         gap: { before_event: beforeRow ?? null, after_event: afterRow ?? null },
-        present_characters: presentChars.results.map(r => r.entity_id),
+        present_characters: presentChars.results.map((r) => r.entity_id),
       }
       if (mode === 'play' && afterRow) {
         result.constraint = `Must be consistent with the event that follows at ${(afterRow as Record<string, unknown>).event_at}`
@@ -443,24 +545,39 @@ export async function handleTimeManage(env: AppBindings, args: Record<string, un
     case 'set_owner': {
       if (!a.world_id) return err('"world_id" is required')
       if (a.owner === undefined) return err('"owner" is required (pass null to release ownership)')
-      const existing = await db.prepare('SELECT world_id FROM world_state WHERE world_id = ?').bind(a.world_id).first()
+      const existing = await db
+        .prepare('SELECT world_id FROM world_state WHERE world_id = ?')
+        .bind(a.world_id)
+        .first()
       if (!existing) return err(`No world_state found for world_id: ${a.world_id}`)
       const since = a.owner === null ? null : new Date().toISOString()
       await db
         .prepare('UPDATE world_state SET time_owner = ?, time_owner_since = ? WHERE world_id = ?')
         .bind(a.owner, since, a.world_id)
         .run()
-      return ok({ success: true, actionType: 'set_owner', world_id: a.world_id, time_owner: a.owner, time_owner_since: since })
+      return ok({
+        success: true,
+        actionType: 'set_owner',
+        world_id: a.world_id,
+        time_owner: a.owner,
+        time_owner_since: since,
+      })
     }
 
     case 'get_owner': {
       if (!a.world_id) return err('"world_id" is required')
-      const row = await db
+      const row = (await db
         .prepare('SELECT time_owner, time_owner_since FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first() as { time_owner: string | null; time_owner_since: string | null } | null
+        .first()) as { time_owner: string | null; time_owner_since: string | null } | null
       if (!row) return err(`No world_state found for world_id: ${a.world_id}`)
-      return ok({ success: true, actionType: 'get_owner', world_id: a.world_id, time_owner: row.time_owner, time_owner_since: row.time_owner_since })
+      return ok({
+        success: true,
+        actionType: 'get_owner',
+        world_id: a.world_id,
+        time_owner: row.time_owner,
+        time_owner_since: row.time_owner_since,
+      })
     }
   }
 }

@@ -55,12 +55,18 @@ export function applyDynamicFields(
   const rejected: RejectedField[] = []
   if (!fields) return { applied, rejected }
 
-  const claimed = new Set(sets.map(s => s.split('=')[0].trim()))
+  const claimed = new Set(sets.map((s) => s.split('=')[0].trim()))
 
   for (const [key, value] of Object.entries(fields)) {
     if (claimed.has(key)) continue // explicit param already set this column — it wins, silently
-    if (blacklist.includes(key)) { rejected.push({ field: key, reason: 'blacklisted' }); continue }
-    if (!SAFE_COLUMN_NAME.test(key)) { rejected.push({ field: key, reason: 'invalid column name' }); continue }
+    if (blacklist.includes(key)) {
+      rejected.push({ field: key, reason: 'blacklisted' })
+      continue
+    }
+    if (!SAFE_COLUMN_NAME.test(key)) {
+      rejected.push({ field: key, reason: 'invalid column name' })
+      continue
+    }
     sets.push(`${key} = ?`)
     vals.push(value)
     applied.push(key)

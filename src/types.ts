@@ -15,8 +15,8 @@ export type JsonRpcResponse = {
 }
 
 export interface LoreEntry {
-  text: string;
-  meta?: unknown;
+  text: string
+  meta?: unknown
 }
 
 export type AppBindings = {

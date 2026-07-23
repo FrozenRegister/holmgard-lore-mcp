@@ -12,11 +12,26 @@ describe.skipIf(!MCP_API_KEY)('Canonical Fixture Tests', () => {
     sceneKey = `scene:canonical-threshold-${uid()}`
 
     await Promise.all([
-      setLore(alphaKey, 'Status: Active, Stage-2-of-4\nCurrent-Stage: 2\nTotal-Stages: 4\nWeight-1 (Drive): 30\nWeight-2 (Vulnerability): 55'),
-      setLore(actorKey, 'Status: Active, Processing\nWeight-1 (Drive): 85\nWeight-2 (Vulnerability): 10\nState-Level: 0'),
-      setLore(betaKey, 'Status: Stage-3-of-4, Modified-Consciousness\nWeight-1 (Drive): 10\nWeight-2 (Vulnerability): 75'),
-      setLore(locKey, 'Type: threshold-zone\nExits:\n- target: location:canonical-dest-a\n  travel-cost: 2-hours\n- target: location:canonical-dest-b\n  travel-cost: 30-minutes'),
-      setLore(sceneKey, 'Thread: canonical-primary-cycle\nChoices:\n- id: investigate\n- id: search\n- id: retreat'),
+      setLore(
+        alphaKey,
+        'Status: Active, Stage-2-of-4\nCurrent-Stage: 2\nTotal-Stages: 4\nWeight-1 (Drive): 30\nWeight-2 (Vulnerability): 55',
+      ),
+      setLore(
+        actorKey,
+        'Status: Active, Processing\nWeight-1 (Drive): 85\nWeight-2 (Vulnerability): 10\nState-Level: 0',
+      ),
+      setLore(
+        betaKey,
+        'Status: Stage-3-of-4, Modified-Consciousness\nWeight-1 (Drive): 10\nWeight-2 (Vulnerability): 75',
+      ),
+      setLore(
+        locKey,
+        'Type: threshold-zone\nExits:\n- target: location:canonical-dest-a\n  travel-cost: 2-hours\n- target: location:canonical-dest-b\n  travel-cost: 30-minutes',
+      ),
+      setLore(
+        sceneKey,
+        'Thread: canonical-primary-cycle\nChoices:\n- id: investigate\n- id: search\n- id: retreat',
+      ),
     ])
   })
 
@@ -39,7 +54,9 @@ describe.skipIf(!MCP_API_KEY)('Canonical Fixture Tests', () => {
   it('resolve_interaction normalizes integer weights', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: actorKey, entity_b_id: alphaKey, action_type: 'process',
+      entity_a_id: actorKey,
+      entity_b_id: alphaKey,
+      action_type: 'process',
     })
     expect(res.error).toBeUndefined()
     const w1: number = res.result.metadata.weight_1
@@ -51,7 +68,10 @@ describe.skipIf(!MCP_API_KEY)('Canonical Fixture Tests', () => {
   })
 
   it('get_reachable_locations parses YAML-style Exits', async () => {
-    const res = await tool('world_manage', { action: 'get_reachable_locations', origin_key: locKey })
+    const res = await tool('world_manage', {
+      action: 'get_reachable_locations',
+      origin_key: locKey,
+    })
     expect(res.result.locations).toHaveLength(2)
   })
 
@@ -77,12 +97,16 @@ describe.skipIf(!MCP_API_KEY)('Weight Integer Boundaries', () => {
     ])
   })
 
-  afterAll(async () => { await deleteLore(minKey, maxKey, targetKey) })
+  afterAll(async () => {
+    await deleteLore(minKey, maxKey, targetKey)
+  })
 
   it('Weight-1:5 normalizes to ~0.05', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: minKey, entity_b_id: targetKey, action_type: 'test',
+      entity_a_id: minKey,
+      entity_b_id: targetKey,
+      action_type: 'test',
     })
     const w1: number = res.result.metadata.weight_1
     expect(w1).toBeGreaterThan(0.049)
@@ -92,7 +116,9 @@ describe.skipIf(!MCP_API_KEY)('Weight Integer Boundaries', () => {
   it('Weight-1:95 normalizes to ~0.95', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: maxKey, entity_b_id: targetKey, action_type: 'test',
+      entity_a_id: maxKey,
+      entity_b_id: targetKey,
+      action_type: 'test',
     })
     const w1: number = res.result.metadata.weight_1
     expect(w1).toBeGreaterThan(0.949)

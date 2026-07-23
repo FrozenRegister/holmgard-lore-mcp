@@ -36,7 +36,9 @@ export interface TypedToolContext<S extends z.ZodTypeAny> {
   isAuthenticated: boolean
 }
 
-export type TypedToolHandler<S extends z.ZodTypeAny> = (ctx: TypedToolContext<S>) => Promise<Response>
+export type TypedToolHandler<S extends z.ZodTypeAny> = (
+  ctx: TypedToolContext<S>,
+) => Promise<Response>
 
 export interface ActionSpec<S extends z.ZodTypeAny = z.ZodTypeAny> {
   schema: S
@@ -60,7 +62,7 @@ export interface ActionSpec<S extends z.ZodTypeAny = z.ZodTypeAny> {
 export function defineAction<S extends z.ZodTypeAny>(
   schema: S,
   handler: TypedToolHandler<S>,
-  example?: Record<string, unknown>
+  example?: Record<string, unknown>,
 ): ActionSpec {
   return { schema, handler, example } as unknown as ActionSpec
 }
@@ -74,7 +76,10 @@ export function defineAction<S extends z.ZodTypeAny>(
  * atomically (e.g. lore-manage.ts pairs a converted system.ts read-side with a
  * not-yet-converted lore.ts write-side).
  */
-export function makeActionDispatcher(toolName: string, actionMap: Record<string, ActionSpec | ToolHandler>): ToolHandler {
+export function makeActionDispatcher(
+  toolName: string,
+  actionMap: Record<string, ActionSpec | ToolHandler>,
+): ToolHandler {
   return ({ c, id, args, isAuthenticated }) => {
     const { action, ...rest } = args
     if (!action || typeof action !== 'string')
@@ -84,8 +89,7 @@ export function makeActionDispatcher(toolName: string, actionMap: Record<string,
     if (!entry)
       return Promise.resolve(c.json(makeError(id, -32602, `Unknown action "${action}"`), 200))
 
-    if (typeof entry === 'function')
-      return entry({ c, id, args: rest, isAuthenticated })
+    if (typeof entry === 'function') return entry({ c, id, args: rest, isAuthenticated })
 
     const parsed = entry.schema.safeParse(rest)
     if (!parsed.success) {

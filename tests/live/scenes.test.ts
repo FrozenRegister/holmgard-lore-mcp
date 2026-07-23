@@ -15,9 +15,18 @@ describe.skipIf(!MCP_API_KEY)('Scene Operations', () => {
     await Promise.all([
       setLore(sceneLocKey, 'A dim tavern.'),
       setLore(sceneEntity, 'The innkeeper polishes a glass.'),
-      setLore(sceneKey, `**Description:** Dark tavern.\n**Entities:** ${sceneEntity}\n**Location:** ${sceneLocKey}\n**Choices:** greet,leave`),
-      setLore(choiceKey, '**Outcome-Seed:** The hero accepts.\n**State-Change:** Questing\n**Next-Choices:** choice-b'),
-      setLore(historyEntity, '**Status:** Idle\n**Choice-History:** prev-choice@2024-01-01T00:00:00.000Z'),
+      setLore(
+        sceneKey,
+        `**Description:** Dark tavern.\n**Entities:** ${sceneEntity}\n**Location:** ${sceneLocKey}\n**Choices:** greet,leave`,
+      ),
+      setLore(
+        choiceKey,
+        '**Outcome-Seed:** The hero accepts.\n**State-Change:** Questing\n**Next-Choices:** choice-b',
+      ),
+      setLore(
+        historyEntity,
+        '**Status:** Idle\n**Choice-History:** prev-choice@2024-01-01T00:00:00.000Z',
+      ),
     ])
   })
 
@@ -37,7 +46,11 @@ describe.skipIf(!MCP_API_KEY)('Scene Operations', () => {
   })
 
   it('commit_choice applies state change and records history', async () => {
-    const res = await tool('scene_manage', { action: 'commit_choice', choice_id: choiceKey, entity_key: historyEntity })
+    const res = await tool('scene_manage', {
+      action: 'commit_choice',
+      choice_id: choiceKey,
+      entity_key: historyEntity,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/committed/)
     // #350 — timeline_events bridge field is always present; null here since
@@ -46,7 +59,11 @@ describe.skipIf(!MCP_API_KEY)('Scene Operations', () => {
   })
 
   it('commit_choice state change persists', async () => {
-    await tool('scene_manage', { action: 'commit_choice', choice_id: choiceKey, entity_key: historyEntity })
+    await tool('scene_manage', {
+      action: 'commit_choice',
+      choice_id: choiceKey,
+      entity_key: historyEntity,
+    })
     const res = await tool('lore_manage', { action: 'get', query: historyEntity })
     expect(res.result.content[0].text).toMatch(/Questing/)
   })
@@ -65,7 +82,9 @@ describe.skipIf(!MCP_API_KEY)('State Stage Operations', () => {
     await setLore(stageEntity, '**State-Stage:** 2\n**State-Total:** 5\n**Stage-Timer:** 4')
   })
 
-  afterEach(async () => { await deleteLore(stageEntity) })
+  afterEach(async () => {
+    await deleteLore(stageEntity)
+  })
 
   it('advance_state_stage increments stage and decrements timer', async () => {
     const res = await tool('entity_manage', { action: 'advance_stage', entity_key: stageEntity })

@@ -18,6 +18,16 @@ env:
   PNPM_VERSION: '10.15.0'
 
 jobs:
+  test-layout:
+    name: Test Layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard against test files outside tests/{unit,worker,live}/
+        # No pnpm/node_modules needed — the script only uses node:child_process
+        # (git ls-files) and node:fs, so this is a near-instant job. See #490.
+        run: node scripts/check-test-layout.mjs
+
   unit-tests:
     name: Unit Tests (pure functions, no Workers runtime)
     runs-on: ubuntu-latest
@@ -129,7 +139,7 @@ jobs:
         run: pnpm run lint
       - name: Generate structured lint report
         if: always()
-        run: npx eslint --format json src > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
+        run: npx eslint --format json src tests > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4
@@ -143,6 +153,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history needed so `origin/<base>` is available locally for
+          # the diff artifacts below (same reason the coverage job needs it).
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -154,10 +168,33 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm run build
+      - name: Generate dependency + overall diff artifacts
+        # PR-only: diffing a push-to-main event against itself is meaningless.
+        # See #484 (CI Artifacts Phase 2) — reviewer/agent-facing summary of
+        # "did dependencies change" and "how big is this PR" with zero new
+        # dependencies, just git already in the checkout.
+        if: always() && github.event_name == 'pull_request'
+        env:
+          DIFF_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: |
+          git diff "$DIFF_BASE_REF" -- package.json > pkg-diff.txt || true
+          git diff "$DIFF_BASE_REF" --stat > diff-stat.txt || true
+      - name: Upload build diff artifacts
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diff-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            pkg-diff.txt
+            diff-stat.txt
+          retention-days: 7
 
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -190,6 +227,26 @@ jobs:
           files: ./coverage/lcov.info
           fail_ci_if_error: false
           verbose: true
+      - name: Generate coverage gaps report
+        # No always() here on purpose: if pnpm test:coverage itself failed,
+        # coverage-summary.json may be missing or incomplete, and main being
+        # broken is not something a routine gaps-report update should paper
+        # over — let this step skip naturally rather than post stale data.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node scripts/report-coverage-gaps.mjs
+      - name: Update pinned Coverage Gaps issue
+        # Standing downtime backlog (see #504) — always-current instead of a
+        # separate schedule, since this job already runs on every main push.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUM=$(gh issue list --repo ${{ github.repository }} --search 'in:title "Coverage Gaps (auto-updated)"' --state open --json number,title --jq '[.[] | select(.title == "Coverage Gaps (auto-updated)")][0].number')
+          if [ -z "$ISSUE_NUM" ]; then
+            echo "No open 'Coverage Gaps (auto-updated)' issue found — skipping update"
+            exit 0
+          fi
+          gh issue edit "$ISSUE_NUM" --repo ${{ github.repository }} --body-file coverage/coverage-gaps-report.md
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -198,9 +255,67 @@ jobs:
           path: coverage/
           retention-days: 7
 
+  job-durations:
+    name: Job Durations
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
+    # always(), not success() — an anomalous duration (a shard silently running
+    # the full suite instead of its 1/4 slice, a job hanging) is exactly the
+    # signal this artifact exists to surface, and that's at least as likely to
+    # co-occur with a failing run as a passing one. See #484 (CI Artifacts
+    # Phase 2) — this would have caught PR #482's silent no-op-sharding and
+    # the full-suite-runs-twice issue (#483) automatically, from data GitHub
+    # already records, instead of requiring a human to notice the timing felt
+    # off.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Fetch per-job, per-step durations for this run
+        # No checkout needed — this only reads GitHub's own Jobs API for the
+        # run this job is already part of. By the time our `needs:` list is
+        # satisfied, every job/step listed there has a real started_at/
+        # completed_at; jq computes each duration in seconds. Two separate
+        # null cases, both guarded: (1) a step that never ran (skipped via an
+        # `if:`) has null timestamps, so duration_seconds falls back to null
+        # instead of erroring; (2) `.jobs[]` also includes sibling jobs NOT
+        # in our needs: list (notify, trigger-auto-merge, this job itself)
+        # that may still be queued/not-yet-started when we query — the Jobs
+        # API returns `steps: null` (not `[]`) for those, and `.steps[]`
+        # unguarded throws "Cannot iterate over null" and kills the whole
+        # filter. `(.steps // [])[]` verified against a mock with exactly
+        # this shape before relying on it here.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=100" \
+            --jq '[.jobs[] | {
+              name: .name,
+              status: .status,
+              conclusion: .conclusion,
+              started_at: .started_at,
+              completed_at: .completed_at,
+              duration_seconds: (if .started_at and .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else null end),
+              steps: [(.steps // [])[] | {
+                name: .name,
+                status: .status,
+                conclusion: .conclusion,
+                started_at: .started_at,
+                completed_at: .completed_at,
+                duration_seconds: (if .started_at and .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else null end)
+              }]
+            }]' > job-durations.json
+      - name: Upload job durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-durations-${{ github.event.pull_request.head.sha || github.sha }}
+          path: job-durations.json
+          retention-days: 7
+
   notify:
     name: Notify on Failure
-    needs: [unit-tests, test, type-check, lint, build, coverage]
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
     if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
@@ -218,7 +333,7 @@ jobs:
 
   trigger-auto-merge:
     name: Trigger Auto-Merge Check
-    needs: [unit-tests, test, type-check, lint, build, coverage]
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
     # workflow_run only reliably fires for push-triggered runs, not pull_request-triggered
     # ones (see auto-merge.yml) — dispatching directly here is the reliable fast path;
     # the 5-min cron in auto-merge.yml remains as a fallback if this ever fails to fire.

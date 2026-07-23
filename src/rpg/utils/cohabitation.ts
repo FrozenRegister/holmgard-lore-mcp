@@ -44,13 +44,19 @@ interface Group {
 }
 
 async function fetchGroup(db: D1Database, characterId: string): Promise<Group | null> {
-  const char = await db.prepare('SELECT host_body_id FROM characters WHERE id = ?').bind(characterId).first() as { host_body_id: string | null } | null
+  const char = (await db
+    .prepare('SELECT host_body_id FROM characters WHERE id = ?')
+    .bind(characterId)
+    .first()) as { host_body_id: string | null } | null
   if (!char) return null
   const claimedHostBodyId = char.host_body_id ?? characterId
 
-  const { results } = await db.prepare(
-    'SELECT id, name, stats, hp, max_hp, ac, active, updated_at FROM characters WHERE id = ? OR host_body_id = ?'
-  ).bind(claimedHostBodyId, claimedHostBodyId).all() as { results: GroupRow[] }
+  const { results } = (await db
+    .prepare(
+      'SELECT id, name, stats, hp, max_hp, ac, active, updated_at FROM characters WHERE id = ? OR host_body_id = ?',
+    )
+    .bind(claimedHostBodyId, claimedHostBodyId)
+    .all()) as { results: GroupRow[] }
 
   // `characterId` is always present in `results`: either it *is* the host
   // (claimedHostBodyId === characterId, matched by the `id = ?` clause), or
@@ -58,13 +64,14 @@ async function fetchGroup(db: D1Database, characterId: string): Promise<Group | 
   // `host_body_id = ?` clause). If the claimed host row itself doesn't exist
   // (dangling reference), fall back to the requesting character as its own
   // host rather than resolving against a phantom id.
-  const hostRow = results.find(r => r.id === claimedHostBodyId) ?? results.find(r => r.id === characterId)!
+  const hostRow =
+    results.find((r) => r.id === claimedHostBodyId) ?? results.find((r) => r.id === characterId)!
 
   return { characterId, hostRow, rows: results }
 }
 
 function pickDriver(rows: GroupRow[], hostRow: GroupRow): GroupRow {
-  const activeRows = rows.filter(r => r.active === 1)
+  const activeRows = rows.filter((r) => r.active === 1)
   if (activeRows.length === 0) return hostRow
   // Tie-break on most-recently-updated: `activate` bumps updated_at on the row
   // it activates, so the most recent claim wins even though the host's own row
@@ -82,7 +89,10 @@ export interface CohabitationResolution {
 // co-habitation group (host row or passenger row). Returns null if the
 // character doesn't exist. A solo (non-co-habitating) character resolves to
 // itself for both hostBodyId and driverId.
-export async function resolveCohabitation(db: D1Database, characterId: string): Promise<CohabitationResolution | null> {
+export async function resolveCohabitation(
+  db: D1Database,
+  characterId: string,
+): Promise<CohabitationResolution | null> {
   const group = await fetchGroup(db, characterId)
   if (!group) return null
   const { hostRow, rows } = group
@@ -110,18 +120,34 @@ export interface EffectiveStats {
 // display name) from the current driver. For a non-co-habitating character
 // this is simply its own row. Returns null only if the character itself
 // doesn't exist.
-export async function resolveEffectiveStats(db: D1Database, characterId: string): Promise<EffectiveStats | null> {
+export async function resolveEffectiveStats(
+  db: D1Database,
+  characterId: string,
+): Promise<EffectiveStats | null> {
   const group = await fetchGroup(db, characterId)
   if (!group) return null
   const { hostRow, rows } = group
 
   const driverRow = pickDriver(rows, hostRow)
   const hostStats = JSON.parse(hostRow.stats) as StatBlock
-  const mentalStats = driverRow.id === hostRow.id ? hostStats : (JSON.parse(driverRow.stats) as StatBlock)
+  const mentalStats =
+    driverRow.id === hostRow.id ? hostStats : (JSON.parse(driverRow.stats) as StatBlock)
 
   return {
-    hostBodyId: hostRow.id, driverId: driverRow.id, isCohabitating: rows.length > 1, name: driverRow.name,
-    stats: { str: hostStats.str, dex: hostStats.dex, con: hostStats.con, int: mentalStats.int, wis: mentalStats.wis, cha: mentalStats.cha },
-    hp: hostRow.hp, max_hp: hostRow.max_hp, ac: hostRow.ac,
+    hostBodyId: hostRow.id,
+    driverId: driverRow.id,
+    isCohabitating: rows.length > 1,
+    name: driverRow.name,
+    stats: {
+      str: hostStats.str,
+      dex: hostStats.dex,
+      con: hostStats.con,
+      int: mentalStats.int,
+      wis: mentalStats.wis,
+      cha: mentalStats.cha,
+    },
+    hp: hostRow.hp,
+    max_hp: hostRow.max_hp,
+    ac: hostRow.ac,
   }
 }

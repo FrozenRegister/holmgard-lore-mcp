@@ -63,6 +63,7 @@ body:
       description: All of these gates are enforced on merge. If this bug causes a CI failure, which job(s) are affected? Names match the job ids in `ci.yml` and `pr-quality.yml` exactly.
       multiple: true
       options:
+        - test-layout
         - unit-tests
         - test (sharded)
         - type-check

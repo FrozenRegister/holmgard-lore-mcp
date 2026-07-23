@@ -1,18 +1,24 @@
 import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
 import { defineConfig } from 'vitest/config'
+import path from 'node:path'
 
 export default defineConfig({
   test: {
     name: 'workers',
     testTimeout: 30000, // 30s global timeout for slow miniflare tests
-    exclude: ['tests/live/**', '**/node_modules/**', '**/*.unit.test.ts'],
+    include: ['tests/worker/**/*.test.ts'],
     globalSetup: ['./vitest.global-setup.ts'],
     coverage: {
       provider: 'istanbul',
       reporter: ['lcov', 'text', 'json', 'json-summary'],
       include: ['src/**/*.ts'],
-      exclude: ['src/__tests__/**', 'node_modules/**', 'src/**/migrate-*.ts', '**/*.test.ts'],
+      exclude: ['node_modules/**', 'src/**/migrate-*.ts'],
       reportsDirectory: './coverage',
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
     },
   },
   plugins: [

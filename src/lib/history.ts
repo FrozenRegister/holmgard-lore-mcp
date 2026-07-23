@@ -22,7 +22,12 @@ export async function pushHistory(c: any, key: string, currentRaw: string): Prom
 
 // Appends a write event to _changelog so the editor can do delta-only syncs.
 // Each entry: { key, version, updatedAt, op }. Rolls off after CHANGELOG_MAX.
-export async function appendChangelog(c: any, key: string, version: number, op = 'write'): Promise<void> {
+export async function appendChangelog(
+  c: any,
+  key: string,
+  version: number,
+  op = 'write',
+): Promise<void> {
   const kv = getKV(c)
   if (!kv) return
   let entries: Array<{ key: string; version: number; updatedAt: string; op: string }> = []

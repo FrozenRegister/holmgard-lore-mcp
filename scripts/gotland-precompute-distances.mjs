@@ -70,7 +70,9 @@ async function main() {
     wp.r = hex.r
   }
   writeFileSync(WAYPOINTS_PATH, JSON.stringify(waypoints, null, 2) + '\n')
-  console.log(`Wrote derived hex coordinates for ${waypoints.length} waypoints to ${WAYPOINTS_PATH}`)
+  console.log(
+    `Wrote derived hex coordinates for ${waypoints.length} waypoints to ${WAYPOINTS_PATH}`,
+  )
 
   const matrix = []
   for (const from of waypoints) {
@@ -83,10 +85,12 @@ async function main() {
         distanceKm,
         routeSource: distanceKm === null ? 'osrm_foot_v1_no_route' : 'osrm_foot_v1',
       })
-      console.log(`${from.name} -> ${to.name}: ${distanceKm === null ? 'NO ROUTE' : distanceKm.toFixed(2) + ' km'}`)
+      console.log(
+        `${from.name} -> ${to.name}: ${distanceKm === null ? 'NO ROUTE' : distanceKm.toFixed(2) + ' km'}`,
+      )
       // Small delay between requests — one-time manual run against the free
       // community OSRM demo instance, not a production dependency.
-      await new Promise(r => setTimeout(r, 300))
+      await new Promise((r) => setTimeout(r, 300))
     }
   }
   writeFileSync(MATRIX_PATH, JSON.stringify(matrix, null, 2) + '\n')

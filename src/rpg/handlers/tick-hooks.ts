@@ -38,14 +38,22 @@ export interface HookRunner {
   config: HookConfig
   dependsOn: string[]
   batchMode: boolean
-  execute: (env: AppBindings, worldId: string, date: string, snapshot: WorldSnapshot) => Promise<HookResult>
+  execute: (
+    env: AppBindings,
+    worldId: string,
+    date: string,
+    snapshot: WorldSnapshot,
+  ) => Promise<HookResult>
 }
 
 // ── World-Level Lock (Concurrency Control) ──────────────────────────────────
 
 const WORLD_LOCKS = new Map<string, { holderId: string; expiresAt: number }>()
 
-export async function acquireWorldLock(worldId: string, holderId: string = 'tick-driver'): Promise<boolean> {
+export async function acquireWorldLock(
+  worldId: string,
+  holderId: string = 'tick-driver',
+): Promise<boolean> {
   const now = Date.now()
   const lock = WORLD_LOCKS.get(worldId)
   if (lock && lock.expiresAt > now) return false
@@ -60,7 +68,10 @@ export function releaseWorldLock(worldId: string): void {
 // ── Shadow State System ───────────────────────────────────────────────────────
 
 export async function snapshotWorldState(db: D1Database, worldId: string): Promise<WorldSnapshot> {
-  const ws = (await db.prepare('SELECT * FROM world_state WHERE world_id = ?').bind(worldId).first()) as Record<string, any> | null
+  const ws = (await db
+    .prepare('SELECT * FROM world_state WHERE world_id = ?')
+    .bind(worldId)
+    .first()) as Record<string, any> | null
 
   const dateStr = ws?.current_date ?? new Date().toISOString().split('T')[0]
   return {
@@ -75,14 +86,17 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
 // ── Phase 1 Hooks ─────────────────────────────────────────────────────────────
 
 // weather_update — resolved hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const weatherUpdateHook: HookRunner = {
   name: 'weather_update',
   config: { enabled: true, batch_mode: true },
   dependsOn: [],
   batchMode: true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Reuse weather system from #364. For now, return stub.
     return {
       category: 'resolved',
@@ -93,14 +107,17 @@ const weatherUpdateHook: HookRunner = {
 }
 
 // resource_consume — resolved hook, batch mode
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const resourceConsumeHook: HookRunner = {
   name: 'resource_consume',
   config: { enabled: true, batch_mode: true },
   dependsOn: ['weather_update'],
   batchMode: true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Call resource-manage.ts consume for each active party.
     // For now, return stub.
     return {
@@ -112,14 +129,17 @@ const resourceConsumeHook: HookRunner = {
 }
 
 // encounter_check — flagged hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const encounterCheckHook: HookRunner = {
   name: 'encounter_check',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['weather_update'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Reuse encounter.resolve from #280. Report eligibility, do not auto-resolve.
     return {
       category: 'flagged',
@@ -130,14 +150,17 @@ const encounterCheckHook: HookRunner = {
 }
 
 // health_degradation — resolved hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const healthDegradationHook: HookRunner = {
   name: 'health_degradation',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['resource_consume'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Implement untreated wound worsening, HP/condition tick.
     return {
       category: 'resolved',
@@ -148,14 +171,17 @@ const healthDegradationHook: HookRunner = {
 }
 
 // dissolution_flag — flagged hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const dissolutionFlagHook: HookRunner = {
   name: 'dissolution_flag',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['health_degradation', 'encounter_check'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Scan staged entities via Phase 0's DissolutionStageCheck interface.
     // Report which are eligible to advance a stage. Never auto-advance.
     return {
@@ -253,7 +279,12 @@ export async function runTickDriver(
     try {
       sortedHooks = topologicalSort(hooks)
     } catch (e) {
-      return { success: false, resolved: [], flagged: [], narrator_summary: `Hook sort failed: ${(e as Error).message}` }
+      return {
+        success: false,
+        resolved: [],
+        flagged: [],
+        narrator_summary: `Hook sort failed: ${(e as Error).message}`,
+      }
     }
 
     // Snapshot world state
@@ -271,57 +302,58 @@ export async function runTickDriver(
       narrativeContext?: string
     }> = []
 
-     // Collect flagged events for conflict resolution
-     const flaggedEvents: FlaggedEvent[] = []
+    // Collect flagged events for conflict resolution
+    const flaggedEvents: FlaggedEvent[] = []
 
-     for (const hookName of sortedHooks) {
-       const hook = HOOK_REGISTRY.get(hookName)
-       if (!hook) continue
-       if (!hook.config.enabled) continue
+    for (const hookName of sortedHooks) {
+      const hook = HOOK_REGISTRY.get(hookName)
+      if (!hook) continue
+      if (!hook.config.enabled) continue
 
-       try {
-         const result = await hook.execute(env, worldId, startDate, snapshot)
-         if (hook.config.log_only) {
-           // Log what would happen, but don't mutate
-           console.log(`[tick-driver-log-only] ${hookName}: ${JSON.stringify(result)}`)
-         }
-         if (result.category === 'resolved') resolved.push(result)
-         if (result.category === 'flagged') {
-           flagged.push(result)
+      try {
+        const result = await hook.execute(env, worldId, startDate, snapshot)
+        if (hook.config.log_only) {
+          // Log what would happen, but don't mutate
+          console.log(`[tick-driver-log-only] ${hookName}: ${JSON.stringify(result)}`)
+        }
+        if (result.category === 'resolved') resolved.push(result)
+        if (result.category === 'flagged') {
+          flagged.push(result)
 
-           // Extract flagged events for conflict resolution
-           if (result.data && typeof result.data === 'object' && 'events' in result.data) {
-             const events = (result.data as { events: FlaggedEvent[] }).events
-             flaggedEvents.push(...events)
-           }
-         }
-         if (result.narrator_summary) summaries.push(result.narrator_summary)
-       } catch (e) {
-         // Hook failure → abort entire advance, restore snapshot, return error
-         return {
-           success: false,
-           resolved: [],
-           flagged: [],
-           narrator_summary: `Hook ${hookName} failed: ${(e as Error).message}`,
-         }
-       }
-     }
+          // Extract flagged events for conflict resolution
+          if (result.data && typeof result.data === 'object' && 'events' in result.data) {
+            const events = (result.data as { events: FlaggedEvent[] }).events
+            flaggedEvents.push(...events)
+          }
+        }
+        if (result.narrator_summary) summaries.push(result.narrator_summary)
+      } catch (e) {
+        // Hook failure → abort entire advance, restore snapshot, return error
+        return {
+          success: false,
+          resolved: [],
+          flagged: [],
+          narrator_summary: `Hook ${hookName} failed: ${(e as Error).message}`,
+        }
+      }
+    }
 
-     // Resolve conflicts between flagged events
-     if (flaggedEvents.length > 0) {
-       const resolutionResults = await resolveTickConflicts(flaggedEvents, startDate, env, db)
+    // Resolve conflicts between flagged events
+    if (flaggedEvents.length > 0) {
+      const resolutionResults = await resolveTickConflicts(flaggedEvents, startDate, env, db)
 
-       // Process resolution results
-       for (const resolution of resolutionResults) {
-         conflictResolutions.push({
-           status: resolution.status,
-           eventType: resolution.event.eventType,
-           targetKey: resolution.event.targetKey,
-           sourceEntityKey: resolution.event.sourceEntityKey,
-           narrativeContext: resolution.status === 'modified' ? resolution.modification.narrativeContext : undefined
-         })
-       }
-     }
+      // Process resolution results
+      for (const resolution of resolutionResults) {
+        conflictResolutions.push({
+          status: resolution.status,
+          eventType: resolution.event.eventType,
+          targetKey: resolution.event.targetKey,
+          sourceEntityKey: resolution.event.sourceEntityKey,
+          narrativeContext:
+            resolution.status === 'modified' ? resolution.modification.narrativeContext : undefined,
+        })
+      }
+    }
 
     // If dry_run, return results without persisting
     if (dry_run) {

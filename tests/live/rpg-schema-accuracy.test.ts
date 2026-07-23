@@ -4,7 +4,7 @@
 // #462-#467 — six more subs had the same class of drift (drama, theft, event,
 // session, improvisation, combat_action) plus spawn was missing a real action
 // (place_character, #340). Mirrors the per-sub assertions added to the
-// workers-suite src/__tests__/rpg-schema-accuracy.test.ts.
+// workers-suite tests/worker/rpg-schema-accuracy.test.ts.
 import { describe, it, expect } from 'vitest'
 import { MCP_API_KEY, tool } from './helpers'
 
@@ -86,7 +86,7 @@ describe.skipIf(!MCP_API_KEY)('rpg schema accuracy (#462-#467)', () => {
 // every canonical rpg sub's real ACTIONS against its SUB_SCHEMAS description
 // found 13 more subs with the same class of drift (0-1 action overlap in most
 // cases). Spot-checks one real/stale pair per sub against the live worker;
-// see src/__tests__/rpg-schema-accuracy.test.ts for the full per-sub coverage.
+// see tests/worker/rpg-schema-accuracy.test.ts for the full per-sub coverage.
 describe.skipIf(!MCP_API_KEY)('rpg schema accuracy (discovered via #468 drift guard)', () => {
   const cases: Array<{ sub: string; real: string; stale?: string }> = [
     { sub: 'conflict_type', real: 'create' },

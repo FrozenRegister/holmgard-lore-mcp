@@ -21,29 +21,49 @@ describe.skipIf(!MCP_API_KEY)('rpg spatial biome registry (#290)', () => {
   })
 
   it('generate accepts any biome string when no worldId is given (backward compatible)', async () => {
-    const res = parseResult(await tool('rpg', {
-      sub: 'spatial', action: 'generate', name: `Test Room ${uid()}`, description: 'A room used for a live smoke test.', biome: 'anything_goes',
-    }))
+    const res = parseResult(
+      await tool('rpg', {
+        sub: 'spatial',
+        action: 'generate',
+        name: `Test Room ${uid()}`,
+        description: 'A room used for a live smoke test.',
+        biome: 'anything_goes',
+      }),
+    )
     expect(res.success).toBe(true)
     expect(res.biome).toBe('anything_goes')
     createdRoomIds.push(res.roomId)
   })
 
   it('generate accepts a legacy biome name for a worldId with no registered biomes', async () => {
-    const res = parseResult(await tool('rpg', {
-      sub: 'spatial', action: 'generate', name: `Test Room ${uid()}`, description: 'A room used for a live smoke test.',
-      biome: 'urban', worldId: `nonexistent-${uid()}`,
-    }))
+    const res = parseResult(
+      await tool('rpg', {
+        sub: 'spatial',
+        action: 'generate',
+        name: `Test Room ${uid()}`,
+        description: 'A room used for a live smoke test.',
+        biome: 'urban',
+        worldId: `nonexistent-${uid()}`,
+      }),
+    )
     expect(res.success).toBe(true)
     createdRoomIds.push(res.roomId)
   })
 
   it('look reports worldId on a room created with one', async () => {
     const worldId = `nonexistent-${uid()}`
-    const gen = parseResult(await tool('rpg', {
-      sub: 'spatial', action: 'generate', name: `Test Room ${uid()}`, description: 'A room used for a live smoke test.', worldId,
-    }))
-    const look = parseResult(await tool('rpg', { sub: 'spatial', action: 'look', roomId: gen.roomId }))
+    const gen = parseResult(
+      await tool('rpg', {
+        sub: 'spatial',
+        action: 'generate',
+        name: `Test Room ${uid()}`,
+        description: 'A room used for a live smoke test.',
+        worldId,
+      }),
+    )
+    const look = parseResult(
+      await tool('rpg', { sub: 'spatial', action: 'look', roomId: gen.roomId }),
+    )
     expect(look.worldId).toBe(worldId)
   })
 })

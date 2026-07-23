@@ -26,12 +26,15 @@ changesRouter.get('/', async (c) => {
   if (since) {
     const sinceMs = new Date(since).getTime()
     if (!isNaN(sinceMs)) {
-      entries = entries.filter(e => new Date(e.updatedAt).getTime() > sinceMs)
+      entries = entries.filter((e) => new Date(e.updatedAt).getTime() > sinceMs)
     }
   }
   c.header('Content-Type', 'application/json')
   c.header('Cache-Control', 'no-store')
-  return c.json({ changes: entries, count: entries.length, generated_at: new Date().toISOString() }, 200)
+  return c.json(
+    { changes: entries, count: entries.length, generated_at: new Date().toISOString() },
+    200,
+  )
 })
 
 export default changesRouter

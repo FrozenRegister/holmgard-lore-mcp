@@ -48,12 +48,15 @@ body:
     id: regression-plan
     attributes:
       label: Regression test plan
-      description: What existing tests must still pass? What new tests prove behavior is preserved?
+      description: >-
+        What existing tests must still pass? What new tests prove behavior is preserved?
+        Any new test file goes under tests/unit/, tests/worker/, or tests/live/ only (CLAUDE.md § Tests) —
+        never colocated beside source, never a new top-level test directory.
       placeholder: |
         - All existing vitest suites pass with zero changes
-        - New test: config-driven dissolution produces identical output to hardcoded for all 5-stage archetypes
-        - New test: custom stage count (12-stage) advances correctly through all stages
-        - Live smoke: run `batch_stage` against production location and diff output
+        - New test (tests/worker/): config-driven dissolution produces identical output to hardcoded for all 5-stage archetypes
+        - New test (tests/worker/): custom stage count (12-stage) advances correctly through all stages
+        - Live smoke (tests/live/): run `batch_stage` against production location and diff output
     validations:
       required: true
 
@@ -88,6 +91,7 @@ body:
         at once — it is not a per-gate switch. Only apply it if you're intentionally skipping all three;
         the ci.yml gates (unit-tests, test, type-check, lint, build, coverage) are unaffected either way.
       value: |
+        - [ ] `test-layout` passes (new/moved test files under `tests/unit/`, `tests/worker/`, or `tests/live/` only)
         - [ ] `unit-tests` pass (all existing + new regression tests)
         - [ ] `test` (sharded) pass
         - [ ] `type-check` passes

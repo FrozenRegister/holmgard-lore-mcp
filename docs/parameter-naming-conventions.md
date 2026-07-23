@@ -28,7 +28,8 @@ Handlers with this bridge:
 | `world-manage.ts` | `world` | `id` and `worldId` are interchangeable aliases |
 | `weather-manage.ts` | `weather` | `worldId` required for all actions |
 | `corpse-manage.ts` | `corpse` | `worldId` required for `scavenge_check` |
-| `time-manage.ts` | `time` | Already had this bridge from #336 |
+| `character-manage.ts` | (top-level `character_manage` tool) | Same direction as the snippet above (`world_id` → `worldId`); internal logic reads `a.worldId` |
+| `time-manage.ts` | `time` | **Bridges the opposite direction** from the snippet above — `time`'s internal logic reads `a.world_id` (snake_case-only originally), so it normalizes camelCase `worldId` → `world_id`, not the other way around. Predates #377 (added in #336, when `time` was the snake_case-only outlier). |
 
 Other RPG subs that accept `worldId` (but don't yet have the `world_id` alias) will be updated incrementally. The `time` sub was the first to get this treatment (#336).
 

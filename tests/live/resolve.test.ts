@@ -17,12 +17,16 @@ describe.skipIf(!MCP_API_KEY)('Resolve Interaction', () => {
     ])
   })
 
-  afterAll(async () => { await deleteLore(keyA, keyB, keyZeroA, keyHighB) })
+  afterAll(async () => {
+    await deleteLore(keyA, keyB, keyZeroA, keyHighB)
+  })
 
   it('resolve_interaction returns max probability when W1=1.0, W2=0 (P=0.700)', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: keyA, entity_b_id: keyB, action_type: 'consume',
+      entity_a_id: keyA,
+      entity_b_id: keyB,
+      action_type: 'consume',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/P=0\.700/)
@@ -31,7 +35,9 @@ describe.skipIf(!MCP_API_KEY)('Resolve Interaction', () => {
   it('resolve_interaction fails with low probability (P=0)', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: keyZeroA, entity_b_id: keyHighB, action_type: 'consume',
+      entity_a_id: keyZeroA,
+      entity_b_id: keyHighB,
+      action_type: 'consume',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/FAILURE/)
@@ -40,7 +46,9 @@ describe.skipIf(!MCP_API_KEY)('Resolve Interaction', () => {
   it('resolve_interaction returns error for missing entity', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: 'nonexistent:entity-xyz', entity_b_id: keyB, action_type: 'test',
+      entity_a_id: 'nonexistent:entity-xyz',
+      entity_b_id: keyB,
+      action_type: 'test',
     })
     expect(res.error).toBeTruthy()
     expect(res.error.message).toMatch(/not found/)
@@ -59,12 +67,16 @@ describe.skipIf(!MCP_API_KEY)('Resolve Interaction - Bullet Format Weights', () 
     ])
   })
 
-  afterAll(async () => { await deleteLore(attackerKey, defenderKey) })
+  afterAll(async () => {
+    await deleteLore(attackerKey, defenderKey)
+  })
 
   it('resolve_interaction computes P=0.600 for W1=0.9, W2=0.1 in bullet format', async () => {
     const res = await tool('entity_manage', {
       action: 'resolve_interaction',
-      entity_a_id: attackerKey, entity_b_id: defenderKey, action_type: 'hunt',
+      entity_a_id: attackerKey,
+      entity_b_id: defenderKey,
+      action_type: 'hunt',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/P=0\.600/)

@@ -76,7 +76,8 @@ function rowToLandmark(row: Record<string, unknown>): LandmarkRecord {
   const data = row.data ? JSON.parse(String(row.data)) : {}
   // data.attributes is already a string from push-landmarks; ensure it's JSON stringified
   const attributesValue = data.attributes ?? '{}'
-  const attributes = typeof attributesValue === 'string' ? attributesValue : JSON.stringify(attributesValue)
+  const attributes =
+    typeof attributesValue === 'string' ? attributesValue : JSON.stringify(attributesValue)
   return {
     mapId: String(row.map_id ?? 'main'),
     id: String(row.id ?? ''),
@@ -110,10 +111,16 @@ internal.post('/map-readback', async (c) => {
 
     const db = c.env.RPG_DB as any
     const [hexesResult, landmarksResult] = await Promise.all([
-      db.prepare('SELECT q, r, map_id, terrain, label, data, world_id, biome FROM hexes WHERE map_id = ? ORDER BY q, r')
+      db
+        .prepare(
+          'SELECT q, r, map_id, terrain, label, data, world_id, biome FROM hexes WHERE map_id = ? ORDER BY q, r',
+        )
         .bind(mapId)
         .all(),
-      db.prepare('SELECT id, map_id, q, r, name, category, data FROM landmarks WHERE map_id = ? ORDER BY name')
+      db
+        .prepare(
+          'SELECT id, map_id, q, r, name, category, data FROM landmarks WHERE map_id = ? ORDER BY name',
+        )
         .bind(mapId)
         .all(),
     ])

@@ -1,0 +1,40 @@
+name: Auto-fix Code Formatting
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.ts'
+      - 'tests/**/*.ts'
+      - 'scripts/**/*.mjs'
+      - '*.ts'
+      - '*.mjs'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - uses: pnpm/action-setup@v4.0.0
+        with:
+          version: '10.15.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run format
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'style: auto-fix code formatting'
+          file_pattern: 'src/**/*.ts tests/**/*.ts scripts/**/*.mjs *.ts *.mjs'

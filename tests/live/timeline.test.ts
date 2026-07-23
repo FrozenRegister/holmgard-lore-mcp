@@ -20,12 +20,18 @@ describe.skipIf(!MCP_API_KEY)('Consumption Timelines', () => {
   })
 
   it('list_consumption_timelines - all statuses', async () => {
-    const res = await tool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'all' })
+    const res = await tool('entity_manage', {
+      action: 'list_consumption_timelines',
+      status_filter: 'all',
+    })
     expect(res.error).toBeUndefined()
   })
 
   it('list_consumption_timelines - imminent only', async () => {
-    const res = await tool('entity_manage', { action: 'list_consumption_timelines', status_filter: 'imminent' })
+    const res = await tool('entity_manage', {
+      action: 'list_consumption_timelines',
+      status_filter: 'imminent',
+    })
     expect(res.error).toBeUndefined()
   })
 

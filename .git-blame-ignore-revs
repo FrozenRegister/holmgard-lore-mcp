@@ -1,0 +1,30 @@
+# Commits listed here are ignored by `git blame` when configured:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's web blame view picks this file up automatically with no config.)
+# Only add commits that are pure mechanical reformatting with zero logic changes.
+#
+# This repo squash-merges every PR (main is a straight line of "<title> (#N)"
+# commits — verified, no individual PR commits survive merge). That means an
+# entry here MUST be updated to the actual squash commit's SHA once its PR
+# merges, not left pointing at the individual pre-merge commit — the old SHA
+# becomes permanently unreachable the moment the PR merges, and both
+# scripts/check-patch-coverage.mjs and `git blame` itself silently stop
+# recognizing it. This has already happened twice (once from a mid-PR rebase,
+# once from squash-merge on the very next merge) — see check-patch-coverage.mjs
+# for how a stale entry now degrades (warns, skips just that entry) instead of
+# hard-failing every subsequent PR.
+#
+# One consequence of squash-merge: if a PR bundles a pure reformat together
+# with real feature work (as #493 did), the SHA you're forced to list here is
+# the whole squashed commit, not just the reformat — meaning genuinely new,
+# uncovered lines from that same PR could theoretically also get excused by
+# a future PR that touches them. Low practical risk (this repo requires 100%
+# patch coverage at merge time, so there's little "new-and-uncovered" content
+# left over to accidentally excuse) but worth knowing. The real fix, next
+# time: land a pure reformat as its own isolated PR, never bundled with
+# anything else, so the squash commit really is pure.
+
+# style: apply one-time Prettier reformat across src/, tests/, scripts/ (#493)
+# NOTE: SHA below is #493's squash-merge commit on main, not the original
+# pre-merge reformat commit (91203e4..., orphaned by the squash — see above).
+7184e7c3d74d62eb944e55480bd3c6d888f8ab1e

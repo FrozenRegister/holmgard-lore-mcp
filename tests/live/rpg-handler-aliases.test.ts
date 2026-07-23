@@ -12,22 +12,37 @@ function parseResult(res: any) {
 
 describe.skipIf(!MCP_API_KEY)('rpg cross-sub action aliases (#404)', () => {
   it('characters (Tier 1 sub alias) creates and reads back via character', async () => {
-    const created = parseResult(await tool('rpg', { sub: 'characters', action: 'create', name: `Alias Live ${uid()}` }))
+    const created = parseResult(
+      await tool('rpg', { sub: 'characters', action: 'create', name: `Alias Live ${uid()}` }),
+    )
     expect(created.success).toBe(true)
 
-    const got = parseResult(await tool('rpg', { sub: 'character', action: 'get', characterId: created.characterId }))
+    const got = parseResult(
+      await tool('rpg', { sub: 'character', action: 'get', characterId: created.characterId }),
+    )
     expect(got.character.id).toBe(created.characterId)
 
     await tool('rpg', { sub: 'character', action: 'delete', characterId: created.characterId })
   })
 
   it('character.place_character (Tier 2 action alias) routes to spawn.place_character', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Alias Live World ${uid()}` }))
+    const worldRes = parseResult(
+      await tool('rpg', { sub: 'world', action: 'create', name: `Alias Live World ${uid()}` }),
+    )
     const worldId = worldRes.worldId
-    const charRes = parseResult(await tool('rpg', { sub: 'character', action: 'create', name: `Placeable Live ${uid()}`, worldId }))
+    const charRes = parseResult(
+      await tool('rpg', {
+        sub: 'character',
+        action: 'create',
+        name: `Placeable Live ${uid()}`,
+        worldId,
+      }),
+    )
     const characterId = charRes.characterId
 
-    const placeRes = parseResult(await tool('rpg', { sub: 'character', action: 'place_character', characterId, q: 7, r: -3 }))
+    const placeRes = parseResult(
+      await tool('rpg', { sub: 'character', action: 'place_character', characterId, q: 7, r: -3 }),
+    )
     expect(placeRes.success).toBe(true)
     expect(placeRes.actionType).toBe('place_character')
 

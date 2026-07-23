@@ -2,16 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## When conventions are missing, default to best practice — always
+
+If asked to add a new tool, workflow, dependency, or convention and this repo has no established pattern to
+follow (or the existing pattern is clearly non-standard), don't invent something ad hoc or pick whatever's
+fastest to wire up. Research and default to the current, widely-accepted best practice for this stack
+(Node/TypeScript/Cloudflare Workers), and briefly state why that's the choice before implementing — the human
+maintaining this repo may not know what the standard approach is and is relying on you to surface it, not to
+silently pick something workable. This applies generally, not just to code: CI/CD setup, tooling choices,
+config file conventions, dependency selection, etc. Example: this repo had no code formatter at all until an
+explicit ask surfaced it — Prettier + `eslint-config-prettier` (see below) is the standard pairing, not a
+one-off choice.
+
 ## Commands
 
 ```bash
-pnpm test                        # run Workers runtime tests (vitest --project workers)
+pnpm test                        # run Workers runtime tests (vitest run)
 pnpm test:coverage               # run Workers tests and generate coverage (lcov → ./coverage/lcov.info)
-pnpm test:live                   # run live production smoke tests (vitest --project live)
+pnpm test:live                   # run live production smoke tests (vitest run --config vitest.live.config.ts)
 pnpm test -- --reporter=verbose  # Workers test output with per-test names
 pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
-pnpm run build                   # esbuild bundle → dist/index.js
+pnpm run format                  # Prettier auto-fix (src/, tests/, scripts/, root .ts/.mjs configs)
+pnpm run format:check            # Prettier check only, no writes
+pnpm run build                   # wrangler deploy --dry-run --outdir dist (bundle check)
 pnpm run deploy                  # wrangler deploy to Cloudflare
 wrangler dev                     # local dev server (uses wrangler.jsonc main)
 ```
@@ -19,7 +33,7 @@ wrangler dev                     # local dev server (uses wrangler.jsonc main)
 To run a single test file or describe block:
 
 ```bash
-pnpm test -- --reporter=verbose src/__tests__/worker.test.ts
+pnpm test -- --reporter=verbose tests/worker/admin.test.ts
 ```
 
 Live smoke tests require `MCP_API_KEY` set in the environment. `ADMIN_SECRET` is optional (admin tests skip if unset).
@@ -43,13 +57,16 @@ What this means in practice:
 
 ### Automated Setup (Recommended)
 
-Enable the git hook so the fast checks run automatically on every commit:
+The git hook is enabled automatically — `pnpm install` runs `scripts/setup-git-hooks.mjs` via the `prepare`
+lifecycle script, which sets `core.hooksPath` to `scripts/` so the fast checks run on every commit with no
+manual step. If you ever need to (re)do it by hand:
 
 ```powershell
 git config core.hooksPath scripts
 ```
 
-The hook runs in `-SkipTests` mode by default under this policy — it validates type-check and markdown formatting, but leaves the full suite to CI.
+The hook runs in `-SkipTests` mode by default under this policy — it validates test file layout, type-check,
+and markdown formatting, but leaves the full suite to CI.
 
 ### Manual Validation
 
@@ -62,13 +79,16 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 
 | Check | Where | Notes |
 | --- | --- | --- |
+| **Test file layout** (`pnpm run check:test-layout`) | Local + CI | Fails if any `*.test.ts` lives outside `tests/{unit,worker,live}/` — see [Tests](#tests). Instant; no `pnpm install` needed. |
 | **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
+| **Code formatting** (`pnpm run format`) | Local + CI | Prettier. Not a required gate — the `Auto-fix Code Formatting` CI workflow pushes a fix commit to the PR branch automatically, same pattern as markdown |
 | **Changelog fragment** | CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add a `.md` file under `.changelog/fragments/`. Fragments are assembled at release time — no merge conflicts. |
-| **Touched test file(s)** | Local | `pnpm test -- src/__tests__/<file>.test.ts` for the area you changed |
+| **Touched test file(s)** | Local | `pnpm test -- tests/worker/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | `coverage` CI job is the enforced gate — fails if patch coverage drops below 100%. Codecov upload is advisory only. |
+| **Coverage gaps backlog** | CI (push to `main` only) | `scripts/report-coverage-gaps.mjs` updates the pinned [Coverage Gaps (auto-updated)](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/504) issue with the current worst-covered files, sorted worst-first — a standing, agent-actionable backlog for downtime. Not a merge gate. |
 | **Documentation** | CI | PRs must either modify `docs/` files OR include a `## Documentation` section in PR body. Dependencies-only and internal refactors can use `skip-quality-checks` label. |
 
 ### Pre-Commit Checklist (Before Pushing)
@@ -76,13 +96,14 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 **Run these locally — fast:**
 
 ```powershell
+pnpm run check:test-layout                       # Guard test files stay under tests/
 pnpm run type-check                              # Catch type errors early
 pnpm run lint                                    # Lint
 pnpm fix:md                                      # Fix markdown formatting
 # If src/, docs/, wrangler.jsonc, or CLAUDE.md changed — add a changelog fragment:
 # New-Item .changelog\fragments\my-feature.md    # PowerShell
 # touch .changelog/fragments/my-feature.md       # bash
-pnpm test -- src/__tests__/<touched-file>.test.ts  # Only the tests you touched
+pnpm test -- tests/worker/<touched-file>.test.ts  # Only the tests you touched
 .\scripts\pre-commit-validate.ps1 -SkipTests     # Fast local gate
 ```
 
@@ -110,6 +131,8 @@ The short version:
 | `Type Check` | `typecheck-report-{sha}` | `tsc-diagnostics.txt` | Compiler errors, plain text |
 | `Unit Tests` | `test-results-unit-{sha}` | `test-results-unit.json` | Structured pass/fail + failure messages |
 | `Tests (shard N/4)` | `test-results-shard-{N}-{sha}` | `test-results-shard-{N}.json` | Same, per shard |
+
+Two more, not tied to a failing check — informational, not gates: `build-diff-{sha}` (`pkg-diff.txt` + `diff-stat.txt`, PR-only) answers "did dependencies change, how big is this PR"; `job-durations-{sha}` (`job-durations.json`, per-job + per-step wall-clock time from GitHub's own Jobs API) answers "did anything take anomalously long" — e.g. would have caught #482/#483's silently no-op-sharded test job directly. See `docs/agent-ci-artifacts-guide.md` for full file formats and the "if absent" semantics for every artifact.
 
 Find and download via the GitHub MCP tools already available in-session — no `gh` CLI, no new auth: `actions_list(method: "list_workflow_run_artifacts", resource_id: <run_id>)` to find the artifact (its response includes `workflow_run.head_sha` — check this against the PR's current head before trusting it, no download needed), then `actions_get(method: "download_workflow_run_artifact", resource_id: <artifact_id>)` for the download URL.
 
@@ -145,7 +168,7 @@ If you do delegate, the handoff prompt needs to carry the same context a fresh r
 
 ## Architecture
 
-**Single file worker**: all logic lives in `src/index.ts` — a [Hono](https://hono.dev/) app exported as the Workers default export.
+**Modular Hono worker**: `src/index.ts` is a *slim entry point* — it wires middleware, the JSON-RPC `/mcp` handler, and the `/admin`, `/internal`, `/api/entities`, and `/changes` sub-routers, then exports the [Hono](https://hono.dev/) app as the Workers default export. The actual logic lives in modules under `src/tools/` (lore-system dispatchers), `src/rpg/handlers/` (RPG-system dispatchers), `src/lib/` (KV, RPC, history, indexes, and other shared helpers), and `src/admin/`, `src/api/`, `src/do/`. **For the full request flow and design patterns, read `ARCHITECTURE.md` — it is the authoritative, current description; this section is only a pointer.** (Historical note: the worker began life as a genuinely single-file `src/index.ts` and was later split; older docs and comments that say "all logic lives in `src/index.ts`" predate that split.)
 
 **Two storage layers** (in priority order):
 
@@ -180,7 +203,7 @@ This is a **read/write split + match-the-consumer** rule, not a blanket "MCP eve
 
 Rationale: a single agent-usable read surface; secrets never exposed via MCP; bulk reads return structured JSON (not LLM content-blocks) by using the bare-method form. Worked example: **map readback** (`get_map_hexes`/`get_map_landmarks`/`get_map_meta` on `/mcp`; pushes stay on `/admin/map/*`) — see `docs/d1-readback-api-design.md`.
 
-**15 MCP tools** via `tools/call`: `ping_tool`, `list_topics`, `get_lore`, `get_lore_batch`, `set_lore`, `delete_lore`, `search_lore`, `validate_topic_exists`, `list_consumption_timelines`, `list_active_threads`, `increment_topic_field`, `patch_lore`, `restore_lore`, `batch_set_lore`, `batch_mutate`.
+**10 top-level tools via `tools/call`** (see `ARCHITECTURE.md`'s "Action-dispatcher tools" section): 5 lore-system `*_manage` tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) plus 5 RPG-system tools (`rpg`, `agent_manage`, `character_manage`, `search_tools`, `load_tool_schema`). Each is an action-dispatcher, not a single operation — `lore_manage` alone routes 19 actions (`ping`, `auth_check`, `get`, `get_batch`, `get_section`, `list`, `list_maps`, `get_map`, `search`, `validate`, `set`, `delete`, `patch`, `batch_set`, `batch_mutate`, `restore`, `history`, `increment`, `append_section` — see `src/tools/lore-manage.ts`'s `ACTION_MAP` and the `ping`/`auth_check` special-casing in `src/index.ts`). The pre-consolidation flat names (`list_topics`, `get_lore`, `set_lore`, `search_lore`, etc.) referenced elsewhere in this file are the current bare-method JSON-RPC aliases for some of these actions, not separate `tools/call` tool names. `list_consumption_timelines` and `list_active_threads` (below) are actions of `entity_manage`, not `lore_manage`.
 
 ### RPG Handlers and Actions (Cluster 3 — #337, #340, #341)
 
@@ -321,13 +344,15 @@ Index keys (`_idx:*`) are automatically excluded from `kvList()` results, along 
 
 Tests run inside the actual Workers runtime via `@cloudflare/vitest-pool-workers` (vitest 4 plugin API — `cloudflareTest()` in `vitest.config.ts`). KV is in-memory miniflare storage; `ADMIN_SECRET` is `test-secret-123`.
 
+**Every test file must live under `tests/{unit,worker,live}/`.** This is enforced by `pnpm run check:test-layout` (`scripts/check-test-layout.mjs`), which runs as its own `Test Layout` CI job and in the local pre-commit gate. A `*.test.ts` file placed anywhere else (colocated in `src/`, or a new stray `tests/` subdirectory) won't just fail this check — it will silently never run at all, since all three Vitest configs now have explicit `include` globs scoped to their own subdirectory (see #488/#489). The check fails fast and lists the offending paths.
+
 **Gotcha — `pnpm run <script> -- <flags>` silently swallows the flags.** pnpm always inserts a literal `--` before args forwarded this way, regardless of whether the underlying script already has one. Vitest sees its *own* `--` and treats everything after it as a positional test-file filter, not CLI flags — so `pnpm test -- --shard=1/4` or `pnpm run test:unit -- --reporter=json` silently does nothing (no error, flag just never takes effect). This was discovered because `.github/workflows/ci.yml`'s sharded `test` job was invoking `pnpm test -- --shard=${{ matrix.shard }}/4` — every "shard" was actually running the full suite (~5 min each, matching full-suite time, not a 1/4 slice). Fixed by calling vitest directly: `pnpm exec vitest run --shard=1/4 ...` (verified locally: a real 1/4 slice runs in ~2 min against ~34 files, vs. the full suite's ~7 min). When adding CLI flags to any `pnpm run <script>` invocation in a workflow, always use `pnpm exec <bin> <args>` instead of `pnpm run <script> -- <args>`.
 
 `reset()` from `cloudflare:test` is called `afterEach` to wipe all KV between tests. Seed KV directly with `env.LORE_DB.put(key, JSON.stringify({ text, meta }))` rather than going through `set_lore` — this avoids writing to the module-level `loreDB` fallback and keeps test isolation clean.
 
 **REQUIRED: Any change to MCP tools or worker logic must update BOTH test suites in the same turn:**
 
-1. **Vitest workers** (`src/__tests__/worker.test.ts`) — unit/integration tests running in the Workers runtime via miniflare
+1. **Vitest workers** (`tests/worker/**/*.test.ts`) — unit/integration tests running in the Workers runtime via miniflare
 2. **Vitest live** (`tests/live/*.test.ts`) — end-to-end smoke tests against the deployed production worker
 
 Do not wait to be asked. Both suites must be updated whenever a tool is added, removed, or its behavior changes.

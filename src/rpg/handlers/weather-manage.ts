@@ -14,11 +14,15 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
 export const ACTIONS = ['get_forecast', 'set_forecast', 'list_forecasts'] as const
-type WeatherAction = typeof ACTIONS[number]
+type WeatherAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, WeatherAction> = {
-  get: 'get_forecast', forecast: 'get_forecast', weather: 'get_forecast',
-  set: 'set_forecast', override: 'set_forecast',
-  list: 'list_forecasts', forecasts: 'list_forecasts',
+  get: 'get_forecast',
+  forecast: 'get_forecast',
+  weather: 'get_forecast',
+  set: 'set_forecast',
+  override: 'set_forecast',
+  list: 'list_forecasts',
+  forecasts: 'list_forecasts',
 } as Record<string, WeatherAction>
 
 const WEATHER_CONDITIONS = ['storm', 'rain', 'overcast', 'clear'] as const
@@ -59,26 +63,42 @@ function seasonFromDate(dateStr: string): string {
 }
 
 async function currentWorldDay(db: D1Database, worldId: string): Promise<number> {
-  const row = await db.prepare('SELECT production_day FROM world_state WHERE world_id = ?').bind(worldId).first() as { production_day: number | null } | null
+  const row = (await db
+    .prepare('SELECT production_day FROM world_state WHERE world_id = ?')
+    .bind(worldId)
+    .first()) as { production_day: number | null } | null
   return row?.production_day ?? 0
 }
 
 async function currentWorldDate(db: D1Database, worldId: string): Promise<string | null> {
-  const row = await db.prepare('SELECT "current_date" FROM world_state WHERE world_id = ?').bind(worldId).first() as { current_date: string | null } | null
+  const row = (await db
+    .prepare('SELECT "current_date" FROM world_state WHERE world_id = ?')
+    .bind(worldId)
+    .first()) as { current_date: string | null } | null
   return row?.current_date ?? null
 }
 
 // Fetch recent weather entries to provide narrative context for gaps.
-async function recentWeatherContext(db: D1Database, worldId: string, limit = 3): Promise<Array<Record<string, unknown>>> {
-  const { results } = await db.prepare(
-    'SELECT day, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type FROM weather_log WHERE world_id = ? ORDER BY day DESC LIMIT ?'
-  ).bind(worldId, limit).all()
+async function recentWeatherContext(
+  db: D1Database,
+  worldId: string,
+  limit = 3,
+): Promise<Array<Record<string, unknown>>> {
+  const { results } = await db
+    .prepare(
+      'SELECT day, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type FROM weather_log WHERE world_id = ? ORDER BY day DESC LIMIT ?',
+    )
+    .bind(worldId, limit)
+    .all()
   return results as Array<Record<string, unknown>>
 }
 
-export async function handleWeatherManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleWeatherManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   // #377 — normalize snake_case world_id → camelCase worldId
   if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
@@ -93,45 +113,70 @@ export async function handleWeatherManage(env: AppBindings, args: Record<string,
 
   switch (match.matched) {
     case 'get_forecast': {
-      const day = a.day ?? await currentWorldDay(db, a.worldId)
-      const row = await db.prepare('SELECT * FROM weather_log WHERE world_id = ? AND day = ?').bind(a.worldId, day).first() as Record<string, unknown> | null
+      const day = a.day ?? (await currentWorldDay(db, a.worldId))
+      const row = (await db
+        .prepare('SELECT * FROM weather_log WHERE world_id = ? AND day = ?')
+        .bind(a.worldId, day)
+        .first()) as Record<string, unknown> | null
 
       if (row) {
         return ok({
           found: true,
-          day, season: row.season, weather: row.weather,
-          temperature_high: row.temperature_high, temperature_low: row.temperature_low,
-          conditions: row.conditions, wind_speed: row.wind_speed, wind_direction: row.wind_direction,
-          precipitation_chance: row.precipitation_chance, precipitation_type: row.precipitation_type,
-          humidity: row.humidity, visibility: row.visibility,
-          fog: Boolean(row.fog), encounter_modifier: row.encounter_modifier, movement_modifier: row.movement_modifier,
+          day,
+          season: row.season,
+          weather: row.weather,
+          temperature_high: row.temperature_high,
+          temperature_low: row.temperature_low,
+          conditions: row.conditions,
+          wind_speed: row.wind_speed,
+          wind_direction: row.wind_direction,
+          precipitation_chance: row.precipitation_chance,
+          precipitation_type: row.precipitation_type,
+          humidity: row.humidity,
+          visibility: row.visibility,
+          fog: Boolean(row.fog),
+          encounter_modifier: row.encounter_modifier,
+          movement_modifier: row.movement_modifier,
           source: row.source,
         })
       }
 
       // Gap: return structured request for narrator to fill
-      const dateStr = await currentWorldDate(db, a.worldId) ?? now.slice(0, 10)
+      const dateStr = (await currentWorldDate(db, a.worldId)) ?? now.slice(0, 10)
       const season = a.season ?? seasonFromDate(dateStr)
       const recent = await recentWeatherContext(db, a.worldId)
 
       return ok({
         found: false,
         gap: {
-          needed: ['temperature_high', 'temperature_low', 'conditions', 'wind_speed', 'wind_direction', 'precipitation_chance', 'precipitation_type', 'humidity', 'visibility'],
+          needed: [
+            'temperature_high',
+            'temperature_low',
+            'conditions',
+            'wind_speed',
+            'wind_direction',
+            'precipitation_chance',
+            'precipitation_type',
+            'humidity',
+            'visibility',
+          ],
           context: {
             season,
             day,
             biome: 'limestone_karst', // Default; narrator can override
             date: dateStr,
-            recent_weather: recent.map(r => `${r.day}: ${r.conditions ?? 'unknown'} (high ${r.temperature_high ?? '?'}°C, low ${r.temperature_low ?? '?'}°C, ${r.wind_speed ?? '?'}kph ${r.wind_direction ?? '?'})`),
+            recent_weather: recent.map(
+              (r) =>
+                `${r.day}: ${r.conditions ?? 'unknown'} (high ${r.temperature_high ?? '?'}°C, low ${r.temperature_low ?? '?'}°C, ${r.wind_speed ?? '?'}kph ${r.wind_direction ?? '?'})`,
+            ),
           },
         },
       })
     }
 
     case 'set_forecast': {
-      const day = a.day ?? await currentWorldDay(db, a.worldId)
-      const dateStr = await currentWorldDate(db, a.worldId) ?? now.slice(0, 10)
+      const day = a.day ?? (await currentWorldDay(db, a.worldId))
+      const dateStr = (await currentWorldDate(db, a.worldId)) ?? now.slice(0, 10)
       const season = a.season ?? seasonFromDate(dateStr)
 
       // Accept both new-style (conditions) and legacy (weather) field names
@@ -150,8 +195,9 @@ export async function handleWeatherManage(env: AppBindings, args: Record<string,
       const source = a.source ?? 'narrator'
 
       const id = crypto.randomUUID()
-      await db.prepare(
-        `INSERT INTO weather_log (id, world_id, day, season, weather, fog, encounter_modifier, movement_modifier,
+      await db
+        .prepare(
+          `INSERT INTO weather_log (id, world_id, day, season, weather, fog, encounter_modifier, movement_modifier,
            temperature_high, temperature_low, conditions, wind_speed, wind_direction,
            precipitation_chance, precipitation_type, humidity, visibility, source, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -171,23 +217,63 @@ export async function handleWeatherManage(env: AppBindings, args: Record<string,
            humidity = excluded.humidity,
            visibility = excluded.visibility,
            source = excluded.source,
-           updated_at = excluded.updated_at`
-      ).bind(
-        id, a.worldId, day, season, conditions, fog ? 1 : 0, encounterModifier, movementModifier,
-        temperatureHigh, temperatureLow, conditions, windSpeed, windDirection,
-        precipitationChance, precipitationType, humidity, visibility, source, now, now
-      ).run()
+           updated_at = excluded.updated_at`,
+        )
+        .bind(
+          id,
+          a.worldId,
+          day,
+          season,
+          conditions,
+          fog ? 1 : 0,
+          encounterModifier,
+          movementModifier,
+          temperatureHigh,
+          temperatureLow,
+          conditions,
+          windSpeed,
+          windDirection,
+          precipitationChance,
+          precipitationType,
+          humidity,
+          visibility,
+          source,
+          now,
+          now,
+        )
+        .run()
 
       return ok({
-        success: true, actionType: 'set_forecast', worldId: a.worldId, day,
-        season, conditions, temperatureHigh, temperatureLow, windSpeed, windDirection,
-        precipitationChance, precipitationType, humidity, visibility, source,
+        success: true,
+        actionType: 'set_forecast',
+        worldId: a.worldId,
+        day,
+        season,
+        conditions,
+        temperatureHigh,
+        temperatureLow,
+        windSpeed,
+        windDirection,
+        precipitationChance,
+        precipitationType,
+        humidity,
+        visibility,
+        source,
       })
     }
 
     case 'list_forecasts': {
-      const { results } = await db.prepare('SELECT * FROM weather_log WHERE world_id = ? ORDER BY day DESC LIMIT ?').bind(a.worldId, a.limit).all()
-      return ok({ success: true, actionType: 'list_forecasts', worldId: a.worldId, count: results.length, forecasts: results })
+      const { results } = await db
+        .prepare('SELECT * FROM weather_log WHERE world_id = ? ORDER BY day DESC LIMIT ?')
+        .bind(a.worldId, a.limit)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'list_forecasts',
+        worldId: a.worldId,
+        count: results.length,
+        forecasts: results,
+      })
     }
   }
 }

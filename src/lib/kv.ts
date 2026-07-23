@@ -20,7 +20,9 @@ export async function kvGet(c: { env: AppBindings }, key: string): Promise<strin
   try {
     const kv = getKV(c)
     if (kv) return (await kv.get(key)) ?? loreDB[key] ?? null
-  } catch (e) { console.warn('KV get failed', e) }
+  } catch (e) {
+    console.warn('KV get failed', e)
+  }
   return loreDB[key] ?? null
 }
 
@@ -37,7 +39,17 @@ export async function kvList(c: { env: AppBindings }): Promise<string[]> {
       do {
         const listed: any = await kv.list(cursor ? { cursor } : undefined)
         for (const k of listed.keys) {
-          if (!k.name.startsWith('_history:') && !k.name.startsWith('_idx:') && k.name !== CHANGELOG_KEY && !k.name.startsWith('events:') && !k.name.startsWith('_snapshot:') && !k.name.startsWith('_tags:') && !k.name.startsWith('map:') && !k.name.startsWith('_csp_report:')) keys.push(k.name)
+          if (
+            !k.name.startsWith('_history:') &&
+            !k.name.startsWith('_idx:') &&
+            k.name !== CHANGELOG_KEY &&
+            !k.name.startsWith('events:') &&
+            !k.name.startsWith('_snapshot:') &&
+            !k.name.startsWith('_tags:') &&
+            !k.name.startsWith('map:') &&
+            !k.name.startsWith('_csp_report:')
+          )
+            keys.push(k.name)
         }
         cursor = listed.list_complete ? undefined : listed.cursor
       } while (cursor)
@@ -48,7 +60,17 @@ export async function kvList(c: { env: AppBindings }): Promise<string[]> {
     console.warn('KV list failed', e)
   }
 
-  const fallbackKeys = Object.keys(loreDB).filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== CHANGELOG_KEY && !k.startsWith('events:') && !k.startsWith('_snapshot:') && !k.startsWith('_tags:') && !k.startsWith('map:') && !k.startsWith('_csp_report:'))
+  const fallbackKeys = Object.keys(loreDB).filter(
+    (k) =>
+      !k.startsWith('_history:') &&
+      !k.startsWith('_idx:') &&
+      k !== CHANGELOG_KEY &&
+      !k.startsWith('events:') &&
+      !k.startsWith('_snapshot:') &&
+      !k.startsWith('_tags:') &&
+      !k.startsWith('map:') &&
+      !k.startsWith('_csp_report:'),
+  )
   setKvListCache(c as any, fallbackKeys)
   return fallbackKeys
 }
@@ -77,7 +99,7 @@ export async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
     console.warn('KV list maps failed', e)
   }
 
-  const fallbackKeys = Object.keys(loreDB).filter(k => k.startsWith('map:'))
+  const fallbackKeys = Object.keys(loreDB).filter((k) => k.startsWith('map:'))
   setKvListMapsCache(c as any, fallbackKeys)
   return fallbackKeys
 }
@@ -85,16 +107,26 @@ export async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
 export async function kvPut(c: { env: AppBindings }, key: string, value: string): Promise<boolean> {
   try {
     const kv = getKV(c)
-    if (kv) { await kv.put(key, value); return true }
-  } catch (e) { console.warn('KV put failed', e) }
+    if (kv) {
+      await kv.put(key, value)
+      return true
+    }
+  } catch (e) {
+    console.warn('KV put failed', e)
+  }
   return false
 }
 
 export async function kvDelete(c: { env: AppBindings }, key: string): Promise<boolean> {
   try {
     const kv = getKV(c)
-    if (kv) { await kv.delete(key); return true }
-  } catch (e) { console.warn('KV delete failed', e) }
+    if (kv) {
+      await kv.delete(key)
+      return true
+    }
+  } catch (e) {
+    console.warn('KV delete failed', e)
+  }
   return false
 }
 

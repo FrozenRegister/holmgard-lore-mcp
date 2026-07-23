@@ -2,15 +2,30 @@
 import { z } from 'zod'
 import { kvGet, kvPut, kvDelete, getKV, loreDB, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
-import { parseKvEntry, extractFieldFromText, updateFieldInText, countOccurrences, applyAppendToSection, normalizeLocationKey } from '../lib/lore'
+import {
+  parseKvEntry,
+  extractFieldFromText,
+  updateFieldInText,
+  countOccurrences,
+  applyAppendToSection,
+  normalizeLocationKey,
+} from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
 import { checkForConcurrentWrite } from '../lib/concurrency'
 import type { TypedToolContext } from './types'
 
-export const setLoreSchema = z.object({ key: z.string().min(1), text: z.string().min(1), dry_run: z.boolean().optional().default(false) })
+export const setLoreSchema = z.object({
+  key: z.string().min(1),
+  text: z.string().min(1),
+  dry_run: z.boolean().optional().default(false),
+})
 
-export async function handle_set_lore({ c, id, args }: TypedToolContext<typeof setLoreSchema>): Promise<Response> {
+export async function handle_set_lore({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof setLoreSchema>): Promise<Response> {
   const key = args.key.trim().toLowerCase()
   const text = args.text
 
@@ -20,11 +35,19 @@ export async function handle_set_lore({ c, id, args }: TypedToolContext<typeof s
   const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
 
   if (args.dry_run) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `[DRY RUN] Would save lore for "${key}" (v${version}). No changes were written.` }],
-      dry_run: true,
-      would_change: { key, operation: 'set_lore', before: existingText, after: text, version }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `[DRY RUN] Would save lore for "${key}" (v${version}). No changes were written.`,
+          },
+        ],
+        dry_run: true,
+        would_change: { key, operation: 'set_lore', before: existingText, after: text, version },
+      }),
+      200,
+    )
   }
 
   if (existingRaw) await pushHistory(c, key, existingRaw)
@@ -41,28 +64,48 @@ export async function handle_set_lore({ c, id, args }: TypedToolContext<typeof s
   await appendChangelog(c, key, version)
   loreDB[key] = text
   clearRequestCache(c)
-  return c.json(makeResult(id, {
-    content: [{
-      type: 'text',
-      text: `Lore saved for "${key}" (v${version}).`
-    }],
-    metadata: { key, version }
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Lore saved for "${key}" (v${version}).`,
+        },
+      ],
+      metadata: { key, version },
+    }),
+    200,
+  )
 }
 
-export const deleteLoreSchema = z.object({ key: z.string().min(1), dry_run: z.boolean().optional().default(false) })
+export const deleteLoreSchema = z.object({
+  key: z.string().min(1),
+  dry_run: z.boolean().optional().default(false),
+})
 
-export async function handle_delete_lore({ c, id, args }: TypedToolContext<typeof deleteLoreSchema>): Promise<Response> {
+export async function handle_delete_lore({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof deleteLoreSchema>): Promise<Response> {
   const key = args.key.trim().toLowerCase()
   const existingRaw = await kvGet(c, key)
   const existingText = existingRaw ? parseKvEntry(existingRaw).text : null
 
   if (args.dry_run) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `[DRY RUN] Would delete lore for "${key}". No changes were written.` }],
-      dry_run: true,
-      would_change: { key, operation: 'delete_lore', before: existingText, after: null }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `[DRY RUN] Would delete lore for "${key}". No changes were written.`,
+          },
+        ],
+        dry_run: true,
+        would_change: { key, operation: 'delete_lore', before: existingText, after: null },
+      }),
+      200,
+    )
   }
 
   const deleted = await kvDelete(c, key)
@@ -72,15 +115,18 @@ export async function handle_delete_lore({ c, id, args }: TypedToolContext<typeo
   }
   delete loreDB[key]
   clearRequestCache(c)
-  return c.json(makeResult(id,
-    {
-      content: [{
-        type: 'text',
-        text: `Lore deleted for "${key}".`
-      }],
-      metadata: { source: deleted ? 'kv' : 'in-memory', key }
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Lore deleted for "${key}".`,
+        },
+      ],
+      metadata: { source: deleted ? 'kv' : 'in-memory', key },
     }),
-    200)
+    200,
+  )
 }
 
 export const patchLoreSchema = z.object({
@@ -91,31 +137,63 @@ export const patchLoreSchema = z.object({
   dry_run: z.boolean().optional().default(false),
 })
 
-export async function handle_patch_lore({ c, id, args }: TypedToolContext<typeof patchLoreSchema>): Promise<Response> {
+export async function handle_patch_lore({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof patchLoreSchema>): Promise<Response> {
   const key = args.key.trim().toLowerCase()
   const operation = args.operation
   const target = args.target
   const value = args.value
 
   if (!['replace', 'append', 'delete_field'].includes(operation)) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `Unknown operation "${operation}". Use replace, append, or delete_field.` }]
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `Unknown operation "${operation}". Use replace, append, or delete_field.`,
+          },
+        ],
+      }),
+      200,
+    )
   }
 
   if ((operation === 'replace' || operation === 'delete_field') && target === undefined) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Parameter "target" required for ${operation}.` }] }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Parameter "target" required for ${operation}.` }],
+      }),
+      200,
+    )
   }
   if (operation === 'replace' && value === undefined) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: 'Parameter "value" required for replace.' }] }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: 'Parameter "value" required for replace.' }],
+      }),
+      200,
+    )
   }
   if (operation === 'append' && value === undefined) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: 'Parameter "value" required for append.' }] }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: 'Parameter "value" required for append.' }],
+      }),
+      200,
+    )
   }
 
   const raw = await kvGet(c, key)
   if (!raw) {
-    return c.json(makeResult(id, { content: [{ type: 'text', text: `Key "${key}" not found. Check list_topics.` }] }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Key "${key}" not found. Check list_topics.` }],
+      }),
+      200,
+    )
   }
 
   const { text, meta } = parseKvEntry(raw)
@@ -125,17 +203,50 @@ export async function handle_patch_lore({ c, id, args }: TypedToolContext<typeof
 
   if (operation === 'replace') {
     const count = countOccurrences(text, target!)
-    if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
-    if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+    if (count === 0)
+      return c.json(
+        makeResult(id, {
+          content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }],
+        }),
+        200,
+      )
+    if (count > 1)
+      return c.json(
+        makeResult(id, {
+          content: [
+            {
+              type: 'text',
+              text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.`,
+            },
+          ],
+        }),
+        200,
+      )
     const idx = text.indexOf(target!)
     updatedText = text.slice(0, idx) + value! + text.slice(idx + target!.length)
     successMessage = `Replaced 1 occurrence of "${target}" in "${key}".`
-
   } else if (operation === 'append') {
     if (target !== undefined) {
       const count = countOccurrences(text, target)
-      if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
-      if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+      if (count === 0)
+        return c.json(
+          makeResult(id, {
+            content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }],
+          }),
+          200,
+        )
+      if (count > 1)
+        return c.json(
+          makeResult(id, {
+            content: [
+              {
+                type: 'text',
+                text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.`,
+              },
+            ],
+          }),
+          200,
+        )
       const idx = text.indexOf(target)
       updatedText = text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
       successMessage = `Appended after "${target}" in "${key}".`
@@ -144,30 +255,67 @@ export async function handle_patch_lore({ c, id, args }: TypedToolContext<typeof
       updatedText = text + (needsSeparator ? '\n' : '') + value!
       successMessage = `Appended to end of "${key}".`
     }
-
-  } else { // delete_field
+  } else {
+    // delete_field
     const count = countOccurrences(text, target!)
-    if (count === 0) return c.json(makeResult(id, { content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }] }), 200)
-    if (count > 1) return c.json(makeResult(id, { content: [{ type: 'text', text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.` }] }), 200)
+    if (count === 0)
+      return c.json(
+        makeResult(id, {
+          content: [{ type: 'text', text: `Target "${target}" not found in "${key}".` }],
+        }),
+        200,
+      )
+    if (count > 1)
+      return c.json(
+        makeResult(id, {
+          content: [
+            {
+              type: 'text',
+              text: `Ambiguous: target "${target}" matches ${count} times in "${key}". Use a longer or more specific target string.`,
+            },
+          ],
+        }),
+        200,
+      )
     const idx = text.indexOf(target!)
     updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{2,}/g, '\n')
-    successMessage = value !== undefined
-      ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
-      : `Deleted 1 occurrence of "${target}" from "${key}".`
+    successMessage =
+      value !== undefined
+        ? `Deleted 1 occurrence of "${target}" from "${key}". (Note: "value" parameter is ignored for delete_field.)`
+        : `Deleted 1 occurrence of "${target}" from "${key}".`
   }
 
   if (args.dry_run) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `[DRY RUN] ${successMessage} No changes were written.` }],
-      dry_run: true,
-      would_change: { key, operation: 'patch_lore', patch_operation: operation, target: target ?? null, value: value ?? null, before: text, after: updatedText }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `[DRY RUN] ${successMessage} No changes were written.` }],
+        dry_run: true,
+        would_change: {
+          key,
+          operation: 'patch_lore',
+          patch_operation: operation,
+          target: target ?? null,
+          value: value ?? null,
+          before: text,
+          after: updatedText,
+        },
+      }),
+      200,
+    )
   }
 
   const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
   const conflictCheck = await checkForConcurrentWrite(c, key, baseVersion)
   if (conflictCheck.conflict) {
-    return c.json(makeError(id, -32009, `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`, { key, current_version: conflictCheck.currentVersion }), 200)
+    return c.json(
+      makeError(
+        id,
+        -32009,
+        `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`,
+        { key, current_version: conflictCheck.currentVersion },
+      ),
+      200,
+    )
   }
 
   await pushHistory(c, key, raw)
@@ -177,69 +325,81 @@ export async function handle_patch_lore({ c, id, args }: TypedToolContext<typeof
 
   const payload = JSON.stringify({
     text: updatedText,
-    meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now }
+    meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
   })
 
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
   clearRequestCache(c)
-  return c.json(makeResult(id,
-    {
+  return c.json(
+    makeResult(id, {
       content: [{ type: 'text', text: successMessage }],
-      metadata: { key, version }
+      metadata: { key, version },
     }),
-    200)
+    200,
+  )
 }
 
 export const batchSetLoreSchema = z.object({
-  entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1)
+  entries: z.array(z.object({ key: z.string().min(1), text: z.string().min(1) })).min(1),
 })
 
-export async function handle_batch_set_lore({ c, id, args }: TypedToolContext<typeof batchSetLoreSchema>): Promise<Response> {
+export async function handle_batch_set_lore({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof batchSetLoreSchema>): Promise<Response> {
   const now = new Date().toISOString()
   const batchResults: Record<string, { ok: boolean; version?: number; error?: string }> = {}
 
-  const cleanedEntries = args.entries.map(e => ({ ...e, key: e.key.trim().toLowerCase() }))
+  const cleanedEntries = args.entries.map((e) => ({ ...e, key: e.key.trim().toLowerCase() }))
 
-  const rawValues = await Promise.all(cleanedEntries.map(e => kvGet(c, e.key)))
+  const rawValues = await Promise.all(cleanedEntries.map((e) => kvGet(c, e.key)))
 
-  await Promise.all(cleanedEntries.map((e, i) =>
-    rawValues[i] ? pushHistory(c, e.key, rawValues[i]!) : Promise.resolve()
-  ))
+  await Promise.all(
+    cleanedEntries.map((e, i) =>
+      rawValues[i] ? pushHistory(c, e.key, rawValues[i]!) : Promise.resolve(),
+    ),
+  )
 
-  await Promise.all(cleanedEntries.map(async (e, i) => {
-    const existingMeta = rawValues[i] ? parseKvEntry(rawValues[i]!).meta : {}
-    const existingText = rawValues[i] ? parseKvEntry(rawValues[i]!).text : null
-    const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
-    const payload = JSON.stringify({
-      text: e.text,
-      meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now }
-    })
-    try {
-      await kvPut(c, e.key, payload)
-      await updateIndexes(c, e.key, e.text, existingText)
-      await appendChangelog(c, e.key, version)
-      loreDB[e.key] = e.text
-      batchResults[e.key] = { ok: true, version }
-    } catch (err) {
-      batchResults[e.key] = { ok: false, error: String(err) }
-    }
+  await Promise.all(
+    cleanedEntries.map(async (e, i) => {
+      const existingMeta = rawValues[i] ? parseKvEntry(rawValues[i]!).meta : {}
+      const existingText = rawValues[i] ? parseKvEntry(rawValues[i]!).text : null
+      const version = typeof existingMeta.version === 'number' ? existingMeta.version + 1 : 1
+      const payload = JSON.stringify({
+        text: e.text,
+        meta: { version, updatedAt: now, createdAt: existingMeta.createdAt ?? now },
+      })
+      try {
+        await kvPut(c, e.key, payload)
+        await updateIndexes(c, e.key, e.text, existingText)
+        await appendChangelog(c, e.key, version)
+        loreDB[e.key] = e.text
+        batchResults[e.key] = { ok: true, version }
+      } catch (err) {
+        batchResults[e.key] = { ok: false, error: String(err) }
+      }
+    }),
+  )
 
-  }))
-
-  const okCount = Object.values(batchResults).filter(r => r.ok).length
+  const okCount = Object.values(batchResults).filter((r) => r.ok).length
   const failCount = cleanedEntries.length - okCount
-  const summaryText = failCount === 0
-    ? `Saved ${okCount} lore entr${okCount === 1 ? 'y' : 'ies'}.`
-    : `Saved ${okCount}/${cleanedEntries.length} entries. ${failCount} failed — see results.`
+  const summaryText =
+    failCount === 0
+      ? `Saved ${okCount} lore entr${okCount === 1 ? 'y' : 'ies'}.`
+      : `Saved ${okCount}/${cleanedEntries.length} entries. ${failCount} failed — see results.`
 
   clearRequestCache(c)
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: summaryText }],
-    metadata: { total: cleanedEntries.length, set_count: okCount, failed_count: failCount },
-    results: batchResults
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: summaryText }],
+      metadata: { total: cleanedEntries.length, set_count: okCount, failed_count: failCount },
+      results: batchResults,
+    }),
+    200,
+  )
 }
 
 const mutationSchema = z.object({
@@ -254,13 +414,24 @@ const mutationSchema = z.object({
 })
 export const batchMutateSchema = z.object({ mutations: z.array(mutationSchema).min(1) })
 
-export async function handle_batch_mutate({ c, id, args }: TypedToolContext<typeof batchMutateSchema>): Promise<Response> {
+export async function handle_batch_mutate({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof batchMutateSchema>): Promise<Response> {
   const now = new Date().toISOString()
-  const mutationResults: Array<{ key: string; action: string; ok: boolean; message: string; old_value?: any; new_value?: any }> = []
+  const mutationResults: Array<{
+    key: string
+    action: string
+    ok: boolean
+    message: string
+    old_value?: any
+    new_value?: any
+  }> = []
 
   const muts = args.mutations
-  const mutKeys = muts.map(m => m.key.trim().toLowerCase())
-  const mutRaws = await Promise.all(mutKeys.map(k => kvGet(c, k)))
+  const mutKeys = muts.map((m) => m.key.trim().toLowerCase())
+  const mutRaws = await Promise.all(mutKeys.map((k) => kvGet(c, k)))
   // Track live text so multiple mutations to the same key compose sequentially
   const liveTexts = new Map<string, string>()
 
@@ -274,7 +445,12 @@ export async function handle_batch_mutate({ c, id, args }: TypedToolContext<type
     }
 
     if (!raw) {
-      mutationResults.push({ key, action: mut.action, ok: false, message: `Key "${key}" not found.` })
+      mutationResults.push({
+        key,
+        action: mut.action,
+        ok: false,
+        message: `Key "${key}" not found.`,
+      })
       continue
     }
 
@@ -282,12 +458,23 @@ export async function handle_batch_mutate({ c, id, args }: TypedToolContext<type
 
     if (mut.action === 'increment') {
       if (!mut.field_path) {
-        mutationResults.push({ key, action: 'increment', ok: false, message: 'field_path required for increment.' })
+        mutationResults.push({
+          key,
+          action: 'increment',
+          ok: false,
+          message: 'field_path required for increment.',
+        })
         continue
       }
       const currentValue = extractFieldFromText(text, mut.field_path)
       if (typeof currentValue !== 'number') {
-        mutationResults.push({ key, action: 'increment', ok: false, message: `Field "${mut.field_path}" is not numeric.`, old_value: currentValue })
+        mutationResults.push({
+          key,
+          action: 'increment',
+          ok: false,
+          message: `Field "${mut.field_path}" is not numeric.`,
+          old_value: currentValue,
+        })
         continue
       }
       const delta = mut.increment ?? 1
@@ -295,16 +482,41 @@ export async function handle_batch_mutate({ c, id, args }: TypedToolContext<type
       const updatedText = updateFieldInText(text, mut.field_path, newValue)
       await pushHistory(c, key, raw)
       const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-      await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now, lastIncrementReason: mut.reason ?? 'batch-mutate', lastIncrementValue: delta } }))
+      await kvPut(
+        c,
+        key,
+        JSON.stringify({
+          text: updatedText,
+          meta: {
+            version,
+            updatedAt: now,
+            createdAt: meta.createdAt ?? now,
+            lastIncrementReason: mut.reason ?? 'batch-mutate',
+            lastIncrementValue: delta,
+          },
+        }),
+      )
       await updateIndexes(c, key, updatedText, text)
       await appendChangelog(c, key, version)
       liveTexts.set(key, updatedText)
       loreDB[key] = updatedText
-      mutationResults.push({ key, action: 'increment', ok: true, message: `${mut.field_path}: ${currentValue} → ${newValue}`, old_value: currentValue, new_value: newValue })
-
-    } else { // patch
+      mutationResults.push({
+        key,
+        action: 'increment',
+        ok: true,
+        message: `${mut.field_path}: ${currentValue} → ${newValue}`,
+        old_value: currentValue,
+        new_value: newValue,
+      })
+    } else {
+      // patch
       if (!mut.operation) {
-        mutationResults.push({ key, action: 'patch', ok: false, message: 'operation required for patch.' })
+        mutationResults.push({
+          key,
+          action: 'patch',
+          ok: false,
+          message: 'operation required for patch.',
+        })
         continue
       }
       const op = mut.operation
@@ -312,11 +524,21 @@ export async function handle_batch_mutate({ c, id, args }: TypedToolContext<type
       const value = mut.value
 
       if ((op === 'replace' || op === 'delete_field') && !target) {
-        mutationResults.push({ key, action: 'patch', ok: false, message: `target required for ${op}.` })
+        mutationResults.push({
+          key,
+          action: 'patch',
+          ok: false,
+          message: `target required for ${op}.`,
+        })
         continue
       }
       if ((op === 'replace' || op === 'append') && value === undefined) {
-        mutationResults.push({ key, action: 'patch', ok: false, message: `value required for ${op}.` })
+        mutationResults.push({
+          key,
+          action: 'patch',
+          ok: false,
+          message: `value required for ${op}.`,
+        })
         continue
       }
 
@@ -325,61 +547,129 @@ export async function handle_batch_mutate({ c, id, args }: TypedToolContext<type
 
       if (op === 'replace') {
         const count = countOccurrences(text, target!)
-        if (count === 0) { mutationResults.push({ key, action: 'patch:replace', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
-        if (count > 1) { mutationResults.push({ key, action: 'patch:replace', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+        if (count === 0) {
+          mutationResults.push({
+            key,
+            action: 'patch:replace',
+            ok: false,
+            message: `Target "${target}" not found in "${key}".`,
+          })
+          continue
+        }
+        if (count > 1) {
+          mutationResults.push({
+            key,
+            action: 'patch:replace',
+            ok: false,
+            message: `Target "${target}" ambiguous (${count} matches) in "${key}".`,
+          })
+          continue
+        }
         const idx = text.indexOf(target!)
         updatedText = text.slice(0, idx) + value! + text.slice(idx + target!.length)
         msg = `Replaced "${target}" in "${key}".`
       } else if (op === 'append') {
         if (target !== undefined) {
           const count = countOccurrences(text, target)
-          if (count === 0) { mutationResults.push({ key, action: 'patch:append', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
-          if (count > 1) { mutationResults.push({ key, action: 'patch:append', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+          if (count === 0) {
+            mutationResults.push({
+              key,
+              action: 'patch:append',
+              ok: false,
+              message: `Target "${target}" not found in "${key}".`,
+            })
+            continue
+          }
+          if (count > 1) {
+            mutationResults.push({
+              key,
+              action: 'patch:append',
+              ok: false,
+              message: `Target "${target}" ambiguous (${count} matches) in "${key}".`,
+            })
+            continue
+          }
           const idx = text.indexOf(target)
-          updatedText = text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
+          updatedText =
+            text.slice(0, idx + target.length) + value! + text.slice(idx + target.length)
           msg = `Appended after "${target}" in "${key}".`
         } else {
-          updatedText = text + (!text.endsWith('\n') && !value!.startsWith('\n') ? '\n' : '') + value!
+          updatedText =
+            text + (!text.endsWith('\n') && !value!.startsWith('\n') ? '\n' : '') + value!
           msg = `Appended to end of "${key}".`
         }
-      } else { // delete_field
+      } else {
+        // delete_field
         const count = countOccurrences(text, target!)
-        if (count === 0) { mutationResults.push({ key, action: 'patch:delete_field', ok: false, message: `Target "${target}" not found in "${key}".` }); continue }
-        if (count > 1) { mutationResults.push({ key, action: 'patch:delete_field', ok: false, message: `Target "${target}" ambiguous (${count} matches) in "${key}".` }); continue }
+        if (count === 0) {
+          mutationResults.push({
+            key,
+            action: 'patch:delete_field',
+            ok: false,
+            message: `Target "${target}" not found in "${key}".`,
+          })
+          continue
+        }
+        if (count > 1) {
+          mutationResults.push({
+            key,
+            action: 'patch:delete_field',
+            ok: false,
+            message: `Target "${target}" ambiguous (${count} matches) in "${key}".`,
+          })
+          continue
+        }
         const idx = text.indexOf(target!)
-        updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(/\n{2,}/g, '\n')
+        updatedText = (text.slice(0, idx) + text.slice(idx + target!.length)).replace(
+          /\n{2,}/g,
+          '\n',
+        )
         msg = `Deleted "${target}" from "${key}".`
       }
 
       await pushHistory(c, key, raw)
       const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-      await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+      await kvPut(
+        c,
+        key,
+        JSON.stringify({
+          text: updatedText,
+          meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
+        }),
+      )
       await updateIndexes(c, key, updatedText, text)
       await appendChangelog(c, key, version)
       liveTexts.set(key, updatedText)
       loreDB[key] = updatedText
       mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
-
     }
   }
 
-  const okCount = mutationResults.filter(r => r.ok).length
+  const okCount = mutationResults.filter((r) => r.ok).length
   const failCount = mutationResults.length - okCount
-  const summaryText = failCount === 0
-    ? `Applied ${okCount} mutation${okCount === 1 ? '' : 's'}.`
-    : `Applied ${okCount}/${mutationResults.length} mutations. ${failCount} failed — see results.`
+  const summaryText =
+    failCount === 0
+      ? `Applied ${okCount} mutation${okCount === 1 ? '' : 's'}.`
+      : `Applied ${okCount}/${mutationResults.length} mutations. ${failCount} failed — see results.`
 
   clearRequestCache(c)
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: summaryText }],
-    metadata: { total: mutationResults.length, ok_count: okCount, failed_count: failCount },
-    results: mutationResults
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: summaryText }],
+      metadata: { total: mutationResults.length, ok_count: okCount, failed_count: failCount },
+      results: mutationResults,
+    }),
+    200,
+  )
 }
 
 export const restoreLoreSchema = z.object({ key: z.string().min(1) })
 
-export async function handle_restore_lore({ c, id, args }: TypedToolContext<typeof restoreLoreSchema>): Promise<Response> {
+export async function handle_restore_lore({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof restoreLoreSchema>): Promise<Response> {
   const key = args.key.trim().toLowerCase()
   const kv = getKV(c)
   if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
@@ -394,10 +684,13 @@ export async function handle_restore_lore({ c, id, args }: TypedToolContext<type
   }
 
   if (history.length === 0) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `No history found for "${key}".` }],
-      metadata: { key, restored: false }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `No history found for "${key}".` }],
+        metadata: { key, restored: false },
+      }),
+      200,
+    )
   }
 
   const previous = history.shift()!
@@ -408,7 +701,6 @@ export async function handle_restore_lore({ c, id, args }: TypedToolContext<type
   loreDB[key] = restoredText
   await updateIndexes(c, key, restoredText, currentText)
 
-
   if (history.length > 0) {
     await kv.put(historyKey, JSON.stringify(history))
   } else {
@@ -417,16 +709,33 @@ export async function handle_restore_lore({ c, id, args }: TypedToolContext<type
 
   const { meta } = parseKvEntry(previous)
   clearRequestCache(c)
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.` }],
-    metadata: { key, restored: true, restored_version: meta.version ?? null, remaining_history: history.length }
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Restored "${key}" to v${meta.version ?? '?'}. ${history.length} snapshot(s) remaining.`,
+        },
+      ],
+      metadata: {
+        key,
+        restored: true,
+        restored_version: meta.version ?? null,
+        remaining_history: history.length,
+      },
+    }),
+    200,
+  )
 }
 
 export const getTopicHistoriesSchema = z.object({ keys: z.array(z.string().min(1)).min(1) })
 
-export async function handle_get_topic_histories({ c, id, args }: TypedToolContext<typeof getTopicHistoriesSchema>): Promise<Response> {
-  const keys = args.keys.map(k => k.toLowerCase())
+export async function handle_get_topic_histories({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof getTopicHistoriesSchema>): Promise<Response> {
+  const keys = args.keys.map((k) => k.toLowerCase())
   const kv = getKV(c)
   if (!kv) return c.json(makeError(id, -32603, 'KV not available', null), 200)
 
@@ -464,7 +773,11 @@ export const incrementTopicFieldSchema = z.object({
   dry_run: z.boolean().optional().default(false),
 })
 
-export async function handle_increment_topic_field({ c, id, args }: TypedToolContext<typeof incrementTopicFieldSchema>): Promise<Response> {
+export async function handle_increment_topic_field({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof incrementTopicFieldSchema>): Promise<Response> {
   const key = args.key.trim().toLowerCase()
   const raw = await kvGet(c, key)
   if (!raw) return c.json(makeError(id, -32602, `Topic "${key}" not found`, null), 200)
@@ -473,24 +786,49 @@ export async function handle_increment_topic_field({ c, id, args }: TypedToolCon
   const currentValue = extractFieldFromText(text, args.field_path)
 
   if (typeof currentValue !== 'number') {
-    return c.json(makeError(id, -32602, `Field "${args.field_path}" is not numeric`, { current: currentValue }), 200)
+    return c.json(
+      makeError(id, -32602, `Field "${args.field_path}" is not numeric`, { current: currentValue }),
+      200,
+    )
   }
 
   const newValue = parseFloat((currentValue + args.increment).toPrecision(10))
   const updatedText = updateFieldInText(text, args.field_path, newValue)
 
   if (args.dry_run) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `[DRY RUN] Would increment ${args.field_path} from ${currentValue} to ${newValue}. No changes were written.` }],
-      dry_run: true,
-      would_change: { key, operation: 'increment_topic_field', field_path: args.field_path, before: currentValue, after: newValue }
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [
+          {
+            type: 'text',
+            text: `[DRY RUN] Would increment ${args.field_path} from ${currentValue} to ${newValue}. No changes were written.`,
+          },
+        ],
+        dry_run: true,
+        would_change: {
+          key,
+          operation: 'increment_topic_field',
+          field_path: args.field_path,
+          before: currentValue,
+          after: newValue,
+        },
+      }),
+      200,
+    )
   }
 
   const baseVersion = typeof meta.version === 'number' ? meta.version : undefined
   const conflictCheck = await checkForConcurrentWrite(c, key, baseVersion)
   if (conflictCheck.conflict) {
-    return c.json(makeError(id, -32009, `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`, { key, current_version: conflictCheck.currentVersion }), 200)
+    return c.json(
+      makeError(
+        id,
+        -32009,
+        `Concurrent modification detected on "${key}" — another write happened between read and write. Re-read the entry and retry.`,
+        { key, current_version: conflictCheck.currentVersion },
+      ),
+      200,
+    )
   }
 
   await pushHistory(c, key, raw)
@@ -505,21 +843,32 @@ export async function handle_increment_topic_field({ c, id, args }: TypedToolCon
       updatedAt: now,
       createdAt: meta.createdAt ?? now,
       lastIncrementReason: args.reason,
-      lastIncrementValue: args.increment
-    }
+      lastIncrementValue: args.increment,
+    },
   })
 
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
   clearRequestCache(c)
-  return c.json(makeResult(id,
-    {
-      content: [{
-        type: 'text',
-        text: `Incremented ${args.field_path} from ${currentValue} to ${newValue} (reason: ${args.reason})`
-      }], metadata: { key, version, field_path: args.field_path, old_value: currentValue, new_value: newValue }
-    }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [
+        {
+          type: 'text',
+          text: `Incremented ${args.field_path} from ${currentValue} to ${newValue} (reason: ${args.reason})`,
+        },
+      ],
+      metadata: {
+        key,
+        version,
+        field_path: args.field_path,
+        old_value: currentValue,
+        new_value: newValue,
+      },
+    }),
+    200,
+  )
 }
 
 export const appendToSectionSchema = z.object({
@@ -530,26 +879,36 @@ export const appendToSectionSchema = z.object({
   auto_create: z.boolean().default(true),
 })
 
-export async function handle_append_to_section({ c, id, args }: TypedToolContext<typeof appendToSectionSchema>): Promise<Response> {
+export async function handle_append_to_section({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof appendToSectionSchema>): Promise<Response> {
   const { section, position, auto_create: autoCreate } = args
   const insertText = args.text
   const key = args.key.trim().toLowerCase()
 
   if (!insertText.trim()) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: 'Cannot append empty text.' }],
-      error: 'empty_text',
-      message: 'Cannot append empty text.'
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: 'Cannot append empty text.' }],
+        error: 'empty_text',
+        message: 'Cannot append empty text.',
+      }),
+      200,
+    )
   }
 
   const raw = await kvGet(c, key)
   if (!raw) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `Key "${key}" not found.` }],
-      error: 'key_not_found',
-      key
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Key "${key}" not found.` }],
+        error: 'key_not_found',
+        key,
+      }),
+      200,
+    )
   }
 
   const { text, meta } = parseKvEntry(raw)
@@ -558,10 +917,13 @@ export async function handle_append_to_section({ c, id, args }: TypedToolContext
   const mutResult = applyAppendToSection(text, section, insertText, position, autoCreate)
 
   if (!mutResult.ok) {
-    return c.json(makeResult(id, {
-      content: [{ type: 'text', text: `Section "${section}" not found in "${key}".` }],
-      ...mutResult
-    }), 200)
+    return c.json(
+      makeResult(id, {
+        content: [{ type: 'text', text: `Section "${section}" not found in "${key}".` }],
+        ...mutResult,
+      }),
+      200,
+    )
   }
 
   const { mutatedText, action, warnings } = mutResult
@@ -573,7 +935,7 @@ export async function handle_append_to_section({ c, id, args }: TypedToolContext
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
   const payload = JSON.stringify({
     text: mutatedText,
-    meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now }
+    meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
   })
 
   await kvPut(c, key, payload)
@@ -581,21 +943,31 @@ export async function handle_append_to_section({ c, id, args }: TypedToolContext
   loreDB[key] = mutatedText
   clearRequestCache(c)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `${action}: "${section}" in "${key}" (v${version}).` }],
-    key,
-    section,
-    action,
-    position,
-    new_version: version,
-    bytes_added: bytesAdded,
-    warnings
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: `${action}: "${section}" in "${key}" (v${version}).` }],
+      key,
+      section,
+      action,
+      position,
+      new_version: version,
+      bytes_added: bytesAdded,
+      warnings,
+    }),
+    200,
+  )
 }
 
-export const moveEntitySchema = z.object({ entity_key: z.string().min(1), new_location_key: z.string().min(1) })
+export const moveEntitySchema = z.object({
+  entity_key: z.string().min(1),
+  new_location_key: z.string().min(1),
+})
 
-export async function handle_move_entity({ c, id, args }: TypedToolContext<typeof moveEntitySchema>): Promise<Response> {
+export async function handle_move_entity({
+  c,
+  id,
+  args,
+}: TypedToolContext<typeof moveEntitySchema>): Promise<Response> {
   const key = args.entity_key.trim().toLowerCase()
   const rawLoc = args.new_location_key.trim().toLowerCase()
   // #371: Normalize location string to canonical key before writing
@@ -610,14 +982,24 @@ export async function handle_move_entity({ c, id, args }: TypedToolContext<typeo
   await pushHistory(c, key, raw)
   const now = new Date().toISOString()
   const version = typeof meta.version === 'number' ? meta.version + 1 : 1
-  await kvPut(c, key, JSON.stringify({ text: updatedText, meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now } }))
+  await kvPut(
+    c,
+    key,
+    JSON.stringify({
+      text: updatedText,
+      meta: { version, updatedAt: now, createdAt: meta.createdAt ?? now },
+    }),
+  )
   await updateIndexes(c, key, updatedText, oldText)
   await appendChangelog(c, key, version)
   loreDB[key] = updatedText
   clearRequestCache(c)
 
-  return c.json(makeResult(id, {
-    content: [{ type: 'text', text: `Moved "${key}" to "${newLoc}".` }],
-    metadata: { key, new_location: newLoc, version }
-  }), 200)
+  return c.json(
+    makeResult(id, {
+      content: [{ type: 'text', text: `Moved "${key}" to "${newLoc}".` }],
+      metadata: { key, new_location: newLoc, version },
+    }),
+    200,
+  )
 }

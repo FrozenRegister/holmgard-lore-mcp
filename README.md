@@ -6,7 +6,7 @@ A Cloudflare Worker implementing the Model Context Protocol (MCP) for narrative 
 
 This project exposes:
 
-- `/mcp` — JSON-RPC 2.0 / Streamable HTTP endpoint with **5 core tools + 2 RPG tools + 2 meta-tools** for narrative and RPG management
+- `/mcp` — JSON-RPC 2.0 / Streamable HTTP endpoint with **5 core tools + 3 RPG tools + 2 meta-tools** (10 total, invocable via `tools/call`) for narrative and RPG management
 - Durable Object-backed MCP server with support for both legacy JSON-RPC and spec 2025-03-26 Streamable HTTP transport
 - Cloudflare KV storage (`LORE_DB`) with **index-on-write optimization** and in-memory fallback
 - Cloudflare D1 SQLite database (`RPG_DB`) for characters, combat, parties, quests, and session management
@@ -38,7 +38,7 @@ pnpm install
 pnpm run dev                        # Start local dev server with wrangler
 pnpm test                           # Run vitest suite in Workers runtime
 pnpm test -- --reporter=verbose     # Verbose output with per-test names
-pnpm test -- src/__tests__/crud.test.ts  # Run single test file
+pnpm test -- tests/worker/crud.test.ts  # Run single test file
 pnpm test:coverage                  # Generate coverage report (lcov)
 pnpm test:live                      # Run smoke tests against production (requires MCP_API_KEY)
 ```
@@ -136,7 +136,7 @@ The server exposes tools via JSON-RPC 2.0 or Streamable HTTP. All tools use an *
 
 - `initialize` — returns server metadata and tool list
 - `ping` — health check
-- `tools/list` — returns all available tools with schemas
+- `tools/list` — returns schemas for the 5 core tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`); the RPG and meta tools (`rpg`, `agent_manage`, `character_manage`, `search_tools`, `load_tool_schema`) are dispatchable via `tools/call` but are not enumerated in this list — discover them via `search_tools`/`load_tool_schema` or this README
 - `tools/call` — invokes a tool by name with action parameters
 
 ### Core Tools (5)
@@ -171,7 +171,7 @@ Scene activation, choice presentation, and POV rendering.
 
 Events, tags, bookmarks, world diffs, setups, goals, and continuity checks.
 
-### RPG Tools (2 primary + 24 sub-systems)
+### RPG Tools (3 primary + 24 sub-systems under `rpg`)
 
 #### 6. `rpg` — RPG engine unified dispatch
 
@@ -185,13 +185,19 @@ D1-backed RPG system with character management, combat, encounters, quests, and 
 
 Cloudflare Workers AI-backed NPC behavior and intention system.
 
+#### 8. `character_manage` — D1 character CRUD and progression
+
+**Actions:** `create`, `get`, `list`, `update`, `delete`, `recompute_derived`, `add_xp`, `get_progression`, `level_up`, `search`, `cast_spell`, `snapshot`, `activate`, `list_passengers`, `find_by_name`, `kill`, `move_to_location`, `move_to_tile`
+
+D1-backed character CRUD, XP/leveling progression, spellcasting, snapshots, and possession (host-body) management.
+
 ### Meta-Tools (2)
 
-#### 8. `search_tools` — Tool discovery
+#### 9. `search_tools` — Tool discovery
 
 Fuzzy-search the full tool catalog by name or description.
 
-#### 9. `load_tool_schema` — Get tool input schema
+#### 10. `load_tool_schema` — Get tool input schema
 
 Return the full JSON schema for a named tool to see all available parameters.
 
@@ -452,7 +458,9 @@ pnpm test -- --reporter=verbose
         "description": "Entity lifecycle — generate, move, inventory, encounters, ...",
         "inputSchema": { ... }
       }
-      // ... 7 more tools (world_manage, scene_manage, continuity_manage, rpg, agent_manage, search_tools, load_tool_schema)
+      // ... 3 more core tools (world_manage, scene_manage, continuity_manage) — this is the full `tools/list` response.
+      // rpg, agent_manage, character_manage, search_tools, and load_tool_schema are callable via tools/call
+      // but are NOT included in tools/list's output.
     ]
   }
 }
@@ -484,7 +492,7 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 
 ### Test Suites
 
-1. **Unit/Integration tests** (`pnpm test`): Run full `src/__tests__/*.test.ts` suite in Workers runtime
+1. **Unit/Integration tests** (`pnpm test`): Run full `tests/worker/**/*.test.ts` suite in Workers runtime
 2. **Coverage** (`pnpm test:coverage`): Generate LCOV report to `./coverage/lcov.info`
 3. **Live smoke tests** (`pnpm test:live`): End-to-end tests against production worker (requires `MCP_API_KEY` env var)
 

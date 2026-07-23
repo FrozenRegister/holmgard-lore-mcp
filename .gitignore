@@ -41,7 +41,9 @@ coverage/
 # misc
 .DS_Store
 test-failures.json
+test-run-output.txt
 patch-mcp.py
+holmgard-lore-editor.html
 get_lore_section_spec.md
 append_to_section_spec.md
 HANDOVER-TEST-IMPROVEMENTS.md

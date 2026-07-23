@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.wrangler
+.changelog
+pnpm-lock.yaml
+CHANGELOG.md
+*.md
+*.jsonc
+schema/**/*.sql

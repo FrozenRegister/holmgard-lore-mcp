@@ -44,26 +44,38 @@ partway through.
 
 ## Two Test Tiers
 
-Almost all tests in `src/__tests__/*.test.ts` drive the worker end-to-end via `SELF.fetch`/`callTool` against a
-real (miniflare) KV/D1 instance — that's the source of truth for tool behavior, and it's what `pnpm test` runs
-(`vitest.config.ts`).
+Almost all tests live under `tests/worker/**/*.test.ts` and drive the worker end-to-end via `SELF.fetch`/`callTool`
+against a real (miniflare) KV/D1 instance — that's the source of truth for tool behavior, and it's what `pnpm test`
+runs (`vitest.config.ts`, which explicitly includes `tests/worker/**/*.test.ts`).
 
-A small second tier, `src/__tests__/*.unit.test.ts`, covers genuinely pure functions (no I/O, no bindings —
-e.g. `scoreMatch`, `countOccurrences`, `parseKvEntry`, `normalizeLocationKey`) directly, with no Workers runtime
-to boot:
+A small second tier, `tests/unit/**/*.test.ts`, covers genuinely pure functions (no I/O, no bindings — e.g.
+`scoreMatch`, `countOccurrences`, `parseKvEntry`, `normalizeLocationKey`) directly, with no Workers runtime to boot:
 
 ```bash
 pnpm test:unit          # run the fast unit tier (sub-second)
 pnpm test:unit:watch    # watch mode for the fast unit tier
 ```
 
-These files are excluded from the main `vitest.config.ts` run and have their own `unit-tests` CI job, so they
-give fast feedback without duplicating the integration suite. When adding a new pure helper function, prefer a
-`*.unit.test.ts` file here over routing the test through a tool call.
+Selection between tiers is directory-based, not filename-based: `vitest.config.ts` includes only
+`tests/worker/**`, and `vitest.unit.config.ts` includes only `tests/unit/**` — a test file's location determines
+which runtime it gets, so there's no ambiguity from a magic filename suffix. (Files that are also genuinely
+suffix-tagged `*.unit.test.ts`, like `tests/unit/lib/score-match.unit.test.ts`, keep that naming as an extra
+signal, but it's the directory that the config actually keys off.) They have their own `unit-tests` CI job, so
+they give fast feedback without duplicating the integration suite. When adding a new pure helper function,
+prefer a file under `tests/unit/` over routing the test through a tool call.
+
+### Layout is enforced, not just convention
+
+`pnpm run check:test-layout` (`scripts/check-test-layout.mjs`) scans all tracked `*.test.ts` files and fails if any
+live outside `tests/{unit,worker,live}/`. It runs as its own fast `Test Layout` CI job (no `pnpm install` needed —
+just `git ls-files`) and as the first step of the local pre-commit gate. This exists because a misplaced test file
+isn't just unlinted or uncounted — it's silently never executed at all, since none of the three Vitest configs'
+`include` globs would ever reach it (see #490).
 
 ## Test Suite Status
 
 ### ✅ Tests (384 passing)
+
 - **Status**: All tests pass locally and in CI
 - **Tool**: Vitest with Workers runtime via `@cloudflare/vitest-pool-workers`
 - **Coverage**: Unit and integration tests for all MCP tools, KV operations, and admin routes
@@ -72,11 +84,13 @@ give fast feedback without duplicating the integration suite. When adding a new 
 Tests run inside the actual Cloudflare Workers runtime with in-memory miniflare KV storage. `ADMIN_SECRET` is injected via `vitest.config.ts`.
 
 ### ✅ Type Checking (passes)
+
 - **Status**: All TypeScript types check out
 - **Tool**: TypeScript compiler via `tsc --noEmit`
 - **Command**: `pnpm run type-check`
 
 ### ⚠️ Linting (284 problems: 220 errors, 64 warnings)
+
 - **Status**: Pre-existing issues not caused by recent changes
 - **Tool**: ESLint with `@eslint/js` and `typescript-eslint`
 - **Command**: `pnpm run lint`
@@ -91,7 +105,7 @@ The following 284 lint problems are pre-existing across test files:
 1. **`@typescript-eslint/no-unused-vars`** (~150+ errors)
    - Unused imports in test files (e.g., `rpc`, `callTool`, `seedKV`, `parseEncounterTable`)
    - Unused destructured variables from test helpers (e.g., `env`, `SELF`, `beforeEach`)
-   - Files affected: All test files in `src/__tests__/`
+   - Files affected: All test files in `tests/worker/`
 
 2. **`no-empty`** (5+ errors)
    - Empty block statements (e.g., `catch () {}`, `try {} catch {}`)
@@ -112,22 +126,32 @@ The following 284 lint problems are pre-existing across test files:
 ### Strategy: Prioritize by Impact
 
 **High Priority** (blocking or widespread):
+
 - `no-unused-vars` in test files — Remove unused imports/variables
 - `no-empty` in core files — Add comment or proper error handling
 
 **Medium Priority** (code quality):
+
 - Deprecation rule errors — Fix ESLint config or update deprecated usage
 
 **Low Priority** (typing):
+
 - `no-explicit-any` warnings — Migrate to proper types (non-blocking)
 
 ### Process for Fixing
 
 #### Step 1: Auto-fix what you can
+
 ```bash
-pnpm run lint -- --fix
+pnpm run lint --fix
 ```
+
+Note: don't write this as `pnpm run lint -- --fix` — pnpm inserts its own literal `--` before forwarded
+args, so `-- --fix` becomes `eslint src -- --fix`, which eslint parses as a positional path argument, not
+the `--fix` flag (same gotcha documented in [CLAUDE.md](../CLAUDE.md#tests) for vitest). Passing the flag
+with no manual `--` (`pnpm run lint --fix`) forwards it correctly.
 This fixes:
+
 - `prefer-const`: Variables declared as `let` that are never reassigned
 - Simple formatting issues
 
@@ -135,7 +159,8 @@ This fixes:
 
 For each file with `no-unused-vars` errors:
 
-**Example**: `src/__tests__/admin.test.ts`
+**Example**: `tests/worker/admin.test.ts`
+
 ```typescript
 // Before
 import { rpc, callTool, callToolWithApiKey, seedKV, parseEncounterTable } from './helpers'
@@ -148,13 +173,15 @@ import { callToolWithApiKey, parseEncounterTable } from './helpers'
 ```
 
 **Find unused imports in a file**:
+
 ```bash
-pnpm run lint -- src/__tests__/admin.test.ts 2>&1 | grep "no-unused-vars"
+pnpm run lint tests/worker/admin.test.ts 2>&1 | grep "no-unused-vars"
 ```
 
 #### Step 3: Fix empty block statements
 
 **Example**: `src/tools/scene.ts:220`
+
 ```typescript
 // Before
 if (!condition) {
@@ -176,6 +203,7 @@ if (!condition) {
 #### Step 4: Test and commit
 
 After each batch of fixes:
+
 ```bash
 pnpm test              # Verify tests still pass
 pnpm run type-check    # Verify no new type errors
@@ -187,18 +215,31 @@ git commit -m "fix: clean up unused imports in test files"
 ## Linting Configuration
 
 **File**: `eslint.config.mjs`
+
 - Extends `@eslint/js` recommended config
 - Uses `typescript-eslint` for TypeScript rules
 - `@typescript-eslint/no-explicit-any` set to `warn` (not blocking)
 - Ignores: `dist/`, `node_modules/`, `test-run-output.txt`
+- `eslint-config-prettier` is applied last, disabling any ESLint stylistic rule that would conflict with
+  Prettier's formatting output — code style is Prettier's job (`.prettierrc.json`), not ESLint's
+
+## Code Formatting
+
+**Prettier** formats `.ts`/`.mjs` files under `src/`, `tests/`, `scripts/`, and root-level config files
+(`.prettierrc.json` for config, `.prettierignore` to exclude markdown — that's markdownlint-cli2's job — and
+generated/vendor paths). Run `pnpm run format` to fix, `pnpm run format:check` to check without writing.
+Not wired into `pnpm run lint` — it's a separate concern, matching how markdown formatting is separate from
+markdown *content* checks.
 
 ## CI/CD Pipeline
 
 ### Workflows Involved
+
 1. **CI** (`.github/workflows/ci.yml`)
-   - `test` job: Runs `pnpm test` on Node 20 & 22
-   - `type-check` job: Runs `pnpm run type-check` on Node 22
-   - `lint` job: Runs `pnpm run lint` on Node 22
+   - `unit-tests` job: runs the `*.unit.test.ts` tier directly via `pnpm exec vitest` (Node 22)
+   - `test` job: runs the full suite on Node 22, sharded 1/4–4/4 via `pnpm exec vitest run --shard=N/4` (not `pnpm test` — see the pnpm `--`-forwarding gotcha above)
+   - `type-check` job: Runs `pnpm run type-check`
+   - `lint` job: Runs `pnpm run lint`
 
 2. **Validate Workflows** (`.github/workflows/validate-workflows.yml`)
    - Validates YAML syntax of workflow files
@@ -208,7 +249,16 @@ git commit -m "fix: clean up unused imports in test files"
    - Requires CHANGELOG.md update
    - Requires documentation changes (or docs section in PR body)
 
+4. **Auto-fix Markdown** (`.github/workflows/markdownlint-fix.yml`) and **Auto-fix Code Formatting**
+   (`.github/workflows/prettier-fix.yml`)
+   - Both trigger on any PR touching their file type (`**.md` / `.ts`+`.mjs` respectively), check out the
+     PR's actual head branch, run the fixer (`pnpm fix:md` / `pnpm run format`), and — if anything changed —
+     commit and push the fix directly back to the PR branch via `git-auto-commit-action`. Neither is a
+     blocking check; they're self-correcting. This is the only mechanism in this repo where CI itself writes
+     a commit back to your branch.
+
 ### CI Status on Main
+
 - **Latest run**: PASSING ✅
 - **Test failures**: None (384/384 tests pass)
 - **Type-check failures**: None
@@ -217,14 +267,16 @@ git commit -m "fix: clean up unused imports in test files"
 ## Development Workflow
 
 ### When Adding New Code
+
 1. Write code + tests
 2. `pnpm test` — verify tests pass
 3. `pnpm run type-check` — verify types are correct
-4. `pnpm run lint -- --fix` — auto-fix what you can
+4. `pnpm run lint --fix` — auto-fix what you can
 5. `pnpm run lint` — check remaining issues
 6. Commit with conventional-commit message
 
 ### When Fixing Lint Issues
+
 1. Identify problematic file: `pnpm run lint | grep "filename.ts"`
 2. Understand the issue (see categories above)
 3. Apply fix
@@ -233,7 +285,9 @@ git commit -m "fix: clean up unused imports in test files"
 6. Commit: `git commit -m "fix: [category] [brief description]"`
 
 ### Bulk Fixing Unused Imports
+
 If tackling multiple files:
+
 ```bash
 # Find all no-unused-vars errors
 pnpm run lint 2>&1 | grep "no-unused-vars" > /tmp/unused.txt
