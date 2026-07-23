@@ -53,7 +53,7 @@ describe('Thread tracking', () => {
       expect(res.error).toBeUndefined()
       // Metadata doesn't include thread, but the stored lore should
       expect(res.result.metadata.key).toBe('setup:setup-test-001')
-      
+
       // Verify the setup was stored with thread info
       const setup = await callTool('lore_manage', {
         action: 'get',

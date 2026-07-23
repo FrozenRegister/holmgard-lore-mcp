@@ -15,7 +15,14 @@ function parseResult(res: any) {
 
 describe.skipIf(!MCP_API_KEY)('entity_manage advance_stage terminal-stage hook (#420)', () => {
   it('logs a timeline_events row and writes Terminal-Status for a world-linked staged character', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Terminal Hook World ${uid()}`, theme: 'fantasy' }))
+    const worldRes = parseResult(
+      await tool('rpg', {
+        sub: 'world',
+        action: 'create',
+        name: `Terminal Hook World ${uid()}`,
+        theme: 'fantasy',
+      }),
+    )
     expect(worldRes.success).toBe(true)
     const worldId = worldRes.worldId
 
@@ -24,14 +31,21 @@ describe.skipIf(!MCP_API_KEY)('entity_manage advance_stage terminal-stage hook (
     expect(charRes.success).toBe(true)
     const characterId = charRes.characterId
     await tool('character_manage', {
-      action: 'update', characterId, deathMode: 'staged',
-      dissolutionStage: 4, dissolutionStages: 5, dissolutionTerminal: 'consumed by the live-test mycelium',
+      action: 'update',
+      characterId,
+      deathMode: 'staged',
+      dissolutionStage: 4,
+      dissolutionStages: 5,
+      dissolutionTerminal: 'consumed by the live-test mycelium',
     })
 
     const entityKey = `character:${name.toLowerCase().replace(/\s+/g, '-')}`
     await setLore(entityKey, '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
 
-    const advanceRes = await tool('entity_manage', { action: 'advance_stage', entity_key: entityKey })
+    const advanceRes = await tool('entity_manage', {
+      action: 'advance_stage',
+      entity_key: entityKey,
+    })
     expect(advanceRes.result.is_terminal).toBe(true)
     expect(typeof advanceRes.result.terminal_timeline_event_id).toBe('string')
 
@@ -46,7 +60,10 @@ describe.skipIf(!MCP_API_KEY)('entity_manage advance_stage terminal-stage hook (
     const entityKey = `character:terminal-hook-pure-kv-${uid()}`
     await setLore(entityKey, '**State-Stage:** 4\n**State-Total:** 5\n**Stage-Timer:** 1')
 
-    const advanceRes = await tool('entity_manage', { action: 'advance_stage', entity_key: entityKey })
+    const advanceRes = await tool('entity_manage', {
+      action: 'advance_stage',
+      entity_key: entityKey,
+    })
     expect(advanceRes.result.is_terminal).toBe(true)
     expect(advanceRes.result.terminal_timeline_event_id).toBeNull()
 

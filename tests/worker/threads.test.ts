@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -40,7 +48,10 @@ describe('thread_tick', () => {
 
   it('marks status_change=false when Timeline-Value stays positive', async () => {
     await seedKV('character:stays-positive', '**Thread:** positive-thread\n**Timeline-Value:** 5')
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'positive-thread' })
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'positive-thread',
+    })
     expect(res.result.local_shifts[0].status_change).toBe(false)
   })
 
@@ -77,9 +88,18 @@ describe('thread_tick', () => {
   })
 
   it('populates global_snapshot with other-thread entities sharing Current-Date', async () => {
-    await seedKV('character:tick-source', '**Thread:** date-thread-a\n**Timeline-Value:** 2\n**Current-Date:** 2026-05-24')
-    await seedKV('character:other-thread', '**Thread:** date-thread-b\n**Current-Date:** 2026-05-24\n**Status:** Waiting')
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'date-thread-a' })
+    await seedKV(
+      'character:tick-source',
+      '**Thread:** date-thread-a\n**Timeline-Value:** 2\n**Current-Date:** 2026-05-24',
+    )
+    await seedKV(
+      'character:other-thread',
+      '**Thread:** date-thread-b\n**Current-Date:** 2026-05-24\n**Status:** Waiting',
+    )
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'date-thread-a',
+    })
     expect(res.result.global_snapshot).toHaveLength(1)
     expect(res.result.global_snapshot[0].key).toBe('character:other-thread')
     expect(res.result.global_snapshot[0].thread).toBe('date-thread-b')
@@ -87,19 +107,41 @@ describe('thread_tick', () => {
   })
 
   it('global_snapshot is empty when no shared Current-Date exists', async () => {
-    await seedKV('character:isolated-tick', '**Thread:** isolated-thread\n**Timeline-Value:** 1\n**Current-Date:** 2099-01-01')
-    await seedKV('character:different-date', '**Thread:** other-thread\n**Current-Date:** 2026-05-24')
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'isolated-thread' })
+    await seedKV(
+      'character:isolated-tick',
+      '**Thread:** isolated-thread\n**Timeline-Value:** 1\n**Current-Date:** 2099-01-01',
+    )
+    await seedKV(
+      'character:different-date',
+      '**Thread:** other-thread\n**Current-Date:** 2026-05-24',
+    )
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'isolated-thread',
+    })
     expect(res.result.global_snapshot).toHaveLength(0)
   })
 })
 
 describe('get_thread_comparison', () => {
   it('compares entity counts and timeline offsets across two threads', async () => {
-    await seedKV('character:alpha-1', '**Thread:** thread-a\n**Timeline-Value:** 10\n**Current-Date:** day-5')
-    await seedKV('character:alpha-2', '**Thread:** thread-a\n**Timeline-Value:** 8\n**Current-Date:** day-5')
-    await seedKV('character:beta-1', '**Thread:** thread-b\n**Timeline-Value:** 5\n**Current-Date:** day-5')
-    const res = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'thread-a', thread_b: 'thread-b' })
+    await seedKV(
+      'character:alpha-1',
+      '**Thread:** thread-a\n**Timeline-Value:** 10\n**Current-Date:** day-5',
+    )
+    await seedKV(
+      'character:alpha-2',
+      '**Thread:** thread-a\n**Timeline-Value:** 8\n**Current-Date:** day-5',
+    )
+    await seedKV(
+      'character:beta-1',
+      '**Thread:** thread-b\n**Timeline-Value:** 5\n**Current-Date:** day-5',
+    )
+    const res = await callTool('world_manage', {
+      action: 'get_thread_comparison',
+      thread_a: 'thread-a',
+      thread_b: 'thread-b',
+    })
     expect(res.result.thread_a.entity_count).toBe(2)
     expect(res.result.thread_b.entity_count).toBe(1)
     expect(res.result.timeline_offset).toBeCloseTo(4, 0)
@@ -107,14 +149,21 @@ describe('get_thread_comparison', () => {
   })
 
   it('returns empty threads when no entities found', async () => {
-    const res = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'no-thread-x', thread_b: 'no-thread-y' })
+    const res = await callTool('world_manage', {
+      action: 'get_thread_comparison',
+      thread_a: 'no-thread-x',
+      thread_b: 'no-thread-y',
+    })
     expect(res.result.thread_a.entity_count).toBe(0)
     expect(res.result.thread_b.entity_count).toBe(0)
     expect(res.result.timeline_offset).toBeNull()
   })
 
   it('rejects invalid params (missing thread_b)', async () => {
-    const res = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'thread-a' })
+    const res = await callTool('world_manage', {
+      action: 'get_thread_comparison',
+      thread_a: 'thread-a',
+    })
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32602)
     expect(res.error.data.example).toBeDefined()
@@ -125,7 +174,11 @@ describe('check_convergence', () => {
   it('detects convergence via shared date', async () => {
     await seedKV('character:ga', '**Thread:** ta\n**Current-Date:** day-10')
     await seedKV('character:gb', '**Thread:** tb\n**Current-Date:** day-10')
-    const res = await callTool('world_manage', { action: 'check_convergence', thread_a: 'ta', thread_b: 'tb' })
+    const res = await callTool('world_manage', {
+      action: 'check_convergence',
+      thread_a: 'ta',
+      thread_b: 'tb',
+    })
     expect(res.result.can_converge).toBe(true)
     expect(res.result.shared_dates).toContain('day-10')
   })
@@ -133,7 +186,11 @@ describe('check_convergence', () => {
   it('returns can_converge=false when no overlap', async () => {
     await seedKV('character:xa', '**Thread:** tx\n**Current-Date:** day-1')
     await seedKV('character:xb', '**Thread:** ty\n**Current-Date:** day-99')
-    const res = await callTool('world_manage', { action: 'check_convergence', thread_a: 'tx', thread_b: 'ty' })
+    const res = await callTool('world_manage', {
+      action: 'check_convergence',
+      thread_a: 'tx',
+      thread_b: 'ty',
+    })
     expect(res.result.can_converge).toBe(false)
     expect(res.result.shared_dates).toHaveLength(0)
     expect(res.result.shared_locations).toHaveLength(0)

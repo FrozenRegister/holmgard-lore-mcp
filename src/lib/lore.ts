@@ -20,7 +20,12 @@ export function parseKvEntry(raw: string): { text: string; meta: Record<string, 
 // Bridges D1 free-text locations (e.g. "cave, north ridge") with KV canonical keys
 // (e.g. "cave-north-ridge") — used by #371 location normalization.
 export function normalizeLocationKey(raw: string): string {
-  return raw.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 // Case-insensitive match against a KV entry's **World:** field — a freeform
@@ -46,7 +51,7 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
   // Pass 1: markdown bold (optional bullet + optional parenthetical descriptor)
   const mdRegex = new RegExp(
     `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
-    'im'
+    'im',
   )
   const mdMatch = text.match(mdRegex)
   if (mdMatch) {
@@ -56,7 +61,11 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
     if (value === 'true') return true
     if (value === 'false') return false
     if (value === 'null') return null
-    try { return JSON.parse(value) } catch { /* not JSON */ }
+    try {
+      return JSON.parse(value)
+    } catch {
+      /* not JSON */
+    }
     return value
   }
 
@@ -69,7 +78,7 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
   // Anchored to line start to avoid mid-sentence false matches.
   const looseRegex = new RegExp(
     `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
-    'im'
+    'im',
   )
   const looseMatch = text.match(looseRegex)
   if (looseMatch) {
@@ -79,7 +88,11 @@ export function extractFieldFromText(text: string, fieldPath: string): unknown {
     if (value === 'true') return true
     if (value === 'false') return false
     if (value === 'null') return null
-    try { return JSON.parse(value) } catch { /* not JSON */ }
+    try {
+      return JSON.parse(value)
+    } catch {
+      /* not JSON */
+    }
     return value
   }
 
@@ -103,7 +116,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
   // Pass 1: markdown bold (optional bullet + optional descriptor)
   const mdRegex = new RegExp(
     `^(\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*)(.+?)(\\s*)$`,
-    'im'
+    'im',
   )
   const mdMatch = text.match(mdRegex)
   if (mdMatch) {
@@ -131,7 +144,7 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
   // Pass 3: loose line-start  Field: 0.9  or  # Field: value  or  - Field: value  or  Field=0.9
   const looseRegex = new RegExp(
     `(^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*)(-?\\d+(?:\\.\\d+)?)`,
-    'im'
+    'im',
   )
   const looseMatch = text.match(looseRegex)
   if (looseMatch) {
@@ -147,7 +160,10 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
   if (fieldPath === 'State-Stage') {
     const stageM = text.match(/\bStage-(\d+)(-of-\d+)?\b/i)
     if (stageM) {
-      return text.replace(/\bStage-(\d+)(-of-\d+)?\b/i, (_, _n, suffix) => `Stage-${newValue}${suffix ?? ''}`)
+      return text.replace(
+        /\bStage-(\d+)(-of-\d+)?\b/i,
+        (_, _n, suffix) => `Stage-${newValue}${suffix ?? ''}`,
+      )
     }
   }
 
@@ -157,11 +173,13 @@ export function updateFieldInText(text: string, fieldPath: string, newValue: any
 }
 
 export function countOccurrences(haystack: string, needle: string): number {
-  let count = 0; let pos = 0
+  let count = 0
+  let pos = 0
   while (true) {
     const idx = haystack.indexOf(needle, pos)
     if (idx === -1) break
-    count++; pos = idx + needle.length
+    count++
+    pos = idx + needle.length
   }
   return count
 }
@@ -188,7 +206,7 @@ export function extractActiveThreads(narrativeText: string): Array<any> {
         thread_name: threadMatch[1],
         category: currentCategory,
         character: threadMatch[2] || 'unknown',
-        status: 'Active'
+        status: 'Active',
       })
     }
   }
@@ -207,19 +225,41 @@ export function normalizeWeight(raw: number): number {
 // patterns for temperature, scent, texture, sound, and visual categories.
 export function inferFromSensoryComposite(composite: string): Record<string, string | null> {
   const result: Record<string, string | null> = {
-    temperature: null, scent: null, texture: null, sound_signature: null, visual_descriptors: null,
+    temperature: null,
+    scent: null,
+    texture: null,
+    sound_signature: null,
+    visual_descriptors: null,
   }
-  for (const token of composite.split(/[,;]+/).map(t => t.trim()).filter(Boolean)) {
+  for (const token of composite
+    .split(/[,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)) {
     const t = token.toLowerCase()
-    if (!result.temperature && /warm|hot|cold|cool|chill|heat|blooded|thermal|endotherm|ectotherm|fever/.test(t))
+    if (
+      !result.temperature &&
+      /warm|hot|cold|cool|chill|heat|blooded|thermal|endotherm|ectotherm|fever/.test(t)
+    )
       result.temperature = token
-    else if (!result.scent && /cortisol|adrenalin|musk|scent|odou?r|smell|pheromone|hormonal|metabolic|lactic|sweat/.test(t))
+    else if (
+      !result.scent &&
+      /cortisol|adrenalin|musk|scent|odou?r|smell|pheromone|hormonal|metabolic|lactic|sweat/.test(t)
+    )
       result.scent = token
-    else if (!result.texture && /tissue|density|dense|soft|firm|tender|tough|smooth|rough|texture|marbl|fat|muscle/.test(t))
+    else if (
+      !result.texture &&
+      /tissue|density|dense|soft|firm|tender|tough|smooth|rough|texture|marbl|fat|muscle/.test(t)
+    )
       result.texture = token
-    else if (!result.sound_signature && /sound|audio|growl|whisper|heartbeat|pulse|breath|vocal|silent|hum|vibrat/.test(t))
+    else if (
+      !result.sound_signature &&
+      /sound|audio|growl|whisper|heartbeat|pulse|breath|vocal|silent|hum|vibrat/.test(t)
+    )
       result.sound_signature = token
-    else if (!result.visual_descriptors && /visual|appear|colou?r|pigment|translucent|opaque|glow|pattern|mark|spot|stripe/.test(t))
+    else if (
+      !result.visual_descriptors &&
+      /visual|appear|colou?r|pigment|translucent|opaque|glow|pattern|mark|spot|stripe/.test(t)
+    )
       result.visual_descriptors = token
   }
   return result
@@ -233,17 +273,21 @@ export function extractRawField(text: string, fieldPath: string): string | null 
   const escapedField = fieldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   // Pass 1: markdown bold
-  const boldMatch = text.match(new RegExp(
-    `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
-    'im'
-  ))
+  const boldMatch = text.match(
+    new RegExp(
+      `^\\s*(?:-\\s+)?\\*\\*${escapedField}(?:\\s*\\([^)]*\\))?:\\*\\*\\s*(.+?)\\s*$`,
+      'im',
+    ),
+  )
   if (boldMatch) return boldMatch[1].trim()
 
   // Pass 2: loose — any line-start field separator, no bold required
-  const looseMatch = text.match(new RegExp(
-    `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
-    'im'
-  ))
+  const looseMatch = text.match(
+    new RegExp(
+      `^\\s*(?:#+\\s*)?(?:-\\s+)?${escapedField}(?:\\s*\\([^)]*\\))?\\s*[:=]\\s*(.+?)\\s*$`,
+      'im',
+    ),
+  )
   return looseMatch ? looseMatch[1].trim() : null
 }
 
@@ -266,7 +310,7 @@ export function extractConsumptionInfo(characterText: string): any {
   return {
     timeline_remaining: timelineMatch ? timelineMatch[1].trim() : null,
     status: statusMatch ? statusMatch[1].trim() : 'active',
-    processor: processorMatch ? processorMatch[1].trim() : 'unknown'
+    processor: processorMatch ? processorMatch[1].trim() : 'unknown',
   }
 }
 
@@ -274,13 +318,19 @@ export function extractConsumptionInfo(characterText: string): any {
 export function levenshteinDistance(a: string, b: string): number {
   const lenA = a.length
   const lenB = b.length
-  const matrix: number[][] = Array(lenA + 1).fill(null).map(() => Array(lenB + 1).fill(0))
+  const matrix: number[][] = Array(lenA + 1)
+    .fill(null)
+    .map(() => Array(lenB + 1).fill(0))
   for (let i = 0; i <= lenA; i++) matrix[i][0] = i
   for (let j = 0; j <= lenB; j++) matrix[0][j] = j
   for (let i = 1; i <= lenA; i++) {
     for (let j = 1; j <= lenB; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost)
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      )
     }
   }
   return matrix[lenA][lenB]
@@ -299,8 +349,13 @@ const SECTION_SYNONYMS: Record<string, string[]> = {
 export function parseLoreSections(
   text: string,
   requestedSections: string[],
-  mode: 'strict' | 'loose' = 'loose'
-): { sections: Record<string, string>; not_found: string[]; warnings: string[]; suggestions: Record<string, string[]> } {
+  mode: 'strict' | 'loose' = 'loose',
+): {
+  sections: Record<string, string>
+  not_found: string[]
+  warnings: string[]
+  suggestions: Record<string, string[]>
+} {
   const warnings: string[] = []
   const sections: Record<string, string> = {}
   const not_found: string[] = []
@@ -337,7 +392,10 @@ export function parseLoreSections(
   for (let i = 0; i < boundaries.length; i++) {
     const { heading, lineIdx } = boundaries[i]
     const endIdx = i + 1 < boundaries.length ? boundaries[i + 1].lineIdx : lines.length
-    const content = lines.slice(lineIdx + 1, endIdx).join('\n').trim()
+    const content = lines
+      .slice(lineIdx + 1, endIdx)
+      .join('\n')
+      .trim()
     const key = normalize(heading)
     if (sectionMap.has(key)) {
       warnings.push(`duplicate_section:${heading}`)
@@ -382,7 +440,7 @@ export function parseLoreSections(
 
       // Sort by score and limit to top 3
       suggestions_for_req.sort((a, b) => a.score - b.score)
-      suggestions[req] = suggestions_for_req.slice(0, 3).map(s => s.heading)
+      suggestions[req] = suggestions_for_req.slice(0, 3).map((s) => s.heading)
     }
   }
 
@@ -396,9 +454,14 @@ export function applyAppendToSection(
   sectionName: string,
   insertText: string,
   position: 'end' | 'start',
-  autoCreate: boolean
+  autoCreate: boolean,
 ):
-  | { ok: true; mutatedText: string; action: 'appended' | 'prepended' | 'created' | 'replaced_empty'; warnings: string[] }
+  | {
+      ok: true
+      mutatedText: string
+      action: 'appended' | 'prepended' | 'created' | 'replaced_empty'
+      warnings: string[]
+    }
   | { ok: false; error: string; section?: string; hint?: string } {
   function normSec(h: string): string {
     return h.trim().replace(/\s+/g, ' ').toLowerCase().replace(/:$/, '')
@@ -422,7 +485,11 @@ export function applyAppendToSection(
   let m: RegExpExecArray | null
   while ((m = headingRe.exec(text)) !== null) {
     const nlPos = text.indexOf('\n', m.index)
-    headings.push({ heading: m[1].trim(), start: m.index, headingEnd: nlPos === -1 ? text.length : nlPos })
+    headings.push({
+      heading: m[1].trim(),
+      start: m.index,
+      headingEnd: nlPos === -1 ? text.length : nlPos,
+    })
   }
 
   // Find first matching heading; count duplicates for the warning.
@@ -440,7 +507,12 @@ export function applyAppendToSection(
 
   if (targetIdx === -1) {
     if (!autoCreate) {
-      return { ok: false, error: 'section_not_found', section: sectionName, hint: 'Set auto_create: true to create this section automatically.' }
+      return {
+        ok: false,
+        error: 'section_not_found',
+        section: sectionName,
+        hint: 'Set auto_create: true to create this section automatically.',
+      }
     }
     const trimmedEntry = text.trimEnd()
     const newText = `${trimmedEntry}\n\n## ${sectionName}\n${insertText.trim()}\n`

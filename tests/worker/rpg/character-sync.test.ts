@@ -14,7 +14,9 @@ vDesc('Character Sync Utilities', () => {
       const testEnv = env as unknown as AppBindings
 
       // Create a character in D1
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -23,12 +25,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-1', 'Theron Blackforge', '{"str":16,"dex":12,"con":14,"int":10,"wis":13,"cha":11}',
-        30, 35, 14, 5, 'pc', 'Paladin', 'Human',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":100}', '[]', 0,
-        1.5, 2.0, 0.5, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-1',
+          'Theron Blackforge',
+          '{"str":16,"dex":12,"con":14,"int":10,"wis":13,"cha":11}',
+          30,
+          35,
+          14,
+          5,
+          'pc',
+          'Paladin',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":100}',
+          '[]',
+          0,
+          1.5,
+          2.0,
+          0.5,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       // Sync to KV
       const kvKey = await syncCharacterToKv(testEnv, 'test-char-1')
@@ -41,7 +71,10 @@ vDesc('Character Sync Utilities', () => {
       const kvEntry = await testEnv.LORE_DB!.get(kvKey)
       expect(kvEntry).toBeDefined()
 
-      const kvData = JSON.parse(kvEntry as string) as { text: string; meta: Record<string, unknown> }
+      const kvData = JSON.parse(kvEntry as string) as {
+        text: string
+        meta: Record<string, unknown>
+      }
       expect(kvData.meta.d1_migrated).toBe(true)
       expect(kvData.meta.d1_id).toBe('test-char-1')
       expect(kvData.text).toContain('Theron Blackforge')
@@ -50,7 +83,9 @@ vDesc('Character Sync Utilities', () => {
     it('uses custom slug when provided', async () => {
       const testEnv = env as unknown as AppBindings
 
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -59,12 +94,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-2', 'Elowen Vex', '{"str":10,"dex":16,"con":12,"int":14,"wis":13,"cha":15}',
-        20, 20, 14, 3, 'npc', 'Rogue', 'Elf',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":50}', '[]', 0,
-        1.0, 1.5, 0.7, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-2',
+          'Elowen Vex',
+          '{"str":10,"dex":16,"con":12,"int":14,"wis":13,"cha":15}',
+          20,
+          20,
+          14,
+          3,
+          'npc',
+          'Rogue',
+          'Elf',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":50}',
+          '[]',
+          0,
+          1.0,
+          1.5,
+          0.7,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       const kvKey = await syncCharacterToKv(testEnv, 'test-char-2', 'rogue-elf')
 
@@ -74,7 +137,9 @@ vDesc('Character Sync Utilities', () => {
     it('prefixes slug with character: if not already prefixed', async () => {
       const testEnv = env as unknown as AppBindings
 
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -83,12 +148,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-3', 'Gandalf', '{"str":10,"dex":12,"con":14,"int":18,"wis":17,"cha":16}',
-        45, 50, 12, 20, 'npc', 'Wizard', 'Human',
-        '[]', '[]', '[]', '[]', '["Fireball","Counterspell"]', '[]', '[]', '{"gold":500}', '[]', 0,
-        2.0, 2.0, 1.0, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-3',
+          'Gandalf',
+          '{"str":10,"dex":12,"con":14,"int":18,"wis":17,"cha":16}',
+          45,
+          50,
+          12,
+          20,
+          'npc',
+          'Wizard',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '["Fireball","Counterspell"]',
+          '[]',
+          '[]',
+          '{"gold":500}',
+          '[]',
+          0,
+          2.0,
+          2.0,
+          1.0,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       const kvKey = await syncCharacterToKv(testEnv, 'test-char-3', 'gandalf')
 
@@ -98,7 +191,9 @@ vDesc('Character Sync Utilities', () => {
     it('handles slug already prefixed with character:', async () => {
       const testEnv = env as unknown as AppBindings
 
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -107,12 +202,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-4', 'Merlin', '{"str":12,"dex":13,"con":14,"int":17,"wis":16,"cha":15}',
-        40, 45, 13, 18, 'npc', 'Wizard', 'Human',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":300}', '[]', 0,
-        1.8, 1.9, 0.9, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-4',
+          'Merlin',
+          '{"str":12,"dex":13,"con":14,"int":17,"wis":16,"cha":15}',
+          40,
+          45,
+          13,
+          18,
+          'npc',
+          'Wizard',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":300}',
+          '[]',
+          0,
+          1.8,
+          1.9,
+          0.9,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       const kvKey = await syncCharacterToKv(testEnv, 'test-char-4', 'character:merlin')
 
@@ -123,7 +246,9 @@ vDesc('Character Sync Utilities', () => {
       const testEnv = env as unknown as AppBindings
 
       // Create a character
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -132,12 +257,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-5', 'Arthur', '{"str":15,"dex":14,"con":16,"int":13,"wis":14,"cha":16}',
-        50, 55, 12, 10, 'pc', 'Fighter', 'Human',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":200}', '[]', 0,
-        2.2, 2.1, 0.8, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-5',
+          'Arthur',
+          '{"str":15,"dex":14,"con":16,"int":13,"wis":14,"cha":16}',
+          50,
+          55,
+          12,
+          10,
+          'pc',
+          'Fighter',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":200}',
+          '[]',
+          0,
+          2.2,
+          2.1,
+          0.8,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       // Temporarily remove LORE_DB
       const envNoKv = { ...testEnv, LORE_DB: undefined }
@@ -167,7 +320,9 @@ vDesc('Character Sync Utilities', () => {
       const testEnv = env as unknown as AppBindings
 
       // Create a character
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -176,12 +331,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'test-char-6', 'Lancelot', '{"str":17,"dex":15,"con":15,"int":12,"wis":13,"cha":14}',
-        48, 52, 13, 12, 'pc', 'Paladin', 'Human',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":250}', '[]', 0,
-        2.0, 2.0, 0.85, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'test-char-6',
+          'Lancelot',
+          '{"str":17,"dex":15,"con":15,"int":12,"wis":13,"cha":14}',
+          48,
+          52,
+          13,
+          12,
+          'pc',
+          'Paladin',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":250}',
+          '[]',
+          0,
+          2.0,
+          2.0,
+          0.85,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       // Mock a broken KV put (simulate error)
       const brokenEnv = {
@@ -210,7 +393,9 @@ vDesc('Character Sync Utilities', () => {
       ]
 
       for (const char of charData) {
-        await testEnv.RPG_DB!.prepare(`
+        await testEnv
+          .RPG_DB!.prepare(
+            `
           INSERT INTO characters (
             id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
             conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -219,12 +404,40 @@ vDesc('Character Sync Utilities', () => {
           ) VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           )
-        `).bind(
-          char.id, char.name, '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}',
-          25, 30, 12, 5, 'npc', 'Commoner', 'Human',
-          '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":10}', '[]', 0,
-          1.0, 1.0, 0.5, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-        ).run()
+        `,
+          )
+          .bind(
+            char.id,
+            char.name,
+            '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}',
+            25,
+            30,
+            12,
+            5,
+            'npc',
+            'Commoner',
+            'Human',
+            '[]',
+            '[]',
+            '[]',
+            '[]',
+            '[]',
+            '[]',
+            '[]',
+            '{"gold":10}',
+            '[]',
+            0,
+            1.0,
+            1.0,
+            0.5,
+            0,
+            0,
+            0,
+            0,
+            new Date().toISOString(),
+            new Date().toISOString(),
+          )
+          .run()
       }
 
       const synced = await syncAllCharactersToKv(testEnv)
@@ -262,7 +475,9 @@ vDesc('Character Sync Utilities', () => {
       const testEnv = env as unknown as AppBindings
 
       // Create a character
-      await testEnv.RPG_DB!.prepare(`
+      await testEnv
+        .RPG_DB!.prepare(
+          `
         INSERT INTO characters (
           id, name, stats, hp, max_hp, ac, level, character_type, character_class, race,
           conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells,
@@ -271,12 +486,40 @@ vDesc('Character Sync Utilities', () => {
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `).bind(
-        'char-error', 'ErrorTest', '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}',
-        25, 30, 12, 5, 'npc', 'Commoner', 'Human',
-        '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{"gold":10}', '[]', 0,
-        1.0, 1.0, 0.5, 0, 0, 0, 0, new Date().toISOString(), new Date().toISOString()
-      ).run()
+      `,
+        )
+        .bind(
+          'char-error',
+          'ErrorTest',
+          '{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}',
+          25,
+          30,
+          12,
+          5,
+          'npc',
+          'Commoner',
+          'Human',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '[]',
+          '{"gold":10}',
+          '[]',
+          0,
+          1.0,
+          1.0,
+          0.5,
+          0,
+          0,
+          0,
+          0,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run()
 
       // Mock a broken query
       const brokenEnv = {

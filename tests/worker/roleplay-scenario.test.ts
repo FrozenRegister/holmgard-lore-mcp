@@ -13,9 +13,18 @@ describe('roleplay scenario: multi-character quest', () => {
   describe('world setup and initial state', () => {
     it('creates a world with locations, characters, and threads', async () => {
       // Seed locations
-      await seedKV('location:tavern', '**Description:** A warm, crowded tavern with the smell of mead and pipe smoke.\n**Exits:** forest, castle')
-      await seedKV('location:forest', '**Description:** A dark forest path surrounded by ancient trees.\n**Exits:** tavern, cave')
-      await seedKV('location:cave', '**Description:** A damp cave entrance with strange markings on the stone.\n**Exits:** forest')
+      await seedKV(
+        'location:tavern',
+        '**Description:** A warm, crowded tavern with the smell of mead and pipe smoke.\n**Exits:** forest, castle',
+      )
+      await seedKV(
+        'location:forest',
+        '**Description:** A dark forest path surrounded by ancient trees.\n**Exits:** tavern, cave',
+      )
+      await seedKV(
+        'location:cave',
+        '**Description:** A damp cave entrance with strange markings on the stone.\n**Exits:** forest',
+      )
 
       // Seed characters with initial state
       await seedKV(
@@ -48,7 +57,10 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('character:bob', '**Status:** Active\n**Location:** location:tavern')
       await seedKV('character:charlie', '**Status:** Idle\n**Location:** location:forest')
 
-      const brief = await callTool('scene_manage', { action: 'brief', location_key: 'location:tavern' })
+      const brief = await callTool('scene_manage', {
+        action: 'brief',
+        location_key: 'location:tavern',
+      })
       expect(brief.result.entities.length).toBe(2)
       expect(brief.result.entities.map((e: { key: string }) => e.key)).toContain('character:alice')
       expect(brief.result.entities.map((e: { key: string }) => e.key)).toContain('character:bob')
@@ -142,13 +154,21 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('character:charlie', '**Location:** location:forest\n**Status:** Active')
 
       // Query tavern occupants
-      const tavern = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:tavern' })
+      const tavern = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:tavern',
+      })
       expect(tavern.result.occupants.length).toBe(2)
-      expect(tavern.result.occupants.map((o: { key: string }) => o.key)).toContain('character:alice')
+      expect(tavern.result.occupants.map((o: { key: string }) => o.key)).toContain(
+        'character:alice',
+      )
       expect(tavern.result.occupants.map((o: { key: string }) => o.key)).toContain('character:bob')
 
       // Query forest occupants
-      const forest = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:forest' })
+      const forest = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:forest',
+      })
       expect(forest.result.occupants.length).toBe(1)
       expect(forest.result.occupants[0].key).toBe('character:charlie')
     })
@@ -160,7 +180,10 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('character:bob', '**Thread:** main-quest\n**Timeline-Value:** 10')
 
       // Tick the main quest thread
-      const tickRes = await callTool('world_manage', { action: 'thread_tick', thread_id: 'main-quest' })
+      const tickRes = await callTool('world_manage', {
+        action: 'thread_tick',
+        thread_id: 'main-quest',
+      })
       expect(tickRes.result.local_shifts.length).toBe(2)
       expect(tickRes.result.local_shifts[0].new_value).toBe(9)
       expect(tickRes.result.metadata.entities_ticked).toBe(2)
@@ -191,15 +214,27 @@ describe('roleplay scenario: multi-character quest', () => {
     it('marks status_change when timeline crosses zero', async () => {
       await seedKV('character:final-turn', '**Thread:** end-quest\n**Timeline-Value:** 1')
 
-      const tickRes = await callTool('world_manage', { action: 'thread_tick', thread_id: 'end-quest' })
+      const tickRes = await callTool('world_manage', {
+        action: 'thread_tick',
+        thread_id: 'end-quest',
+      })
       expect(tickRes.result.local_shifts[0].status_change).toBe(true)
       expect(tickRes.result.local_shifts[0].new_value).toBe(0)
     })
 
     it('compares two threads to find timeline offset', async () => {
-      await seedKV('character:alice', '**Thread:** thread-a\n**Timeline-Value:** 10\n**Current-Date:** day-5')
-      await seedKV('character:bob', '**Thread:** thread-a\n**Timeline-Value:** 8\n**Current-Date:** day-5')
-      await seedKV('character:charlie', '**Thread:** thread-b\n**Timeline-Value:** 5\n**Current-Date:** day-5')
+      await seedKV(
+        'character:alice',
+        '**Thread:** thread-a\n**Timeline-Value:** 10\n**Current-Date:** day-5',
+      )
+      await seedKV(
+        'character:bob',
+        '**Thread:** thread-a\n**Timeline-Value:** 8\n**Current-Date:** day-5',
+      )
+      await seedKV(
+        'character:charlie',
+        '**Thread:** thread-b\n**Timeline-Value:** 5\n**Current-Date:** day-5',
+      )
 
       const cmp = await callTool('world_manage', {
         action: 'get_thread_comparison',
@@ -214,7 +249,10 @@ describe('roleplay scenario: multi-character quest', () => {
 
   describe('multi-actor scene interactions', () => {
     it('presents choices to an actor based on inventory and state', async () => {
-      await seedKV('scene:locked-door', '**Description:** A heavy oak door.\n- push: Push the door\n- unlock: Unlock with key [requires: key]\n- smash: Smash the door [min-weight: 0.8]')
+      await seedKV(
+        'scene:locked-door',
+        '**Description:** A heavy oak door.\n- push: Push the door\n- unlock: Unlock with key [requires: key]\n- smash: Smash the door [min-weight: 0.8]',
+      )
       await seedKV('character:rogue', '**Inventory:** lockpick×1, key×1\n**Weight-1:** 0.5')
 
       const choices = await callTool('scene_manage', {
@@ -231,7 +269,10 @@ describe('roleplay scenario: multi-character quest', () => {
     })
 
     it('commits a choice and updates character state', async () => {
-      await seedKV('choice:enter-cave', '**Outcome-Seed:** You venture deeper...\n**State-Change:** Exploring\n**Next-Choices:** choice:inspect, choice:retreat')
+      await seedKV(
+        'choice:enter-cave',
+        '**Outcome-Seed:** You venture deeper...\n**State-Change:** Exploring\n**Next-Choices:** choice:inspect, choice:retreat',
+      )
       await seedKV('character:adventurer', '**Status:** Idle\n**Choice-History:**')
 
       const commitRes = await callTool('scene_manage', {
@@ -243,16 +284,25 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(commitRes.result.state_change).toBe('Exploring')
 
       // Verify character state updated
-      const character = await callTool('lore_manage', { action: 'get', query: 'character:adventurer' })
+      const character = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:adventurer',
+      })
       expect(character.result.text).toContain('Exploring')
       expect(character.result.text).toContain('choice:enter-cave')
     })
 
     it('tracks choice history for a character', async () => {
       const now = new Date().toISOString()
-      await seedKV('character:veteran', `**Choice-History:** choice:join-guild@${now}, choice:quest-1@${new Date(Date.now() - 3600000).toISOString()}`)
+      await seedKV(
+        'character:veteran',
+        `**Choice-History:** choice:join-guild@${now}, choice:quest-1@${new Date(Date.now() - 3600000).toISOString()}`,
+      )
 
-      const history = await callTool('scene_manage', { action: 'get_history', entity_key: 'character:veteran' })
+      const history = await callTool('scene_manage', {
+        action: 'get_history',
+        entity_key: 'character:veteran',
+      })
       expect(history.result.history.length).toBe(2)
       expect(history.result.history[0].choice_id).toBe('choice:join-guild')
       expect(history.result.history[1].choice_id).toBe('choice:quest-1')
@@ -288,7 +338,12 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('character:batch-test', '**Health:** 100\n**Experience:** 500\n**Status:** Idle')
 
       const mutations = [
-        { key: 'character:batch-test', action: 'increment', field_path: 'Experience', increment: 50 },
+        {
+          key: 'character:batch-test',
+          action: 'increment',
+          field_path: 'Experience',
+          increment: 50,
+        },
         {
           key: 'character:batch-test',
           action: 'patch',
@@ -307,7 +362,10 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(res.result.results[1].ok).toBe(true)
 
       // Verify final state
-      const character = await callTool('lore_manage', { action: 'get', query: 'character:batch-test' })
+      const character = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:batch-test',
+      })
       expect(character.result.text).toContain('**Experience:** 550')
       expect(character.result.text).toContain('**Status:** Busy')
     })
@@ -316,7 +374,11 @@ describe('roleplay scenario: multi-character quest', () => {
   describe('world state consistency', () => {
     it('recovers character state from history after changes', async () => {
       // Use set first to create history, then patch
-      await callTool('lore_manage', { action: 'set', key: 'character:time-traveler', text: '**Health:** 100\n**Status:** Healthy' })
+      await callTool('lore_manage', {
+        action: 'set',
+        key: 'character:time-traveler',
+        text: '**Health:** 100\n**Status:** Healthy',
+      })
 
       // Make a change (which pushes history)
       await callTool('lore_manage', {
@@ -328,11 +390,17 @@ describe('roleplay scenario: multi-character quest', () => {
       })
 
       // Verify changed state
-      let character = await callTool('lore_manage', { action: 'get', query: 'character:time-traveler' })
+      let character = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:time-traveler',
+      })
       expect(character.result.text).toContain('**Health:** 25')
 
       // Restore previous version
-      const restoreRes = await callTool('lore_manage', { action: 'restore', key: 'character:time-traveler' })
+      const restoreRes = await callTool('lore_manage', {
+        action: 'restore',
+        key: 'character:time-traveler',
+      })
       expect(restoreRes.result.metadata.restored).toBe(true)
 
       // Verify restored state
@@ -345,7 +413,11 @@ describe('roleplay scenario: multi-character quest', () => {
       await seedKV('character:bob-wizard', '**Role:** Wizard\n**Quest:** Study ancient magic')
       await seedKV('location:dragon-lair', '**Description:** Home of the mighty dragon')
 
-      const searchRes = await callTool('lore_manage', { action: 'search', query: 'dragon', max_results: 10 })
+      const searchRes = await callTool('lore_manage', {
+        action: 'search',
+        query: 'dragon',
+        max_results: 10,
+      })
       expect(searchRes.result.metadata.match_count).toBe(2)
       const keys = searchRes.result.results.map((r: { key: string }) => r.key)
       expect(keys).toContain('character:alice-dragon')
@@ -355,11 +427,17 @@ describe('roleplay scenario: multi-character quest', () => {
     it('validates topic existence before operations', async () => {
       await seedKV('character:real-hero', '**Status:** Active')
 
-      const validateRes = await callTool('lore_manage', { action: 'validate', query_string: 'character:real-hero' })
+      const validateRes = await callTool('lore_manage', {
+        action: 'validate',
+        query_string: 'character:real-hero',
+      })
       expect(validateRes.result.exists).toBe(true)
       expect(validateRes.result.exact_match).toBe('character:real-hero')
 
-      const notFoundRes = await callTool('lore_manage', { action: 'validate', query_string: 'character:ghost-hero' })
+      const notFoundRes = await callTool('lore_manage', {
+        action: 'validate',
+        query_string: 'character:ghost-hero',
+      })
       expect(notFoundRes.result.exists).toBe(false)
     })
   })
@@ -368,9 +446,18 @@ describe('roleplay scenario: multi-character quest', () => {
     it('simulates a full encounter with character actions and thread progression', async () => {
       // === SETUP: Two adventurers meet a merchant ===
       await seedKV('location:marketplace', '**Description:** A bustling marketplace.')
-      await seedKV('character:alice', '**Location:** location:marketplace\n**Status:** Active\n**Health:** 100\n**Gold:** 50\n**Thread:** main-quest\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-14')
-      await seedKV('character:bob', '**Location:** location:marketplace\n**Status:** Active\n**Health:** 80\n**Gold:** 30\n**Thread:** main-quest\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-14')
-      await seedKV('character:merchant', '**Location:** location:marketplace\n**Role:** Merchant\n**Inventory:** Healing Potion×5, Sword, Map')
+      await seedKV(
+        'character:alice',
+        '**Location:** location:marketplace\n**Status:** Active\n**Health:** 100\n**Gold:** 50\n**Thread:** main-quest\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-14',
+      )
+      await seedKV(
+        'character:bob',
+        '**Location:** location:marketplace\n**Status:** Active\n**Health:** 80\n**Gold:** 30\n**Thread:** main-quest\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-14',
+      )
+      await seedKV(
+        'character:merchant',
+        '**Location:** location:marketplace\n**Role:** Merchant\n**Inventory:** Healing Potion×5, Sword, Map',
+      )
 
       // === TURN 1: Alice buys a potion ===
       // Update Alice's gold via batch_mutate
@@ -405,7 +492,10 @@ describe('roleplay scenario: multi-character quest', () => {
       })
 
       // === TURN 3: Time progresses (thread tick) ===
-      const tickRes = await callTool('world_manage', { action: 'thread_tick', thread_id: 'main-quest' })
+      const tickRes = await callTool('world_manage', {
+        action: 'thread_tick',
+        thread_id: 'main-quest',
+      })
       expect(tickRes.result.metadata.entities_ticked).toBe(2)
 
       // === VERIFY FINAL STATE ===
@@ -414,11 +504,17 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(finalAlice.result.text).toContain('**Inventory:** Healing Potion×1')
       expect(finalAlice.result.text).toContain('**Timeline-Value:** 4')
 
-      const finalMerchant = await callTool('lore_manage', { action: 'get', query: 'character:merchant' })
+      const finalMerchant = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:merchant',
+      })
       expect(finalMerchant.result.text).toContain('Healing Potion×4')
 
       // === VERIFY SCENE STATE ===
-      const scene = await callTool('scene_manage', { action: 'brief', location_key: 'location:marketplace' })
+      const scene = await callTool('scene_manage', {
+        action: 'brief',
+        location_key: 'location:marketplace',
+      })
       expect(scene.result.entities.length).toBe(3)
     })
   })
@@ -428,46 +524,103 @@ describe('roleplay scenario: multi-character quest', () => {
       // Create a chain of locations
       await seedKV('location:inn', '**Description:** A cozy inn.')
       await seedKV('location:forest-road', '**Description:** A forest path.')
-      await seedKV('location:tavern-end', '**Description:** A tavern at journey\'s end.')
+      await seedKV('location:tavern-end', "**Description:** A tavern at journey's end.")
 
       // Create party members
-      await seedKV('character:leader', '**Location:** location:inn\n**Status:** Active\n**Role:** Party Leader\n**Health:** 100')
-      await seedKV('character:healer', '**Location:** location:inn\n**Status:** Active\n**Role:** Healer\n**Health:** 85')
-      await seedKV('character:scout', '**Location:** location:inn\n**Status:** Active\n**Role:** Scout\n**Health:** 90')
+      await seedKV(
+        'character:leader',
+        '**Location:** location:inn\n**Status:** Active\n**Role:** Party Leader\n**Health:** 100',
+      )
+      await seedKV(
+        'character:healer',
+        '**Location:** location:inn\n**Status:** Active\n**Role:** Healer\n**Health:** 85',
+      )
+      await seedKV(
+        'character:scout',
+        '**Location:** location:inn\n**Status:** Active\n**Role:** Scout\n**Health:** 90',
+      )
 
       // Verify starting location
-      let innOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:inn' })
+      let innOccupants = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:inn',
+      })
       expect(innOccupants.result.occupants).toHaveLength(3)
 
       // Move to forest
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:leader', new_location_key: 'location:forest-road' })
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:healer', new_location_key: 'location:forest-road' })
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:scout', new_location_key: 'location:forest-road' })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:leader',
+        new_location_key: 'location:forest-road',
+      })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:healer',
+        new_location_key: 'location:forest-road',
+      })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:scout',
+        new_location_key: 'location:forest-road',
+      })
 
       // Verify movement
-      const forestOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:forest-road' })
+      const forestOccupants = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:forest-road',
+      })
       expect(forestOccupants.result.occupants).toHaveLength(3)
 
-      innOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:inn' })
+      innOccupants = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:inn',
+      })
       expect(innOccupants.result.occupants).toHaveLength(0)
 
       // Move to final location
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:leader', new_location_key: 'location:tavern-end' })
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:healer', new_location_key: 'location:tavern-end' })
-      await callTool('entity_manage', { action: 'move', entity_key: 'character:scout', new_location_key: 'location:tavern-end' })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:leader',
+        new_location_key: 'location:tavern-end',
+      })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:healer',
+        new_location_key: 'location:tavern-end',
+      })
+      await callTool('entity_manage', {
+        action: 'move',
+        entity_key: 'character:scout',
+        new_location_key: 'location:tavern-end',
+      })
 
       // Verify final state
-      const tavernOccupants = await callTool('world_manage', { action: 'get_location_occupants', location_key: 'location:tavern-end' })
+      const tavernOccupants = await callTool('world_manage', {
+        action: 'get_location_occupants',
+        location_key: 'location:tavern-end',
+      })
       expect(tavernOccupants.result.occupants).toHaveLength(3)
-      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:leader')
-      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:healer')
-      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain('character:scout')
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain(
+        'character:leader',
+      )
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain(
+        'character:healer',
+      )
+      expect(tavernOccupants.result.occupants.map((o: { key: string }) => o.key)).toContain(
+        'character:scout',
+      )
     })
 
     it('handles party member damage and healing across locations', async () => {
       await seedKV('location:battle', '**Description:** A battleground.')
-      await seedKV('character:warrior', '**Location:** location:battle\n**Status:** Active\n**Health:** 100')
-      await seedKV('character:cleric', '**Location:** location:battle\n**Status:** Active\n**Health:** 100')
+      await seedKV(
+        'character:warrior',
+        '**Location:** location:battle\n**Status:** Active\n**Health:** 100',
+      )
+      await seedKV(
+        'character:cleric',
+        '**Location:** location:battle\n**Status:** Active\n**Health:** 100',
+      )
 
       // Warrior takes damage
       await callTool('lore_manage', {
@@ -513,20 +666,27 @@ describe('roleplay scenario: multi-character quest', () => {
       const setupRes = await callTool('continuity_manage', {
         action: 'plant_setup',
         id: 'noble-betrayal-plot',
-        description: 'The noble plans to betray the crown, and the spy must decide whether to report it.',
+        description:
+          'The noble plans to betray the crown, and the spy must decide whether to report it.',
         tension: 5,
         actors: ['character:noble', 'character:spy'],
       })
       expect(setupRes.error).toBeUndefined()
 
       // Scene brief should show open setups for present actors
-      const briefRes = await callTool('scene_manage', { action: 'brief', location_key: 'location:castle' })
+      const briefRes = await callTool('scene_manage', {
+        action: 'brief',
+        location_key: 'location:castle',
+      })
       const setupIds = (briefRes.result.open_setups as Array<{ id: string }>).map((s) => s.id)
       expect(setupIds).toContain('noble-betrayal-plot')
     })
 
     it('deletes ephemeral NPCs after encounters', async () => {
-      await seedKV('character:goblin-npc', '**Status:** Active\n**Location:** location:dungeon\n**Role:** Enemy')
+      await seedKV(
+        'character:goblin-npc',
+        '**Status:** Active\n**Location:** location:dungeon\n**Role:** Enemy',
+      )
       await seedKV('location:dungeon', '**Description:** A dark dungeon.')
 
       // Verify NPC exists
@@ -534,7 +694,10 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(npc.result.text).toContain('Enemy')
 
       // After encounter, destroy the NPC
-      const destroyRes = await callTool('entity_manage', { action: 'destroy', entity_key: 'character:goblin-npc' })
+      const destroyRes = await callTool('entity_manage', {
+        action: 'destroy',
+        entity_key: 'character:goblin-npc',
+      })
       expect(destroyRes.error).toBeUndefined()
 
       // Verify NPC is gone
@@ -546,22 +709,40 @@ describe('roleplay scenario: multi-character quest', () => {
   describe('complex multi-thread scenarios', () => {
     it('maintains independent thread timelines with different dates', async () => {
       // Main quest thread
-      await seedKV('character:quest-alpha', '**Thread:** main-timeline\n**Timeline-Value:** 10\n**Current-Date:** 2026-06-14')
-      await seedKV('character:quest-beta', '**Thread:** main-timeline\n**Timeline-Value:** 8\n**Current-Date:** 2026-06-14')
+      await seedKV(
+        'character:quest-alpha',
+        '**Thread:** main-timeline\n**Timeline-Value:** 10\n**Current-Date:** 2026-06-14',
+      )
+      await seedKV(
+        'character:quest-beta',
+        '**Thread:** main-timeline\n**Timeline-Value:** 8\n**Current-Date:** 2026-06-14',
+      )
 
       // Side quest thread (different date)
-      await seedKV('character:side-alpha', '**Thread:** side-timeline\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-20')
-      await seedKV('character:side-beta', '**Thread:** side-timeline\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-20')
+      await seedKV(
+        'character:side-alpha',
+        '**Thread:** side-timeline\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-20',
+      )
+      await seedKV(
+        'character:side-beta',
+        '**Thread:** side-timeline\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-20',
+      )
 
       // Tick main timeline
       await callTool('world_manage', { action: 'thread_tick', thread_id: 'main-timeline' })
 
       // Verify main timeline changed
-      const mainAlpha = await callTool('lore_manage', { action: 'get', query: 'character:quest-alpha' })
+      const mainAlpha = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:quest-alpha',
+      })
       expect(mainAlpha.result.text).toContain('**Timeline-Value:** 9')
 
       // Verify side timeline unchanged
-      const sideAlpha = await callTool('lore_manage', { action: 'get', query: 'character:side-alpha' })
+      const sideAlpha = await callTool('lore_manage', {
+        action: 'get',
+        query: 'character:side-alpha',
+      })
       expect(sideAlpha.result.text).toContain('**Timeline-Value:** 5')
 
       // Compare the two threads
@@ -577,11 +758,21 @@ describe('roleplay scenario: multi-character quest', () => {
 
     it('handles convergence between threads with shared dates', async () => {
       // Set up two threads that will converge
-      await seedKV('character:thread-a-char', '**Thread:** converge-a\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-15')
-      await seedKV('character:thread-b-char', '**Thread:** converge-b\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-15')
+      await seedKV(
+        'character:thread-a-char',
+        '**Thread:** converge-a\n**Timeline-Value:** 5\n**Current-Date:** 2026-06-15',
+      )
+      await seedKV(
+        'character:thread-b-char',
+        '**Thread:** converge-b\n**Timeline-Value:** 3\n**Current-Date:** 2026-06-15',
+      )
 
       // Both threads share the same current date - they're converging
-      const briefA = await callTool('world_manage', { action: 'get_thread_comparison', thread_a: 'converge-a', thread_b: 'converge-b' })
+      const briefA = await callTool('world_manage', {
+        action: 'get_thread_comparison',
+        thread_a: 'converge-a',
+        thread_b: 'converge-b',
+      })
       expect(briefA.result.shared_dates).toContain('2026-06-15')
     })
 
@@ -589,7 +780,10 @@ describe('roleplay scenario: multi-character quest', () => {
       // Create three parallel stories
       const threadIds = ['story-1', 'story-2', 'story-3']
       for (let i = 0; i < threadIds.length; i++) {
-        await seedKV(`character:story${i + 1}-lead`, `**Thread:** ${threadIds[i]}\n**Timeline-Value:** 10`)
+        await seedKV(
+          `character:story${i + 1}-lead`,
+          `**Thread:** ${threadIds[i]}\n**Timeline-Value:** 10`,
+        )
       }
 
       // Tick each thread
@@ -599,7 +793,10 @@ describe('roleplay scenario: multi-character quest', () => {
 
       // Verify each thread progressed
       for (let i = 0; i < threadIds.length; i++) {
-        const char = await callTool('lore_manage', { action: 'get', query: `character:story${i + 1}-lead` })
+        const char = await callTool('lore_manage', {
+          action: 'get',
+          query: `character:story${i + 1}-lead`,
+        })
         expect(char.result.text).toContain('**Timeline-Value:** 9')
       }
     })
@@ -621,14 +818,23 @@ describe('roleplay scenario: multi-character quest', () => {
         value: '\n**Access-Level:** Restricted',
       })
 
-      const updated = await callTool('lore_manage', { action: 'get', query: 'location:grand-library' })
+      const updated = await callTool('lore_manage', {
+        action: 'get',
+        query: 'location:grand-library',
+      })
       expect(updated.result.text).toContain('**Access-Level:** Restricted')
     })
 
     it('uses batch operations for efficient multi-entity updates', async () => {
       const npcs = [
-        { key: 'npc:innkeeper', text: '**Role:** Innkeeper\n**Loyalty:** Neutral\n**Fear-Level:** 0' },
-        { key: 'npc:blacksmith', text: '**Role:** Blacksmith\n**Loyalty:** Neutral\n**Fear-Level:** 0' },
+        {
+          key: 'npc:innkeeper',
+          text: '**Role:** Innkeeper\n**Loyalty:** Neutral\n**Fear-Level:** 0',
+        },
+        {
+          key: 'npc:blacksmith',
+          text: '**Role:** Blacksmith\n**Loyalty:** Neutral\n**Fear-Level:** 0',
+        },
         { key: 'npc:guard', text: '**Role:** Guard\n**Loyalty:** Crown\n**Fear-Level:** 5' },
         { key: 'npc:merchant', text: '**Role:** Merchant\n**Loyalty:** Gold\n**Fear-Level:** 2' },
       ]
@@ -661,14 +867,30 @@ describe('roleplay scenario: multi-character quest', () => {
 
     it('performs comprehensive search across lore database', async () => {
       // Create a diverse lore collection
-      await seedKV('character:dragon-slayer', '**Quest:** Slay the ancient dragon\n**Weapon:** Dragon-bane sword')
-      await seedKV('location:dragon-cave', '**Description:** Lair of the ancient dragon\n**Treasure:** Dragon gold')
-      await seedKV('item:dragon-egg', '**Type:** Artifact\n**Origin:** From the dragon hoard\n**Power:** Unknown')
+      await seedKV(
+        'character:dragon-slayer',
+        '**Quest:** Slay the ancient dragon\n**Weapon:** Dragon-bane sword',
+      )
+      await seedKV(
+        'location:dragon-cave',
+        '**Description:** Lair of the ancient dragon\n**Treasure:** Dragon gold',
+      )
+      await seedKV(
+        'item:dragon-egg',
+        '**Type:** Artifact\n**Origin:** From the dragon hoard\n**Power:** Unknown',
+      )
       await seedKV('faction:dragon-cult', '**Goal:** Resurrect the ancient dragon\n**Members:** 5')
-      await seedKV('npc:dragon-priest', '**Role:** High priest\n**Faction:** dragon-cult\n**Status:** Active')
+      await seedKV(
+        'npc:dragon-priest',
+        '**Role:** High priest\n**Faction:** dragon-cult\n**Status:** Active',
+      )
 
       // Search for "dragon" - should find all 5 entries
-      const searchRes = await callTool('lore_manage', { action: 'search', query: 'dragon', max_results: 20 })
+      const searchRes = await callTool('lore_manage', {
+        action: 'search',
+        query: 'dragon',
+        max_results: 20,
+      })
       expect(searchRes.result.metadata.match_count).toBe(5)
 
       const keys = searchRes.result.results.map((r: { key: string }) => r.key)
@@ -706,9 +928,18 @@ describe('roleplay scenario: multi-character quest', () => {
     it('follows a complex choice chain with state mutations', async () => {
       // Set up initial scene
       await seedKV('scene:crossroads', '**Description:** A fork in the road.')
-      await seedKV('choice:left-path', '**Description:** Take the left path into the woods\n**Next-Choices:** choice:encounter-wolf, choice:find-treasure')
-      await seedKV('choice:encounter-wolf', '**Description:** You encounter a wolf!\n**State-Change:** Injured\n**Next-Choices:** choice:fight-wolf, choice:flee-wolf')
-      await seedKV('choice:find-treasure', '**Description:** You find gold coins!\n**State-Change:** Wealthy')
+      await seedKV(
+        'choice:left-path',
+        '**Description:** Take the left path into the woods\n**Next-Choices:** choice:encounter-wolf, choice:find-treasure',
+      )
+      await seedKV(
+        'choice:encounter-wolf',
+        '**Description:** You encounter a wolf!\n**State-Change:** Injured\n**Next-Choices:** choice:fight-wolf, choice:flee-wolf',
+      )
+      await seedKV(
+        'choice:find-treasure',
+        '**Description:** You find gold coins!\n**State-Change:** Wealthy',
+      )
       await seedKV('character:traveler', '**Status:** Healthy\n**Choice-History:**')
 
       // Make first choice
@@ -735,7 +966,10 @@ describe('roleplay scenario: multi-character quest', () => {
       expect(traveler.result.text).toContain('choice:encounter-wolf')
 
       // Get history
-      const history = await callTool('scene_manage', { action: 'get_history', entity_key: 'character:traveler' })
+      const history = await callTool('scene_manage', {
+        action: 'get_history',
+        entity_key: 'character:traveler',
+      })
       expect(history.result.history.length).toBe(2)
       // Verify first choice in history
       expect(history.result.history[0]).toBeDefined()
@@ -744,8 +978,14 @@ describe('roleplay scenario: multi-character quest', () => {
 
     it('branches based on character inventory and attributes', async () => {
       await seedKV('scene:treasure-room', '**Description:** A room filled with treasure.')
-      await seedKV('character:thief', '**Inventory:** lockpicks×1, rope×1\n**Skill:** Stealth\n**Experience:** 50')
-      await seedKV('character:warrior', '**Inventory:** sword×1, shield×1\n**Skill:** Combat\n**Experience:** 75')
+      await seedKV(
+        'character:thief',
+        '**Inventory:** lockpicks×1, rope×1\n**Skill:** Stealth\n**Experience:** 50',
+      )
+      await seedKV(
+        'character:warrior',
+        '**Inventory:** sword×1, shield×1\n**Skill:** Combat\n**Experience:** 75',
+      )
 
       // Thief-specific path
       const thiefChoices = await callTool('scene_manage', {
@@ -771,7 +1011,10 @@ describe('roleplay scenario: multi-character quest', () => {
       const tempNpcs = [
         { key: 'encounter:goblin-1', text: '**Type:** Goblin\n**Health:** 20\n**Loot:** coins×5' },
         { key: 'encounter:goblin-2', text: '**Type:** Goblin\n**Health:** 18\n**Loot:** coins×3' },
-        { key: 'encounter:goblin-boss', text: '**Type:** Goblin Boss\n**Health:** 50\n**Loot:** sword, coins×20' },
+        {
+          key: 'encounter:goblin-boss',
+          text: '**Type:** Goblin Boss\n**Health:** 50\n**Loot:** sword, coins×20',
+        },
       ]
 
       // Batch create them
@@ -790,31 +1033,54 @@ describe('roleplay scenario: multi-character quest', () => {
       }
 
       // Verify cleanup
-      const verify = await callTool('lore_manage', { action: 'get', query: 'encounter:goblin-boss' })
+      const verify = await callTool('lore_manage', {
+        action: 'get',
+        query: 'encounter:goblin-boss',
+      })
       expect(verify.error).toBeDefined()
     })
 
     it('manages session-wide lore cleanup and archival', async () => {
       // Create archivable entries using set (which ensures they're written properly)
-      await callTool('lore_manage', { action: 'set', key: 'session:session-001-intro', text: '**Type:** Session Record\n**Status:** Complete' })
-      await callTool('lore_manage', { action: 'set', key: 'session:session-001-battles', text: '**Type:** Battle Log\n**Encounters:** 3' })
+      await callTool('lore_manage', {
+        action: 'set',
+        key: 'session:session-001-intro',
+        text: '**Type:** Session Record\n**Status:** Complete',
+      })
+      await callTool('lore_manage', {
+        action: 'set',
+        key: 'session:session-001-battles',
+        text: '**Type:** Battle Log\n**Encounters:** 3',
+      })
 
       // Verify both entries exist
-      const intro = await callTool('lore_manage', { action: 'get', query: 'session:session-001-intro' })
+      const intro = await callTool('lore_manage', {
+        action: 'get',
+        query: 'session:session-001-intro',
+      })
       expect(intro.result.text).toContain('Session Record')
 
-      const battles = await callTool('lore_manage', { action: 'get', query: 'session:session-001-battles' })
+      const battles = await callTool('lore_manage', {
+        action: 'get',
+        query: 'session:session-001-battles',
+      })
       expect(battles.result.text).toContain('Battle Log')
 
       // Archive old session by deleting
       await callTool('lore_manage', { action: 'delete', key: 'session:session-001-intro' })
 
       // Verify deletion
-      const verify = await callTool('lore_manage', { action: 'get', query: 'session:session-001-intro' })
+      const verify = await callTool('lore_manage', {
+        action: 'get',
+        query: 'session:session-001-intro',
+      })
       expect(verify.error).toBeDefined()
 
       // Other session data still exists
-      const remaining = await callTool('lore_manage', { action: 'get', query: 'session:session-001-battles' })
+      const remaining = await callTool('lore_manage', {
+        action: 'get',
+        query: 'session:session-001-battles',
+      })
       expect(remaining.result.text).toContain('Battle Log')
     })
   })

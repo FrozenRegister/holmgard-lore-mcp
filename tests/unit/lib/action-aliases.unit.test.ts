@@ -3,7 +3,10 @@ import { resolveAlias, ACTION_ALIASES } from '@/rpg/action-aliases'
 
 describe('resolveAlias (#404 Tier 2)', () => {
   it('rewrites character.place_character to spawn.place_character', () => {
-    expect(resolveAlias('character', 'place_character')).toEqual({ sub: 'spawn', action: 'place_character' })
+    expect(resolveAlias('character', 'place_character')).toEqual({
+      sub: 'spawn',
+      action: 'place_character',
+    })
   })
 
   it('rewrites character.move_hex to travel.move_hex', () => {
@@ -15,7 +18,10 @@ describe('resolveAlias (#404 Tier 2)', () => {
   })
 
   it('rewrites party.place_character to spawn.place_character', () => {
-    expect(resolveAlias('party', 'place_character')).toEqual({ sub: 'spawn', action: 'place_character' })
+    expect(resolveAlias('party', 'place_character')).toEqual({
+      sub: 'spawn',
+      action: 'place_character',
+    })
   })
 
   it('leaves an unaliased action on a sub with other aliases unchanged', () => {
@@ -27,7 +33,10 @@ describe('resolveAlias (#404 Tier 2)', () => {
   })
 
   it('leaves an unrecognized sub unchanged', () => {
-    expect(resolveAlias('not-a-real-sub', 'anything')).toEqual({ sub: 'not-a-real-sub', action: 'anything' })
+    expect(resolveAlias('not-a-real-sub', 'anything')).toEqual({
+      sub: 'not-a-real-sub',
+      action: 'anything',
+    })
   })
 
   it('every alias target resolves to a real handler sub, not another alias source', () => {

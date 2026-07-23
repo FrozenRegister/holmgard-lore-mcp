@@ -53,59 +53,59 @@ import { handleConflictTypeManage } from './handlers/conflict-type-manage'
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
 const SUB_MAP: Record<string, RpgFn> = {
-  math:          handleMathManage,
-  world:         handleWorldManage,
-  character:     handleCharacterManage,
+  math: handleMathManage,
+  world: handleWorldManage,
+  character: handleCharacterManage,
   // #404 — plural alias; narrators reach for either form interchangeably.
-  characters:    handleCharacterManage,
-  party:         handlePartyManage,
-  quest:         handleQuestManage,
-  item:          handleItemManage,
-  inventory:     handleInventoryManage,
-  corpse:        handleCorpseManage,
-  narrative:     handleNarrativeManage,
-  secret:        handleSecretManage,
-  theft:         handleTheftManage,
-  aura:          handleAuraManage,
+  characters: handleCharacterManage,
+  party: handlePartyManage,
+  quest: handleQuestManage,
+  item: handleItemManage,
+  inventory: handleInventoryManage,
+  corpse: handleCorpseManage,
+  narrative: handleNarrativeManage,
+  secret: handleSecretManage,
+  theft: handleTheftManage,
+  aura: handleAuraManage,
   improvisation: handleImprovisationManage,
-  npc:           handleNpcManage,
+  npc: handleNpcManage,
   // #404 — descriptive alias; narrators reach for this when they specifically
   // mean dialogue/reaction actions rather than NPC CRUD.
-  npc_dialogue:  handleNpcManage,
-  session:       handleSessionManage,
-  combat:        handleCombatManage,
+  npc_dialogue: handleNpcManage,
+  session: handleSessionManage,
+  combat: handleCombatManage,
   combat_action: handleCombatAction,
-  combat_map:    handleCombatMap,
-  spawn:         handleSpawnManage,
-  strategy:      handleStrategyManage,
-  turn:          handleTurnManage,
-  spatial:       handleSpatialManage,
-  world_map:     handleWorldMap,
+  combat_map: handleCombatMap,
+  spawn: handleSpawnManage,
+  strategy: handleStrategyManage,
+  turn: handleTurnManage,
+  spatial: handleSpatialManage,
+  world_map: handleWorldMap,
   // #404 — shorter alias for world_map.
-  maps:          handleWorldMap,
-  batch:         handleBatchManage,
-  travel:        handleTravelManage,
-  perception:    handlePerceptionManage,
+  maps: handleWorldMap,
+  batch: handleBatchManage,
+  travel: handleTravelManage,
+  perception: handlePerceptionManage,
   // #335 — "stealth" is the name narrators reach for (and what #285's own
   // issue title used), but the actual mechanic (stealth_check) lives under
   // perception's action set, not a separate handler. Alias the sub name
   // rather than duplicating/splitting the handler.
-  stealth:       handlePerceptionManage,
-  scene:         handleSceneManage,
-  rest:          handleRestManage,
-  scroll:        handleScrollManage,
-  event:         handleEventManage,
-  drama:         handleDramaManage,
-  time:          handleTimeManage,
-  timeline:      handleTimelineManage,
-  biome:         handleBiomeManage,
-  zone_type:     handleZoneTypeManage,
-  waypoint:      handleWaypointManage,
-  encounter:     handleEncounterManage,
-  production:    handleProductionManage,
-  resource:      handleResourceManage,
-  broadcast:     handleBroadcastManage,
-  weather:       handleWeatherManage,
+  stealth: handlePerceptionManage,
+  scene: handleSceneManage,
+  rest: handleRestManage,
+  scroll: handleScrollManage,
+  event: handleEventManage,
+  drama: handleDramaManage,
+  time: handleTimeManage,
+  timeline: handleTimelineManage,
+  biome: handleBiomeManage,
+  zone_type: handleZoneTypeManage,
+  waypoint: handleWaypointManage,
+  encounter: handleEncounterManage,
+  production: handleProductionManage,
+  resource: handleResourceManage,
+  broadcast: handleBroadcastManage,
+  weather: handleWeatherManage,
   conflict_type: handleConflictTypeManage,
 }
 
@@ -129,7 +129,10 @@ export const handle_rpg: ToolHandler = async ({ c, id, args }) => {
   // so the resolved sub is always resolvable.
   const restArgs = rest as Record<string, unknown>
   const requestedAction = restArgs.action
-  const resolved = typeof requestedAction === 'string' ? resolveAlias(sub, requestedAction) : { sub, action: requestedAction }
+  const resolved =
+    typeof requestedAction === 'string'
+      ? resolveAlias(sub, requestedAction)
+      : { sub, action: requestedAction }
   const targetFn = resolved.sub === sub ? fn : SUB_MAP[resolved.sub]!
 
   const result = await targetFn(c.env, { ...restArgs, action: resolved.action })

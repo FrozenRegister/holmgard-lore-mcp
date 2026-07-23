@@ -16,7 +16,7 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     vi.restoreAllMocks()
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   async function createParty(name = 'The Preserve Cohort') {
     const r = await handlePartyManage(db(), { action: 'create', name })
@@ -51,21 +51,38 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('trust_shift requires delta or eventType', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b' })
+    const r = await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('trust_shift errors on an unknown eventType', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', eventType: 'nonsense' })
+    const r = await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      eventType: 'nonsense',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('trust_shift applies a named event delta, starting from the default baseline of 50', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', eventType: 'saved_from_predator' })
+    const r = await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      eventType: 'saved_from_predator',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.trustScore).toBe(65)
@@ -74,8 +91,20 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('trust_shift applies an explicit delta and clamps to [0, 100]', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: 1000 })
-    const r = await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: 5 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: 1000,
+    })
+    const r = await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: 5,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.trustScore).toBe(100)
     expect(body.note).toBeNull()
@@ -83,7 +112,13 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('trust_shift clamps a large negative delta to 0', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', eventType: 'left_behind' })
+    const r = await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      eventType: 'left_behind',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.trustScore).toBe(0)
   })
@@ -98,7 +133,12 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('resolve_conflict defaults to baseline trust (50/50) for a pair with no history', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const r = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.avgTrust).toBe(50)
@@ -106,9 +146,26 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('resolve_conflict picks the high-trust band (>=60) deterministically — always grudging_truce, no randomness', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: 20 })
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'b', towardCharacterId: 'a', delta: 20 })
-    const r = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: 20,
+    })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'b',
+      towardCharacterId: 'a',
+      delta: 20,
+    })
+    const r = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.avgTrust).toBe(70)
     expect(body.outcome).toBe('grudging_truce')
@@ -116,49 +173,115 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('resolve_conflict mid band (40-59): both random branches (stolen_resources / grudging_truce)', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: -5 })
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'b', towardCharacterId: 'a', delta: -5 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: -5,
+    })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'b',
+      towardCharacterId: 'a',
+      delta: -5,
+    })
 
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const low = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const low = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     const lowBody = JSON.parse(low.content[0].text)
     expect(lowBody.avgTrust).toBe(45)
     expect(lowBody.outcome).toBe('stolen_resources')
 
     vi.spyOn(Math, 'random').mockReturnValue(0.9)
-    const high = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const high = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     expect(JSON.parse(high.content[0].text).outcome).toBe('grudging_truce')
   })
 
   it('resolve_conflict mid-low band (20-39): both random branches (fight / stolen_resources)', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: -20 })
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'b', towardCharacterId: 'a', delta: -20 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: -20,
+    })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'b',
+      towardCharacterId: 'a',
+      delta: -20,
+    })
 
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const low = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const low = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     const lowBody = JSON.parse(low.content[0].text)
     expect(lowBody.avgTrust).toBe(30)
     expect(lowBody.outcome).toBe('fight')
 
     vi.spyOn(Math, 'random').mockReturnValue(0.9)
-    const high = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const high = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     expect(JSON.parse(high.content[0].text).outcome).toBe('stolen_resources')
   })
 
   it('resolve_conflict low band (<20): both random branches (exile / fight)', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: -45 })
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'b', towardCharacterId: 'a', delta: -45 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: -45,
+    })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'b',
+      towardCharacterId: 'a',
+      delta: -45,
+    })
 
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const low = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const low = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     const lowBody = JSON.parse(low.content[0].text)
     expect(lowBody.avgTrust).toBe(5)
     expect(lowBody.outcome).toBe('exile')
 
     vi.spyOn(Math, 'random').mockReturnValue(0.9)
-    const high = await handlePartyManage(db(), { action: 'resolve_conflict', partyId, characterAId: 'a', characterBId: 'b' })
+    const high = await handlePartyManage(db(), {
+      action: 'resolve_conflict',
+      partyId,
+      characterAId: 'a',
+      characterBId: 'b',
+    })
     expect(JSON.parse(high.content[0].text).outcome).toBe('fight')
   })
 
@@ -181,7 +304,13 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('betrayal_check finds the lowest-trust pair and reports likely at baseline multipliers when trust is very low', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'adebayo', towardCharacterId: 'yune', delta: -50 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'adebayo',
+      towardCharacterId: 'yune',
+      delta: -50,
+    })
     const r = await handlePartyManage(db(), { action: 'betrayal_check', partyId })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -194,9 +323,20 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('betrayal_check applies desperation multipliers and reports the dominant motivation', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'adebayo', towardCharacterId: 'yune', delta: -30 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'adebayo',
+      towardCharacterId: 'yune',
+      delta: -30,
+    })
     const r = await handlePartyManage(db(), {
-      action: 'betrayal_check', partyId, resourceDesperation: 1.5, injuryDesperation: 1, audiencePressure: 1, extractionPressure: 1,
+      action: 'betrayal_check',
+      partyId,
+      resourceDesperation: 1.5,
+      injuryDesperation: 1,
+      audiencePressure: 1,
+      extractionPressure: 1,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.motivation).toBe('resource_desperation')
@@ -205,9 +345,20 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('betrayal_check reports a non-resource dominant motivation when another multiplier is highest', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'adebayo', towardCharacterId: 'yune', delta: -30 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'adebayo',
+      towardCharacterId: 'yune',
+      delta: -30,
+    })
     const r = await handlePartyManage(db(), {
-      action: 'betrayal_check', partyId, resourceDesperation: 1, injuryDesperation: 1, audiencePressure: 1.5, extractionPressure: 1,
+      action: 'betrayal_check',
+      partyId,
+      resourceDesperation: 1,
+      injuryDesperation: 1,
+      audiencePressure: 1.5,
+      extractionPressure: 1,
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.motivation).toBe('audience_pressure')
@@ -215,7 +366,13 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('betrayal_check reports the "possible" classification band', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: -8 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: -8,
+    })
     const r = await handlePartyManage(db(), { action: 'betrayal_check', partyId })
     const body = JSON.parse(r.content[0].text)
     expect(body.likelihood).toBe(58)
@@ -224,7 +381,13 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('betrayal_check reports the "unlikely" classification band', async () => {
     const partyId = await createParty()
-    await handlePartyManage(db(), { action: 'trust_shift', partyId, fromCharacterId: 'a', towardCharacterId: 'b', delta: 20 })
+    await handlePartyManage(db(), {
+      action: 'trust_shift',
+      partyId,
+      fromCharacterId: 'a',
+      towardCharacterId: 'b',
+      delta: 20,
+    })
     const r = await handlePartyManage(db(), { action: 'betrayal_check', partyId })
     const body = JSON.parse(r.content[0].text)
     expect(body.likelihood).toBe(30)
@@ -240,7 +403,11 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   })
 
   it('morale_roll errors for a nonexistent party', async () => {
-    const r = await handlePartyManage(db(), { action: 'morale_roll', partyId: 'nope', customDelta: 5 })
+    const r = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId: 'nope',
+      customDelta: 5,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -254,14 +421,22 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('morale_roll errors on an unknown stressorType', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'morale_roll', partyId, stressorType: 'nonsense' })
+    const r = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId,
+      stressorType: 'nonsense',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('morale_roll applies a named stressor and reports the new cohesion tier', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'morale_roll', partyId, stressorType: 'yield_death' })
+    const r = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId,
+      stressorType: 'yield_death',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     // Default party morale is 62 (migration default); -5 -> 57, which falls
@@ -283,15 +458,27 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('morale_roll reports strained/breaking/collapse tiers and dissolved:true under 20', async () => {
     const partyId = await createParty()
-    const strained = await handlePartyManage(db(), { action: 'morale_roll', partyId, customDelta: -10 }) // 62 -> 52 (strained)
+    const strained = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId,
+      customDelta: -10,
+    }) // 62 -> 52 (strained)
     expect(JSON.parse(strained.content[0].text).cohesion).toBe('strained')
 
-    const breaking = await handlePartyManage(db(), { action: 'morale_roll', partyId, customDelta: -15 }) // 52 -> 37 (breaking)
+    const breaking = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId,
+      customDelta: -15,
+    }) // 52 -> 37 (breaking)
     const breakingBody = JSON.parse(breaking.content[0].text)
     expect(breakingBody.cohesion).toBe('breaking')
     expect(breakingBody.dissolved).toBe(false)
 
-    const collapse = await handlePartyManage(db(), { action: 'morale_roll', partyId, customDelta: -20 }) // 37 -> 17 (collapse)
+    const collapse = await handlePartyManage(db(), {
+      action: 'morale_roll',
+      partyId,
+      customDelta: -20,
+    }) // 37 -> 17 (collapse)
     const collapseBody = JSON.parse(collapse.content[0].text)
     expect(collapseBody.cohesion).toBe('collapse')
     expect(collapseBody.dissolved).toBe(true)
@@ -300,7 +487,10 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   // ── watch_rotation ───────────────────────────────────────────────────────
 
   it('watch_rotation requires partyId', async () => {
-    const r = await handlePartyManage(db(), { action: 'watch_rotation', watchers: [{ characterId: 'a' }] })
+    const r = await handlePartyManage(db(), {
+      action: 'watch_rotation',
+      watchers: [{ characterId: 'a' }],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -313,7 +503,11 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   })
 
   it('watch_rotation errors for a nonexistent party', async () => {
-    const r = await handlePartyManage(db(), { action: 'watch_rotation', partyId: 'nope', watchers: [{ characterId: 'a' }] })
+    const r = await handlePartyManage(db(), {
+      action: 'watch_rotation',
+      partyId: 'nope',
+      watchers: [{ characterId: 'a' }],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -321,7 +515,8 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   it('watch_rotation reports a pass, a fail, and a critical-failure (asleep) result, and sets current_watch', async () => {
     const partyId = await createParty()
     const r = await handlePartyManage(db(), {
-      action: 'watch_rotation', partyId,
+      action: 'watch_rotation',
+      partyId,
       watchers: [
         { characterId: 'watcher-pass', conModifier: 10, rollValue: 5 },
         { characterId: 'watcher-fail', conModifier: 0, rollValue: 5 },
@@ -345,7 +540,11 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('watch_rotation uses a random roll when rollValue is omitted', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'watch_rotation', partyId, watchers: [{ characterId: 'watcher-random' }] })
+    const r = await handlePartyManage(db(), {
+      action: 'watch_rotation',
+      partyId,
+      watchers: [{ characterId: 'watcher-random' }],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.results[0].roll).toBeGreaterThanOrEqual(1)
   })
@@ -418,7 +617,12 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   it('cohesion_check applies stress and cooperation modifiers', async () => {
     const partyId = await createParty()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
-    const r = await handlePartyManage(db(), { action: 'cohesion_check', partyId, stressModifier: -5, cooperationModifier: 3 })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_check',
+      partyId,
+      stressModifier: -5,
+      cooperationModifier: 3,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.total).toBe(body.roll - 5 + 3)
   })
@@ -476,7 +680,11 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('group_break with method:abandonment records method', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'group_break', partyId, method: 'abandonment' })
+    const r = await handlePartyManage(db(), {
+      action: 'group_break',
+      partyId,
+      method: 'abandonment',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.method).toBe('abandonment')
     expect(body.status).toBe('broken')
@@ -529,21 +737,33 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
   })
 
   it('cohesion_shift errors for a nonexistent party', async () => {
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId: 'nope', eventType: 'shared_kill' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId: 'nope',
+      eventType: 'shared_kill',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('cohesion_shift errors on an unknown eventType', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'nonsense' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'nonsense',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
 
   it('cohesion_shift shared_kill applies +8', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'shared_kill' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'shared_kill',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.cohesionScore).toBe(58)
@@ -551,70 +771,110 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
 
   it('cohesion_shift saved_member applies +12', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'saved_member',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(62)
   })
 
   it('cohesion_shift supply_theft_discovered applies -12 and clamps', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'supply_theft_discovered' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'supply_theft_discovered',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(38)
   })
 
   it('cohesion_shift starvation applies -4', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'starvation' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'starvation',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(46)
   })
 
   it('cohesion_shift partner_injured applies -6', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'partner_injured' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'partner_injured',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(44)
   })
 
   it('cohesion_shift moral_disagreement applies -8', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'moral_disagreement' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'moral_disagreement',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(42)
   })
 
   it('cohesion_shift voluntary_share applies +5', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'voluntary_share' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'voluntary_share',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(55)
   })
 
   it('cohesion_shift joint_discovery applies +5', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'joint_discovery' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'joint_discovery',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(55)
   })
 
   it('cohesion_shift successful_trade applies +4', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'successful_trade' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'successful_trade',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(54)
   })
 
   it('cohesion_shift audience_interference applies -5', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'audience_interference' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'audience_interference',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(45)
   })
 
   it('cohesion_shift predator_attack applies -6', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'predator_attack' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'predator_attack',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(44)
   })
@@ -623,16 +883,28 @@ describe('handlePartyManage — Party Trust & Betrayal (#285)', () => {
     const partyId = await createParty()
     // Apply multiple positive shifts to hit ceiling
     for (let i = 0; i < 10; i++) {
-      await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+      await handlePartyManage(db(), {
+        action: 'cohesion_shift',
+        partyId,
+        eventType: 'saved_member',
+      })
     }
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'saved_member' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'saved_member',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.cohesionScore).toBe(100)
   })
 
   it('cohesion_shift returns event note', async () => {
     const partyId = await createParty()
-    const r = await handlePartyManage(db(), { action: 'cohesion_shift', partyId, eventType: 'shared_kill' })
+    const r = await handlePartyManage(db(), {
+      action: 'cohesion_shift',
+      partyId,
+      eventType: 'shared_kill',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.note).toBeTruthy()
   })

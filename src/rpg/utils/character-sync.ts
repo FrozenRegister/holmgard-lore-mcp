@@ -16,14 +16,16 @@ import { formatD1CharToKv } from './kv-to-d1'
 export async function syncCharacterToKv(
   env: AppBindings,
   charId: string,
-  slug?: string
+  slug?: string,
 ): Promise<string | null> {
   if (!env.LORE_DB) return null
   if (!env.RPG_DB) return null
 
   try {
     // Fetch D1 character
-    const row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?').bind(charId).first()
+    const row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?')
+      .bind(charId)
+      .first()
     if (!row) return null
 
     // Generate KV projection
@@ -64,9 +66,9 @@ export async function syncAllCharactersToKv(env: AppBindings): Promise<number> {
   if (!env.RPG_DB || !env.LORE_DB) return 0
 
   try {
-    const rows = await env.RPG_DB.prepare(
-      'SELECT id, name FROM characters ORDER BY name ASC'
-    ).all() as { results: Array<Record<string, unknown>> }
+    const rows = (await env.RPG_DB.prepare(
+      'SELECT id, name FROM characters ORDER BY name ASC',
+    ).all()) as { results: Array<Record<string, unknown>> }
 
     let synced = 0
     for (const row of rows.results || []) {

@@ -19,7 +19,9 @@ describe('wsReconnectRateLimit', () => {
   }
 
   it('passes through non-websocket requests', async () => {
-    const ctx = makeCtx({ req: { header: (key: string) => key === 'Upgrade' ? undefined : '1.2.3.4' } })
+    const ctx = makeCtx({
+      req: { header: (key: string) => (key === 'Upgrade' ? undefined : '1.2.3.4') },
+    })
     await wsReconnectRateLimit(ctx, async () => 'ok')
   })
 
@@ -29,7 +31,9 @@ describe('wsReconnectRateLimit', () => {
   })
 
   it('allows requests under the reconnect limit', async () => {
-    const ctx = makeCtx({ req: { header: (key: string) => key === 'CF-Connecting-IP' ? '10.0.0.1' : 'websocket' } })
+    const ctx = makeCtx({
+      req: { header: (key: string) => (key === 'CF-Connecting-IP' ? '10.0.0.1' : 'websocket') },
+    })
     await wsReconnectRateLimit(ctx, async () => 'ok')
   })
 

@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## When conventions are missing, default to best practice — always
+
+If asked to add a new tool, workflow, dependency, or convention and this repo has no established pattern to
+follow (or the existing pattern is clearly non-standard), don't invent something ad hoc or pick whatever's
+fastest to wire up. Research and default to the current, widely-accepted best practice for this stack
+(Node/TypeScript/Cloudflare Workers), and briefly state why that's the choice before implementing — the human
+maintaining this repo may not know what the standard approach is and is relying on you to surface it, not to
+silently pick something workable. This applies generally, not just to code: CI/CD setup, tooling choices,
+config file conventions, dependency selection, etc. Example: this repo had no code formatter at all until an
+explicit ask surfaced it — Prettier + `eslint-config-prettier` (see below) is the standard pairing, not a
+one-off choice.
+
 ## Commands
 
 ```bash
@@ -11,6 +23,8 @@ pnpm test:live                   # run live production smoke tests (vitest run -
 pnpm test -- --reporter=verbose  # Workers test output with per-test names
 pnpm run type-check              # TypeScript type checking
 pnpm run lint                    # ESLint validation
+pnpm run format                  # Prettier auto-fix (src/, tests/, scripts/, root .ts/.mjs configs)
+pnpm run format:check            # Prettier check only, no writes
 pnpm run build                   # wrangler deploy --dry-run --outdir dist (bundle check)
 pnpm run deploy                  # wrangler deploy to Cloudflare
 wrangler dev                     # local dev server (uses wrangler.jsonc main)
@@ -43,13 +57,16 @@ What this means in practice:
 
 ### Automated Setup (Recommended)
 
-Enable the git hook so the fast checks run automatically on every commit:
+The git hook is enabled automatically — `pnpm install` runs `scripts/setup-git-hooks.mjs` via the `prepare`
+lifecycle script, which sets `core.hooksPath` to `scripts/` so the fast checks run on every commit with no
+manual step. If you ever need to (re)do it by hand:
 
 ```powershell
 git config core.hooksPath scripts
 ```
 
-The hook runs in `-SkipTests` mode by default under this policy — it validates type-check and markdown formatting, but leaves the full suite to CI.
+The hook runs in `-SkipTests` mode by default under this policy — it validates test file layout, type-check,
+and markdown formatting, but leaves the full suite to CI.
 
 ### Manual Validation
 
@@ -66,10 +83,12 @@ The hook runs in `-SkipTests` mode by default under this policy — it validates
 | **TypeScript type checking** (`pnpm run type-check`) | Local + CI | Fast; always run locally |
 | **Lint** (`pnpm run lint`) | Local + CI | Fast; always run locally |
 | **Markdown** (`pnpm fix:md`) | Local + CI | Auto-fixes where possible |
+| **Code formatting** (`pnpm run format`) | Local + CI | Prettier. Not a required gate — the `Auto-fix Code Formatting` CI workflow pushes a fix commit to the PR branch automatically, same pattern as markdown |
 | **Changelog fragment** | CI | **Required if you modify `src/`, `docs/`, `wrangler.jsonc`, or `CLAUDE.md`**. Add a `.md` file under `.changelog/fragments/`. Fragments are assembled at release time — no merge conflicts. |
 | **Touched test file(s)** | Local | `pnpm test -- tests/worker/<file>.test.ts` for the area you changed |
 | **Full test suite** (Node 20 + 22 matrix) | **CI** | Slow locally; CI runs both versions in parallel |
 | **Coverage** (100% patch, istanbul) | **CI** | `coverage` CI job is the enforced gate — fails if patch coverage drops below 100%. Codecov upload is advisory only. |
+| **Coverage gaps backlog** | CI (push to `main` only) | `scripts/report-coverage-gaps.mjs` updates the pinned [Coverage Gaps (auto-updated)](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/504) issue with the current worst-covered files, sorted worst-first — a standing, agent-actionable backlog for downtime. Not a merge gate. |
 | **Documentation** | CI | PRs must either modify `docs/` files OR include a `## Documentation` section in PR body. Dependencies-only and internal refactors can use `skip-quality-checks` label. |
 
 ### Pre-Commit Checklist (Before Pushing)

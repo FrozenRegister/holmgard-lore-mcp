@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -69,7 +77,10 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
   })
 
   it('advance_state_stage reads embedded Stage-2-of-4 in Status and advances to Stage-3-of-4', async () => {
-    const res = await callTool('entity_manage', { action: 'advance_stage', entity_key: 'entity:subject-alpha' })
+    const res = await callTool('entity_manage', {
+      action: 'advance_stage',
+      entity_key: 'entity:subject-alpha',
+    })
     expect(res.result.advanced).toBe(true)
     expect(res.result.old_stage).toBe(2)
     expect(res.result.new_stage).toBe(3)
@@ -81,12 +92,12 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
   })
 
   it('resolve_interaction normalizes integer Weight-1:85/Weight-2:55 from ## Weights section', async () => {
-    await seedKV('entity:actor-stub', [
-      '## Weights',
-      'Weight-1 (Drive): 85',
-      'Weight-2 (Vulnerability): 10',
-      'State-Level: 0',
-    ].join('\n'))
+    await seedKV(
+      'entity:actor-stub',
+      ['## Weights', 'Weight-1 (Drive): 85', 'Weight-2 (Vulnerability): 10', 'State-Level: 0'].join(
+        '\n',
+      ),
+    )
     const res = await callTool('entity_manage', {
       action: 'resolve_interaction',
       entity_a_id: 'entity:actor-stub',
@@ -103,14 +114,20 @@ describe('canonical fixture — entity:subject-alpha (active Stage-2-of-4)', () 
   })
 
   it('thread_tick finds entity:subject-alpha via Thread field in ## State Machine section', async () => {
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'primary-processing-cycle',
+    })
     expect(res.result.metadata.entities_ticked).toBe(1)
     const lore = await callTool('lore_manage', { action: 'get', query: 'entity:subject-alpha' })
     expect(lore.result.text).toContain('Timeline-Value: 11')
   })
 
   it('get_sensory_profile reads Sound-Signature and Visual-Descriptors from canonical section', async () => {
-    const res = await callTool('entity_manage', { action: 'get_sensory_profile', entity_key: 'entity:subject-alpha' })
+    const res = await callTool('entity_manage', {
+      action: 'get_sensory_profile',
+      entity_key: 'entity:subject-alpha',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.profile.sound_signature).toContain('elevated-respiration')
     expect(res.result.profile.visual_descriptors).toContain('lean-musculature')

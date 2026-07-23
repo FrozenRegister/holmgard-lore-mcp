@@ -1,38 +1,40 @@
-import { describe, it, expect } from 'vitest';
-import entityReads from '../../../src/api/entity-reads';
+import { describe, it, expect } from 'vitest'
+import entityReads from '../../../src/api/entity-reads'
 
 // Minimal D1 mock — returns pre-seeded rows for .all()
 function createMockD1(rows: Record<string, unknown[]> = {}) {
   return {
     prepare: (sql: string) => {
-      const tableMatch = sql.match(/FROM\s+(\w+)/i);
-      const table = tableMatch?.[1] ?? '';
-      const data = rows[table] ?? [];
+      const tableMatch = sql.match(/FROM\s+(\w+)/i)
+      const table = tableMatch?.[1] ?? ''
+      const data = rows[table] ?? []
       return {
         all: async () => ({ results: data }),
         first: async () => data[0] ?? null,
         run: async () => ({ success: true, meta: {} }),
-        bind: function (..._args: unknown[]) { return this; },
-      };
+        bind: function (..._args: unknown[]) {
+          return this
+        },
+      }
     },
-  };
+  }
 }
 
-const TEST_ADMIN_SECRET = 'test-secret-123'; // must match vitest.config.ts bindings
+const TEST_ADMIN_SECRET = 'test-secret-123' // must match vitest.config.ts bindings
 
 // Build an env object. Always includes ADMIN_SECRET so PATCH auth works.
 // Passing a truthy RPG_DB mock overrides the miniflare binding for that request.
 function makeEnv(db: unknown, adminSecret = TEST_ADMIN_SECRET) {
-  return { RPG_DB: db, ADMIN_SECRET: adminSecret } as any;
+  return { RPG_DB: db, ADMIN_SECRET: adminSecret } as any
 }
 
 // Env with an empty mock D1 for PATCH tests that just need auth + validation
 function makeAdminEnv(wrongSecret = false) {
-  return makeEnv(createMockD1({}), wrongSecret ? 'wrong' : TEST_ADMIN_SECRET);
+  return makeEnv(createMockD1({}), wrongSecret ? 'wrong' : TEST_ADMIN_SECRET)
 }
 
 function makeRequest(path: string) {
-  return new Request(`http://localhost${path}`);
+  return new Request(`http://localhost${path}`)
 }
 
 // ── Characters ────────────────────────────────────────────────────────────────
@@ -41,49 +43,65 @@ describe('GET /characters', () => {
   it('returns characters list with total', async () => {
     const db = createMockD1({
       characters: [
-        { id: 'c1', name: 'Aldric', character_type: 'pc', character_class: 'fighter',
-          race: 'Human', level: 5, hp: 42, max_hp: 60, faction_id: null, kv_origin: 'character:aldric' },
+        {
+          id: 'c1',
+          name: 'Aldric',
+          character_type: 'pc',
+          character_class: 'fighter',
+          race: 'Human',
+          level: 5,
+          hp: 42,
+          max_hp: 60,
+          faction_id: null,
+          kv_origin: 'character:aldric',
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.characters).toHaveLength(1);
-    expect(body.characters[0].name).toBe('Aldric');
-    expect(body.total).toBe(1);
-  });
+    })
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.characters).toHaveLength(1)
+    expect(body.characters[0].name).toBe('Aldric')
+    expect(body.total).toBe(1)
+  })
 
   it('returns empty list when no characters exist', async () => {
-    const db = createMockD1({ characters: [] });
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.characters).toHaveLength(0);
-    expect(body.total).toBe(0);
-  });
+    const db = createMockD1({ characters: [] })
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.characters).toHaveLength(0)
+    expect(body.total).toBe(0)
+  })
 
   it('normalises missing fields to defaults', async () => {
     const db = createMockD1({
       characters: [{ id: 'c2' }],
-    });
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    const char = body.characters[0];
-    expect(char.name).toBe('Unknown');
-    expect(char.character_type).toBe('npc');
-    expect(char.level).toBe(1);
-    expect(char.kv_origin).toBeNull();
-  });
+    })
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    const char = body.characters[0]
+    expect(char.name).toBe('Unknown')
+    expect(char.character_type).toBe('npc')
+    expect(char.level).toBe(1)
+    expect(char.kv_origin).toBeNull()
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ all: async () => { throw new Error('D1 boom'); } }) };
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 boom');
-  });
-});
+    const db = {
+      prepare: () => ({
+        all: async () => {
+          throw new Error('D1 boom')
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 boom')
+  })
+})
 
 // ── GET /characters/:id ───────────────────────────────────────────────────────
 
@@ -91,52 +109,71 @@ describe('GET /characters/:id', () => {
   it('returns a single character by id', async () => {
     const db = createMockD1({
       characters: [
-        { id: 'abc-123', name: 'Aldric', character_type: 'pc', character_class: 'fighter',
-          race: 'Human', level: 5, hp: 42, max_hp: 60, ac: 16,
-          alignment: 'Neutral Good', background: 'Soldier',
-          faction_id: null, kv_origin: 'character:aldric' },
+        {
+          id: 'abc-123',
+          name: 'Aldric',
+          character_type: 'pc',
+          character_class: 'fighter',
+          race: 'Human',
+          level: 5,
+          hp: 42,
+          max_hp: 60,
+          ac: 16,
+          alignment: 'Neutral Good',
+          background: 'Soldier',
+          faction_id: null,
+          kv_origin: 'character:aldric',
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/characters/abc-123'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.character.name).toBe('Aldric');
-    expect(body.character.ac).toBe(16);
-    expect(body.character.alignment).toBe('Neutral Good');
-    expect(body.character.background).toBe('Soldier');
-  });
+    })
+    const res = await entityReads.request(
+      makeRequest('/characters/abc-123'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.character.name).toBe('Aldric')
+    expect(body.character.ac).toBe(16)
+    expect(body.character.alignment).toBe('Neutral Good')
+    expect(body.character.background).toBe('Soldier')
+  })
 
   it('returns 404 when character not found', async () => {
-    const db = createMockD1({ characters: [] });
-    const res = await entityReads.request(makeRequest('/characters/missing-id'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-    const body = await res.json() as any;
-    expect(body.error).toBe('Not found');
-  });
+    const db = createMockD1({ characters: [] })
+    const res = await entityReads.request(
+      makeRequest('/characters/missing-id'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as any
+    expect(body.error).toBe('Not found')
+  })
 
   it('normalises missing optional fields', async () => {
-    const db = createMockD1({ characters: [{ id: 'x1', name: 'Unknown' }] });
-    const res = await entityReads.request(makeRequest('/characters/x1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.character.ac).toBe(10);
-    expect(body.character.alignment).toBeNull();
-    expect(body.character.background).toBeNull();
-  });
+    const db = createMockD1({ characters: [{ id: 'x1', name: 'Unknown' }] })
+    const res = await entityReads.request(makeRequest('/characters/x1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.character.ac).toBe(10)
+    expect(body.character.alignment).toBeNull()
+    expect(body.character.background).toBeNull()
+  })
 
   it('normalises a partially populated row, preserving present fields', async () => {
     const db = createMockD1({
       characters: [{ id: 'p1', name: 'Partial', level: 7, hp: null, max_hp: null, ac: null }],
-    });
-    const res = await entityReads.request(makeRequest('/characters/p1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.character.level).toBe(7);   // present — preserved
-    expect(body.character.hp).toBe(0);       // null → default 0
-    expect(body.character.max_hp).toBe(0);
-    expect(body.character.ac).toBe(10);      // null → default 10
-  });
-});
+    })
+    const res = await entityReads.request(makeRequest('/characters/p1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.character.level).toBe(7) // present — preserved
+    expect(body.character.hp).toBe(0) // null → default 0
+    expect(body.character.max_hp).toBe(0)
+    expect(body.character.ac).toBe(10) // null → default 10
+  })
+})
 
 // ── PATCH /characters/:id ─────────────────────────────────────────────────────
 // These tests use the miniflare-provided env (no custom env override) so that
@@ -153,9 +190,9 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(401);
-  });
+    )
+    expect(res.status).toBe(401)
+  })
 
   it('returns 401 with wrong admin secret', async () => {
     const res = await entityReads.request(
@@ -166,9 +203,9 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(401);
-  });
+    )
+    expect(res.status).toBe(401)
+  })
 
   it('returns 400 when only non-patchable fields provided', async () => {
     const res = await entityReads.request(
@@ -179,11 +216,11 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(400);
-    const body = await res.json() as any;
-    expect(body.error).toContain('No patchable fields');
-  });
+    )
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('No patchable fields')
+  })
 
   it('returns 200 for valid patch with correct secret', async () => {
     const res = await entityReads.request(
@@ -194,11 +231,11 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.ok).toBe(true);
-  });
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.ok).toBe(true)
+  })
 
   it('returns 400 for malformed JSON body', async () => {
     const res = await entityReads.request(
@@ -209,9 +246,9 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(400);
-  });
+    )
+    expect(res.status).toBe(400)
+  })
 
   it('returns 200 when only a single patchable field is provided', async () => {
     const res = await entityReads.request(
@@ -222,11 +259,11 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.ok).toBe(true);
-  });
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.ok).toBe(true)
+  })
 
   it('accepts X-Api-Key as a fallback auth header', async () => {
     const res = await entityReads.request(
@@ -237,9 +274,9 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(200);
-  });
+    )
+    expect(res.status).toBe(200)
+  })
 
   it('returns 200 for a non-existent character id (no affected-rows check)', async () => {
     // UPDATE silently affects 0 rows; the endpoint does not validate meta.changes
@@ -251,11 +288,11 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.ok).toBe(true);
-  });
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.ok).toBe(true)
+  })
 
   it('silently drops non-patchable fields when mixed with patchable ones', async () => {
     // id and kv_origin are blocked by PATCHABLE_FIELDS; level is allowed — should succeed
@@ -267,9 +304,9 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeAdminEnv(),
-    );
-    expect(res.status).toBe(200);
-  });
+    )
+    expect(res.status).toBe(200)
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
     const res = await entityReads.request(
@@ -280,17 +317,21 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeEnv(null),
-    );
-    expect(res.status).toBe(503);
-  });
+    )
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when the UPDATE query throws', async () => {
     const throwingDb = {
       prepare: () => ({
-        run: async () => { throw new Error('D1 update fail'); },
-        bind: function () { return this as any; },
+        run: async () => {
+          throw new Error('D1 update fail')
+        },
+        bind: function () {
+          return this as any
+        },
       }),
-    };
+    }
     const res = await entityReads.request(
       new Request('http://localhost/characters/c1', {
         method: 'PATCH',
@@ -299,34 +340,38 @@ describe('PATCH /characters/:id', () => {
       }),
       undefined,
       makeEnv(throwingDb),
-    );
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 update fail');
-  });
-});
+    )
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 update fail')
+  })
+})
 
 // ── GET /characters/:id — error paths ─────────────────────────────────────────
 
 describe('GET /characters/:id — error paths', () => {
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
     const db = {
       prepare: () => ({
-        first: async () => { throw new Error('D1 fail'); },
-        bind: function () { return this as any; },
+        first: async () => {
+          throw new Error('D1 fail')
+        },
+        bind: function () {
+          return this as any
+        },
       }),
-    };
-    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 fail');
-  });
-});
+    }
+    const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 fail')
+  })
+})
 
 // ── Locations ─────────────────────────────────────────────────────────────────
 
@@ -334,124 +379,150 @@ describe('GET /locations', () => {
   it('returns locations list', async () => {
     const db = createMockD1({
       room_nodes: [
-        { id: 'r1', name: 'Eastgate', biome_context: 'urban', visited_count: 3, last_visited_at: null },
+        {
+          id: 'r1',
+          name: 'Eastgate',
+          biome_context: 'urban',
+          visited_count: 3,
+          last_visited_at: null,
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.locations[0].name).toBe('Eastgate');
-    expect(body.total).toBe(1);
-  });
+    })
+    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.locations[0].name).toBe('Eastgate')
+    expect(body.total).toBe(1)
+  })
 
   it('returns empty list when no locations exist', async () => {
-    const db = createMockD1({ room_nodes: [] });
-    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.locations).toHaveLength(0);
-  });
+    const db = createMockD1({ room_nodes: [] })
+    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.locations).toHaveLength(0)
+  })
 
   it('normalises null biome_context and zero visited_count', async () => {
-    const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] });
-    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.locations[0].biome_context).toBeNull();
-    expect(body.locations[0].visited_count).toBe(0);
-  });
-});
+    const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] })
+    const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.locations[0].biome_context).toBeNull()
+    expect(body.locations[0].visited_count).toBe(0)
+  })
+})
 
 // ── Nations ───────────────────────────────────────────────────────────────────
 
 describe('GET /nations', () => {
   it('returns nations list', async () => {
     const db = createMockD1({
-      nations: [{ id: 'n1', name: 'Holmgard', leader: 'King Ulf', ideology: 'monarchy',
-        aggression: 30, trust: 70, paranoia: 20, gdp: 5000 }],
-    });
-    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.nations[0].leader).toBe('King Ulf');
-    expect(body.total).toBe(1);
-  });
+      nations: [
+        {
+          id: 'n1',
+          name: 'Holmgard',
+          leader: 'King Ulf',
+          ideology: 'monarchy',
+          aggression: 30,
+          trust: 70,
+          paranoia: 20,
+          gdp: 5000,
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.nations[0].leader).toBe('King Ulf')
+    expect(body.total).toBe(1)
+  })
 
   it('returns empty list when no nations exist', async () => {
-    const db = createMockD1({ nations: [] });
-    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.nations).toHaveLength(0);
-  });
+    const db = createMockD1({ nations: [] })
+    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.nations).toHaveLength(0)
+  })
 
   it('normalises missing numeric fields to defaults', async () => {
-    const db = createMockD1({ nations: [{ id: 'n2', name: 'Anon' }] });
-    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.nations[0].aggression).toBe(50);
-    expect(body.nations[0].gdp).toBe(0);
-  });
-});
+    const db = createMockD1({ nations: [{ id: 'n2', name: 'Anon' }] })
+    const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.nations[0].aggression).toBe(50)
+    expect(body.nations[0].gdp).toBe(0)
+  })
+})
 
 // ── Regions ───────────────────────────────────────────────────────────────────
 
 describe('GET /regions', () => {
   it('returns regions list', async () => {
     const db = createMockD1({
-      regions: [{ id: 'reg1', name: 'Northern Reaches', type: 'wilderness', owner_nation_id: 'n1' }],
-    });
-    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.regions[0].name).toBe('Northern Reaches');
-  });
+      regions: [
+        { id: 'reg1', name: 'Northern Reaches', type: 'wilderness', owner_nation_id: 'n1' },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.regions[0].name).toBe('Northern Reaches')
+  })
 
   it('returns empty list when no regions exist', async () => {
-    const db = createMockD1({ regions: [] });
-    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.regions).toHaveLength(0);
-  });
+    const db = createMockD1({ regions: [] })
+    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.regions).toHaveLength(0)
+  })
 
   it('normalises null owner_nation_id', async () => {
-    const db = createMockD1({ regions: [{ id: 'reg2', name: 'Wild' }] });
-    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.regions[0].owner_nation_id).toBeNull();
-  });
-});
+    const db = createMockD1({ regions: [{ id: 'reg2', name: 'Wild' }] })
+    const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.regions[0].owner_nation_id).toBeNull()
+  })
+})
 
 // ── Quests ────────────────────────────────────────────────────────────────────
 
 describe('GET /quests', () => {
   it('returns quests list', async () => {
     const db = createMockD1({
-      quests: [{ id: 'q1', name: 'The Lost Sword', description: 'Find it.', status: 'active', giver: 'Aldric' }],
-    });
-    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.quests[0].name).toBe('The Lost Sword');
-    expect(body.total).toBe(1);
-  });
+      quests: [
+        {
+          id: 'q1',
+          name: 'The Lost Sword',
+          description: 'Find it.',
+          status: 'active',
+          giver: 'Aldric',
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.quests[0].name).toBe('The Lost Sword')
+    expect(body.total).toBe(1)
+  })
 
   it('returns empty list when no quests exist', async () => {
-    const db = createMockD1({ quests: [] });
-    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.quests).toHaveLength(0);
-  });
+    const db = createMockD1({ quests: [] })
+    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.quests).toHaveLength(0)
+  })
 
   it('normalises null giver and empty status', async () => {
-    const db = createMockD1({ quests: [{ id: 'q2', name: 'Unknown Quest' }] });
-    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.quests[0].giver).toBeNull();
-    expect(body.quests[0].status).toBe('');
-  });
-});
+    const db = createMockD1({ quests: [{ id: 'q2', name: 'Unknown Quest' }] })
+    const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.quests[0].giver).toBeNull()
+    expect(body.quests[0].status).toBe('')
+  })
+})
 
 // ── Items ─────────────────────────────────────────────────────────────────────
 
@@ -459,30 +530,30 @@ describe('GET /items', () => {
   it('returns items list', async () => {
     const db = createMockD1({
       items: [{ id: 'i1', name: 'Iron Crown', type: 'artifact', value: 5000, weight: 2 }],
-    });
-    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.items[0].name).toBe('Iron Crown');
-    expect(body.total).toBe(1);
-  });
+    })
+    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.items[0].name).toBe('Iron Crown')
+    expect(body.total).toBe(1)
+  })
 
   it('returns empty list when no items exist', async () => {
-    const db = createMockD1({ items: [] });
-    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.items).toHaveLength(0);
-  });
+    const db = createMockD1({ items: [] })
+    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.items).toHaveLength(0)
+  })
 
   it('normalises missing value and weight to 0', async () => {
-    const db = createMockD1({ items: [{ id: 'i2', name: 'Mystery Box' }] });
-    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.items[0].value).toBe(0);
-    expect(body.items[0].weight).toBe(0);
-  });
-});
+    const db = createMockD1({ items: [{ id: 'i2', name: 'Mystery Box' }] })
+    const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.items[0].value).toBe(0)
+    expect(body.items[0].weight).toBe(0)
+  })
+})
 
 // ── GET /characters/:id/relationships ─────────────────────────────────────────
 
@@ -490,62 +561,102 @@ describe('GET /characters/:id/relationships', () => {
   it('returns npc_relationships and party_members', async () => {
     const db = createMockD1({
       npc_relationships: [
-        { target_id: 'c2', target_name: 'Elara', target_type: 'pc', target_kv_origin: 'character:elara',
-          familiarity: 'friend', disposition: 'friendly', interaction_count: 7, last_interaction_at: '2026-01-01' },
+        {
+          target_id: 'c2',
+          target_name: 'Elara',
+          target_type: 'pc',
+          target_kv_origin: 'character:elara',
+          familiarity: 'friend',
+          disposition: 'friendly',
+          interaction_count: 7,
+          last_interaction_at: '2026-01-01',
+        },
       ],
       party_members: [
-        { character_id: 'c3', name: 'Borgil', character_type: 'npc', kv_origin: null,
-          role: 'member', party_id: 'p1', party_name: 'The Wanderers' },
+        {
+          character_id: 'c3',
+          name: 'Borgil',
+          character_type: 'npc',
+          kv_origin: null,
+          role: 'member',
+          party_id: 'p1',
+          party_name: 'The Wanderers',
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.npc_relationships).toHaveLength(1);
-    expect(body.npc_relationships[0].target_name).toBe('Elara');
-    expect(body.npc_relationships[0].familiarity).toBe('friend');
-    expect(body.npc_relationships[0].disposition).toBe('friendly');
-    expect(body.npc_relationships[0].interaction_count).toBe(7);
-    expect(body.npc_relationships[0].target_kv_origin).toBe('character:elara');
-    expect(body.party_members).toHaveLength(1);
-    expect(body.party_members[0].name).toBe('Borgil');
-    expect(body.party_members[0].role).toBe('member');
-    expect(body.party_members[0].party_name).toBe('The Wanderers');
-  });
+    })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/relationships'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.npc_relationships).toHaveLength(1)
+    expect(body.npc_relationships[0].target_name).toBe('Elara')
+    expect(body.npc_relationships[0].familiarity).toBe('friend')
+    expect(body.npc_relationships[0].disposition).toBe('friendly')
+    expect(body.npc_relationships[0].interaction_count).toBe(7)
+    expect(body.npc_relationships[0].target_kv_origin).toBe('character:elara')
+    expect(body.party_members).toHaveLength(1)
+    expect(body.party_members[0].name).toBe('Borgil')
+    expect(body.party_members[0].role).toBe('member')
+    expect(body.party_members[0].party_name).toBe('The Wanderers')
+  })
 
   it('returns empty arrays when character has no relationships or party', async () => {
-    const db = createMockD1({ npc_relationships: [], party_members: [] });
-    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.npc_relationships).toHaveLength(0);
-    expect(body.party_members).toHaveLength(0);
-  });
+    const db = createMockD1({ npc_relationships: [], party_members: [] })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/relationships'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.npc_relationships).toHaveLength(0)
+    expect(body.party_members).toHaveLength(0)
+  })
 
   it('normalises missing relationship fields to defaults', async () => {
     const db = createMockD1({
       npc_relationships: [{ target_id: 'c9' }],
       party_members: [],
-    });
-    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    const rel = body.npc_relationships[0];
-    expect(rel.target_name).toBe('Unknown');
-    expect(rel.familiarity).toBe('stranger');
-    expect(rel.disposition).toBe('neutral');
-    expect(rel.interaction_count).toBe(0);
-    expect(rel.target_kv_origin).toBeNull();
-    expect(rel.last_interaction_at).toBeNull();
-  });
+    })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/relationships'),
+      undefined,
+      makeEnv(db),
+    )
+    const body = (await res.json()) as any
+    const rel = body.npc_relationships[0]
+    expect(rel.target_name).toBe('Unknown')
+    expect(rel.familiarity).toBe('stranger')
+    expect(rel.disposition).toBe('neutral')
+    expect(rel.interaction_count).toBe(0)
+    expect(rel.target_kv_origin).toBeNull()
+    expect(rel.last_interaction_at).toBeNull()
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ all: async () => { throw new Error('D1 rel fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/characters/c1/relationships'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 rel fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        all: async () => {
+          throw new Error('D1 rel fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/relationships'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 rel fail')
+  })
+})
 
 // ── GET /characters/:id/inventory ─────────────────────────────────────────────
 
@@ -553,56 +664,99 @@ describe('GET /characters/:id/inventory', () => {
   it('returns inventory items with equipped and slot', async () => {
     const db = createMockD1({
       inventory_items: [
-        { item_id: 'i1', name: 'Iron Sword', type: 'weapon', quantity: 1, equipped: 1, slot: 'main_hand', value: 50, weight: 5 },
-        { item_id: 'i2', name: 'Health Potion', type: 'consumable', quantity: 3, equipped: 0, slot: null, value: 25, weight: 0 },
+        {
+          item_id: 'i1',
+          name: 'Iron Sword',
+          type: 'weapon',
+          quantity: 1,
+          equipped: 1,
+          slot: 'main_hand',
+          value: 50,
+          weight: 5,
+        },
+        {
+          item_id: 'i2',
+          name: 'Health Potion',
+          type: 'consumable',
+          quantity: 3,
+          equipped: 0,
+          slot: null,
+          value: 25,
+          weight: 0,
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.items).toHaveLength(2);
-    expect(body.total).toBe(2);
-    expect(body.items[0].name).toBe('Iron Sword');
-    expect(body.items[0].equipped).toBe(true);
-    expect(body.items[0].slot).toBe('main_hand');
-    expect(body.items[0].quantity).toBe(1);
-    expect(body.items[1].name).toBe('Health Potion');
-    expect(body.items[1].equipped).toBe(false);
-    expect(body.items[1].slot).toBeNull();
-    expect(body.items[1].quantity).toBe(3);
-  });
+    })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/inventory'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.items).toHaveLength(2)
+    expect(body.total).toBe(2)
+    expect(body.items[0].name).toBe('Iron Sword')
+    expect(body.items[0].equipped).toBe(true)
+    expect(body.items[0].slot).toBe('main_hand')
+    expect(body.items[0].quantity).toBe(1)
+    expect(body.items[1].name).toBe('Health Potion')
+    expect(body.items[1].equipped).toBe(false)
+    expect(body.items[1].slot).toBeNull()
+    expect(body.items[1].quantity).toBe(3)
+  })
 
   it('returns empty items list when character has no inventory', async () => {
-    const db = createMockD1({ inventory_items: [] });
-    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.items).toHaveLength(0);
-    expect(body.total).toBe(0);
-  });
+    const db = createMockD1({ inventory_items: [] })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/inventory'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.items).toHaveLength(0)
+    expect(body.total).toBe(0)
+  })
 
   it('normalises missing inventory fields to defaults', async () => {
-    const db = createMockD1({ inventory_items: [{ item_id: 'i9' }] });
-    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    const item = body.items[0];
-    expect(item.name).toBe('Unknown');
-    expect(item.type).toBe('');
-    expect(item.quantity).toBe(1);
-    expect(item.equipped).toBe(false);
-    expect(item.slot).toBeNull();
-    expect(item.value).toBe(0);
-    expect(item.weight).toBe(0);
-  });
+    const db = createMockD1({ inventory_items: [{ item_id: 'i9' }] })
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/inventory'),
+      undefined,
+      makeEnv(db),
+    )
+    const body = (await res.json()) as any
+    const item = body.items[0]
+    expect(item.name).toBe('Unknown')
+    expect(item.type).toBe('')
+    expect(item.quantity).toBe(1)
+    expect(item.equipped).toBe(false)
+    expect(item.slot).toBeNull()
+    expect(item.value).toBe(0)
+    expect(item.weight).toBe(0)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ all: async () => { throw new Error('D1 inv fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/characters/c1/inventory'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 inv fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        all: async () => {
+          throw new Error('D1 inv fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(
+      makeRequest('/characters/c1/inventory'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 inv fail')
+  })
+})
 
 // ── current_room_id in character responses ────────────────────────────────────
 
@@ -610,88 +764,104 @@ describe('current_room_id in character responses', () => {
   it('GET /characters returns current_room_id when set', async () => {
     const db = createMockD1({
       characters: [{ id: 'c1', name: 'Aldric', current_room_id: 'room-east', kv_origin: null }],
-    });
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.characters[0].current_room_id).toBe('room-east');
-  });
+    })
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.characters[0].current_room_id).toBe('room-east')
+  })
 
   it('GET /characters returns null current_room_id when not set', async () => {
-    const db = createMockD1({ characters: [{ id: 'c2', name: 'Elara' }] });
-    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.characters[0].current_room_id).toBeNull();
-  });
+    const db = createMockD1({ characters: [{ id: 'c2', name: 'Elara' }] })
+    const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.characters[0].current_room_id).toBeNull()
+  })
 
   it('GET /characters/:id returns current_room_id', async () => {
     const db = createMockD1({
       characters: [{ id: 'c3', name: 'Borgil', current_room_id: 'room-keep', kv_origin: null }],
-    });
-    const res = await entityReads.request(makeRequest('/characters/c3'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.character.current_room_id).toBe('room-keep');
-  });
-});
+    })
+    const res = await entityReads.request(makeRequest('/characters/c3'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.character.current_room_id).toBe('room-keep')
+  })
+})
 
 // ── GET /locations/:id ────────────────────────────────────────────────────────
 
 describe('GET /locations/:id', () => {
   it('returns a single location with all fields', async () => {
     const db = createMockD1({
-      room_nodes: [{
-        id: 'r1', name: 'Eastgate', biome_context: 'urban',
-        base_description: 'A bustling market gate.',
-        visited_count: 5, last_visited_at: '2026-01-10',
-        local_x: 12, local_y: 7, network_id: 'net-city',
-      }],
-    });
-    const res = await entityReads.request(makeRequest('/locations/r1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    const loc = body.location;
-    expect(loc.name).toBe('Eastgate');
-    expect(loc.biome_context).toBe('urban');
-    expect(loc.base_description).toBe('A bustling market gate.');
-    expect(loc.visited_count).toBe(5);
-    expect(loc.last_visited_at).toBe('2026-01-10');
-    expect(loc.local_x).toBe(12);
-    expect(loc.local_y).toBe(7);
-    expect(loc.network_id).toBe('net-city');
-  });
+      room_nodes: [
+        {
+          id: 'r1',
+          name: 'Eastgate',
+          biome_context: 'urban',
+          base_description: 'A bustling market gate.',
+          visited_count: 5,
+          last_visited_at: '2026-01-10',
+          local_x: 12,
+          local_y: 7,
+          network_id: 'net-city',
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/locations/r1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    const loc = body.location
+    expect(loc.name).toBe('Eastgate')
+    expect(loc.biome_context).toBe('urban')
+    expect(loc.base_description).toBe('A bustling market gate.')
+    expect(loc.visited_count).toBe(5)
+    expect(loc.last_visited_at).toBe('2026-01-10')
+    expect(loc.local_x).toBe(12)
+    expect(loc.local_y).toBe(7)
+    expect(loc.network_id).toBe('net-city')
+  })
 
   it('returns 404 when location not found', async () => {
-    const db = createMockD1({ room_nodes: [] });
-    const res = await entityReads.request(makeRequest('/locations/missing'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-    const body = await res.json() as any;
-    expect(body.error).toBe('Not found');
-  });
+    const db = createMockD1({ room_nodes: [] })
+    const res = await entityReads.request(makeRequest('/locations/missing'), undefined, makeEnv(db))
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as any
+    expect(body.error).toBe('Not found')
+  })
 
   it('normalises null optional fields', async () => {
-    const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] });
-    const res = await entityReads.request(makeRequest('/locations/r2'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    const loc = body.location;
-    expect(loc.biome_context).toBeNull();
-    expect(loc.base_description).toBeNull();
-    expect(loc.last_visited_at).toBeNull();
-    expect(loc.local_x).toBeNull();
-    expect(loc.local_y).toBeNull();
-    expect(loc.network_id).toBeNull();
-    expect(loc.visited_count).toBe(0);
-  });
+    const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] })
+    const res = await entityReads.request(makeRequest('/locations/r2'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    const loc = body.location
+    expect(loc.biome_context).toBeNull()
+    expect(loc.base_description).toBeNull()
+    expect(loc.last_visited_at).toBeNull()
+    expect(loc.local_x).toBeNull()
+    expect(loc.local_y).toBeNull()
+    expect(loc.network_id).toBeNull()
+    expect(loc.visited_count).toBe(0)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ first: async () => { throw new Error('D1 loc fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/locations/x'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 loc fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        first: async () => {
+          throw new Error('D1 loc fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/locations/x'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 loc fail')
+  })
+})
 
 // ── GET /locations/:id/occupants ──────────────────────────────────────────────
 
@@ -699,187 +869,278 @@ describe('GET /locations/:id/occupants', () => {
   it('returns characters currently in the location', async () => {
     const db = createMockD1({
       characters: [
-        { id: 'c1', name: 'Aldric', character_type: 'pc', character_class: 'fighter',
-          race: 'Human', level: 5, hp: 42, max_hp: 60, ac: 16,
-          alignment: null, background: null, faction_id: null,
-          current_room_id: 'r1', kv_origin: 'character:aldric' },
+        {
+          id: 'c1',
+          name: 'Aldric',
+          character_type: 'pc',
+          character_class: 'fighter',
+          race: 'Human',
+          level: 5,
+          hp: 42,
+          max_hp: 60,
+          ac: 16,
+          alignment: null,
+          background: null,
+          faction_id: null,
+          current_room_id: 'r1',
+          kv_origin: 'character:aldric',
+        },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/locations/r1/occupants'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.occupants).toHaveLength(1);
-    expect(body.total).toBe(1);
-    expect(body.occupants[0].name).toBe('Aldric');
-    expect(body.occupants[0].current_room_id).toBe('r1');
-    expect(body.occupants[0].kv_origin).toBe('character:aldric');
-  });
+    })
+    const res = await entityReads.request(
+      makeRequest('/locations/r1/occupants'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.occupants).toHaveLength(1)
+    expect(body.total).toBe(1)
+    expect(body.occupants[0].name).toBe('Aldric')
+    expect(body.occupants[0].current_room_id).toBe('r1')
+    expect(body.occupants[0].kv_origin).toBe('character:aldric')
+  })
 
   it('returns empty occupants when no characters in location', async () => {
-    const db = createMockD1({ characters: [] });
-    const res = await entityReads.request(makeRequest('/locations/r1/occupants'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.occupants).toHaveLength(0);
-    expect(body.total).toBe(0);
-  });
+    const db = createMockD1({ characters: [] })
+    const res = await entityReads.request(
+      makeRequest('/locations/r1/occupants'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.occupants).toHaveLength(0)
+    expect(body.total).toBe(0)
+  })
 
   it('normalises missing character fields to defaults', async () => {
-    const db = createMockD1({ characters: [{ id: 'cx', current_room_id: 'r1' }] });
-    const res = await entityReads.request(makeRequest('/locations/r1/occupants'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    const occ = body.occupants[0];
-    expect(occ.name).toBe('Unknown');
-    expect(occ.level).toBe(1);
-    expect(occ.kv_origin).toBeNull();
-  });
+    const db = createMockD1({ characters: [{ id: 'cx', current_room_id: 'r1' }] })
+    const res = await entityReads.request(
+      makeRequest('/locations/r1/occupants'),
+      undefined,
+      makeEnv(db),
+    )
+    const body = (await res.json()) as any
+    const occ = body.occupants[0]
+    expect(occ.name).toBe('Unknown')
+    expect(occ.level).toBe(1)
+    expect(occ.kv_origin).toBeNull()
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ all: async () => { throw new Error('D1 occ fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/locations/r1/occupants'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 occ fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        all: async () => {
+          throw new Error('D1 occ fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(
+      makeRequest('/locations/r1/occupants'),
+      undefined,
+      makeEnv(db),
+    )
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 occ fail')
+  })
+})
 
 // ── GET /nations/:id ──────────────────────────────────────────────────────────
 
 describe('GET /nations/:id', () => {
   it('returns nation detail by id', async () => {
     const db = createMockD1({
-      nations: [{ id: 'n1', name: 'Holmgard', leader: 'King Aldric', ideology: 'monarchy', aggression: 40, trust: 60, paranoia: 30, gdp: 12000 }],
-    });
-    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.nation.name).toBe('Holmgard');
-    expect(body.nation.leader).toBe('King Aldric');
-    expect(body.nation.aggression).toBe(40);
-    expect(body.nation.gdp).toBe(12000);
-  });
+      nations: [
+        {
+          id: 'n1',
+          name: 'Holmgard',
+          leader: 'King Aldric',
+          ideology: 'monarchy',
+          aggression: 40,
+          trust: 60,
+          paranoia: 30,
+          gdp: 12000,
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.nation.name).toBe('Holmgard')
+    expect(body.nation.leader).toBe('King Aldric')
+    expect(body.nation.aggression).toBe(40)
+    expect(body.nation.gdp).toBe(12000)
+  })
 
   it('returns 404 when nation not found', async () => {
-    const db = createMockD1({ nations: [] });
-    const res = await entityReads.request(makeRequest('/nations/missing'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-  });
+    const db = createMockD1({ nations: [] })
+    const res = await entityReads.request(makeRequest('/nations/missing'), undefined, makeEnv(db))
+    expect(res.status).toBe(404)
+  })
 
   it('normalises all missing fields to defaults', async () => {
-    const db = createMockD1({ nations: [{}] });
-    const res = await entityReads.request(makeRequest('/nations/x'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.nation.id).toBe('');
-    expect(body.nation.name).toBe('Unknown');
-    expect(body.nation.aggression).toBe(50);
-    expect(body.nation.trust).toBe(50);
-    expect(body.nation.gdp).toBe(0);
-  });
+    const db = createMockD1({ nations: [{}] })
+    const res = await entityReads.request(makeRequest('/nations/x'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.nation.id).toBe('')
+    expect(body.nation.name).toBe('Unknown')
+    expect(body.nation.aggression).toBe(50)
+    expect(body.nation.trust).toBe(50)
+    expect(body.nation.gdp).toBe(0)
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ first: async () => { throw new Error('D1 nation fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 nation fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        first: async () => {
+          throw new Error('D1 nation fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 nation fail')
+  })
+})
 
 // ── GET /regions/:id ──────────────────────────────────────────────────────────
 
 describe('GET /regions/:id', () => {
   it('returns region detail with owner nation name', async () => {
     const db = createMockD1({
-      regions: [{ id: 'reg1', name: 'Northern March', type: 'frontier', owner_nation_id: 'n1', owner_nation_name: 'Holmgard' }],
-    });
-    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.region.name).toBe('Northern March');
-    expect(body.region.type).toBe('frontier');
-    expect(body.region.owner_nation_name).toBe('Holmgard');
-  });
+      regions: [
+        {
+          id: 'reg1',
+          name: 'Northern March',
+          type: 'frontier',
+          owner_nation_id: 'n1',
+          owner_nation_name: 'Holmgard',
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.region.name).toBe('Northern March')
+    expect(body.region.type).toBe('frontier')
+    expect(body.region.owner_nation_name).toBe('Holmgard')
+  })
 
   it('returns 404 when region not found', async () => {
-    const db = createMockD1({ regions: [] });
-    const res = await entityReads.request(makeRequest('/regions/missing'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-  });
+    const db = createMockD1({ regions: [] })
+    const res = await entityReads.request(makeRequest('/regions/missing'), undefined, makeEnv(db))
+    expect(res.status).toBe(404)
+  })
 
   it('normalises all missing fields to defaults and null owner', async () => {
-    const db = createMockD1({ regions: [{ owner_nation_id: null, owner_nation_name: null }] });
-    const res = await entityReads.request(makeRequest('/regions/x'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.region.id).toBe('');
-    expect(body.region.name).toBe('Unknown');
-    expect(body.region.type).toBe('');
-    expect(body.region.owner_nation_id).toBeNull();
-    expect(body.region.owner_nation_name).toBeNull();
-  });
+    const db = createMockD1({ regions: [{ owner_nation_id: null, owner_nation_name: null }] })
+    const res = await entityReads.request(makeRequest('/regions/x'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.region.id).toBe('')
+    expect(body.region.name).toBe('Unknown')
+    expect(body.region.type).toBe('')
+    expect(body.region.owner_nation_id).toBeNull()
+    expect(body.region.owner_nation_name).toBeNull()
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ first: async () => { throw new Error('D1 region fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-    const body = await res.json() as any;
-    expect(body.error).toContain('D1 region fail');
-  });
-});
+    const db = {
+      prepare: () => ({
+        first: async () => {
+          throw new Error('D1 region fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as any
+    expect(body.error).toContain('D1 region fail')
+  })
+})
 
 // ── GET /quests/:id ───────────────────────────────────────────────────────────
 
 describe('GET /quests/:id', () => {
   it('returns quest detail', async () => {
     const db = createMockD1({
-      quests: [{ id: 'q1', name: 'Retrieve the Crown', description: 'Find the Iron Crown.', status: 'active', giver: 'Aldric' }],
-    });
-    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.quest.name).toBe('Retrieve the Crown');
-    expect(body.quest.description).toBe('Find the Iron Crown.');
-    expect(body.quest.status).toBe('active');
-    expect(body.quest.giver).toBe('Aldric');
-  });
+      quests: [
+        {
+          id: 'q1',
+          name: 'Retrieve the Crown',
+          description: 'Find the Iron Crown.',
+          status: 'active',
+          giver: 'Aldric',
+        },
+      ],
+    })
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.quest.name).toBe('Retrieve the Crown')
+    expect(body.quest.description).toBe('Find the Iron Crown.')
+    expect(body.quest.status).toBe('active')
+    expect(body.quest.giver).toBe('Aldric')
+  })
 
   it('returns 404 when quest not found', async () => {
-    const db = createMockD1({ quests: [] });
-    const res = await entityReads.request(makeRequest('/quests/missing'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-  });
+    const db = createMockD1({ quests: [] })
+    const res = await entityReads.request(makeRequest('/quests/missing'), undefined, makeEnv(db))
+    expect(res.status).toBe(404)
+  })
 
   it('normalises all missing fields to defaults and null giver', async () => {
-    const db = createMockD1({ quests: [{}] });
-    const res = await entityReads.request(makeRequest('/quests/x'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.quest.id).toBe('');
-    expect(body.quest.name).toBe('Unknown');
-    expect(body.quest.description).toBe('');
-    expect(body.quest.status).toBe('');
-    expect(body.quest.giver).toBeNull();
-  });
+    const db = createMockD1({ quests: [{}] })
+    const res = await entityReads.request(makeRequest('/quests/x'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.quest.id).toBe('')
+    expect(body.quest.name).toBe('Unknown')
+    expect(body.quest.description).toBe('')
+    expect(body.quest.status).toBe('')
+    expect(body.quest.giver).toBeNull()
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ first: async () => { throw new Error('D1 quest fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-  });
-});
+    const db = {
+      prepare: () => ({
+        first: async () => {
+          throw new Error('D1 quest fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+  })
+})
 
 // ── GET /quests/:id/log ───────────────────────────────────────────────────────
 
@@ -890,44 +1151,53 @@ describe('GET /quests/:id/log', () => {
         { id: 'ql1', note: 'Quest received from Aldric.', created_at: '2026-01-01' },
         { id: 'ql2', note: 'Crown located in the Vault.', created_at: '2026-01-05' },
       ],
-    });
-    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.entries).toHaveLength(2);
-    expect(body.entries[0].note).toBe('Quest received from Aldric.');
-    expect(body.entries[1].created_at).toBe('2026-01-05');
-    expect(body.total).toBe(2);
-  });
+    })
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.entries).toHaveLength(2)
+    expect(body.entries[0].note).toBe('Quest received from Aldric.')
+    expect(body.entries[1].created_at).toBe('2026-01-05')
+    expect(body.total).toBe(2)
+  })
 
   it('returns empty entries when no log exists', async () => {
-    const db = createMockD1({ quest_logs: [] });
-    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.entries).toHaveLength(0);
-  });
+    const db = createMockD1({ quest_logs: [] })
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.entries).toHaveLength(0)
+  })
 
   it('normalises all missing log fields to empty strings', async () => {
-    const db = createMockD1({ quest_logs: [{}] });
-    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.entries[0].id).toBe('');
-    expect(body.entries[0].note).toBe('');
-    expect(body.entries[0].created_at).toBe('');
-  });
+    const db = createMockD1({ quest_logs: [{}] })
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.entries[0].id).toBe('')
+    expect(body.entries[0].note).toBe('')
+    expect(body.entries[0].created_at).toBe('')
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ all: async () => { throw new Error('D1 log fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-  });
-});
+    const db = {
+      prepare: () => ({
+        all: async () => {
+          throw new Error('D1 log fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+  })
+})
 
 // ── GET /items/:id ────────────────────────────────────────────────────────────
 
@@ -935,41 +1205,50 @@ describe('GET /items/:id', () => {
   it('returns item detail', async () => {
     const db = createMockD1({
       items: [{ id: 'i1', name: 'Iron Crown', type: 'relic', value: 5000, weight: 2 }],
-    });
-    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db));
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.item.name).toBe('Iron Crown');
-    expect(body.item.type).toBe('relic');
-    expect(body.item.value).toBe(5000);
-    expect(body.item.weight).toBe(2);
-  });
+    })
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.item.name).toBe('Iron Crown')
+    expect(body.item.type).toBe('relic')
+    expect(body.item.value).toBe(5000)
+    expect(body.item.weight).toBe(2)
+  })
 
   it('returns 404 when item not found', async () => {
-    const db = createMockD1({ items: [] });
-    const res = await entityReads.request(makeRequest('/items/missing'), undefined, makeEnv(db));
-    expect(res.status).toBe(404);
-  });
+    const db = createMockD1({ items: [] })
+    const res = await entityReads.request(makeRequest('/items/missing'), undefined, makeEnv(db))
+    expect(res.status).toBe(404)
+  })
 
   it('normalises all missing fields to defaults', async () => {
-    const db = createMockD1({ items: [{}] });
-    const res = await entityReads.request(makeRequest('/items/x'), undefined, makeEnv(db));
-    const body = await res.json() as any;
-    expect(body.item.id).toBe('');
-    expect(body.item.name).toBe('Unknown');
-    expect(body.item.type).toBe('');
-    expect(body.item.value).toBe(0);
-    expect(body.item.weight).toBe(0);
-  });
+    const db = createMockD1({ items: [{}] })
+    const res = await entityReads.request(makeRequest('/items/x'), undefined, makeEnv(db))
+    const body = (await res.json()) as any
+    expect(body.item.id).toBe('')
+    expect(body.item.name).toBe('Unknown')
+    expect(body.item.type).toBe('')
+    expect(body.item.value).toBe(0)
+    expect(body.item.weight).toBe(0)
+  })
 
   it('returns 503 when RPG_DB is unavailable', async () => {
-    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(null));
-    expect(res.status).toBe(503);
-  });
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(null))
+    expect(res.status).toBe(503)
+  })
 
   it('returns 500 when query throws', async () => {
-    const db = { prepare: () => ({ first: async () => { throw new Error('D1 item fail'); }, bind: function() { return this; } }) };
-    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db));
-    expect(res.status).toBe(500);
-  });
-});
+    const db = {
+      prepare: () => ({
+        first: async () => {
+          throw new Error('D1 item fail')
+        },
+        bind: function () {
+          return this
+        },
+      }),
+    }
+    const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db))
+    expect(res.status).toBe(500)
+  })
+})

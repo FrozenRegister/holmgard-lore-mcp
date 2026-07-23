@@ -13,18 +13,30 @@ function parseResult(res: any) {
 
 describe.skipIf(!MCP_API_KEY)('rpg time get_age year-only born (#303)', () => {
   it('returns null months/days/next_birthday (not "undefined-undefined") for a year-only born date', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Test World ${uid()}` }))
+    const worldRes = parseResult(
+      await tool('rpg', { sub: 'world', action: 'create', name: `Test World ${uid()}` }),
+    )
     expect(worldRes.success).toBe(true)
     const worldId = worldRes.worldId
     await tool('rpg', { sub: 'time', action: 'set_date', world_id: worldId, date: '2184-07-15' })
-    const charRes = parseResult(await tool('character_manage', {
-      action: 'create', name: `Partial Born ${uid()}`, born: '2155', worldId,
-    }))
+    const charRes = parseResult(
+      await tool('character_manage', {
+        action: 'create',
+        name: `Partial Born ${uid()}`,
+        born: '2155',
+        worldId,
+      }),
+    )
     expect(charRes.success).toBe(true)
 
-    const ageRes = parseResult(await tool('rpg', {
-      sub: 'time', action: 'get_age', world_id: worldId, character_id: charRes.characterId,
-    }))
+    const ageRes = parseResult(
+      await tool('rpg', {
+        sub: 'time',
+        action: 'get_age',
+        world_id: worldId,
+        character_id: charRes.characterId,
+      }),
+    )
     expect(ageRes.success).toBe(true)
     expect(ageRes.age.years).toBe(29)
     expect(ageRes.age.months).toBeNull()
@@ -36,32 +48,61 @@ describe.skipIf(!MCP_API_KEY)('rpg time get_age year-only born (#303)', () => {
   })
 })
 
-describe.skipIf(!MCP_API_KEY)('rpg time set_owner / get_owner / advance ownership guard (#312)', () => {
-  it('advance without an owner is unguarded; set_owner/get_owner/claim-on-advance round-trip', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Time Owner Test World ${uid()}` }))
-    expect(worldRes.success).toBe(true)
-    const worldId = worldRes.worldId
-    await tool('rpg', { sub: 'time', action: 'set_date', world_id: worldId, date: '2184-01-01' })
+describe.skipIf(!MCP_API_KEY)(
+  'rpg time set_owner / get_owner / advance ownership guard (#312)',
+  () => {
+    it('advance without an owner is unguarded; set_owner/get_owner/claim-on-advance round-trip', async () => {
+      const worldRes = parseResult(
+        await tool('rpg', {
+          sub: 'world',
+          action: 'create',
+          name: `Time Owner Test World ${uid()}`,
+        }),
+      )
+      expect(worldRes.success).toBe(true)
+      const worldId = worldRes.worldId
+      await tool('rpg', { sub: 'time', action: 'set_date', world_id: worldId, date: '2184-01-01' })
 
-    const noOwnerRes = parseResult(await tool('rpg', { sub: 'time', action: 'get_owner', world_id: worldId }))
-    expect(noOwnerRes.time_owner).toBeNull()
+      const noOwnerRes = parseResult(
+        await tool('rpg', { sub: 'time', action: 'get_owner', world_id: worldId }),
+      )
+      expect(noOwnerRes.time_owner).toBeNull()
 
-    const claimRes = parseResult(await tool('rpg', {
-      sub: 'time', action: 'advance', world_id: worldId, by: '1 day', owner: 'archisector',
-    }))
-    expect(claimRes.success).toBe(true)
-    expect(claimRes.time_owner).toBe('archisector')
+      const claimRes = parseResult(
+        await tool('rpg', {
+          sub: 'time',
+          action: 'advance',
+          world_id: worldId,
+          by: '1 day',
+          owner: 'archisector',
+        }),
+      )
+      expect(claimRes.success).toBe(true)
+      expect(claimRes.time_owner).toBe('archisector')
 
-    const conflictRes = parseResult(await tool('rpg', {
-      sub: 'time', action: 'advance', world_id: worldId, by: '1 month', owner: 'calder-architect',
-    }))
-    expect(conflictRes.error).toBe(true)
+      const conflictRes = parseResult(
+        await tool('rpg', {
+          sub: 'time',
+          action: 'advance',
+          world_id: worldId,
+          by: '1 month',
+          owner: 'calder-architect',
+        }),
+      )
+      expect(conflictRes.error).toBe(true)
 
-    await tool('rpg', { sub: 'time', action: 'set_owner', world_id: worldId, owner: null })
-    const handoffRes = parseResult(await tool('rpg', {
-      sub: 'time', action: 'advance', world_id: worldId, by: '1 month', owner: 'calder-architect',
-    }))
-    expect(handoffRes.success).toBe(true)
-    expect(handoffRes.time_owner).toBe('calder-architect')
-  })
-})
+      await tool('rpg', { sub: 'time', action: 'set_owner', world_id: worldId, owner: null })
+      const handoffRes = parseResult(
+        await tool('rpg', {
+          sub: 'time',
+          action: 'advance',
+          world_id: worldId,
+          by: '1 month',
+          owner: 'calder-architect',
+        }),
+      )
+      expect(handoffRes.success).toBe(true)
+      expect(handoffRes.time_owner).toBe('calder-architect')
+    })
+  },
+)

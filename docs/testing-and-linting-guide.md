@@ -220,6 +220,16 @@ git commit -m "fix: clean up unused imports in test files"
 - Uses `typescript-eslint` for TypeScript rules
 - `@typescript-eslint/no-explicit-any` set to `warn` (not blocking)
 - Ignores: `dist/`, `node_modules/`, `test-run-output.txt`
+- `eslint-config-prettier` is applied last, disabling any ESLint stylistic rule that would conflict with
+  Prettier's formatting output — code style is Prettier's job (`.prettierrc.json`), not ESLint's
+
+## Code Formatting
+
+**Prettier** formats `.ts`/`.mjs` files under `src/`, `tests/`, `scripts/`, and root-level config files
+(`.prettierrc.json` for config, `.prettierignore` to exclude markdown — that's markdownlint-cli2's job — and
+generated/vendor paths). Run `pnpm run format` to fix, `pnpm run format:check` to check without writing.
+Not wired into `pnpm run lint` — it's a separate concern, matching how markdown formatting is separate from
+markdown *content* checks.
 
 ## CI/CD Pipeline
 
@@ -238,6 +248,14 @@ git commit -m "fix: clean up unused imports in test files"
 3. **PR Quality** (`.github/workflows/pr-quality.yml`)
    - Requires CHANGELOG.md update
    - Requires documentation changes (or docs section in PR body)
+
+4. **Auto-fix Markdown** (`.github/workflows/markdownlint-fix.yml`) and **Auto-fix Code Formatting**
+   (`.github/workflows/prettier-fix.yml`)
+   - Both trigger on any PR touching their file type (`**.md` / `.ts`+`.mjs` respectively), check out the
+     PR's actual head branch, run the fixer (`pnpm fix:md` / `pnpm run format`), and — if anything changed —
+     commit and push the fix directly back to the PR branch via `git-auto-commit-action`. Neither is a
+     blocking check; they're self-correcting. This is the only mechanism in this repo where CI itself writes
+     a commit back to your branch.
 
 ### CI Status on Main
 

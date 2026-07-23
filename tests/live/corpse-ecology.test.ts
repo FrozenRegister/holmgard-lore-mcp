@@ -17,41 +17,89 @@ describe.skipIf(!MCP_API_KEY)('rpg corpse ecology (#288)', () => {
   const createdIds: string[] = []
 
   afterEach(async () => {
-    await Promise.all(createdIds.splice(0).map(id => tool('rpg', { sub: 'corpse', action: 'delete', id })))
+    await Promise.all(
+      createdIds.splice(0).map((id) => tool('rpg', { sub: 'corpse', action: 'delete', id })),
+    )
   })
 
   it('register records a death and snapshots an empty inventory for a fresh character', async () => {
     const characterId = `yield-${uid()}`
-    const res = parseResult(await tool('rpg', { sub: 'corpse', action: 'register', characterId, characterName: `Yield ${uid()}`, causeOfDeath: 'leonar attack' }))
+    const res = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'register',
+        characterId,
+        characterName: `Yield ${uid()}`,
+        causeOfDeath: 'leonar attack',
+      }),
+    )
     expect(res.success).toBe(true)
     expect(res.decompositionStage).toBe('fresh')
     createdIds.push(res.corpseId)
   })
 
   it('decompose advances stage based on an explicit hoursSinceDeath override', async () => {
-    const registerRes = parseResult(await tool('rpg', { sub: 'corpse', action: 'register', characterId: `yield-${uid()}`, characterName: `Yield ${uid()}` }))
+    const registerRes = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'register',
+        characterId: `yield-${uid()}`,
+        characterName: `Yield ${uid()}`,
+      }),
+    )
     createdIds.push(registerRes.corpseId)
 
-    const res = parseResult(await tool('rpg', { sub: 'corpse', action: 'decompose', id: registerRes.corpseId, hoursSinceDeath: 100 }))
+    const res = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'decompose',
+        id: registerRes.corpseId,
+        hoursSinceDeath: 100,
+      }),
+    )
     expect(res.success).toBe(true)
     expect(res.decompositionStage).toBe('active_decay')
   })
 
   it('psychological_impact returns the fresh/stranger DC of 10 and a valid outcome', async () => {
-    const registerRes = parseResult(await tool('rpg', { sub: 'corpse', action: 'register', characterId: `yield-${uid()}`, characterName: `Yield ${uid()}` }))
+    const registerRes = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'register',
+        characterId: `yield-${uid()}`,
+        characterName: `Yield ${uid()}`,
+      }),
+    )
     createdIds.push(registerRes.corpseId)
 
-    const res = parseResult(await tool('rpg', { sub: 'corpse', action: 'psychological_impact', id: registerRes.corpseId, observerCharacterId: `observer-${uid()}`, rollValue: 15 }))
+    const res = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'psychological_impact',
+        id: registerRes.corpseId,
+        observerCharacterId: `observer-${uid()}`,
+        rollValue: 15,
+      }),
+    )
     expect(res.success).toBe(true)
     expect(res.dc).toBe(10)
     expect(['break', 'steady', 'shaken', 'disturbed', 'traumatized']).toContain(res.outcome)
   })
 
   it('recover is rejected before Bloat stage', async () => {
-    const registerRes = parseResult(await tool('rpg', { sub: 'corpse', action: 'register', characterId: `yield-${uid()}`, characterName: `Yield ${uid()}` }))
+    const registerRes = parseResult(
+      await tool('rpg', {
+        sub: 'corpse',
+        action: 'register',
+        characterId: `yield-${uid()}`,
+        characterName: `Yield ${uid()}`,
+      }),
+    )
     createdIds.push(registerRes.corpseId)
 
-    const res = parseResult(await tool('rpg', { sub: 'corpse', action: 'recover', id: registerRes.corpseId }))
+    const res = parseResult(
+      await tool('rpg', { sub: 'corpse', action: 'recover', id: registerRes.corpseId }),
+    )
     expect(res.error).toBe(true)
   })
 })

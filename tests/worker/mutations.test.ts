@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach, vi } from 'vitest'
 
@@ -62,7 +70,13 @@ describe('patch_lore — concurrent write conflict detection', () => {
       return (original as (...a: unknown[]) => unknown)(...args)
     }) as typeof env.LORE_DB.get)
 
-    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-race', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' })
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-race',
+      operation: 'replace',
+      target: 'Status: Alive',
+      value: 'Status: Sedated',
+    })
     spy.mockRestore()
 
     expect(res.error).toBeDefined()
@@ -178,22 +192,40 @@ describe('patch_lore — parameter validation', () => {
   beforeEach(() => seedKV('test:patch-val', 'some text here'))
 
   it('requires target for replace', async () => {
-    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-val', operation: 'replace', value: 'X' })
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-val',
+      operation: 'replace',
+      value: 'X',
+    })
     expect(res.result.content[0].text).toContain('"target" required')
   })
 
   it('requires target for delete_field', async () => {
-    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-val', operation: 'delete_field' })
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-val',
+      operation: 'delete_field',
+    })
     expect(res.result.content[0].text).toContain('"target" required')
   })
 
   it('requires value for replace', async () => {
-    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-val', operation: 'replace', target: 'some text' })
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-val',
+      operation: 'replace',
+      target: 'some text',
+    })
     expect(res.result.content[0].text).toContain('"value" required')
   })
 
   it('requires value for append', async () => {
-    const res = await callTool('lore_manage', { action: 'patch', key: 'test:patch-val', operation: 'append' })
+    const res = await callTool('lore_manage', {
+      action: 'patch',
+      key: 'test:patch-val',
+      operation: 'append',
+    })
     expect(res.result.content[0].text).toContain('"value" required')
   })
 
@@ -262,7 +294,10 @@ describe('batch_set_lore', () => {
 
   it('pushes history for overwritten keys', async () => {
     await seedKV('batch:hist', 'v1 text')
-    await callTool('lore_manage', { action: 'batch_set', entries: [{ key: 'batch:hist', text: 'v2 text' }] })
+    await callTool('lore_manage', {
+      action: 'batch_set',
+      entries: [{ key: 'batch:hist', text: 'v2 text' }],
+    })
     const restore = await callTool('lore_manage', { action: 'restore', key: 'batch:hist' })
     expect(restore.result.metadata.restored).toBe(true)
     const get = await callTool('lore_manage', { action: 'get', query: 'batch:hist' })
@@ -276,7 +311,10 @@ describe('batch_set_lore', () => {
   })
 
   it('normalizes keys to lowercase', async () => {
-    await callTool('lore_manage', { action: 'batch_set', entries: [{ key: 'Batch:UPPER', text: 'lower key test' }] })
+    await callTool('lore_manage', {
+      action: 'batch_set',
+      entries: [{ key: 'Batch:UPPER', text: 'lower key test' }],
+    })
     const get = await callTool('lore_manage', { action: 'get', query: 'batch:upper' })
     expect(get.result.content[0].text).toBe('lower key test')
   })
@@ -287,7 +325,15 @@ describe('batch_mutate', () => {
     await seedKV('mutate:counter', '**days_remaining:** 10\n**status:** active')
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:counter', action: 'increment', field_path: 'days_remaining', increment: -1, reason: 'test-decrement' }],
+      mutations: [
+        {
+          key: 'mutate:counter',
+          action: 'increment',
+          field_path: 'days_remaining',
+          increment: -1,
+          reason: 'test-decrement',
+        },
+      ],
     })
     expect(res.result.metadata.ok_count).toBe(1)
     expect(res.result.metadata.failed_count).toBe(0)
@@ -300,7 +346,14 @@ describe('batch_mutate', () => {
     await seedKV('mutate:kv-check', '**days_remaining:** 5')
     await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:kv-check', action: 'increment', field_path: 'days_remaining', increment: -2 }],
+      mutations: [
+        {
+          key: 'mutate:kv-check',
+          action: 'increment',
+          field_path: 'days_remaining',
+          increment: -2,
+        },
+      ],
     })
     const get = await callTool('lore_manage', { action: 'get', query: 'mutate:kv-check' })
     expect(get.result.text).toContain('**days_remaining:** 3')
@@ -310,7 +363,15 @@ describe('batch_mutate', () => {
     await seedKV('mutate:patch-test', 'Status: Alive\nNotes: none')
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:patch-test', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' }],
+      mutations: [
+        {
+          key: 'mutate:patch-test',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Status: Alive',
+          value: 'Status: Sedated',
+        },
+      ],
     })
     expect(res.result.results[0].ok).toBe(true)
     const get = await callTool('lore_manage', { action: 'get', query: 'mutate:patch-test' })
@@ -322,7 +383,9 @@ describe('batch_mutate', () => {
     await seedKV('mutate:append-test', 'Line 1')
     await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:append-test', action: 'patch', operation: 'append', value: '\nLine 2' }],
+      mutations: [
+        { key: 'mutate:append-test', action: 'patch', operation: 'append', value: '\nLine 2' },
+      ],
     })
     const get = await callTool('lore_manage', { action: 'get', query: 'mutate:append-test' })
     expect(get.result.text).toContain('Line 2')
@@ -333,7 +396,13 @@ describe('batch_mutate', () => {
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
       mutations: [
-        { key: 'mutate:double', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Sedated' },
+        {
+          key: 'mutate:double',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Status: Alive',
+          value: 'Status: Sedated',
+        },
         { key: 'mutate:double', action: 'increment', field_path: 'count', increment: -1 },
       ],
     })
@@ -346,7 +415,9 @@ describe('batch_mutate', () => {
   it('reports failure for missing key', async () => {
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'nonexistent:key-99999', action: 'increment', field_path: 'days_remaining' }],
+      mutations: [
+        { key: 'nonexistent:key-99999', action: 'increment', field_path: 'days_remaining' },
+      ],
     })
     expect(res.result.results[0].ok).toBe(false)
     expect(res.result.results[0].message).toContain('not found')
@@ -367,7 +438,9 @@ describe('batch_mutate', () => {
     await seedKV('mutate:ambig', 'cat cat cat')
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:ambig', action: 'patch', operation: 'replace', target: 'cat', value: 'dog' }],
+      mutations: [
+        { key: 'mutate:ambig', action: 'patch', operation: 'replace', target: 'cat', value: 'dog' },
+      ],
     })
     expect(res.result.results[0].ok).toBe(false)
     expect(res.result.results[0].message).toContain('ambiguous')
@@ -379,7 +452,13 @@ describe('batch_mutate', () => {
       action: 'batch_mutate',
       mutations: [
         { key: 'nonexistent:missing', action: 'increment', field_path: 'x' },
-        { key: 'mutate:mixed', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' },
+        {
+          key: 'mutate:mixed',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Status: Alive',
+          value: 'Status: Dead',
+        },
       ],
     })
     expect(res.result.metadata.ok_count).toBe(1)
@@ -398,7 +477,15 @@ describe('batch_mutate', () => {
     await seedKV('mutate:hist', 'Status: Alive')
     await callTool('lore_manage', {
       action: 'batch_mutate',
-      mutations: [{ key: 'mutate:hist', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' }],
+      mutations: [
+        {
+          key: 'mutate:hist',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Status: Alive',
+          value: 'Status: Dead',
+        },
+      ],
     })
     const restore = await callTool('lore_manage', { action: 'restore', key: 'mutate:hist' })
     expect(restore.result.metadata.restored).toBe(true)
@@ -414,7 +501,13 @@ describe('batch_mutate — content[0].text summary', () => {
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
       mutations: [
-        { key: 'mutate:sum-alpha', action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
+        {
+          key: 'mutate:sum-alpha',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Alpha batch content.',
+          value: 'Alpha mutated.',
+        },
         { key: 'mutate:sum-beta', action: 'patch', operation: 'append', value: '\nAppended line.' },
       ],
     })
@@ -429,7 +522,13 @@ describe('batch_mutate — content[0].text summary', () => {
       action: 'batch_mutate',
       mutations: [
         { key: 'nonexistent:sum-missing', action: 'increment', field_path: 'days_remaining' },
-        { key: 'mutate:sum-partial', action: 'patch', operation: 'replace', target: 'Status: Alive', value: 'Status: Dead' },
+        {
+          key: 'mutate:sum-partial',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Status: Alive',
+          value: 'Status: Dead',
+        },
       ],
     })
     expect(res.result.content[0].text).toContain('Applied 1/2')
@@ -443,7 +542,13 @@ describe('batch_mutate — content[0].text summary', () => {
     const res = await callTool('lore_manage', {
       action: 'batch_mutate',
       mutations: [
-        { key: 'mutate:sum-single', action: 'patch', operation: 'replace', target: 'Note: initial', value: 'Note: updated' },
+        {
+          key: 'mutate:sum-single',
+          action: 'patch',
+          operation: 'replace',
+          target: 'Note: initial',
+          value: 'Note: updated',
+        },
       ],
     })
     expect(res.result.content[0].text).toMatch(/Applied 1 mutation\./)
@@ -470,7 +575,13 @@ describe('batch_set_lore + batch_mutate integration', () => {
     const mutRes = await callTool('lore_manage', {
       action: 'batch_mutate',
       mutations: [
-        { key: alphaKey, action: 'patch', operation: 'replace', target: 'Alpha batch content.', value: 'Alpha mutated.' },
+        {
+          key: alphaKey,
+          action: 'patch',
+          operation: 'replace',
+          target: 'Alpha batch content.',
+          value: 'Alpha mutated.',
+        },
         { key: betaKey, action: 'patch', operation: 'append', value: '\nAppended line.' },
       ],
     })

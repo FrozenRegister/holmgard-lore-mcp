@@ -11,7 +11,6 @@ describe('Admin Bulk Migration', () => {
   })
 
   it('migrates all characters from KV to D1 via /admin/migrate-all-characters', async () => {
-
     // Seed KV with multiple test characters
     const testCharacters = [
       {
@@ -33,7 +32,11 @@ describe('Admin Bulk Migration', () => {
         key,
         JSON.stringify({
           text,
-          meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          meta: {
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         }),
       )
     }
@@ -73,8 +76,7 @@ describe('Admin Bulk Migration', () => {
       const idMatch = kvRaw?.match(/## D1-Character-ID:\s*([a-f0-9-]+)/)
       expect(idMatch?.[1]).toBeDefined()
 
-      const d1Row = await env.RPG_DB
-        .prepare('SELECT * FROM characters WHERE id = ?')
+      const d1Row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?')
         .bind(idMatch?.[1])
         .first()
       expect(d1Row).toBeDefined()

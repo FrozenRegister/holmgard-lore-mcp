@@ -36,16 +36,30 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { resolveZonesAt, type ResolvedZone } from './world-map'
 import { getBiomeRegistry } from './biome-manage'
-import { predatorPerceptionModifier, yieldStealthModifier, stealthOutcomeFromMargin, type StealthOutcome, type StealthAdvantage } from './perception-manage'
+import {
+  predatorPerceptionModifier,
+  yieldStealthModifier,
+  stealthOutcomeFromMargin,
+  type StealthOutcome,
+  type StealthAdvantage,
+} from './perception-manage'
 
 export const ACTIONS = ['resolve', 'check', 'list_types', 'add_type', 'check_infection'] as const
-type EncounterAction = typeof ACTIONS[number]
+type EncounterAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, EncounterAction> = {
-  encounter: 'resolve', trigger: 'resolve', roll_encounter: 'resolve',
-  check_encounter: 'check', peek: 'check', threat_check: 'check',
-  types: 'list_types', list_encounter_types: 'list_types',
-  register_type: 'add_type', new_type: 'add_type', create_type: 'add_type',
-  infection: 'check_infection', infection_check: 'check_infection',
+  encounter: 'resolve',
+  trigger: 'resolve',
+  roll_encounter: 'resolve',
+  check_encounter: 'check',
+  peek: 'check',
+  threat_check: 'check',
+  types: 'list_types',
+  list_encounter_types: 'list_types',
+  register_type: 'add_type',
+  new_type: 'add_type',
+  create_type: 'add_type',
+  infection: 'check_infection',
+  infection_check: 'check_infection',
 }
 
 const CATEGORIES = ['predator', 'environmental', 'system', 'passive'] as const
@@ -59,7 +73,10 @@ const InputSchema = z.object({
   partySize: z.number().int().min(1).optional().default(1),
   timeOfDay: z.enum(['dawn', 'dusk', 'night', 'midday', 'day']).optional(),
   noiseLevel: z.enum(['loud', 'moderate', 'silent']).optional(),
-  scentModifiers: z.array(z.enum(['blood', 'cooking', 'fire'])).optional().default([]),
+  scentModifiers: z
+    .array(z.enum(['blood', 'cooking', 'fire']))
+    .optional()
+    .default([]),
   partyInjuries: z.array(z.string()).optional().default(['none']),
   weather: z.enum(['clear', 'rain', 'snow', 'fog']).optional(),
   includeInjuries: z.boolean().optional().default(true),
@@ -129,7 +146,8 @@ function computeModifiers(input: {
   const extraParty = Math.max(0, input.partySize - 1) * 2
   if (extraParty) breakdown.partySize = extraParty
 
-  if (input.partyInjuries.length > 0 && input.partyInjuries.every(i => i !== 'none')) breakdown.partyInjured = 10
+  if (input.partyInjuries.length > 0 && input.partyInjuries.every((i) => i !== 'none'))
+    breakdown.partyInjured = 10
 
   if (input.weather === 'rain' || input.weather === 'snow') breakdown.weather = -5
   else if (input.weather === 'fog') breakdown.weather = 3
@@ -140,16 +158,21 @@ function computeModifiers(input: {
 
 // ── Zone threat + dominance/suppression (first-pass model, see file header) ─
 
-function resolveZoneThreat(zones: ResolvedZone[]): { zoneThreat: number; dominant: ResolvedZone | null; displaced: ResolvedZone | null } {
+function resolveZoneThreat(zones: ResolvedZone[]): {
+  zoneThreat: number
+  dominant: ResolvedZone | null
+  displaced: ResolvedZone | null
+} {
   if (zones.length === 0) return { zoneThreat: 0, dominant: null, displaced: null }
   const sorted = [...zones].sort((a, b) => (b.dominanceRank ?? 0) - (a.dominanceRank ?? 0))
   const dominant = sorted[0]
   const subordinates = sorted.slice(1)
   let zoneThreat = dominant.threatLevel ?? 0
   for (const sub of subordinates) zoneThreat += (sub.threatLevel ?? 0) * 0.3
-  const displaced = subordinates.length > 0
-    ? subordinates.reduce((max, z) => (z.threatLevel ?? 0) > (max.threatLevel ?? 0) ? z : max)
-    : null
+  const displaced =
+    subordinates.length > 0
+      ? subordinates.reduce((max, z) => ((z.threatLevel ?? 0) > (max.threatLevel ?? 0) ? z : max))
+      : null
   return { zoneThreat, dominant, displaced }
 }
 
@@ -164,42 +187,116 @@ function injurySeverityFromMargin(margin: number): InjurySeverity {
   return 'minor'
 }
 
-const INJURY_TIERS: Record<InjurySeverity, { abilityModifier: number; bleedingRate: string | null; infectionRisk: string | null; recovery: string }> = {
-  minor: { abilityModifier: -1, bleedingRate: null, infectionRisk: null, recovery: '1d6 hours rest' },
-  moderate: { abilityModifier: -2, bleedingRate: '1_HP_per_hour', infectionRisk: 'CON_DC_14_after_24h', recovery: 'WIS_DC_14_first_aid_plus_1d3_days_rest' },
-  severe: { abilityModifier: -4, bleedingRate: '1d4_HP_per_hour', infectionRisk: 'CON_DC_16_after_12h', recovery: 'surgery_plus_1d6_days_rest_permanent_scar' },
-  critical: { abilityModifier: 0, bleedingRate: 'death_saves', infectionRisk: null, recovery: 'evacuation_or_death' },
+const INJURY_TIERS: Record<
+  InjurySeverity,
+  {
+    abilityModifier: number
+    bleedingRate: string | null
+    infectionRisk: string | null
+    recovery: string
+  }
+> = {
+  minor: {
+    abilityModifier: -1,
+    bleedingRate: null,
+    infectionRisk: null,
+    recovery: '1d6 hours rest',
+  },
+  moderate: {
+    abilityModifier: -2,
+    bleedingRate: '1_HP_per_hour',
+    infectionRisk: 'CON_DC_14_after_24h',
+    recovery: 'WIS_DC_14_first_aid_plus_1d3_days_rest',
+  },
+  severe: {
+    abilityModifier: -4,
+    bleedingRate: '1d4_HP_per_hour',
+    infectionRisk: 'CON_DC_16_after_12h',
+    recovery: 'surgery_plus_1d6_days_rest_permanent_scar',
+  },
+  critical: {
+    abilityModifier: 0,
+    bleedingRate: 'death_saves',
+    infectionRisk: null,
+    recovery: 'evacuation_or_death',
+  },
 }
 
-const INJURY_FLAVOR: Record<'minor' | 'moderate' | 'severe', Array<{ type: string; ability: string; location: string; description: string }>> = {
+const INJURY_FLAVOR: Record<
+  'minor' | 'moderate' | 'severe',
+  Array<{ type: string; ability: string; location: string; description: string }>
+> = {
   minor: [
-    { type: 'bruising', ability: 'STR', location: 'shoulder', description: 'A glancing blow leaves a deep bruise.' },
-    { type: 'scratch', ability: 'DEX', location: 'forearm', description: 'Claws rake shallow lines across the skin.' },
+    {
+      type: 'bruising',
+      ability: 'STR',
+      location: 'shoulder',
+      description: 'A glancing blow leaves a deep bruise.',
+    },
+    {
+      type: 'scratch',
+      ability: 'DEX',
+      location: 'forearm',
+      description: 'Claws rake shallow lines across the skin.',
+    },
   ],
   moderate: [
-    { type: 'deep_laceration', ability: 'DEX', location: 'forearm', description: 'A claw opens the skin to the bone. The bleeding will not stop on its own.' },
-    { type: 'sprain', ability: 'STR', location: 'ankle', description: 'A hard fall wrenches the joint.' },
+    {
+      type: 'deep_laceration',
+      ability: 'DEX',
+      location: 'forearm',
+      description: 'A claw opens the skin to the bone. The bleeding will not stop on its own.',
+    },
+    {
+      type: 'sprain',
+      ability: 'STR',
+      location: 'ankle',
+      description: 'A hard fall wrenches the joint.',
+    },
   ],
   severe: [
-    { type: 'crushing_bite', ability: 'STR', location: 'leg', description: 'Jaws close and do not let go easily.' },
-    { type: 'deep_puncture', ability: 'CON', location: 'torso', description: 'A claw drives deep before tearing free.' },
+    {
+      type: 'crushing_bite',
+      ability: 'STR',
+      location: 'leg',
+      description: 'Jaws close and do not let go easily.',
+    },
+    {
+      type: 'deep_puncture',
+      ability: 'CON',
+      location: 'torso',
+      description: 'A claw drives deep before tearing free.',
+    },
   ],
 }
 
 function describePredator(predator: string | null): string {
   if (!predator) return 'The predator'
-  const words = predator.split('_').map(w => w[0].toUpperCase() + w.slice(1))
+  const words = predator.split('_').map((w) => w[0].toUpperCase() + w.slice(1))
   return words.join(' ')
 }
 
-function buildInjury(severity: InjurySeverity, predator: string | null): {
-  severity: InjurySeverity; type: string; ability: string; location: string; description: string
-  abilityModifier: number; bleedingRate: string | null; infectionRisk: string | null; recovery: string
+function buildInjury(
+  severity: InjurySeverity,
+  predator: string | null,
+): {
+  severity: InjurySeverity
+  type: string
+  ability: string
+  location: string
+  description: string
+  abilityModifier: number
+  bleedingRate: string | null
+  infectionRisk: string | null
+  recovery: string
 } {
   const tier = INJURY_TIERS[severity]
   if (severity === 'critical') {
     return {
-      severity, type: 'critical_trauma', ability: 'CON', location: 'torso',
+      severity,
+      type: 'critical_trauma',
+      ability: 'CON',
+      location: 'torso',
       description: `${describePredator(predator)} strikes a killing blow — only immediate stabilization can save them.`,
       ...tier,
     }
@@ -207,22 +304,38 @@ function buildInjury(severity: InjurySeverity, predator: string | null): {
   const flavors = INJURY_FLAVOR[severity]
   const flavor = flavors[Math.floor(Math.random() * flavors.length)]
   return {
-    severity, type: flavor.type, ability: flavor.ability, location: flavor.location,
+    severity,
+    type: flavor.type,
+    ability: flavor.ability,
+    location: flavor.location,
     description: `${describePredator(predator)}'s attack: ${flavor.description}`,
     ...tier,
   }
 }
 
-function computeInfectionStage(severity: string, hoursSinceInjury: number, treatment: string): { infected: boolean; stage: string; effect: string | null } {
-  if (severity === 'minor' || severity === 'critical') return { infected: false, stage: 'none', effect: null }
+function computeInfectionStage(
+  severity: string,
+  hoursSinceInjury: number,
+  treatment: string,
+): { infected: boolean; stage: string; effect: string | null } {
+  if (severity === 'minor' || severity === 'critical')
+    return { infected: false, stage: 'none', effect: null }
   if (treatment && treatment !== 'none') return { infected: false, stage: 'treated', effect: null }
   const onsetHours = severity === 'severe' ? 12 : 24
   const sepsisHours = severity === 'severe' ? 36 : 48
   if (hoursSinceInjury >= sepsisHours) {
-    return { infected: true, stage: 'sepsis', effect: '-4 to all rolls, CON save DC 18 or drop to 0 HP without immediate care' }
+    return {
+      infected: true,
+      stage: 'sepsis',
+      effect: '-4 to all rolls, CON save DC 18 or drop to 0 HP without immediate care',
+    }
   }
   if (hoursSinceInjury >= onsetHours) {
-    return { infected: true, stage: 'fever', effect: `-1 to all rolls, escalates to sepsis in ${sepsisHours - hoursSinceInjury}h if untreated` }
+    return {
+      infected: true,
+      stage: 'fever',
+      effect: `-1 to all rolls, escalates to sepsis in ${sepsisHours - hoursSinceInjury}h if untreated`,
+    }
   }
   return { infected: false, stage: 'none', effect: null }
 }
@@ -308,7 +421,10 @@ export interface EncounterResolveResult {
 // — travel operates on room_nodes, which has no world_id/q/r at all, so
 // callers wanting an encounter roll on travel must supply worldId/q/r
 // explicitly; see travel-manage.ts for the fallback when they don't).
-export async function resolveEncounterCore(db: D1Database, input: EncounterResolveInput): Promise<EncounterResolveResult> {
+export async function resolveEncounterCore(
+  db: D1Database,
+  input: EncounterResolveInput,
+): Promise<EncounterResolveResult> {
   const { worldId, q, r } = input
   const partySize = input.partySize ?? 1
   const partyInjuries = input.partyInjuries ?? ['none']
@@ -322,23 +438,46 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
     const yieldRoll = input.yieldStealthRoll ?? Math.floor(Math.random() * 20) + 1
     const predatorRoll = Math.floor(Math.random() * 20) + 1
     const yieldMod = yieldStealthModifier({
-      stealthMode: input.stealthMode ?? 'active', coverType: input.coverType, isNight: input.isNight ?? false, partySize,
+      stealthMode: input.stealthMode ?? 'active',
+      coverType: input.coverType,
+      isNight: input.isNight ?? false,
+      partySize,
     })
     const predatorMod = predatorPerceptionModifier({
-      distanceZone: input.distanceZone ?? 'unknown', windDirection: input.windDirection ?? 'none',
-      yieldBleeding: input.yieldBleeding ?? false, yieldCookingOrFire: input.yieldCookingOrFire ?? false,
+      distanceZone: input.distanceZone ?? 'unknown',
+      windDirection: input.windDirection ?? 'none',
+      yieldBleeding: input.yieldBleeding ?? false,
+      yieldCookingOrFire: input.yieldCookingOrFire ?? false,
     })
     const yieldTotal = yieldRoll + (input.yieldStealthBonus ?? 0) + yieldMod.total
     const predatorTotal = predatorRoll + (input.predatorPerceptionBonus ?? 0) + predatorMod.total
     const margin = yieldTotal - predatorTotal
     const { outcome, advantage } = stealthOutcomeFromMargin(margin)
-    stealthResult = { outcome, advantage, yieldRoll, predatorRoll, yieldTotal, predatorTotal, margin }
+    stealthResult = {
+      outcome,
+      advantage,
+      yieldRoll,
+      predatorRoll,
+      yieldTotal,
+      predatorTotal,
+      margin,
+    }
 
     // Clean avoidance or a near-miss with no advantage either way means no
     // confrontation at all — skip the threat roll entirely rather than
     // rolling a threshold check nobody needs.
     if (outcome === 'avoided_entirely' || outcome === 'tense_moment') {
-      return { worldId, q, r, encounter: false, roll: 0, threshold: 0, modifiers: {}, confrontationAvoided: true, stealthResult }
+      return {
+        worldId,
+        q,
+        r,
+        encounter: false,
+        roll: 0,
+        threshold: 0,
+        modifiers: {},
+        confrontationAvoided: true,
+        stealthResult,
+      }
     }
   }
 
@@ -348,11 +487,19 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const registry = await getBiomeRegistry(db, worldId)
   // #320 — the RPG engine's terrain grid is now the hex-axial `hexes` table
   // (unified with the map editor, #308/#319).
-  const hex = await db.prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?').bind(worldId, q, r).first() as { biome: string } | null
+  const hex = (await db
+    .prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+    .bind(worldId, q, r)
+    .first()) as { biome: string } | null
   const biomeBase = hex ? (registry.get(hex.biome)?.baseThreat ?? 0) : 0
 
   const { total: modifierTotal, breakdown } = computeModifiers({
-    timeOfDay: input.timeOfDay, noiseLevel: input.noiseLevel, scentModifiers, partySize, partyInjuries, weather: input.weather,
+    timeOfDay: input.timeOfDay,
+    noiseLevel: input.noiseLevel,
+    scentModifiers,
+    partySize,
+    partyInjuries,
+    weather: input.weather,
   })
 
   const threshold = Math.max(0, Math.min(100, biomeBase + zoneThreat + modifierTotal))
@@ -360,28 +507,63 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   const triggered = roll <= threshold
 
   if (input.lightweight || !triggered) {
-    return { worldId, q, r, encounter: triggered, roll, threshold, modifiers: breakdown, stealthResult }
-  }
-
-  const { results: allTypes } = await db.prepare('SELECT * FROM encounter_types WHERE world_id = ? AND min_threat <= ?').bind(worldId, threshold).all() as
-    { results: Array<{ id: string; predator_name: string | null; category: string; aggression: string; base_weight: number; min_threat: number; requires_core: number; description: string | null }> }
-
-  if (allTypes.length === 0) {
     return {
-      worldId, q, r, encounter: true, roll, threshold, modifiers: breakdown, encounterType: null, stealthResult,
-      message: 'Encounter triggered but no encounter_types are registered for this threshold — use encounter.add_type to register some, or lower an existing type\'s minThreat.',
+      worldId,
+      q,
+      r,
+      encounter: triggered,
+      roll,
+      threshold,
+      modifiers: breakdown,
+      stealthResult,
     }
   }
 
-  const zoneByPredator = new Map(zones.filter(z => z.predator).map(z => [z.predator as string, z]))
+  const { results: allTypes } = (await db
+    .prepare('SELECT * FROM encounter_types WHERE world_id = ? AND min_threat <= ?')
+    .bind(worldId, threshold)
+    .all()) as {
+    results: Array<{
+      id: string
+      predator_name: string | null
+      category: string
+      aggression: string
+      base_weight: number
+      min_threat: number
+      requires_core: number
+      description: string | null
+    }>
+  }
+
+  if (allTypes.length === 0) {
+    return {
+      worldId,
+      q,
+      r,
+      encounter: true,
+      roll,
+      threshold,
+      modifiers: breakdown,
+      encounterType: null,
+      stealthResult,
+      message:
+        "Encounter triggered but no encounter_types are registered for this threshold — use encounter.add_type to register some, or lower an existing type's minThreat.",
+    }
+  }
+
+  const zoneByPredator = new Map(
+    zones.filter((z) => z.predator).map((z) => [z.predator as string, z]),
+  )
   // requires_core types only appear when the point falls within that
   // predator's own zone; if that filters out every candidate, fall back
   // to the unfiltered list rather than reporting no encounter type at
   // all for an encounter that already triggered.
-  const coreFiltered = allTypes.filter(t => !t.requires_core || (t.predator_name ? zoneByPredator.has(t.predator_name) : false))
+  const coreFiltered = allTypes.filter(
+    (t) => !t.requires_core || (t.predator_name ? zoneByPredator.has(t.predator_name) : false),
+  )
   const types = coreFiltered.length > 0 ? coreFiltered : allTypes
 
-  const weighted = types.map(t => {
+  const weighted = types.map((t) => {
     const zone = t.predator_name ? zoneByPredator.get(t.predator_name) : undefined
     const boost = zone?.threatLevel ? 1 + zone.threatLevel / 50 : 1
     return { type: t, weight: t.base_weight * boost }
@@ -391,11 +573,17 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
   let selected = weighted[weighted.length - 1].type
   for (const w of weighted) {
     pick -= w.weight
-    if (pick <= 0) { selected = w.type; break }
+    if (pick <= 0) {
+      selected = w.type
+      break
+    }
   }
 
-  const selectedZone = selected.predator_name ? zoneByPredator.get(selected.predator_name) : undefined
-  const isDisplaced = !!selectedZone && dominant !== null && selectedZone.landmarkId !== dominant.landmarkId
+  const selectedZone = selected.predator_name
+    ? zoneByPredator.get(selected.predator_name)
+    : undefined
+  const isDisplaced =
+    !!selectedZone && dominant !== null && selectedZone.landmarkId !== dominant.landmarkId
   const displacedBy = isDisplaced ? (dominant!.predator ?? dominant!.name) : null
 
   const margin = threshold - roll
@@ -408,27 +596,58 @@ export async function resolveEncounterCore(db: D1Database, input: EncounterResol
       let injuryId: string | null = null
       if (characterId) {
         injuryId = crypto.randomUUID()
-        await db.prepare(
-          'INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)'
-        ).bind(injuryId, characterId, worldId, injury.severity, injury.type, injury.location, injury.ability, injury.abilityModifier, injury.bleedingRate, injury.infectionRisk, injury.recovery, injury.description, now, now).run()
+        await db
+          .prepare(
+            'INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+          )
+          .bind(
+            injuryId,
+            characterId,
+            worldId,
+            injury.severity,
+            injury.type,
+            injury.location,
+            injury.ability,
+            injury.abilityModifier,
+            injury.bleedingRate,
+            injury.infectionRisk,
+            injury.recovery,
+            injury.description,
+            now,
+            now,
+          )
+          .run()
       }
       injuries.push({ characterId, injuryId, ...injury })
     }
   }
 
   return {
-    worldId, q, r, encounter: true, roll, threshold, modifiers: breakdown,
-    encounterType: selected.category, predator: selected.predator_name, aggression: selected.aggression,
+    worldId,
+    q,
+    r,
+    encounter: true,
+    roll,
+    threshold,
+    modifiers: breakdown,
+    encounterType: selected.category,
+    predator: selected.predator_name,
+    aggression: selected.aggression,
     threatLevel: selectedZone?.threatLevel ?? null,
-    displaced: isDisplaced, displacedBy,
+    displaced: isDisplaced,
+    displacedBy,
     encounterDescription: selected.description,
-    injuries, stealthResult,
+    injuries,
+    stealthResult,
   }
 }
 
-export async function handleEncounterManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleEncounterManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -438,21 +657,49 @@ export async function handleEncounterManage(env: AppBindings, args: Record<strin
   switch (match.matched) {
     case 'resolve':
     case 'check': {
-      if (!a.worldId || a.q === undefined || a.r === undefined) return err('"worldId", "q", and "r" are required')
+      if (!a.worldId || a.q === undefined || a.r === undefined)
+        return err('"worldId", "q", and "r" are required')
 
       const result = await resolveEncounterCore(db, {
-        worldId: a.worldId, q: a.q, r: a.r, partySize: a.partySize, timeOfDay: a.timeOfDay, noiseLevel: a.noiseLevel,
-        scentModifiers: a.scentModifiers, partyInjuries: a.partyInjuries, weather: a.weather,
-        includeInjuries: match.matched === 'resolve' && a.includeInjuries, characterIds: a.characterIds,
+        worldId: a.worldId,
+        q: a.q,
+        r: a.r,
+        partySize: a.partySize,
+        timeOfDay: a.timeOfDay,
+        noiseLevel: a.noiseLevel,
+        scentModifiers: a.scentModifiers,
+        partyInjuries: a.partyInjuries,
+        weather: a.weather,
+        includeInjuries: match.matched === 'resolve' && a.includeInjuries,
+        characterIds: a.characterIds,
         lightweight: match.matched === 'check',
-        stealthCheck: a.stealthCheck, stealthMode: a.stealthMode, coverType: a.coverType, windDirection: a.windDirection,
-        distanceZone: a.distanceZone, yieldBleeding: a.yieldBleeding, yieldCookingOrFire: a.yieldCookingOrFire,
-        isNight: a.isNight, yieldStealthBonus: a.yieldStealthBonus, predatorPerceptionBonus: a.predatorPerceptionBonus,
+        stealthCheck: a.stealthCheck,
+        stealthMode: a.stealthMode,
+        coverType: a.coverType,
+        windDirection: a.windDirection,
+        distanceZone: a.distanceZone,
+        yieldBleeding: a.yieldBleeding,
+        yieldCookingOrFire: a.yieldCookingOrFire,
+        isNight: a.isNight,
+        yieldStealthBonus: a.yieldStealthBonus,
+        predatorPerceptionBonus: a.predatorPerceptionBonus,
         yieldStealthRoll: a.yieldStealthRoll,
       })
 
       if (match.matched === 'check') {
-        return ok({ success: true, actionType: 'check', worldId: result.worldId, q: result.q, r: result.r, encounter: result.encounter, roll: result.roll, threshold: result.threshold, modifiers: result.modifiers, confrontationAvoided: result.confrontationAvoided, stealthResult: result.stealthResult })
+        return ok({
+          success: true,
+          actionType: 'check',
+          worldId: result.worldId,
+          q: result.q,
+          r: result.r,
+          encounter: result.encounter,
+          roll: result.roll,
+          threshold: result.threshold,
+          modifiers: result.modifiers,
+          confrontationAvoided: result.confrontationAvoided,
+          stealthResult: result.stealthResult,
+        })
       }
       return ok({ success: true, actionType: 'resolve', ...result })
     }
@@ -460,26 +707,70 @@ export async function handleEncounterManage(env: AppBindings, args: Record<strin
       if (!a.worldId) return err('"worldId" is required')
       let query = 'SELECT * FROM encounter_types WHERE world_id = ?'
       const binds: unknown[] = [a.worldId]
-      if (a.categoryFilter) { query += ' AND category = ?'; binds.push(a.categoryFilter) }
-      const { results } = await db.prepare(query + ' ORDER BY predator_name, category').bind(...binds).all()
-      return ok({ success: true, actionType: 'list_types', worldId: a.worldId, types: results, count: results.length })
+      if (a.categoryFilter) {
+        query += ' AND category = ?'
+        binds.push(a.categoryFilter)
+      }
+      const { results } = await db
+        .prepare(query + ' ORDER BY predator_name, category')
+        .bind(...binds)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'list_types',
+        worldId: a.worldId,
+        types: results,
+        count: results.length,
+      })
     }
     case 'add_type': {
       if (!a.worldId || !a.category) return err('"worldId" and "category" are required')
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO encounter_types (id, world_id, predator_name, category, aggression, base_weight, min_threat, requires_core, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.worldId, a.predatorName ?? null, a.category, a.aggression ?? 'curious', a.baseWeight ?? 1.0, a.minThreat ?? 0, a.requiresCore ? 1 : 0, a.description ?? null, now, now).run()
-      return ok({ success: true, actionType: 'add_type', typeId: id, worldId: a.worldId, predatorName: a.predatorName ?? null, category: a.category })
+      await db
+        .prepare(
+          'INSERT INTO encounter_types (id, world_id, predator_name, category, aggression, base_weight, min_threat, requires_core, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(
+          id,
+          a.worldId,
+          a.predatorName ?? null,
+          a.category,
+          a.aggression ?? 'curious',
+          a.baseWeight ?? 1.0,
+          a.minThreat ?? 0,
+          a.requiresCore ? 1 : 0,
+          a.description ?? null,
+          now,
+          now,
+        )
+        .run()
+      return ok({
+        success: true,
+        actionType: 'add_type',
+        typeId: id,
+        worldId: a.worldId,
+        predatorName: a.predatorName ?? null,
+        category: a.category,
+      })
     }
     case 'check_infection': {
       if (!a.injuryId) return err('"injuryId" is required')
-      const injury = await db.prepare('SELECT * FROM character_injuries WHERE id = ?').bind(a.injuryId).first() as Record<string, unknown> | null
+      const injury = (await db
+        .prepare('SELECT * FROM character_injuries WHERE id = ?')
+        .bind(a.injuryId)
+        .first()) as Record<string, unknown> | null
       if (!injury) return err(`Injury not found: ${a.injuryId}`)
       const hours = a.hoursSinceInjury ?? 0
       const stage = computeInfectionStage(injury.severity as string, hours, a.treatmentReceived)
       return ok({
-        success: true, actionType: 'check_infection', injuryId: a.injuryId, characterId: injury.character_id,
-        severity: injury.severity, hoursSinceInjury: hours, treatmentReceived: a.treatmentReceived, ...stage,
+        success: true,
+        actionType: 'check_infection',
+        injuryId: a.injuryId,
+        characterId: injury.character_id,
+        severity: injury.severity,
+        hoursSinceInjury: hours,
+        treatmentReceived: a.treatmentReceived,
+        ...stage,
       })
     }
   }

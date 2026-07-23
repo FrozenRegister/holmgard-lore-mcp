@@ -15,9 +15,22 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 // was added; `update` only ever touched name/seed. See dynamic-fields.ts.
 const WORLD_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at'] as const
 
-export const ACTIONS = ['create', 'get', 'list', 'delete', 'update', 'generate', 'get_state'] as const
-type WorldAction = typeof ACTIONS[number]
-const ALIASES: Record<string, WorldAction> = { ...CRUD_ALIASES, generate: 'generate', get_state: 'get_state', state: 'get_state' } as Record<string, WorldAction>
+export const ACTIONS = [
+  'create',
+  'get',
+  'list',
+  'delete',
+  'update',
+  'generate',
+  'get_state',
+] as const
+type WorldAction = (typeof ACTIONS)[number]
+const ALIASES: Record<string, WorldAction> = {
+  ...CRUD_ALIASES,
+  generate: 'generate',
+  get_state: 'get_state',
+  state: 'get_state',
+} as Record<string, WorldAction>
 
 const InputSchema = z.object({
   action: z.string(),
@@ -38,9 +51,12 @@ const InputSchema = z.object({
   fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
-export async function handleWorldManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleWorldManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   // #377 — normalize snake_case world_id → camelCase worldId
   if (a.worldId === undefined && a.world_id !== undefined) a.worldId = a.world_id
@@ -56,12 +72,24 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       const seed = a.seed ?? crypto.randomUUID().slice(0, 8)
       const width = a.width ?? 100
       const height = a.height ?? 100
-      await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.name, seed, width, height, now, now).run()
+      await db
+        .prepare(
+          'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(id, a.name, seed, width, height, now, now)
+        .run()
       await seedDefaultBiomes(db, id)
       await seedDefaultZoneTypes(db, id)
       await seedWorldState(db, id)
-      return ok({ success: true, actionType: 'create', worldId: id, name: a.name, seed, width, height })
+      return ok({
+        success: true,
+        actionType: 'create',
+        worldId: id,
+        name: a.name,
+        seed,
+        width,
+        height,
+      })
     }
     case 'get': {
       const targetId = a.id ?? a.worldId
@@ -71,7 +99,11 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       return ok({ success: true, actionType: 'get', world: row })
     }
     case 'list': {
-      const { results } = await db.prepare('SELECT id, name, seed, width, height, created_at FROM worlds ORDER BY created_at DESC').all()
+      const { results } = await db
+        .prepare(
+          'SELECT id, name, seed, width, height, created_at FROM worlds ORDER BY created_at DESC',
+        )
+        .all()
       return ok({ success: true, actionType: 'list', worlds: results, count: results.length })
     }
     case 'delete': {
@@ -85,13 +117,29 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       if (!targetId) return err('"id" or "worldId" is required')
       const sets: string[] = ['updated_at = ?']
       const vals: unknown[] = [now]
-      if (a.name) { sets.push('name = ?'); vals.push(a.name) }
-      if (a.environment) { sets.push('seed = ?'); vals.push(JSON.stringify(a.environment)) }
-      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, WORLD_FIELDS_BLACKLIST, sets, vals)
+      if (a.name) {
+        sets.push('name = ?')
+        vals.push(a.name)
+      }
+      if (a.environment) {
+        sets.push('seed = ?')
+        vals.push(JSON.stringify(a.environment))
+      }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(
+        a.fields,
+        WORLD_FIELDS_BLACKLIST,
+        sets,
+        vals,
+      )
       vals.push(targetId)
-      await db.prepare(`UPDATE worlds SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+      await db
+        .prepare(`UPDATE worlds SET ${sets.join(', ')} WHERE id = ?`)
+        .bind(...vals)
+        .run()
       return ok({
-        success: true, actionType: 'update', worldId: targetId,
+        success: true,
+        actionType: 'update',
+        worldId: targetId,
         ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
       })
     }
@@ -101,12 +149,25 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
       const seed = a.seed ?? crypto.randomUUID().slice(0, 8)
       const width = a.width ?? 100
       const height = a.height ?? 100
-      await db.prepare('INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.name, seed, width, height, now, now).run()
+      await db
+        .prepare(
+          'INSERT INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(id, a.name, seed, width, height, now, now)
+        .run()
       await seedDefaultBiomes(db, id)
       await seedDefaultZoneTypes(db, id)
       await seedWorldState(db, id)
-      return ok({ success: true, actionType: 'generate', worldId: id, name: a.name, seed, width, height, note: 'World created with seed. Tile generation is a separate process.' })
+      return ok({
+        success: true,
+        actionType: 'generate',
+        worldId: id,
+        name: a.name,
+        seed,
+        width,
+        height,
+        note: 'World created with seed. Tile generation is a separate process.',
+      })
     }
     case 'get_state': {
       // #377 — accept both camelCase worldId and snake_case world_id as aliases.
@@ -124,7 +185,14 @@ export async function handleWorldManage(env: AppBindings, args: Record<string, u
         db.prepare('SELECT id, name, status FROM parties WHERE world_id = ?').bind(targetId).all(),
         db.prepare('SELECT * FROM turn_state WHERE world_id = ?').bind(targetId).first(),
       ])
-      return ok({ success: true, actionType: 'get_state', world, nations: nationsRes.results, parties: partiesRes.results, turnState })
+      return ok({
+        success: true,
+        actionType: 'get_state',
+        world,
+        nations: nationsRes.results,
+        parties: partiesRes.results,
+        turnState,
+      })
     }
   }
 }

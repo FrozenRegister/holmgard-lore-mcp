@@ -41,7 +41,7 @@ export function levenshtein(a: string, b: string): number {
       matrix[i][j] = Math.min(
         matrix[i - 1][j] + 1,
         matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
+        matrix[i - 1][j - 1] + cost,
       )
     }
   }
@@ -56,57 +56,104 @@ export function similarity(a: string, b: string): number {
 }
 
 export function normalizeInput(input: string): string {
-  return input.toLowerCase().trim().replace(/[-\s]+/g, '_')
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[-\s]+/g, '_')
 }
 
 export function matchAction<T extends string>(
   input: string,
   validActions: readonly T[],
   aliases?: Record<string, T>,
-  threshold = 0.6
+  threshold = 0.6,
 ): MatchOutcome<T> {
   const normalized = normalizeInput(input)
-  const exactMatch = validActions.find(a => a.toLowerCase() === normalized)
+  const exactMatch = validActions.find((a) => a.toLowerCase() === normalized)
   if (exactMatch) return { matched: exactMatch, exact: true, similarity: 1.0 }
   if (aliases) {
     const aliasMatch = aliases[normalized]
-    if (aliasMatch && validActions.includes(aliasMatch)) return { matched: aliasMatch, exact: false, similarity: 0.95 }
+    if (aliasMatch && validActions.includes(aliasMatch))
+      return { matched: aliasMatch, exact: false, similarity: 0.95 }
   }
-  const scored = validActions.map(action => ({ action, similarity: similarity(normalized, action) }))
+  const scored = validActions.map((action) => ({
+    action,
+    similarity: similarity(normalized, action),
+  }))
   scored.sort((a, b) => b.similarity - a.similarity)
   const best = scored[0]
-  if (best.similarity >= threshold) return { matched: best.action, exact: false, similarity: best.similarity }
-  const topSuggestions = scored.slice(0, 3).map(s => ({ value: s.action, similarity: Math.round(s.similarity * 100) }))
+  if (best.similarity >= threshold)
+    return { matched: best.action, exact: false, similarity: best.similarity }
+  const topSuggestions = scored
+    .slice(0, 3)
+    .map((s) => ({ value: s.action, similarity: Math.round(s.similarity * 100) }))
   return {
     error: 'invalid_action',
     input,
     suggestions: topSuggestions,
-    message: `Unknown action "${input}". Did you mean: ${topSuggestions.map(s => `"${s.value}" (${s.similarity}%)`).join(', ')}?`
+    message: `Unknown action "${input}". Did you mean: ${topSuggestions.map((s) => `"${s.value}" (${s.similarity}%)`).join(', ')}?`,
   }
 }
 
-export function formatGuidingError(error: GuidingError): { content: Array<{ type: 'text'; text: string }> } {
+export function formatGuidingError(error: GuidingError): {
+  content: Array<{ type: 'text'; text: string }>
+} {
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ error: error.error, message: error.message, input: error.input, suggestions: error.suggestions, hint: 'Try one of the suggested values above' }, null, 2) }]
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            error: error.error,
+            message: error.message,
+            input: error.input,
+            suggestions: error.suggestions,
+            hint: 'Try one of the suggested values above',
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   }
 }
 
 export const CRUD_ALIASES: Record<string, 'create' | 'get' | 'list' | 'update' | 'delete'> = {
-  new: 'create', add: 'create', make: 'create', insert: 'create',
-  fetch: 'get', read: 'get', find: 'get', show: 'get', retrieve: 'get', load: 'get',
-  all: 'list', query: 'list', browse: 'list',
-  modify: 'update', edit: 'update', patch: 'update', change: 'update', set: 'update',
-  remove: 'delete', destroy: 'delete', erase: 'delete', drop: 'delete',
+  new: 'create',
+  add: 'create',
+  make: 'create',
+  insert: 'create',
+  fetch: 'get',
+  read: 'get',
+  find: 'get',
+  show: 'get',
+  retrieve: 'get',
+  load: 'get',
+  all: 'list',
+  query: 'list',
+  browse: 'list',
+  modify: 'update',
+  edit: 'update',
+  patch: 'update',
+  change: 'update',
+  set: 'update',
+  remove: 'delete',
+  destroy: 'delete',
+  erase: 'delete',
+  drop: 'delete',
 }
 
-export function extendAliases<T extends string>(base: Record<string, T>, extensions: Record<string, T>): Record<string, T> {
+export function extendAliases<T extends string>(
+  base: Record<string, T>,
+  extensions: Record<string, T>,
+): Record<string, T> {
   return { ...base, ...extensions }
 }
 
 export function createFuzzyActionSchema<T extends string>(
   validActions: readonly T[],
   aliases?: Record<string, T>,
-  threshold = 0.6
+  threshold = 0.6,
 ): z.ZodEffects<z.ZodString, T, string> {
   return z.string().transform((input, ctx) => {
     const result = matchAction(input, validActions, aliases, threshold)
@@ -118,4 +165,7 @@ export function createFuzzyActionSchema<T extends string>(
   })
 }
 
-export const FlexibleIdentifierSchema = z.string().min(1, 'Identifier cannot be empty').describe('UUID or entity name')
+export const FlexibleIdentifierSchema = z
+  .string()
+  .min(1, 'Identifier cannot be empty')
+  .describe('UUID or entity name')

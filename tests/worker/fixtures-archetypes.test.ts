@@ -152,10 +152,7 @@ describe('Archetype fixtures and entity_manage.generate', () => {
 
   it('generates entity with location-based threat adjustment', async () => {
     await seedArchetypes()
-    await seedKV(
-      'location:danger-zone',
-      '**Name:** Danger Zone\n**Danger-Level:** 0.5',
-    )
+    await seedKV('location:danger-zone', '**Name:** Danger Zone\n**Danger-Level:** 0.5')
 
     const res = await callTool('entity_manage', {
       action: 'generate',

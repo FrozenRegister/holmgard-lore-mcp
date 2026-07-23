@@ -15,19 +15,23 @@ describe('admin endpoints', () => {
   describe('/admin/set-lore', () => {
     it('stores lore and returns ok:true with correct secret', async () => {
       const res = await adminPost('/admin/set-lore', {
-        key: 'admin:test', text: 'Admin content', secret: ADMIN_SECRET,
+        key: 'admin:test',
+        text: 'Admin content',
+        secret: ADMIN_SECRET,
       })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.version).toBe(1)
     })
 
     it('returns 401 with wrong secret', async () => {
       const res = await adminPost('/admin/set-lore', {
-        key: 'admin:test', text: 'Admin content', secret: 'wrong-secret',
+        key: 'admin:test',
+        text: 'Admin content',
+        secret: 'wrong-secret',
       })
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -37,47 +41,81 @@ describe('admin endpoints', () => {
     })
 
     it('returns 400 when key is missing', async () => {
-      const res = await adminPost('/admin/set-lore', { text: 'Admin content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        text: 'Admin content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when key is null', async () => {
-      const res = await adminPost('/admin/set-lore', { key: null, text: 'content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: null,
+        text: 'content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when key is empty string', async () => {
-      const res = await adminPost('/admin/set-lore', { key: '', text: 'content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: '',
+        text: 'content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when key is whitespace only', async () => {
-      const res = await adminPost('/admin/set-lore', { key: '   ', text: 'content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: '   ',
+        text: 'content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when key is a number', async () => {
-      const res = await adminPost('/admin/set-lore', { key: 42, text: 'content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: 42,
+        text: 'content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when key is an array', async () => {
-      const res = await adminPost('/admin/set-lore', { key: ['foo', 'bar'], text: 'content', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: ['foo', 'bar'],
+        text: 'content',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when text is empty string', async () => {
-      const res = await adminPost('/admin/set-lore', { key: 'admin:test-empty-text', text: '', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: 'admin:test-empty-text',
+        text: '',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when text is whitespace only', async () => {
-      const res = await adminPost('/admin/set-lore', { key: 'admin:test-ws-text', text: '   ', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: 'admin:test-ws-text',
+        text: '   ',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
     it('returns 400 when text is missing', async () => {
-      const res = await adminPost('/admin/set-lore', { key: 'admin:test-missing-text', secret: ADMIN_SECRET })
+      const res = await adminPost('/admin/set-lore', {
+        key: 'admin:test-missing-text',
+        secret: ADMIN_SECRET,
+      })
       expect(res.status).toBe(400)
     })
 
@@ -89,7 +127,7 @@ describe('admin endpoints', () => {
         body: '{not valid json',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -100,10 +138,10 @@ describe('admin endpoints', () => {
       const res = await SELF.fetch('http://example.com/admin/set-lore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: Buffer.from([0xFF, 0xFE, 0x00]).toString(),
+        body: Buffer.from([0xff, 0xfe, 0x00]).toString(),
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       if (typeof body.error === 'string') {
         expect(body.error).not.toContain('at ')
@@ -141,13 +179,15 @@ describe('admin endpoints', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'character:aria-test', secret: ADMIN_SECRET }),
       })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.d1Id).toBeTruthy()
       expect(body.name).toContain('Aria')
 
-      const row = await env.RPG_DB!.prepare('SELECT * FROM characters WHERE kv_origin = ?')
-        .bind('character:aria-test').first() as Record<string, any> | null
+      const row = (await env
+        .RPG_DB!.prepare('SELECT * FROM characters WHERE kv_origin = ?')
+        .bind('character:aria-test')
+        .first()) as Record<string, any> | null
       expect(row).not.toBeNull()
       expect(row!.name).toContain('Aria')
       expect(row!.faction_id).toBe('test-faction')
@@ -175,7 +215,7 @@ describe('admin endpoints', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'character:already-done', secret: ADMIN_SECRET }),
       })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.already_migrated).toBe(true)
       expect(body.d1Id).toBe('existing-uuid-999')
@@ -215,7 +255,7 @@ describe('admin endpoints', () => {
         body: 'not json{{{',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -227,8 +267,11 @@ describe('admin endpoints', () => {
   describe('/admin/delete-lore', () => {
     it('deletes lore and returns ok:true with correct secret', async () => {
       await env.LORE_DB.put('admin:del-target', JSON.stringify({ text: 'to delete', meta: {} }))
-      const res = await adminPost('/admin/delete-lore', { key: 'admin:del-target', secret: ADMIN_SECRET })
-      const body = await res.json() as Record<string, any>
+      const res = await adminPost('/admin/delete-lore', {
+        key: 'admin:del-target',
+        secret: ADMIN_SECRET,
+      })
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
     })
 
@@ -274,7 +317,7 @@ describe('admin endpoints', () => {
         body: '{{broken json',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -292,7 +335,7 @@ describe('admin endpoints', () => {
         ],
       })
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.saved).toBe(2)
       const rawA = await env.LORE_DB.get('batch:set-a')
@@ -307,7 +350,7 @@ describe('admin endpoints', () => {
         items: [{ key: 'batch:unauth', text: 'text' }],
       })
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -321,7 +364,7 @@ describe('admin endpoints', () => {
     it('returns 400 when items is missing', async () => {
       const res = await adminPost('/admin/set-lore-batch', { secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -337,7 +380,7 @@ describe('admin endpoints', () => {
         body: 'not json{',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -354,7 +397,7 @@ describe('admin endpoints', () => {
         keys: ['batch:del-a', 'batch:del-b'],
       })
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.deleted).toBe(2)
       expect(await env.LORE_DB.get('batch:del-a')).toBeNull()
@@ -367,14 +410,14 @@ describe('admin endpoints', () => {
         keys: ['batch:del-x'],
       })
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
     it('returns 400 when keys is missing', async () => {
       const res = await adminPost('/admin/delete-lore-batch', { secret: ADMIN_SECRET })
       expect(res.status).toBe(400)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -390,7 +433,7 @@ describe('admin endpoints', () => {
         body: '}{broken',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -400,12 +443,18 @@ describe('admin endpoints', () => {
 
   describe('/admin/gc', () => {
     it('deletes _csp_report:* keys and returns deleted_csp_reports count', async () => {
-      await env.LORE_DB.put('_csp_report:2026-01-01T00:00:00.000Z:aaa111', JSON.stringify({ blocked: 'data' }))
-      await env.LORE_DB.put('_csp_report:2026-01-02T00:00:00.000Z:bbb222', JSON.stringify({ blocked: 'data' }))
+      await env.LORE_DB.put(
+        '_csp_report:2026-01-01T00:00:00.000Z:aaa111',
+        JSON.stringify({ blocked: 'data' }),
+      )
+      await env.LORE_DB.put(
+        '_csp_report:2026-01-02T00:00:00.000Z:bbb222',
+        JSON.stringify({ blocked: 'data' }),
+      )
 
       const res = await adminPost('/admin/gc', { secret: ADMIN_SECRET })
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.deleted_csp_reports).toBe(2)
 
@@ -420,7 +469,7 @@ describe('admin endpoints', () => {
         body: '}{',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -436,7 +485,7 @@ describe('admin endpoints', () => {
         body: '{',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -452,7 +501,7 @@ describe('admin endpoints', () => {
         body: '{',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -468,7 +517,7 @@ describe('admin endpoints', () => {
     it('returns 401 with wrong secret', async () => {
       const res = await adminPost('/admin/migrate-all-characters', { secret: 'wrong-secret' })
       expect(res.status).toBe(401)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
     })
 
@@ -484,7 +533,7 @@ describe('admin endpoints', () => {
         body: 'invalid json {',
       })
       expect(res.status).toBe(500)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(typeof body.error).toBe('string')
       expect(body.error).not.toContain('KVNamespace')
@@ -503,14 +552,18 @@ describe('admin endpoints', () => {
           key,
           JSON.stringify({
             text,
-            meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            meta: {
+              version: 1,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
           }),
         )
       }
 
       const res = await adminPost('/admin/migrate-all-characters', { secret: ADMIN_SECRET })
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.total).toBe(2)
       expect(body.migrated).toBe(2)
@@ -525,12 +578,16 @@ describe('admin endpoints', () => {
         'character:old',
         JSON.stringify({
           text: '## D1-Migrated: true\n## D1-Character-ID: 550e8400-e29b-41d4-a716-446655440000\n# Character:Old',
-          meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          meta: {
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         }),
       )
 
       const res = await adminPost('/admin/migrate-all-characters', { secret: ADMIN_SECRET })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.skipped).toBeGreaterThanOrEqual(1)
     })
   })
@@ -548,7 +605,7 @@ describe('admin endpoints', () => {
 
       const res = await adminGetExport(ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       const keyNames: string[] = body.keys.map((k: { key: string }) => k.key)
       expect(keyNames).toContain('character:export-test')
@@ -573,11 +630,14 @@ describe('admin endpoints', () => {
       const res = await adminPost('/admin/import', {
         secret: ADMIN_SECRET,
         keys: [
-          { key: 'character:import-test', value: JSON.stringify({ text: 'Restored lore', meta: { version: 3 } }) },
+          {
+            key: 'character:import-test',
+            value: JSON.stringify({ text: 'Restored lore', meta: { version: 3 } }),
+          },
           { key: '_idx:prefix:character', value: JSON.stringify(['character:import-test']) },
         ],
       })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(true)
       expect(body.imported).toBe(2)
       expect(body.failed).toBe(0)
@@ -597,7 +657,7 @@ describe('admin endpoints', () => {
           { key: 'character:bad-value', value: 42 },
         ],
       })
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.ok).toBe(false)
       expect(body.imported).toBe(1)
       expect(body.failed).toBe(2)
@@ -632,7 +692,7 @@ describe('admin endpoints', () => {
         body: JSON.stringify(reportPayload),
       })
       expect(res.status).toBe(200)
-      const body = await res.json() as Record<string, any>
+      const body = (await res.json()) as Record<string, any>
       expect(body.status).toBe('reported')
 
       // Verify nothing was written to KV

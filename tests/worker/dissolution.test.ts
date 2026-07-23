@@ -79,7 +79,7 @@ describe('dissolution primitives', () => {
     expect(s5.sensory.scent).toContain('rendered_fat')
     expect(s5.sensory.sound).toBe('silence')
     expect(s5.sensory.visual).toContain('identity_markers_dissolving')
-    expect(s5.mechanical.resistance_decrement).toBe(0.30)
+    expect(s5.mechanical.resistance_decrement).toBe(0.3)
     expect(s5.mechanical.hp_drain_per_tick).toBe(8)
     expect(s5.mechanical.communication_penalty).toBe(-10)
     expect(s5.mechanical.knowledge_leakage).toBe(true)
@@ -115,7 +115,15 @@ describe('dissolution primitives', () => {
   // ── TERMINAL_CONVERSIONS ───────────────────────────────────────────
 
   it('has all 7 utility vectors defined', () => {
-    const vectors = ['GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE', 'PARASITISM', 'THRALL', 'DISTRIBUTED']
+    const vectors = [
+      'GASTRIC',
+      'BUTCHERY',
+      'INCUBATION',
+      'SCULPTURE',
+      'PARASITISM',
+      'THRALL',
+      'DISTRIBUTED',
+    ]
     for (const v of vectors) {
       expect(TERMINAL_CONVERSIONS[v as keyof typeof TERMINAL_CONVERSIONS]).toBeDefined()
     }
@@ -241,7 +249,8 @@ describe('dissolution primitives', () => {
   // ── consumptionTimelineCheck ───────────────────────────────────────
 
   it('consumptionTimelineCheck parses standard markdown format', () => {
-    const text = '**Name:** Test Entity\n**Status:** active\n**Consumption-Timeline:** hours to days\n**Processor:** leonar-2'
+    const text =
+      '**Name:** Test Entity\n**Status:** active\n**Consumption-Timeline:** hours to days\n**Processor:** leonar-2'
     const info = consumptionTimelineCheck(text)
     expect(info.timeline_remaining).toBe('hours to days')
     expect(info.status).toBe('active')
@@ -356,7 +365,7 @@ describe('dissolution primitives', () => {
   it('buildMechanicalEffects for stage 5: terminal with max values', () => {
     const effects = buildMechanicalEffects(5)
     expect(effects.terminal).toBe(true)
-    expect(effects.resistance_decrement).toBe(0.30)
+    expect(effects.resistance_decrement).toBe(0.3)
     expect(effects.hp_drain_per_tick).toBe(8)
     expect(effects.communication_penalty).toBe(-10)
     expect(effects.movement_locked).toBe(true)
@@ -383,7 +392,13 @@ describe('dissolution primitives', () => {
     const stages: DissolutionConfig['stages'] = {}
     for (let s = 1; s <= stageCount; s++) {
       stages[s] = {
-        sensory: { scent: `custom-scent-${s}`, thermal: null, texture: null, visual: null, sound: null },
+        sensory: {
+          scent: `custom-scent-${s}`,
+          thermal: null,
+          texture: null,
+          visual: null,
+          sound: null,
+        },
         mechanical: {
           resistance_decrement: 0.01 * s,
           movement_locked: s >= 2,
@@ -408,7 +423,7 @@ describe('dissolution primitives', () => {
     expect(stageMutationFor(8, config)!.mechanical.terminal).toBe(true)
   })
 
-  it('stageMutationFor with a custom config still returns null beyond that config\'s own terminalStage', () => {
+  it("stageMutationFor with a custom config still returns null beyond that config's own terminalStage", () => {
     const config = buildCustomConfig(8)
     expect(stageMutationFor(9, config)).toBeNull()
   })

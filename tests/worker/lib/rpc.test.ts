@@ -11,7 +11,11 @@ describe('makeResult', () => {
 describe('makeError', () => {
   it('builds an error JSON-RPC response', () => {
     const res = makeError('req-1', -32600, 'bad request')
-    expect(res).toEqual({ jsonrpc: '2.0', id: 'req-1', error: { code: -32600, message: 'bad request', data: undefined } })
+    expect(res).toEqual({
+      jsonrpc: '2.0',
+      id: 'req-1',
+      error: { code: -32600, message: 'bad request', data: undefined },
+    })
   })
 
   it('includes optional data', () => {

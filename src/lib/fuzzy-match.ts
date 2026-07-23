@@ -95,8 +95,8 @@ export function findCloseMatches(
   limit = 5,
 ): FuzzyMatch[] {
   return candidates
-    .map(name => ({ name, score: scoreMatch(query, name) }))
-    .filter(m => m.score >= minScore)
+    .map((name) => ({ name, score: scoreMatch(query, name) }))
+    .filter((m) => m.score >= minScore)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
 }

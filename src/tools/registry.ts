@@ -8,10 +8,10 @@ import { handle_continuity_manage } from './continuity-manage'
 import { rpgToolRegistry } from '../rpg/registry'
 
 export const toolRegistry: Record<string, ToolHandler> = {
-  lore_manage:       handle_lore_manage,
-  entity_manage:     handle_entity_manage,
-  world_manage:      handle_world_manage,
-  scene_manage:      handle_scene_manage,
+  lore_manage: handle_lore_manage,
+  entity_manage: handle_entity_manage,
+  world_manage: handle_world_manage,
+  scene_manage: handle_scene_manage,
   continuity_manage: handle_continuity_manage,
   ...rpgToolRegistry,
 }

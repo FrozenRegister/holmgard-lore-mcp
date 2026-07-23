@@ -14,9 +14,14 @@ describe('Dice notation extensions', () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
     })
-    const json = await res.json() as Record<string, any>
+    const json = (await res.json()) as Record<string, any>
     const text = json.result?.content?.[0]?.text
     return text ? JSON.parse(text) : json
   }
@@ -51,7 +56,13 @@ describe('Dice notation extensions', () => {
   })
 
   it('reroll-once meaningfully lowers the probability of ending on a 1 vs. a plain die', async () => {
-    const withReroll = await callTool('rpg', { sub: 'math', action: 'probability', expression: '1d6r1', target: 1, comparison: 'eq' })
+    const withReroll = await callTool('rpg', {
+      sub: 'math',
+      action: 'probability',
+      expression: '1d6r1',
+      target: 1,
+      comparison: 'eq',
+    })
     // Plain 1d6 has a 1/6 (~0.167) chance of a 1; with a single reroll-on-1 it
     // drops to ~1/36 (~0.028) — assert it's well below the un-rerolled rate.
     expect(withReroll.probability).toBeLessThan(0.12)
@@ -93,7 +104,12 @@ describe('Dice notation extensions', () => {
   it('rejects a malformed expression on both roll and probability', async () => {
     const roll = await callTool('rpg', { sub: 'math', action: 'roll', expression: 'not-dice' })
     expect(roll.error).toBe(true)
-    const probability = await callTool('rpg', { sub: 'math', action: 'probability', expression: 'not-dice', target: 10 })
+    const probability = await callTool('rpg', {
+      sub: 'math',
+      action: 'probability',
+      expression: 'not-dice',
+      target: 10,
+    })
     expect(probability.error).toBe(true)
   })
 
@@ -150,15 +166,28 @@ describe('Dice notation extensions', () => {
   it('is critical-eligible for advantage (2d20kh1) and disadvantage (2d20kl1)', async () => {
     const advantage = await callTool('rpg', { sub: 'math', action: 'roll', expression: '2d20kh1' })
     expect('critical' in advantage).toBe(true)
-    const disadvantage = await callTool('rpg', { sub: 'math', action: 'roll', expression: '2d20kl1' })
+    const disadvantage = await callTool('rpg', {
+      sub: 'math',
+      action: 'roll',
+      expression: '2d20kl1',
+    })
     expect('critical' in disadvantage).toBe(true)
   })
 
   // ── get_history ──────────────────────────────────────────────────────────────
 
   it('get_history round-trips session_id and metadata for a roll', async () => {
-    const rolled = await callTool('rpg', { sub: 'math', action: 'roll', expression: '2d6+3', sessionId: 'dice-session-1' })
-    const history = await callTool('rpg', { sub: 'math', action: 'get_history', sessionId: 'dice-session-1' })
+    const rolled = await callTool('rpg', {
+      sub: 'math',
+      action: 'roll',
+      expression: '2d6+3',
+      sessionId: 'dice-session-1',
+    })
+    const history = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      sessionId: 'dice-session-1',
+    })
     expect(history.success).toBe(true)
     expect(history.count).toBe(1)
     expect(history.calculations[0].session_id).toBe('dice-session-1')
@@ -167,32 +196,65 @@ describe('Dice notation extensions', () => {
   })
 
   it('get_history filters by kind', async () => {
-    await callTool('rpg', { sub: 'math', action: 'roll', expression: '1d20', sessionId: 'dice-session-2' })
-    await callTool('rpg', { sub: 'math', action: 'probability', expression: '1d20', target: 15, sessionId: 'dice-session-2' })
+    await callTool('rpg', {
+      sub: 'math',
+      action: 'roll',
+      expression: '1d20',
+      sessionId: 'dice-session-2',
+    })
+    await callTool('rpg', {
+      sub: 'math',
+      action: 'probability',
+      expression: '1d20',
+      target: 15,
+      sessionId: 'dice-session-2',
+    })
 
-    const rollsOnly = await callTool('rpg', { sub: 'math', action: 'get_history', sessionId: 'dice-session-2', kind: 'roll' })
+    const rollsOnly = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      sessionId: 'dice-session-2',
+      kind: 'roll',
+    })
     expect(rollsOnly.count).toBe(1)
     expect(rollsOnly.calculations[0].metadata.kind).toBe('roll')
 
-    const probabilityOnly = await callTool('rpg', { sub: 'math', action: 'get_history', sessionId: 'dice-session-2', kind: 'probability' })
+    const probabilityOnly = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      sessionId: 'dice-session-2',
+      kind: 'probability',
+    })
     expect(probabilityOnly.count).toBe(1)
     expect(probabilityOnly.calculations[0].metadata.kind).toBe('probability')
   })
 
   it('get_history looks up a single calculation by calculationId', async () => {
     const rolled = await callTool('rpg', { sub: 'math', action: 'roll', expression: '1d8' })
-    const r = await callTool('rpg', { sub: 'math', action: 'get_history', calculationId: rolled.calculationId })
+    const r = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      calculationId: rolled.calculationId,
+    })
     expect(r.success).toBe(true)
     expect(r.calculation.id).toBe(rolled.calculationId)
   })
 
   it('get_history 404s for an unknown calculationId', async () => {
-    const r = await callTool('rpg', { sub: 'math', action: 'get_history', calculationId: 'nonexistent' })
+    const r = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      calculationId: 'nonexistent',
+    })
     expect(r.error).toBe(true)
   })
 
   it('get_history returns an empty list for a session with no rolls', async () => {
-    const r = await callTool('rpg', { sub: 'math', action: 'get_history', sessionId: 'nonexistent-session' })
+    const r = await callTool('rpg', {
+      sub: 'math',
+      action: 'get_history',
+      sessionId: 'nonexistent-session',
+    })
     expect(r.success).toBe(true)
     expect(r.count).toBe(0)
   })

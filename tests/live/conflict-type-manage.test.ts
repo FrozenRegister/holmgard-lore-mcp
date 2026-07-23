@@ -19,32 +19,64 @@ describe.skipIf(!MCP_API_KEY)('rpg conflict_type (#316)', () => {
 
   it('create, update, and delete a custom conflict type round-trip', async () => {
     const name = `LiveTest ${uid()}`
-    const createRes = parseResult(await tool('rpg', { sub: 'conflict_type', action: 'create', name, resolver: 'combat' }))
+    const createRes = parseResult(
+      await tool('rpg', { sub: 'conflict_type', action: 'create', name, resolver: 'combat' }),
+    )
     expect(createRes.success).toBe(true)
 
-    const updateRes = parseResult(await tool('rpg', { sub: 'conflict_type', action: 'update', id: createRes.conflictTypeId, resolver: 'both' }))
+    const updateRes = parseResult(
+      await tool('rpg', {
+        sub: 'conflict_type',
+        action: 'update',
+        id: createRes.conflictTypeId,
+        resolver: 'both',
+      }),
+    )
     expect(updateRes.success).toBe(true)
 
-    const deleteRes = parseResult(await tool('rpg', { sub: 'conflict_type', action: 'delete', id: createRes.conflictTypeId }))
+    const deleteRes = parseResult(
+      await tool('rpg', { sub: 'conflict_type', action: 'delete', id: createRes.conflictTypeId }),
+    )
     expect(deleteRes.success).toBe(true)
   })
 
   it('scene set_conflict_type / get_conflict_type round-trip', async () => {
-    const worldRes = parseResult(await tool('rpg', { sub: 'world', action: 'create', name: `Conflict Type Test World ${uid()}` }))
+    const worldRes = parseResult(
+      await tool('rpg', {
+        sub: 'world',
+        action: 'create',
+        name: `Conflict Type Test World ${uid()}`,
+      }),
+    )
     expect(worldRes.success).toBe(true)
     const worldId = worldRes.worldId
 
-    const sceneRes = parseResult(await tool('rpg', {
-      sub: 'scene', action: 'create', worldId, title: `Live Scene ${uid()}`, narration: 'Testing conflict-type routing.',
-    }))
+    const sceneRes = parseResult(
+      await tool('rpg', {
+        sub: 'scene',
+        action: 'create',
+        worldId,
+        title: `Live Scene ${uid()}`,
+        narration: 'Testing conflict-type routing.',
+      }),
+    )
     expect(sceneRes.success).toBe(true)
     const sceneId = sceneRes.sceneId
 
-    const setRes = parseResult(await tool('rpg', { sub: 'scene', action: 'set_conflict_type', id: sceneId, conflictTypeId: 'social' }))
+    const setRes = parseResult(
+      await tool('rpg', {
+        sub: 'scene',
+        action: 'set_conflict_type',
+        id: sceneId,
+        conflictTypeId: 'social',
+      }),
+    )
     expect(setRes.success).toBe(true)
     expect(setRes.conflictTypeId).toBe('social')
 
-    const getRes = parseResult(await tool('rpg', { sub: 'scene', action: 'get_conflict_type', id: sceneId }))
+    const getRes = parseResult(
+      await tool('rpg', { sub: 'scene', action: 'get_conflict_type', id: sceneId }),
+    )
     expect(getRes.conflictTypeId).toBe('social')
     expect(getRes.conflictType.resolver).toBe('drama')
 

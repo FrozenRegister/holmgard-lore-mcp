@@ -15,10 +15,15 @@ export async function rpc(method: string, params: Record<string, unknown> = {}):
     })
     const text = await res.text()
     if (!res.ok) {
-      if (attempt < 2) { await new Promise(r => setTimeout(r, 400 * (attempt + 1))); continue }
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+        continue
+      }
       throw new Error(`HTTP ${res.status} for ${toolName}: ${text.slice(0, 200)}`)
     }
-    try { return JSON.parse(text) } catch {
+    try {
+      return JSON.parse(text)
+    } catch {
       throw new Error(`Invalid JSON for ${toolName}: ${text.slice(0, 200)}`)
     }
   }
@@ -41,7 +46,8 @@ export async function adminPost(endpoint: string, body: Record<string, unknown>)
 
 export const uid = () => Math.random().toString(36).slice(2, 8)
 
-export const setLore = (key: string, text: string) => tool('lore_manage', { action: 'set', key, text })
+export const setLore = (key: string, text: string) =>
+  tool('lore_manage', { action: 'set', key, text })
 
 export const deleteLore = (...keys: string[]) =>
-  Promise.all(keys.filter(Boolean).map(k => tool('lore_manage', { action: 'delete', key: k })))
+  Promise.all(keys.filter(Boolean).map((k) => tool('lore_manage', { action: 'delete', key: k })))

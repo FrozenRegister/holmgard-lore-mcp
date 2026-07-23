@@ -55,7 +55,13 @@ describe('RichFormatter', () => {
     })
 
     it('formats table with headers and rows', () => {
-      const result = RichFormatter.table(['Name', 'Score'], [['Alice', 10], ['Bob', 20]])
+      const result = RichFormatter.table(
+        ['Name', 'Score'],
+        [
+          ['Alice', 10],
+          ['Bob', 20],
+        ],
+      )
       const lines = result.trim().split('\n')
       expect(lines[0]).toBe('| Name | Score |')
       expect(lines[1]).toBe('| --- | --- |')

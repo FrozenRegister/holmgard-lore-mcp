@@ -10,7 +10,7 @@ describe('handleSessionManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   it('returns guiding error for unknown action', async () => {
     const r = await handleSessionManage(db(), { action: 'zap' })
@@ -18,7 +18,12 @@ describe('handleSessionManage', () => {
   })
 
   it('initialize with createNew creates world and party', async () => {
-    const r = await handleSessionManage(db(), { action: 'initialize', createNew: true, worldName: 'TestWorld', partyName: 'Heroes' })
+    const r = await handleSessionManage(db(), {
+      action: 'initialize',
+      createNew: true,
+      worldName: 'TestWorld',
+      partyName: 'Heroes',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.created.world).toBe(true)
@@ -37,7 +42,11 @@ describe('handleSessionManage', () => {
   })
 
   it('initialize with explicit worldId and partyId', async () => {
-    const r = await handleSessionManage(db(), { action: 'initialize', worldId: 'w-1', partyId: 'p-1' })
+    const r = await handleSessionManage(db(), {
+      action: 'initialize',
+      worldId: 'w-1',
+      partyId: 'p-1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -49,7 +58,11 @@ describe('handleSessionManage', () => {
   })
 
   it('get_context returns empty context when nothing exists', async () => {
-    const r = await handleSessionManage(db(), { action: 'get_context', worldId: 'w-none', partyId: 'p-none' })
+    const r = await handleSessionManage(db(), {
+      action: 'get_context',
+      worldId: 'w-none',
+      partyId: 'p-none',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -57,13 +70,28 @@ describe('handleSessionManage', () => {
   it('get_context includes party when partyId exists', async () => {
     const init = await handleSessionManage(db(), { action: 'initialize', createNew: true })
     const { partyId, worldId } = JSON.parse(init.content[0].text)
-    const r = await handleSessionManage(db(), { action: 'get_context', worldId, partyId, includeQuests: true, includeWorld: true, includeNarrative: true, includeCombat: true })
+    const r = await handleSessionManage(db(), {
+      action: 'get_context',
+      worldId,
+      partyId,
+      includeQuests: true,
+      includeWorld: true,
+      includeNarrative: true,
+      includeCombat: true,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
 
   it('get_context skips sections when include flags are false', async () => {
-    const r = await handleSessionManage(db(), { action: 'get_context', includeParty: false, includeQuests: false, includeWorld: false, includeNarrative: false, includeCombat: false })
+    const r = await handleSessionManage(db(), {
+      action: 'get_context',
+      includeParty: false,
+      includeQuests: false,
+      includeWorld: false,
+      includeNarrative: false,
+      includeCombat: false,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.party).toBeUndefined()

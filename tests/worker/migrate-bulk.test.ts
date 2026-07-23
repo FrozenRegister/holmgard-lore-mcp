@@ -7,7 +7,7 @@ import { setupRpgDb } from './support/setup-d1'
 
 const ELOWEN_LORE = [
   '# Character:Elowen "Lo" Thorne',
-  '**Alias:** Lo (Zira\'s nickname for her), The Sky-Princess (circus moniker)',
+  "**Alias:** Lo (Zira's nickname for her), The Sky-Princess (circus moniker)",
   '**Age:** 25',
   '**Gender:** Female',
   '**Orientation:** Homosexual',
@@ -127,7 +127,11 @@ describe('Bulk KV-to-D1 Migration', () => {
         key,
         JSON.stringify({
           text,
-          meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          meta: {
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         }),
       )
     }
@@ -146,21 +150,26 @@ describe('Bulk KV-to-D1 Migration', () => {
       return keys
     })()
     console.log('[TEST] All KV keys:', allKeys)
-    console.log('[TEST] Character keys:', allKeys.filter(k => k.startsWith('character:')))
+    console.log(
+      '[TEST] Character keys:',
+      allKeys.filter((k) => k.startsWith('character:')),
+    )
 
     // Execute migration
     const results = await migrateCharactersKvToD1({ env }, 5)
-    console.log('[TEST] Migration results:', results.map(r => ({ key: r.key, status: r.status, error: r.error })))
+    console.log(
+      '[TEST] Migration results:',
+      results.map((r) => ({ key: r.key, status: r.status, error: r.error })),
+    )
 
     // Verify all 5 migrated
     expect(results).toHaveLength(5)
-    expect(results.every(r => r.status === 'migrated')).toBe(true)
+    expect(results.every((r) => r.status === 'migrated')).toBe(true)
 
     // Verify D1 inserts
     for (const result of results) {
       expect(result.d1Id).toBeDefined()
-      const d1Row = await env.RPG_DB
-        .prepare('SELECT * FROM characters WHERE id = ?')
+      const d1Row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?')
         .bind(result.d1Id)
         .first()
       expect(d1Row).toBeDefined()
@@ -192,14 +201,20 @@ describe('Bulk KV-to-D1 Migration', () => {
     const migratedKey = 'character:already-done'
     const unmigratedKey = 'character:fresh-new'
 
-    const migratedText = '# Character:Old Guard\n**Age:** 50\n## Mechanical Scaffolding\n**Weight-1:** 0.3'
-    const unmigratedText = '# Character:Fresh Face\n**Age:** 20\n## Mechanical Scaffolding\n**Weight-1:** 0.7'
+    const migratedText =
+      '# Character:Old Guard\n**Age:** 50\n## Mechanical Scaffolding\n**Weight-1:** 0.3'
+    const unmigratedText =
+      '# Character:Fresh Face\n**Age:** 20\n## Mechanical Scaffolding\n**Weight-1:** 0.7'
 
     await env.LORE_DB.put(
       migratedKey,
       JSON.stringify({
         text: `## D1-Migrated: true\n## D1-Character-ID: old-uuid-1234\n${migratedText}`,
-        meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        meta: {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       }),
     )
 
@@ -207,7 +222,11 @@ describe('Bulk KV-to-D1 Migration', () => {
       unmigratedKey,
       JSON.stringify({
         text: unmigratedText,
-        meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        meta: {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       }),
     )
 
@@ -228,10 +247,13 @@ describe('Bulk KV-to-D1 Migration', () => {
 
     // Run migration
     const results = await migrateCharactersKvToD1({ env }, 2)
-    console.log('[TEST2] Results:', results.map(r => ({ key: r.key, status: r.status, error: r.error })))
+    console.log(
+      '[TEST2] Results:',
+      results.map((r) => ({ key: r.key, status: r.status, error: r.error })),
+    )
 
     // Expect one skipped, one migrated
-    const statuses = results.map(r => r.status).sort()
+    const statuses = results.map((r) => r.status).sort()
     expect(statuses).toContain('skipped')
     expect(statuses).toContain('migrated')
   })
@@ -251,12 +273,17 @@ describe('Bulk KV-to-D1 Migration', () => {
 
     // Seed KV with a unique test character
     const kvKey = 'character:redirect-test'
-    const testText = '# Character:Redirect Test\n**Age:** 35\n**Faction:** test-faction\n## Mechanical Scaffolding\n**Weight-1:** 0.5\n**Thread:** thread:test'
+    const testText =
+      '# Character:Redirect Test\n**Age:** 35\n**Faction:** test-faction\n## Mechanical Scaffolding\n**Weight-1:** 0.5\n**Thread:** thread:test'
     await env.LORE_DB.put(
       kvKey,
       JSON.stringify({
         text: testText,
-        meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        meta: {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       }),
     )
 
@@ -275,8 +302,7 @@ describe('Bulk KV-to-D1 Migration', () => {
     expect(idMatch?.[1]).toBe(d1Id)
 
     // Verify D1 entry exists
-    const d1Row = await env.RPG_DB
-      .prepare('SELECT * FROM characters WHERE id = ?')
+    const d1Row = await env.RPG_DB.prepare('SELECT * FROM characters WHERE id = ?')
       .bind(d1Id)
       .first()
     expect(d1Row).toBeDefined()
@@ -295,11 +321,18 @@ describe('Bulk KV-to-D1 Migration', () => {
       'character:catch-test',
       JSON.stringify({
         text: '# Character:Catch Test\n**Age:** 20\n## Mechanical Scaffolding\n**Weight-1:** 0.5',
-        meta: { version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        meta: {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       }),
     )
     // Pass a context without RPG_DB to trigger the catch block
-    const result = await migrateCharacterKvToD1({ env: { LORE_DB: env.LORE_DB } }, 'character:catch-test')
+    const result = await migrateCharacterKvToD1(
+      { env: { LORE_DB: env.LORE_DB } },
+      'character:catch-test',
+    )
     expect(result.status).toBe('error')
     expect(result.error).toMatch(/TypeError|Cannot read|undefined/)
   })
@@ -314,12 +347,21 @@ describe('Bulk KV-to-D1 Migration', () => {
 
   it('uses default limit of 5 when not specified', async () => {
     // Seed 3 characters — fewer than the default limit of 5
-    await env.LORE_DB.put('character:def-a', JSON.stringify({ text: '# Character:Def A\n**Weight-1:** 0.5', meta: {} }))
-    await env.LORE_DB.put('character:def-b', JSON.stringify({ text: '# Character:Def B\n**Weight-1:** 0.5', meta: {} }))
-    await env.LORE_DB.put('character:def-c', JSON.stringify({ text: '# Character:Def C\n**Weight-1:** 0.5', meta: {} }))
+    await env.LORE_DB.put(
+      'character:def-a',
+      JSON.stringify({ text: '# Character:Def A\n**Weight-1:** 0.5', meta: {} }),
+    )
+    await env.LORE_DB.put(
+      'character:def-b',
+      JSON.stringify({ text: '# Character:Def B\n**Weight-1:** 0.5', meta: {} }),
+    )
+    await env.LORE_DB.put(
+      'character:def-c',
+      JSON.stringify({ text: '# Character:Def C\n**Weight-1:** 0.5', meta: {} }),
+    )
     // Call without explicit limit — uses default of 5
     const results = await migrateCharactersKvToD1({ env })
     expect(results).toHaveLength(3)
-    expect(results.every(r => r.status === 'migrated')).toBe(true)
+    expect(results.every((r) => r.status === 'migrated')).toBe(true)
   })
 })

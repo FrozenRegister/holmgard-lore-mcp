@@ -69,7 +69,14 @@ describe('fuzzy-match', () => {
   })
 
   describe('findCloseMatches', () => {
-    const candidates = ['list_topics', 'get_lore', 'set_lore', 'delete_lore', 'patch_lore', 'search_lore']
+    const candidates = [
+      'list_topics',
+      'get_lore',
+      'set_lore',
+      'delete_lore',
+      'patch_lore',
+      'search_lore',
+    ]
 
     it('finds exact match first', () => {
       const results = findCloseMatches('list_topics', candidates)

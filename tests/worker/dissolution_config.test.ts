@@ -66,14 +66,18 @@ describe('dissolution_config', () => {
   })
 
   it('resistance_decrement increases monotonically', () => {
-    const values = [1, 2, 3, 4, 5].map(s => STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5].mechanical.resistance_decrement)
+    const values = [1, 2, 3, 4, 5].map(
+      (s) => STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5].mechanical.resistance_decrement,
+    )
     for (let i = 1; i < values.length; i++) {
       expect(values[i]).toBeGreaterThan(values[i - 1])
     }
   })
 
   it('hp_drain_per_tick increases monotonically', () => {
-    const values = [1, 2, 3, 4, 5].map(s => STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5].mechanical.hp_drain_per_tick)
+    const values = [1, 2, 3, 4, 5].map(
+      (s) => STAGE_MUTATIONS[s as 1 | 2 | 3 | 4 | 5].mechanical.hp_drain_per_tick,
+    )
     for (let i = 1; i < values.length; i++) {
       expect(values[i]).toBeGreaterThanOrEqual(values[i - 1])
     }
@@ -99,8 +103,13 @@ describe('dissolution_config', () => {
 
   it('has all 7 utility vectors defined', () => {
     const vectors: UtilityVector[] = [
-      'GASTRIC', 'BUTCHERY', 'INCUBATION', 'SCULPTURE',
-      'PARASITISM', 'THRALL', 'DISTRIBUTED',
+      'GASTRIC',
+      'BUTCHERY',
+      'INCUBATION',
+      'SCULPTURE',
+      'PARASITISM',
+      'THRALL',
+      'DISTRIBUTED',
     ]
     for (const v of vectors) {
       expect(TERMINAL_CONVERSIONS[v]).toBeDefined()
@@ -109,7 +118,15 @@ describe('dissolution_config', () => {
 
   it('has no extra or missing vectors', () => {
     const keys = Object.keys(TERMINAL_CONVERSIONS).sort()
-    const expected = ['BUTCHERY', 'DISTRIBUTED', 'GASTRIC', 'INCUBATION', 'PARASITISM', 'SCULPTURE', 'THRALL']
+    const expected = [
+      'BUTCHERY',
+      'DISTRIBUTED',
+      'GASTRIC',
+      'INCUBATION',
+      'PARASITISM',
+      'SCULPTURE',
+      'THRALL',
+    ]
     expect(keys).toEqual(expected)
   })
 
@@ -133,7 +150,7 @@ describe('dissolution_config', () => {
   })
 
   it('labels are unique across all vectors', () => {
-    const labels = Object.values(TERMINAL_CONVERSIONS).map(c => c.label)
+    const labels = Object.values(TERMINAL_CONVERSIONS).map((c) => c.label)
     const unique = new Set(labels)
     expect(unique.size).toBe(labels.length)
   })

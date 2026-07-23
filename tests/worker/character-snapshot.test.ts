@@ -104,8 +104,14 @@ describe('Character Snapshots', () => {
 
     // Verify both snapshots exist in database
     const db = testEnv.RPG_DB!
-    const snap1Row = await db.prepare('SELECT * FROM character_snapshots WHERE id = ?').bind(snap1Id).first()
-    const snap2Row = await db.prepare('SELECT * FROM character_snapshots WHERE id = ?').bind(snap2Id).first()
+    const snap1Row = await db
+      .prepare('SELECT * FROM character_snapshots WHERE id = ?')
+      .bind(snap1Id)
+      .first()
+    const snap2Row = await db
+      .prepare('SELECT * FROM character_snapshots WHERE id = ?')
+      .bind(snap2Id)
+      .first()
 
     expect(snap1Row).toBeDefined()
     expect(snap2Row).toBeDefined()
@@ -162,7 +168,10 @@ describe('Character Snapshots', () => {
 
     // Verify snapshot in database
     const db = testEnv.RPG_DB!
-    const row = await db.prepare('SELECT * FROM character_snapshots WHERE id = ?').bind(snapshotId).first()
+    const row = await db
+      .prepare('SELECT * FROM character_snapshots WHERE id = ?')
+      .bind(snapshotId)
+      .first()
 
     expect(row).toBeDefined()
     const stats = JSON.parse((row as any).stats_json)
@@ -201,7 +210,10 @@ describe('Character Snapshots', () => {
 
     // Verify custom state stored
     const db = testEnv.RPG_DB!
-    const row = await db.prepare('SELECT * FROM character_snapshots WHERE id = ?').bind(snapshotId).first()
+    const row = await db
+      .prepare('SELECT * FROM character_snapshots WHERE id = ?')
+      .bind(snapshotId)
+      .first()
 
     expect(row).toBeDefined()
     const stateJson = JSON.parse((row as any).state_json)

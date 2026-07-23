@@ -10,11 +10,15 @@ describe('handleTurnManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   async function createWorld(id: string) {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, id, 'seed', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, id, 'seed', 100, 100, now, now)
+      .run()
   }
 
   it('returns guiding error for unknown action', async () => {
@@ -82,7 +86,11 @@ describe('handleTurnManage', () => {
   })
 
   it('submit_actions returns not found for unknown world', async () => {
-    const r = await handleTurnManage(db(), { action: 'submit_actions', worldId: 'no-world', nationId: 'n1' })
+    const r = await handleTurnManage(db(), {
+      action: 'submit_actions',
+      worldId: 'no-world',
+      nationId: 'n1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -91,8 +99,10 @@ describe('handleTurnManage', () => {
     await createWorld('world-5')
     await handleTurnManage(db(), { action: 'init', worldId: 'world-5' })
     const r = await handleTurnManage(db(), {
-      action: 'submit_actions', worldId: 'world-5', nationId: 'nation-1',
-      actions: [{ type: 'move', targetId: 'loc-1', description: 'March north' }]
+      action: 'submit_actions',
+      worldId: 'world-5',
+      nationId: 'nation-1',
+      actions: [{ type: 'move', targetId: 'loc-1', description: 'March north' }],
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -102,7 +112,12 @@ describe('handleTurnManage', () => {
   it('submit_actions works with partyId', async () => {
     await createWorld('world-5a')
     await handleTurnManage(db(), { action: 'init', worldId: 'world-5a' })
-    const r = await handleTurnManage(db(), { action: 'submit_actions', worldId: 'world-5a', partyId: 'party-1', actions: [] })
+    const r = await handleTurnManage(db(), {
+      action: 'submit_actions',
+      worldId: 'world-5a',
+      partyId: 'party-1',
+      actions: [],
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -122,7 +137,11 @@ describe('handleTurnManage', () => {
   })
 
   it('mark_ready returns not found for unknown world', async () => {
-    const r = await handleTurnManage(db(), { action: 'mark_ready', worldId: 'no-world', nationId: 'n1' })
+    const r = await handleTurnManage(db(), {
+      action: 'mark_ready',
+      worldId: 'no-world',
+      nationId: 'n1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -130,7 +149,11 @@ describe('handleTurnManage', () => {
   it('mark_ready marks nation ready', async () => {
     await createWorld('world-7')
     await handleTurnManage(db(), { action: 'init', worldId: 'world-7' })
-    const r = await handleTurnManage(db(), { action: 'mark_ready', worldId: 'world-7', nationId: 'nation-a' })
+    const r = await handleTurnManage(db(), {
+      action: 'mark_ready',
+      worldId: 'world-7',
+      nationId: 'nation-a',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.nationsReady).toContain('nation-a')
@@ -140,7 +163,11 @@ describe('handleTurnManage', () => {
     await createWorld('world-8')
     await handleTurnManage(db(), { action: 'init', worldId: 'world-8' })
     await handleTurnManage(db(), { action: 'mark_ready', worldId: 'world-8', nationId: 'nation-b' })
-    const r = await handleTurnManage(db(), { action: 'mark_ready', worldId: 'world-8', nationId: 'nation-b' })
+    const r = await handleTurnManage(db(), {
+      action: 'mark_ready',
+      worldId: 'world-8',
+      nationId: 'nation-b',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.readyCount).toBe(1)
   })
@@ -160,7 +187,12 @@ describe('handleTurnManage', () => {
   it('poll_results returns current turn state and events', async () => {
     await createWorld('world-9')
     await handleTurnManage(db(), { action: 'init', worldId: 'world-9' })
-    await handleTurnManage(db(), { action: 'submit_actions', worldId: 'world-9', nationId: 'n1', actions: [] })
+    await handleTurnManage(db(), {
+      action: 'submit_actions',
+      worldId: 'world-9',
+      nationId: 'n1',
+      actions: [],
+    })
     const r = await handleTurnManage(db(), { action: 'poll_results', worldId: 'world-9' })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)

@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -67,19 +75,28 @@ describe('canonical fixture — entity:actor-primary (predator/driver, Weight-1:
   })
 
   it('thread_tick on primary-processing-cycle decrements actor Timeline-Value', async () => {
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'primary-processing-cycle',
+    })
     expect(res.result.metadata.entities_ticked).toBe(1)
     const lore = await callTool('lore_manage', { action: 'get', query: 'entity:actor-primary' })
     expect(lore.result.text).toContain('Timeline-Value: 7')
   })
 
   it('thread_tick ticks both actor and subject when both share the same thread', async () => {
-    await seedKV('entity:subject-alpha', [
-      'Status: Active, Stage-2-of-4',
-      'Thread: primary-processing-cycle',
-      'Timeline-Value: 12',
-    ].join('\n'))
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'primary-processing-cycle' })
+    await seedKV(
+      'entity:subject-alpha',
+      [
+        'Status: Active, Stage-2-of-4',
+        'Thread: primary-processing-cycle',
+        'Timeline-Value: 12',
+      ].join('\n'),
+    )
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'primary-processing-cycle',
+    })
     expect(res.result.metadata.entities_ticked).toBe(2)
   })
 })

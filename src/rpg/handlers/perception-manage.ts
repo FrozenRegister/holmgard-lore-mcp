@@ -11,15 +11,34 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { executeRoll } from './math-manage'
 
-export const ACTIONS = ['assess', 'get_history', 'get_latest', 'list_observers', 'stealth_check', 'perception_contested'] as const
-type PerceptionAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'assess',
+  'get_history',
+  'get_latest',
+  'list_observers',
+  'stealth_check',
+  'perception_contested',
+] as const
+type PerceptionAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, PerceptionAction> = {
-  check: 'assess', perceive: 'assess', observe: 'assess', inspect: 'assess', roll: 'assess',
-  history: 'get_history', past: 'get_history',
-  latest: 'get_latest', current: 'get_latest', last: 'get_latest',
-  observers: 'list_observers', watchers: 'list_observers',
-  stealth: 'stealth_check', sneak: 'stealth_check', hide_check: 'stealth_check',
-  contested: 'perception_contested', opposed_check: 'perception_contested', spot_check: 'perception_contested',
+  check: 'assess',
+  perceive: 'assess',
+  observe: 'assess',
+  inspect: 'assess',
+  roll: 'assess',
+  history: 'get_history',
+  past: 'get_history',
+  latest: 'get_latest',
+  current: 'get_latest',
+  last: 'get_latest',
+  observers: 'list_observers',
+  watchers: 'list_observers',
+  stealth: 'stealth_check',
+  sneak: 'stealth_check',
+  hide_check: 'stealth_check',
+  contested: 'perception_contested',
+  opposed_check: 'perception_contested',
+  spot_check: 'perception_contested',
 }
 
 const InputSchema = z.object({
@@ -29,7 +48,10 @@ const InputSchema = z.object({
   targetKind: z.enum(['room', 'encounter', 'scene']).optional().default('room'),
   rollValue: z.number().int().min(1).max(30).optional(),
   dc: z.number().int().min(1).max(30).optional().default(12),
-  perceptionType: z.enum(['sight', 'hearing', 'smell', 'arcana', 'investigation', 'insight']).optional().default('sight'),
+  perceptionType: z
+    .enum(['sight', 'hearing', 'smell', 'arcana', 'investigation', 'insight'])
+    .optional()
+    .default('sight'),
   limit: z.number().int().min(1).max(50).optional().default(20),
   // #284 — stealth_check
   stealthMode: z.enum(['active', 'passive', 'rushed', 'hiding']).optional().default('active'),
@@ -85,7 +107,10 @@ function coverTypeModifier(coverType: string | undefined): number {
 }
 
 const STEALTH_MODE_MODIFIERS: Record<'active' | 'passive' | 'rushed' | 'hiding', number> = {
-  hiding: 2, active: 0, passive: -5, rushed: -8,
+  hiding: 2,
+  active: 0,
+  passive: -5,
+  rushed: -8,
 }
 
 export function yieldStealthModifier(a: {
@@ -106,14 +131,18 @@ export function yieldStealthModifier(a: {
   return { total, breakdown }
 }
 
-export type StealthOutcome = 'avoided_entirely' | 'tense_moment' | 'predator_searching' | 'yield_spotted' | 'ambushed'
+export type StealthOutcome =
+  'avoided_entirely' | 'tense_moment' | 'predator_searching' | 'yield_spotted' | 'ambushed'
 export type StealthAdvantage = 'none' | 'yield' | 'predator'
 
 // margin = yieldTotal - predatorTotal. >=5 clean avoidance; 1-4 a near-miss
 // with no advantage either way; 0 a tie (predator knows something is off but
 // hasn't pinned it down); negative bands hand advantage to whichever side is
 // further ahead.
-export function stealthOutcomeFromMargin(margin: number): { outcome: StealthOutcome; advantage: StealthAdvantage } {
+export function stealthOutcomeFromMargin(margin: number): {
+  outcome: StealthOutcome
+  advantage: StealthAdvantage
+} {
   if (margin >= 5) return { outcome: 'avoided_entirely', advantage: 'none' }
   if (margin >= 1) return { outcome: 'tense_moment', advantage: 'none' }
   if (margin === 0) return { outcome: 'predator_searching', advantage: 'none' }
@@ -122,17 +151,44 @@ export function stealthOutcomeFromMargin(margin: number): { outcome: StealthOutc
 }
 
 const PERCEPTION_DESCRIPTIONS: Record<string, Record<string, string>> = {
-  sight:         { success: 'You spot details others might miss.', failure: 'Nothing unusual catches your eye.', crit: 'Your sharp eyes reveal hidden secrets.' },
-  hearing:       { success: 'You hear sounds that others cannot detect.', failure: 'The area seems quiet.', crit: 'You make out every whisper in the vicinity.' },
-  investigation: { success: 'A thorough search reveals something of interest.', failure: 'You find nothing unusual.', crit: 'Your methodical search uncovers hidden clues.' },
-  insight:       { success: 'You sense something beneath the surface.', failure: 'You cannot glean their true intentions.', crit: 'Their secrets are laid bare to you.' },
-  arcana:        { success: 'You sense magical emanations.', failure: 'No obvious magical signatures detected.', crit: 'The weave of magic reveals itself to you in full.' },
-  smell:         { success: 'A distinct scent catches your attention.', failure: 'Nothing unusual reaches your nose.', crit: 'Your senses paint a complete olfactory picture.' },
+  sight: {
+    success: 'You spot details others might miss.',
+    failure: 'Nothing unusual catches your eye.',
+    crit: 'Your sharp eyes reveal hidden secrets.',
+  },
+  hearing: {
+    success: 'You hear sounds that others cannot detect.',
+    failure: 'The area seems quiet.',
+    crit: 'You make out every whisper in the vicinity.',
+  },
+  investigation: {
+    success: 'A thorough search reveals something of interest.',
+    failure: 'You find nothing unusual.',
+    crit: 'Your methodical search uncovers hidden clues.',
+  },
+  insight: {
+    success: 'You sense something beneath the surface.',
+    failure: 'You cannot glean their true intentions.',
+    crit: 'Their secrets are laid bare to you.',
+  },
+  arcana: {
+    success: 'You sense magical emanations.',
+    failure: 'No obvious magical signatures detected.',
+    crit: 'The weave of magic reveals itself to you in full.',
+  },
+  smell: {
+    success: 'A distinct scent catches your attention.',
+    failure: 'Nothing unusual reaches your nose.',
+    crit: 'Your senses paint a complete olfactory picture.',
+  },
 }
 
-export async function handlePerceptionManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handlePerceptionManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -147,50 +203,138 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       const succeeded = roll >= a.dc
       const isCrit = roll === 20
       const descs = PERCEPTION_DESCRIPTIONS[a.perceptionType] ?? PERCEPTION_DESCRIPTIONS.sight
-      const description = isCrit ? descs.crit : (succeeded ? descs.success : descs.failure)
+      const description = isCrit ? descs.crit : succeeded ? descs.success : descs.failure
       const disposition = succeeded ? 'commit' : 'reject_inert'
-      const seqRow = await db.prepare('SELECT MAX(seq) as max_seq FROM perception_assessments WHERE observer_id = ?').bind(a.observerId).first() as { max_seq: number | null }
+      const seqRow = (await db
+        .prepare('SELECT MAX(seq) as max_seq FROM perception_assessments WHERE observer_id = ?')
+        .bind(a.observerId)
+        .first()) as { max_seq: number | null }
       const seq = (seqRow?.max_seq ?? 0) + 1
       const id = crypto.randomUUID()
-      const hazards = succeeded ? [] : [{ type: 'perception_failure', description: `DC ${a.dc} not met (rolled ${roll})` }]
-      await db.prepare('INSERT INTO perception_assessments (id, seq, prev_seq, event_hash, intent_id, observer_id, target_ref_kind, target_ref_id, hazards, applicable_controls, blind_spots, disposition, reject_reason, cost_paid, capacity_remaining_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, seq, seq - 1 || null, crypto.randomUUID(), a.perceptionType, a.observerId, a.targetKind, a.targetId, JSON.stringify(hazards), JSON.stringify([a.perceptionType]), '[]', disposition, succeeded ? null : description, 1, 99, now).run()
-      return ok({ success: true, actionType: 'assess', assessmentId: id, observerId: a.observerId, targetId: a.targetId, targetKind: a.targetKind, perceptionType: a.perceptionType, roll, dc: a.dc, succeeded, isCrit, description, disposition })
+      const hazards = succeeded
+        ? []
+        : [{ type: 'perception_failure', description: `DC ${a.dc} not met (rolled ${roll})` }]
+      await db
+        .prepare(
+          'INSERT INTO perception_assessments (id, seq, prev_seq, event_hash, intent_id, observer_id, target_ref_kind, target_ref_id, hazards, applicable_controls, blind_spots, disposition, reject_reason, cost_paid, capacity_remaining_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(
+          id,
+          seq,
+          seq - 1 || null,
+          crypto.randomUUID(),
+          a.perceptionType,
+          a.observerId,
+          a.targetKind,
+          a.targetId,
+          JSON.stringify(hazards),
+          JSON.stringify([a.perceptionType]),
+          '[]',
+          disposition,
+          succeeded ? null : description,
+          1,
+          99,
+          now,
+        )
+        .run()
+      return ok({
+        success: true,
+        actionType: 'assess',
+        assessmentId: id,
+        observerId: a.observerId,
+        targetId: a.targetId,
+        targetKind: a.targetKind,
+        perceptionType: a.perceptionType,
+        roll,
+        dc: a.dc,
+        succeeded,
+        isCrit,
+        description,
+        disposition,
+      })
     }
     case 'get_history': {
       if (!a.observerId) return err('"observerId" is required')
-      const { results } = await db.prepare('SELECT * FROM perception_assessments WHERE observer_id = ? ORDER BY seq DESC LIMIT ?').bind(a.observerId, a.limit).all()
-      return ok({ success: true, actionType: 'get_history', observerId: a.observerId, assessments: results, count: results.length })
+      const { results } = await db
+        .prepare(
+          'SELECT * FROM perception_assessments WHERE observer_id = ? ORDER BY seq DESC LIMIT ?',
+        )
+        .bind(a.observerId, a.limit)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'get_history',
+        observerId: a.observerId,
+        assessments: results,
+        count: results.length,
+      })
     }
     case 'get_latest': {
       if (!a.observerId) return err('"observerId" is required')
       let query = 'SELECT * FROM perception_assessments WHERE observer_id = ?'
       const binds: unknown[] = [a.observerId]
-      if (a.targetId) { query += ' AND target_ref_id = ?'; binds.push(a.targetId) }
-      const row = await db.prepare(query + ' ORDER BY seq DESC LIMIT 1').bind(...binds).first()
+      if (a.targetId) {
+        query += ' AND target_ref_id = ?'
+        binds.push(a.targetId)
+      }
+      const row = await db
+        .prepare(query + ' ORDER BY seq DESC LIMIT 1')
+        .bind(...binds)
+        .first()
       if (!row) return err(`No perception assessments found for observer ${a.observerId}`)
       return ok({ success: true, actionType: 'get_latest', assessment: row })
     }
     case 'list_observers': {
       if (!a.targetId) return err('"targetId" is required')
-      const { results } = await db.prepare('SELECT DISTINCT observer_id, MAX(seq) as latest_seq, MAX(created_at) as last_checked FROM perception_assessments WHERE target_ref_id = ? GROUP BY observer_id ORDER BY last_checked DESC LIMIT ?').bind(a.targetId, a.limit).all()
-      return ok({ success: true, actionType: 'list_observers', targetId: a.targetId, observers: results, count: results.length })
+      const { results } = await db
+        .prepare(
+          'SELECT DISTINCT observer_id, MAX(seq) as latest_seq, MAX(created_at) as last_checked FROM perception_assessments WHERE target_ref_id = ? GROUP BY observer_id ORDER BY last_checked DESC LIMIT ?',
+        )
+        .bind(a.targetId, a.limit)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'list_observers',
+        targetId: a.targetId,
+        observers: results,
+        count: results.length,
+      })
     }
     case 'stealth_check': {
       // #210 — Use the shared dice engine for both sides of the opposed check.
       const yieldRoll = a.rollValue ?? executeRoll('1d20').total
       const predatorRoll = executeRoll('1d20').total
-      const yieldMod = yieldStealthModifier({ stealthMode: a.stealthMode, coverType: a.coverType, isNight: a.isNight, partySize: a.partySize })
-      const predatorMod = predatorPerceptionModifier({ distanceZone: a.distanceZone, windDirection: a.windDirection, yieldBleeding: a.yieldBleeding, yieldCookingOrFire: a.yieldCookingOrFire })
+      const yieldMod = yieldStealthModifier({
+        stealthMode: a.stealthMode,
+        coverType: a.coverType,
+        isNight: a.isNight,
+        partySize: a.partySize,
+      })
+      const predatorMod = predatorPerceptionModifier({
+        distanceZone: a.distanceZone,
+        windDirection: a.windDirection,
+        yieldBleeding: a.yieldBleeding,
+        yieldCookingOrFire: a.yieldCookingOrFire,
+      })
       const yieldTotal = yieldRoll + a.yieldStealthBonus + yieldMod.total
       const predatorTotal = predatorRoll + a.predatorPerceptionBonus + predatorMod.total
       const margin = yieldTotal - predatorTotal
       const { outcome, advantage } = stealthOutcomeFromMargin(margin)
       return ok({
-        success: true, actionType: 'stealth_check',
-        yieldRoll, predatorRoll, yieldTotal, predatorTotal, margin, outcome, advantage,
-        stealthMode: a.stealthMode, distanceZone: a.distanceZone, windDirection: a.windDirection,
-        yieldModifiers: yieldMod.breakdown, predatorModifiers: predatorMod.breakdown,
+        success: true,
+        actionType: 'stealth_check',
+        yieldRoll,
+        predatorRoll,
+        yieldTotal,
+        predatorTotal,
+        margin,
+        outcome,
+        advantage,
+        stealthMode: a.stealthMode,
+        distanceZone: a.distanceZone,
+        windDirection: a.windDirection,
+        yieldModifiers: yieldMod.breakdown,
+        predatorModifiers: predatorMod.breakdown,
       })
     }
     case 'perception_contested': {
@@ -202,9 +346,16 @@ export async function handlePerceptionManage(env: AppBindings, args: Record<stri
       const margin = observerTotal - actorTotal
       const detected = margin >= 0
       return ok({
-        success: true, actionType: 'perception_contested',
-        observerId: a.observerId ?? null, targetId: a.targetId ?? null,
-        observerRoll, actorRoll, observerTotal, actorTotal, margin, detected,
+        success: true,
+        actionType: 'perception_contested',
+        observerId: a.observerId ?? null,
+        targetId: a.targetId ?? null,
+        observerRoll,
+        actorRoll,
+        observerTotal,
+        actorTotal,
+        margin,
+        detected,
       })
     }
   }

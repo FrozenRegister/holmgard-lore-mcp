@@ -10,7 +10,7 @@ describe('handleImprovisationManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   it('returns guiding error for unknown action', async () => {
     const r = await handleImprovisationManage(db(), { action: 'zap' })
@@ -25,10 +25,19 @@ describe('handleImprovisationManage', () => {
 
   it('apply creates a custom effect', async () => {
     const r = await handleImprovisationManage(db(), {
-      action: 'apply', targetId: 'char-1', name: 'Cursed Touch', category: 'curse',
-      sourceType: 'arcane', powerLevel: 3, durationType: 'rounds', durationValue: 5,
-      mechanics: ['disadvantage on attack'], triggers: ['on hit'], removalConditions: ['remove curse'],
-      stackable: false, description: 'A dark curse'
+      action: 'apply',
+      targetId: 'char-1',
+      name: 'Cursed Touch',
+      category: 'curse',
+      sourceType: 'arcane',
+      powerLevel: 3,
+      durationType: 'rounds',
+      durationValue: 5,
+      mechanics: ['disadvantage on attack'],
+      triggers: ['on hit'],
+      removalConditions: ['remove curse'],
+      stackable: false,
+      description: 'A dark curse',
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -49,7 +58,12 @@ describe('handleImprovisationManage', () => {
   })
 
   it('get returns effect with parsed arrays', async () => {
-    const c = await handleImprovisationManage(db(), { action: 'apply', targetId: 'char-2', name: 'Boon', durationType: 'permanent' })
+    const c = await handleImprovisationManage(db(), {
+      action: 'apply',
+      targetId: 'char-2',
+      name: 'Boon',
+      durationType: 'permanent',
+    })
     const { effectId } = JSON.parse(c.content[0].text)
     const r = await handleImprovisationManage(db(), { action: 'get', id: effectId })
     const body = JSON.parse(r.content[0].text)
@@ -72,7 +86,11 @@ describe('handleImprovisationManage', () => {
   })
 
   it('remove deactivates effect', async () => {
-    const c = await handleImprovisationManage(db(), { action: 'apply', targetId: 'char-4', name: 'Poison' })
+    const c = await handleImprovisationManage(db(), {
+      action: 'apply',
+      targetId: 'char-4',
+      name: 'Poison',
+    })
     const { effectId } = JSON.parse(c.content[0].text)
     const r = await handleImprovisationManage(db(), { action: 'remove', id: effectId })
     const body = JSON.parse(r.content[0].text)
@@ -80,7 +98,13 @@ describe('handleImprovisationManage', () => {
   })
 
   it('tick advances rounds and expires effects', async () => {
-    await handleImprovisationManage(db(), { action: 'apply', targetId: 'char-5', name: 'Haste', durationType: 'rounds', durationValue: 1 })
+    await handleImprovisationManage(db(), {
+      action: 'apply',
+      targetId: 'char-5',
+      name: 'Haste',
+      durationType: 'rounds',
+      durationValue: 1,
+    })
     const r = await handleImprovisationManage(db(), { action: 'tick', rounds: 2 })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
@@ -95,8 +119,15 @@ describe('handleImprovisationManage', () => {
   })
 
   it('list_by_target returns effects for target', async () => {
-    await handleImprovisationManage(db(), { action: 'apply', targetId: 'target-6', name: 'Fire Shield' })
-    const r = await handleImprovisationManage(db(), { action: 'list_by_target', targetId: 'target-6' })
+    await handleImprovisationManage(db(), {
+      action: 'apply',
+      targetId: 'target-6',
+      name: 'Fire Shield',
+    })
+    const r = await handleImprovisationManage(db(), {
+      action: 'list_by_target',
+      targetId: 'target-6',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.count).toBeGreaterThanOrEqual(1)

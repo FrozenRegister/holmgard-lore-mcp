@@ -64,7 +64,10 @@ describe('Character D1 → KV Projection', () => {
       state_stage: 2,
       state_stage_timer: 240,
       conditions: JSON.stringify(['poisoned', 'hiding']),
-      resource_pools: JSON.stringify({ focus: { current: 3, max: 5 }, inspiration: { current: 1, max: 1 } }),
+      resource_pools: JSON.stringify({
+        focus: { current: 3, max: 5 },
+        inspiration: { current: 1, max: 1 },
+      }),
     }
 
     const projection = formatD1CharToKv(row)
@@ -101,7 +104,10 @@ describe('Character D1 → KV Projection', () => {
       character_class: 'Barbarian',
       race: 'Orc',
       conditions: JSON.stringify(['exhausted', 'charmed', 'frightened']),
-      resource_pools: JSON.stringify({ rage: { current: 2, max: 3 }, channel_divinity: { current: 1, max: 2 } }),
+      resource_pools: JSON.stringify({
+        rage: { current: 2, max: 3 },
+        channel_divinity: { current: 1, max: 2 },
+      }),
     }
 
     const projection = formatD1CharToKv(row)
@@ -267,8 +273,16 @@ describe('Character D1 → KV Projection', () => {
   // #226 Phase 2 — co-habitation host_body_id/active fields
   it('renders Host-Body line when host_body_id is set', () => {
     const row: Record<string, unknown> = {
-      id: 'char-cordelia', name: 'Cordelia Keel', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
-      character_type: 'pc', character_class: 'Commoner', race: 'Human',
+      id: 'char-cordelia',
+      name: 'Cordelia Keel',
+      stats: '{}',
+      hp: 10,
+      max_hp: 10,
+      ac: 10,
+      level: 1,
+      character_type: 'pc',
+      character_class: 'Commoner',
+      race: 'Human',
       host_body_id: 'char-kat-sloane',
     }
     const projection = formatD1CharToKv(row)
@@ -277,9 +291,18 @@ describe('Character D1 → KV Projection', () => {
 
   it('renders Active: false line when active is 0', () => {
     const row: Record<string, unknown> = {
-      id: 'char-bellona', name: 'Bellona Keel', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
-      character_type: 'pc', character_class: 'Commoner', race: 'Human',
-      host_body_id: 'char-kat-sloane', active: 0,
+      id: 'char-bellona',
+      name: 'Bellona Keel',
+      stats: '{}',
+      hp: 10,
+      max_hp: 10,
+      ac: 10,
+      level: 1,
+      character_type: 'pc',
+      character_class: 'Commoner',
+      race: 'Human',
+      host_body_id: 'char-kat-sloane',
+      active: 0,
     }
     const projection = formatD1CharToKv(row)
     expect(projection).toContain('**Host-Body:** char-kat-sloane')
@@ -288,8 +311,17 @@ describe('Character D1 → KV Projection', () => {
 
   it('omits Host-Body and Active lines for an ordinary non-co-habitating character', () => {
     const row: Record<string, unknown> = {
-      id: 'char-ordinary', name: 'Ordinary Villager', stats: '{}', hp: 10, max_hp: 10, ac: 10, level: 1,
-      character_type: 'npc', character_class: 'Commoner', race: 'Human', active: 1,
+      id: 'char-ordinary',
+      name: 'Ordinary Villager',
+      stats: '{}',
+      hp: 10,
+      max_hp: 10,
+      ac: 10,
+      level: 1,
+      character_type: 'npc',
+      character_class: 'Commoner',
+      race: 'Human',
+      active: 1,
     }
     const projection = formatD1CharToKv(row)
     expect(projection).not.toContain('**Host-Body:**')
@@ -330,7 +362,11 @@ describe('D1 Character Projection Edge Cases', () => {
       character_class: 'Wizard',
       race: 'Elf',
       resource_pools: JSON.stringify({
-        spell_slots: { 1: { current: 4, max: 4 }, 2: { current: 2, max: 3 }, 3: { current: 0, max: 2 } },
+        spell_slots: {
+          1: { current: 4, max: 4 },
+          2: { current: 2, max: 3 },
+          3: { current: 0, max: 2 },
+        },
         ki_points: { current: 5, max: 5 },
         sorcery_points: { current: 2, max: 3 },
       }),
@@ -369,7 +405,7 @@ describe('D1 Character Projection Edge Cases', () => {
 
     const projection = formatD1CharToKv(row)
     const lines = projection.split('\n')
-    const conditionLines = lines.filter(l => l.startsWith('- '))
+    const conditionLines = lines.filter((l) => l.startsWith('- '))
     expect(conditionLines.length).toBe(9)
   })
 
@@ -407,7 +443,9 @@ describe('D1 Character Projection Edge Cases', () => {
     }
 
     const projection = formatD1CharToKv(row)
-    const match = projection.match(/generated from D1 character record on (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/)
+    const match = projection.match(
+      /generated from D1 character record on (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/,
+    )
     expect(match).toBeTruthy()
   })
 })

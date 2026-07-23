@@ -12,7 +12,9 @@ export interface MockKVStore {
   put(key: string, value: string): Promise<void>
   delete(key: string): Promise<void>
   list(): Promise<{ keys: { name: string }[] }>
-  getWithMetadata(key: string): Promise<{ value: string | null; metadata: Record<string, unknown> | null }>
+  getWithMetadata(
+    key: string,
+  ): Promise<{ value: string | null; metadata: Record<string, unknown> | null }>
 }
 
 /** Build a fake KV store backed by an in-memory Record. */
@@ -20,12 +22,16 @@ export function createMockKV(seed: Record<string, string> = {}): MockKVStore {
   const store: Record<string, string> = { ...seed }
   return {
     get: async (key: string) => store[key] ?? null,
-    put: async (key: string, value: string) => { store[key] = value },
-    delete: async (key: string) => { delete store[key] },
+    put: async (key: string, value: string) => {
+      store[key] = value
+    },
+    delete: async (key: string) => {
+      delete store[key]
+    },
     list: async () => ({
       keys: Object.keys(store)
-        .filter(k => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== '_changelog')
-        .map(name => ({ name })),
+        .filter((k) => !k.startsWith('_history:') && !k.startsWith('_idx:') && k !== '_changelog')
+        .map((name) => ({ name })),
     }),
     getWithMetadata: async (key: string) => ({
       value: store[key] ?? null,
@@ -61,7 +67,13 @@ export function createMockD1Database(): D1Database {
       const updateMatch = sql.match(/UPDATE\s+(\w+)\s+SET/i)
       const deleteMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i)
       const createMatch = sql.match(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)/i)
-      const tableName = insertMatch?.[1] || selectMatch?.[1] || updateMatch?.[1] || deleteMatch?.[1] || createMatch?.[1] || '_unknown'
+      const tableName =
+        insertMatch?.[1] ||
+        selectMatch?.[1] ||
+        updateMatch?.[1] ||
+        deleteMatch?.[1] ||
+        createMatch?.[1] ||
+        '_unknown'
 
       let boundValues: unknown[] = []
 
@@ -81,7 +93,11 @@ export function createMockD1Database(): D1Database {
         async run(): Promise<D1Result<Record<string, unknown>>> {
           if (insertMatch) {
             const row: Record<string, unknown> = {}
-            const cols = sql.match(/\(([^)]+)\)/)?.[1]?.split(',').map(c => c.trim()) ?? []
+            const cols =
+              sql
+                .match(/\(([^)]+)\)/)?.[1]
+                ?.split(',')
+                .map((c) => c.trim()) ?? []
             boundValues.forEach((v, i) => {
               row[cols[i] ?? `col${i}`] = v
             })

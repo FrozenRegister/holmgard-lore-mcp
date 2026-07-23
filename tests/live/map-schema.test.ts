@@ -28,7 +28,9 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('map schema world-scoping (#319)'
 
     const pushLandmarkRes = await adminPost('/admin/map/push-landmarks', {
       mapId,
-      landmarks: [{ id: `lm-${uid()}`, q: 0, r: 0, name: 'Old Watchtower', type: 'poi', notes: 'A ruin.' }],
+      landmarks: [
+        { id: `lm-${uid()}`, q: 0, r: 0, name: 'Old Watchtower', type: 'poi', notes: 'A ruin.' },
+      ],
     })
     expect(pushLandmarkRes.ok).toBe(true)
 
@@ -36,8 +38,14 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('map schema world-scoping (#319)'
     expect(body.ok).toBe(true)
     expect(body.hexes).toHaveLength(1)
     expect(body.hexes[0]).toEqual({
-      mapId, q: 0, r: 0, terrain: 'forest', name: 'Thornwood', description: 'Dense forest',
-      worldId: null, biome: null,
+      mapId,
+      q: 0,
+      r: 0,
+      terrain: 'forest',
+      name: 'Thornwood',
+      description: 'Dense forest',
+      worldId: null,
+      biome: null,
     })
     expect(body.landmarks).toHaveLength(1)
     const lm = body.landmarks[0] as Record<string, unknown>
@@ -51,7 +59,17 @@ describe.skipIf(!MCP_API_KEY || !ADMIN_SECRET)('map schema world-scoping (#319)'
     const mapId = `test-map-${uid()}`
     const pushRes = await adminPost('/admin/map/push-hexes', {
       mapId,
-      hexes: [{ q: 0, r: 0, terrain: 'plains', name: 'Greenfield', description: '', worldId: `nonexistent-${uid()}`, biome: 'plains' }],
+      hexes: [
+        {
+          q: 0,
+          r: 0,
+          terrain: 'plains',
+          name: 'Greenfield',
+          description: '',
+          worldId: `nonexistent-${uid()}`,
+          biome: 'plains',
+        },
+      ],
     })
     expect(pushRes.ok).toBe(true)
 

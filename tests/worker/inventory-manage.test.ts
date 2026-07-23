@@ -11,7 +11,7 @@ describe('handleInventoryManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
 
   async function createItem(name: string) {
     const r = await handleItemManage(db(), { action: 'create', name, type: 'weapon' })
@@ -20,10 +20,35 @@ describe('handleInventoryManage', () => {
 
   async function createCharacter(name: string) {
     const id = crypto.randomUUID()
-    await env.RPG_DB.prepare(`INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-      id, name, '{}', 10, 10, 10, 1, 'pc', 'Fighter', 'Human', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 0, new Date().toISOString(), new Date().toISOString()
-    ).run()
+    await env.RPG_DB.prepare(
+      `INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, character_type, character_class, race, conditions, resistances, vulnerabilities, immunities, known_spells, prepared_spells, cantrips_known, currency, resource_pools, xp, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        name,
+        '{}',
+        10,
+        10,
+        10,
+        1,
+        'pc',
+        'Fighter',
+        'Human',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '[]',
+        '{}',
+        '{}',
+        0,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      )
+      .run()
     return id
   }
 
@@ -64,7 +89,12 @@ describe('handleInventoryManage', () => {
     const charId = await createCharacter('Carol')
     const itemId = await createItem('Arrow')
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 10 })
-    const r = await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 5 })
+    const r = await handleInventoryManage(db(), {
+      action: 'add',
+      characterId: charId,
+      itemId,
+      quantity: 5,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -87,7 +117,12 @@ describe('handleInventoryManage', () => {
     const charId = await createCharacter('Eve')
     const itemId = await createItem('Bolt')
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 5 })
-    const r = await handleInventoryManage(db(), { action: 'remove', characterId: charId, itemId, quantity: 3 })
+    const r = await handleInventoryManage(db(), {
+      action: 'remove',
+      characterId: charId,
+      itemId,
+      quantity: 3,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -96,7 +131,12 @@ describe('handleInventoryManage', () => {
     const charId = await createCharacter('Frank')
     const itemId = await createItem('Potion')
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 1 })
-    const r = await handleInventoryManage(db(), { action: 'remove', characterId: charId, itemId, quantity: 1 })
+    const r = await handleInventoryManage(db(), {
+      action: 'remove',
+      characterId: charId,
+      itemId,
+      quantity: 1,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -111,7 +151,12 @@ describe('handleInventoryManage', () => {
     const charId = await createCharacter('Grace')
     const itemId = await createItem('Mace')
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId })
-    const r = await handleInventoryManage(db(), { action: 'equip', characterId: charId, itemId, slot: 'main_hand' })
+    const r = await handleInventoryManage(db(), {
+      action: 'equip',
+      characterId: charId,
+      itemId,
+      slot: 'main_hand',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -133,7 +178,11 @@ describe('handleInventoryManage', () => {
   })
 
   it('transfer requires characterId, itemId, targetCharacterId', async () => {
-    const r = await handleInventoryManage(db(), { action: 'transfer', characterId: 'c1', itemId: 'i1' })
+    const r = await handleInventoryManage(db(), {
+      action: 'transfer',
+      characterId: 'c1',
+      itemId: 'i1',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -142,7 +191,12 @@ describe('handleInventoryManage', () => {
     const charId = await createCharacter('Ivan')
     const charId2 = await createCharacter('Judy')
     const itemId = await createItem('Coin')
-    const r = await handleInventoryManage(db(), { action: 'transfer', characterId: charId, itemId, targetCharacterId: charId2 })
+    const r = await handleInventoryManage(db(), {
+      action: 'transfer',
+      characterId: charId,
+      itemId,
+      targetCharacterId: charId2,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -152,7 +206,13 @@ describe('handleInventoryManage', () => {
     const charId2 = await createCharacter('Laura')
     const itemId = await createItem('Key')
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 1 })
-    const r = await handleInventoryManage(db(), { action: 'transfer', characterId: charId, itemId, targetCharacterId: charId2, quantity: 1 })
+    const r = await handleInventoryManage(db(), {
+      action: 'transfer',
+      characterId: charId,
+      itemId,
+      targetCharacterId: charId2,
+      quantity: 1,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -164,7 +224,13 @@ describe('handleInventoryManage', () => {
     await handleInventoryManage(db(), { action: 'add', characterId: charId, itemId, quantity: 10 })
     // give target some first so it increments
     await handleInventoryManage(db(), { action: 'add', characterId: charId2, itemId, quantity: 5 })
-    const r = await handleInventoryManage(db(), { action: 'transfer', characterId: charId, itemId, targetCharacterId: charId2, quantity: 5 })
+    const r = await handleInventoryManage(db(), {
+      action: 'transfer',
+      characterId: charId,
+      itemId,
+      targetCharacterId: charId2,
+      quantity: 5,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })

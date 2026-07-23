@@ -16,7 +16,9 @@ function main() {
     .filter(Boolean)
 
   const testFiles = trackedFiles.filter((f) => f.endsWith('.test.ts'))
-  const violations = testFiles.filter((f) => !APPROVED_PREFIXES.some((prefix) => f.startsWith(prefix)))
+  const violations = testFiles.filter(
+    (f) => !APPROVED_PREFIXES.some((prefix) => f.startsWith(prefix)),
+  )
 
   if (violations.length > 0) {
     console.error('\n✗ Test file(s) found outside tests/{unit,worker,live}/:\n')
@@ -26,12 +28,14 @@ function main() {
     console.error(
       `\n${violations.length} file(s) violate the test layout. Move ${violations.length === 1 ? 'it' : 'them'} into ` +
         'tests/unit/ (pure functions, no Workers runtime), tests/worker/ (Workers/miniflare runtime), or ' +
-        'tests/live/ (production smoke tests) — see CLAUDE.md and docs/testing-and-linting-guide.md.\n'
+        'tests/live/ (production smoke tests) — see CLAUDE.md and docs/testing-and-linting-guide.md.\n',
     )
     process.exit(1)
   }
 
-  console.log(`check-test-layout: all ${testFiles.length} tracked *.test.ts file(s) are under tests/{unit,worker,live}/.`)
+  console.log(
+    `check-test-layout: all ${testFiles.length} tracked *.test.ts file(s) are under tests/{unit,worker,live}/.`,
+  )
 }
 
 main()

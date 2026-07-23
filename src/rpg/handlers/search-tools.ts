@@ -16,15 +16,18 @@ export function setToolIndex(tools: Array<{ name: string; description: string }>
   _toolIndex = tools
 }
 
-export async function handleSearchTools(_env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleSearchTools(
+  _env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   if (!_toolIndex) return err('Tool index not yet initialized')
   const { query, limit } = parsed.data
   const q = query.toLowerCase()
   const matches = _toolIndex
-    .filter(t => t.name.includes(q) || t.description.toLowerCase().includes(q))
+    .filter((t) => t.name.includes(q) || t.description.toLowerCase().includes(q))
     .slice(0, limit)
-    .map(t => ({ name: t.name, description: t.description.slice(0, 100) }))
+    .map((t) => ({ name: t.name, description: t.description.slice(0, 100) }))
   return ok({ success: true, query, matches, count: matches.length, totalTools: _toolIndex.length })
 }

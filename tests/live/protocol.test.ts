@@ -21,9 +21,12 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
 
   it('tools/list advertises world_id and entity_id on continuity_manage append_event (#267)', async () => {
     const res = await rpc('tools/list')
-    const continuityManage = res.result.tools.find((t: { name: string }) => t.name === 'continuity_manage')
+    const continuityManage = res.result.tools.find(
+      (t: { name: string }) => t.name === 'continuity_manage',
+    )
     const appendEventBranch = continuityManage.inputSchema.oneOf.find(
-      (branch: { properties: { action: { const: string } } }) => branch.properties.action.const === 'append_event'
+      (branch: { properties: { action: { const: string } } }) =>
+        branch.properties.action.const === 'append_event',
     )
     expect(appendEventBranch.properties.world_id).toBeDefined()
     expect(appendEventBranch.properties.entity_id).toBeDefined()
@@ -53,13 +56,17 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
 
   it('tools/list advertises tier on get_event_log and the taxonomy_* actions (#311)', async () => {
     const res = await rpc('tools/list')
-    const continuityManage = res.result.tools.find((t: { name: string }) => t.name === 'continuity_manage')
-    const branches = continuityManage.inputSchema.oneOf as Array<{ properties: { action: { const: string } } }>
-    const getEventLogBranch = branches.find(b => b.properties.action.const === 'get_event_log')
+    const continuityManage = res.result.tools.find(
+      (t: { name: string }) => t.name === 'continuity_manage',
+    )
+    const branches = continuityManage.inputSchema.oneOf as Array<{
+      properties: { action: { const: string } }
+    }>
+    const getEventLogBranch = branches.find((b) => b.properties.action.const === 'get_event_log')
     expect((getEventLogBranch!.properties as Record<string, unknown>).tier).toBeDefined()
-    expect(branches.some(b => b.properties.action.const === 'taxonomy_list')).toBe(true)
-    expect(branches.some(b => b.properties.action.const === 'taxonomy_set')).toBe(true)
-    expect(branches.some(b => b.properties.action.const === 'taxonomy_delete')).toBe(true)
+    expect(branches.some((b) => b.properties.action.const === 'taxonomy_list')).toBe(true)
+    expect(branches.some((b) => b.properties.action.const === 'taxonomy_set')).toBe(true)
+    expect(branches.some((b) => b.properties.action.const === 'taxonomy_delete')).toBe(true)
   })
 })
 

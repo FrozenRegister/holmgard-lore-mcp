@@ -1,10 +1,7 @@
 // src/do/HolmgardMCP.ts — McpAgent Durable Object for Streamable HTTP transport
 import { McpAgent } from 'agents/mcp'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
 import { toolRegistry } from '../tools/registry'
@@ -13,7 +10,7 @@ import { makeSyntheticContext } from './context-adapter'
 export class HolmgardMCP extends McpAgent<DOEnv> {
   server = new Server(
     { name: 'holmgard-lore-mcp', version: '0.3.0' },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {} } },
   )
 
   async init(): Promise<void> {
@@ -29,7 +26,10 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
       if (toolName === 'lore_manage') {
         const action = typeof args?.action === 'string' ? args.action : null
         if (action === 'ping') {
-          return { content: [{ type: 'text' as const, text: 'pong' }], metadata: { source: 'internal' } }
+          return {
+            content: [{ type: 'text' as const, text: 'pong' }],
+            metadata: { source: 'internal' },
+          }
         }
         if (action === 'auth_check') {
           // Auth is validated at the Worker level before routing here
@@ -51,8 +51,16 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
 
       try {
         const c = makeSyntheticContext(this.env)
-        const response = await handler({ c: c as any, id: null, args: args as Record<string, any>, isAuthenticated: true })
-        const json = await response.json() as { result?: Record<string, unknown>; error?: { message?: string } }
+        const response = await handler({
+          c: c as any,
+          id: null,
+          args: args as Record<string, any>,
+          isAuthenticated: true,
+        })
+        const json = (await response.json()) as {
+          result?: Record<string, unknown>
+          error?: { message?: string }
+        }
 
         if (json.error) {
           return {
@@ -65,7 +73,12 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
       } catch (e) {
         console.error('Unhandled error in DO tool handler', e)
         return {
-          content: [{ type: 'text' as const, text: `Internal error: ${e instanceof Error ? e.message : String(e)}` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Internal error: ${e instanceof Error ? e.message : String(e)}`,
+            },
+          ],
           isError: true,
         }
       }

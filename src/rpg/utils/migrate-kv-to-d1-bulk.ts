@@ -45,9 +45,12 @@ export async function migrateCharacterKvToD1(
     // 3. Insert into D1 — throws if RPG_DB binding is unavailable or INSERT fails
     const fields = Object.keys(d1Row) as Array<keyof typeof d1Row>
     const placeholders = fields.map(() => '?').join(',')
-    const values = fields.map(f => d1Row[f])
+    const values = fields.map((f) => d1Row[f])
     const insertSql = `INSERT INTO characters (${fields.join(',')}) VALUES (${placeholders})`
-    await c.env.RPG_DB!.prepare(insertSql).bind(...values).run()
+    await c.env
+      .RPG_DB!.prepare(insertSql)
+      .bind(...values)
+      .run()
 
     // 4. Update KV with redirect marker — throws if LORE_DB binding is unavailable
     const marker = [
@@ -78,9 +81,7 @@ export async function migrateCharactersKvToD1(
   limit: number = 5,
 ): Promise<MigrationResult[]> {
   const allKeys = await kvList(c)
-  const characterKeys = allKeys
-    .filter(k => k.startsWith('character:'))
-    .slice(0, limit)
+  const characterKeys = allKeys.filter((k) => k.startsWith('character:')).slice(0, limit)
 
   if (characterKeys.length === 0) {
     return [{ key: 'all', status: 'error', error: 'No character keys found in KV' }]

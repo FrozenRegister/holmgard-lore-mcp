@@ -6,7 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../../unit/mocks'
 import { toolRegistry } from '@/tools/registry'
 
-function callTool(ctx: ReturnType<typeof createMockContext>, toolName: string, args: Record<string, unknown>) {
+function callTool(
+  ctx: ReturnType<typeof createMockContext>,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
   const handler = toolRegistry[toolName]
   return handler({ c: ctx, id: 'test-id', isAuthenticated: true, args })
 }

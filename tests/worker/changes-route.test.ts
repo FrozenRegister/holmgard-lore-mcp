@@ -6,7 +6,7 @@ describe('GET /changes', () => {
   it('returns an empty list when no changelog exists', async () => {
     const res = await SELF.fetch('http://example.com/changes')
     expect(res.status).toBe(200)
-    const body = await res.json() as { changes: unknown[]; count: number; generated_at: string }
+    const body = (await res.json()) as { changes: unknown[]; count: number; generated_at: string }
     expect(body.changes).toEqual([])
     expect(body.count).toBe(0)
     expect(typeof body.generated_at).toBe('string')
@@ -19,7 +19,7 @@ describe('GET /changes', () => {
     ]
     await env.LORE_DB.put(CHANGELOG_KEY, JSON.stringify(entries))
     const res = await SELF.fetch('http://example.com/changes')
-    const body = await res.json() as { changes: unknown[]; count: number }
+    const body = (await res.json()) as { changes: unknown[]; count: number }
     expect(body.count).toBe(2)
   })
 
@@ -30,7 +30,7 @@ describe('GET /changes', () => {
     ]
     await env.LORE_DB.put(CHANGELOG_KEY, JSON.stringify(entries))
     const res = await SELF.fetch('http://example.com/changes?since=2026-02-01T00:00:00.000Z')
-    const body = await res.json() as { changes: Array<{ key: string }>; count: number }
+    const body = (await res.json()) as { changes: Array<{ key: string }>; count: number }
     expect(body.count).toBe(1)
     expect(body.changes[0].key).toBe('b')
   })
@@ -39,7 +39,7 @@ describe('GET /changes', () => {
     const entries = [{ key: 'a', version: 1, updatedAt: '2026-01-01T00:00:00.000Z', op: 'set' }]
     await env.LORE_DB.put(CHANGELOG_KEY, JSON.stringify(entries))
     const res = await SELF.fetch('http://example.com/changes?since=not-a-date')
-    const body = await res.json() as { count: number }
+    const body = (await res.json()) as { count: number }
     expect(body.count).toBe(1)
   })
 
@@ -47,7 +47,7 @@ describe('GET /changes', () => {
     await env.LORE_DB.put(CHANGELOG_KEY, '{not valid json')
     const res = await SELF.fetch('http://example.com/changes')
     expect(res.status).toBe(200)
-    const body = await res.json() as { changes: unknown[]; count: number }
+    const body = (await res.json()) as { changes: unknown[]; count: number }
     expect(body.changes).toEqual([])
     expect(body.count).toBe(0)
   })

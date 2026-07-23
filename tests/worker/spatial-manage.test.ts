@@ -12,12 +12,16 @@ describe('handleSpatialManage', () => {
     await setupRpgDb(env.RPG_DB)
   })
 
-  const db = () => ({ RPG_DB: env.RPG_DB } as any)
+  const db = () => ({ RPG_DB: env.RPG_DB }) as any
   const WORLD = 'world-1'
 
   async function createWorld(id = WORLD) {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare('INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, 'Test World', 'abc123', 100, 100, now, now).run()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, 'Test World', 'abc123', 100, 100, now, now)
+      .run()
   }
 
   it('returns guiding error for unknown action', async () => {
@@ -41,7 +45,12 @@ describe('handleSpatialManage', () => {
 
   it('look returns room details, increments visitedCount, and includes worldId', async () => {
     await createWorld()
-    const gen = await handleSpatialManage(db(), { action: 'generate', name: 'The Old Mill', description: 'A crumbling watermill by the river.', worldId: WORLD })
+    const gen = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'The Old Mill',
+      description: 'A crumbling watermill by the river.',
+      worldId: WORLD,
+    })
     const { roomId } = JSON.parse(gen.content[0].text)
     const r = await handleSpatialManage(db(), { action: 'look', roomId })
     const body = JSON.parse(r.content[0].text)
@@ -76,7 +85,12 @@ describe('handleSpatialManage', () => {
 
   it('generate accepts any biome string when the world has no registered biomes (backward compatible)', async () => {
     await createWorld()
-    const r = await handleSpatialManage(db(), { action: 'generate', name: 'Free-Form Room', biome: 'limestone_karst', worldId: WORLD })
+    const r = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Free-Form Room',
+      biome: 'limestone_karst',
+      worldId: WORLD,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.biome).toBe('limestone_karst')
@@ -85,7 +99,12 @@ describe('handleSpatialManage', () => {
   it('generate rejects a biome not registered for a world with a populated registry', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })
-    const r = await handleSpatialManage(db(), { action: 'generate', name: 'Bad Biome Room', biome: 'nonexistent_biome', worldId: WORLD })
+    const r = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Bad Biome Room',
+      biome: 'nonexistent_biome',
+      worldId: WORLD,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('bog')
@@ -94,7 +113,12 @@ describe('handleSpatialManage', () => {
   it('generate accepts a registered biome for a world with a populated registry', async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })
-    const r = await handleSpatialManage(db(), { action: 'generate', name: 'Bog Room', biome: 'bog', worldId: WORLD })
+    const r = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Bog Room',
+      biome: 'bog',
+      worldId: WORLD,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
   })
@@ -117,8 +141,12 @@ describe('handleSpatialManage', () => {
     const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Old Name' })
     const { roomId } = JSON.parse(gen.content[0].text)
     const r = await handleSpatialManage(db(), {
-      action: 'update', roomId, name: 'New Name', description: 'A brand new description here.',
-      atmosphere: ['damp', 'cold'], exits: [{ direction: 'north', targetRoomId: 'other-room' }],
+      action: 'update',
+      roomId,
+      name: 'New Name',
+      description: 'A brand new description here.',
+      atmosphere: ['damp', 'cold'],
+      exits: [{ direction: 'north', targetRoomId: 'other-room' }],
     })
     expect(JSON.parse(r.content[0].text).success).toBe(true)
     const look = await handleSpatialManage(db(), { action: 'look', roomId })
@@ -137,12 +165,21 @@ describe('handleSpatialManage', () => {
     expect(JSON.parse(look.content[0].text).description).toContain('Desc Room')
   })
 
-  it('update validates biome against the room\'s existing worldId when no new worldId is given', async () => {
+  it("update validates biome against the room's existing worldId when no new worldId is given", async () => {
     await createWorld()
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })
-    const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Scoped Room', worldId: WORLD, biome: 'bog' })
+    const gen = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Scoped Room',
+      worldId: WORLD,
+      biome: 'bog',
+    })
     const { roomId } = JSON.parse(gen.content[0].text)
-    const r = await handleSpatialManage(db(), { action: 'update', roomId, biome: 'nonexistent_biome' })
+    const r = await handleSpatialManage(db(), {
+      action: 'update',
+      roomId,
+      biome: 'nonexistent_biome',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -152,7 +189,12 @@ describe('handleSpatialManage', () => {
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })
     const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Unscoped Room' })
     const { roomId } = JSON.parse(gen.content[0].text)
-    const r = await handleSpatialManage(db(), { action: 'update', roomId, worldId: WORLD, biome: 'nonexistent_biome' })
+    const r = await handleSpatialManage(db(), {
+      action: 'update',
+      roomId,
+      worldId: WORLD,
+      biome: 'nonexistent_biome',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -162,7 +204,12 @@ describe('handleSpatialManage', () => {
     await handleBiomeManage(db(), { action: 'register', worldId: WORLD, name: 'bog' })
     const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Reassign Room' })
     const { roomId } = JSON.parse(gen.content[0].text)
-    const r = await handleSpatialManage(db(), { action: 'update', roomId, worldId: WORLD, biome: 'bog' })
+    const r = await handleSpatialManage(db(), {
+      action: 'update',
+      roomId,
+      worldId: WORLD,
+      biome: 'bog',
+    })
     expect(JSON.parse(r.content[0].text).success).toBe(true)
     const look = await handleSpatialManage(db(), { action: 'look', roomId })
     const body = JSON.parse(look.content[0].text)
@@ -185,7 +232,11 @@ describe('handleSpatialManage', () => {
   })
 
   it('get_exits returns the exits array', async () => {
-    const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Exit Room', exits: [{ direction: 'east', targetRoomId: 'r2' }] })
+    const gen = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Exit Room',
+      exits: [{ direction: 'east', targetRoomId: 'r2' }],
+    })
     const { roomId } = JSON.parse(gen.content[0].text)
     const r = await handleSpatialManage(db(), { action: 'get_exits', roomId })
     const body = JSON.parse(r.content[0].text)
@@ -202,7 +253,11 @@ describe('handleSpatialManage', () => {
   })
 
   it('move returns not found for a nonexistent origin room', async () => {
-    const r = await handleSpatialManage(db(), { action: 'move', roomId: 'no-id', direction: 'north' })
+    const r = await handleSpatialManage(db(), {
+      action: 'move',
+      roomId: 'no-id',
+      direction: 'north',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
   })
@@ -216,7 +271,11 @@ describe('handleSpatialManage', () => {
   })
 
   it('move errors when the exit target room no longer exists', async () => {
-    const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Broken Exit Room', exits: [{ direction: 'north', targetRoomId: 'ghost-room' }] })
+    const gen = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Broken Exit Room',
+      exits: [{ direction: 'north', targetRoomId: 'ghost-room' }],
+    })
     const { roomId } = JSON.parse(gen.content[0].text)
     const r = await handleSpatialManage(db(), { action: 'move', roomId, direction: 'north' })
     const body = JSON.parse(r.content[0].text)
@@ -226,7 +285,11 @@ describe('handleSpatialManage', () => {
   it('move succeeds to a valid target room (case-insensitive direction)', async () => {
     const dest = await handleSpatialManage(db(), { action: 'generate', name: 'Destination Room' })
     const destId = JSON.parse(dest.content[0].text).roomId
-    const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Origin Room', exits: [{ direction: 'North', targetRoomId: destId }] })
+    const gen = await handleSpatialManage(db(), {
+      action: 'generate',
+      name: 'Origin Room',
+      exits: [{ direction: 'North', targetRoomId: destId }],
+    })
     const { roomId } = JSON.parse(gen.content[0].text)
     const r = await handleSpatialManage(db(), { action: 'move', roomId, direction: 'north' })
     const body = JSON.parse(r.content[0].text)
@@ -266,7 +329,11 @@ describe('handleSpatialManage', () => {
 
   it('network_create creates a network', async () => {
     await createWorld()
-    const r = await handleSpatialManage(db(), { action: 'network_create', name: 'The Old Quarter', worldId: WORLD })
+    const r = await handleSpatialManage(db(), {
+      action: 'network_create',
+      name: 'The Old Quarter',
+      worldId: WORLD,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
     expect(body.networkId).toBeTruthy()
@@ -286,11 +353,17 @@ describe('handleSpatialManage', () => {
 
   it('network_get returns the network and its linked nodes', async () => {
     await createWorld()
-    const net = await handleSpatialManage(db(), { action: 'network_create', name: 'The Docks', worldId: WORLD })
+    const net = await handleSpatialManage(db(), {
+      action: 'network_create',
+      name: 'The Docks',
+      worldId: WORLD,
+    })
     const { networkId } = JSON.parse(net.content[0].text)
     const gen = await handleSpatialManage(db(), { action: 'generate', name: 'Dock Room' })
     const { roomId } = JSON.parse(gen.content[0].text)
-    await env.RPG_DB.prepare('UPDATE room_nodes SET network_id = ? WHERE id = ?').bind(networkId, roomId).run()
+    await env.RPG_DB.prepare('UPDATE room_nodes SET network_id = ? WHERE id = ?')
+      .bind(networkId, roomId)
+      .run()
 
     const r = await handleSpatialManage(db(), { action: 'network_get', networkId })
     const body = JSON.parse(r.content[0].text)

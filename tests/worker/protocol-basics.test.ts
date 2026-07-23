@@ -1,4 +1,11 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -79,7 +86,7 @@ describe('JSON-RPC protocol', () => {
 
   it('GET /mcp returns error directing caller to POST', async () => {
     const res = await SELF.fetch('http://example.com/mcp', { method: 'GET' })
-    const body = await res.json() as Record<string, any>
+    const body = (await res.json()) as Record<string, any>
     expect(body.error).toBeDefined()
   })
 })
@@ -94,21 +101,29 @@ describe('ping_tool (via lore_manage action=ping)', () => {
 
 describe('check_authentication (via lore_manage action=auth_check)', () => {
   it('returns authenticated when correct X-Api-Key header is sent', async () => {
-    const res = await callToolWithApiKey('lore_manage', 'test-api-key-xyz', { action: 'auth_check' })
+    const res = await callToolWithApiKey('lore_manage', 'test-api-key-xyz', {
+      action: 'auth_check',
+    })
     expect(res.result.content[0].text).toBe('Authenticated.')
     expect(res.result.metadata.authenticated).toBe(true)
   })
 
   it('returns not authenticated when no X-Api-Key header is sent', async () => {
-    const res = await rpc('tools/call', { name: 'lore_manage', arguments: { action: 'auth_check' } })
-    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    const res = await rpc('tools/call', {
+      name: 'lore_manage',
+      arguments: { action: 'auth_check' },
+    })
+    expect(res.result.content[0].text).toBe(
+      'Not authenticated — request was made without a valid API key.',
+    )
     expect(res.result.metadata.authenticated).toBe(false)
   })
 
   it('returns not authenticated when wrong X-Api-Key header is sent', async () => {
     const res = await callToolWithApiKey('lore_manage', 'wrong-key', { action: 'auth_check' })
-    expect(res.result.content[0].text).toBe('Not authenticated — request was made without a valid API key.')
+    expect(res.result.content[0].text).toBe(
+      'Not authenticated — request was made without a valid API key.',
+    )
     expect(res.result.metadata.authenticated).toBe(false)
   })
 })
-

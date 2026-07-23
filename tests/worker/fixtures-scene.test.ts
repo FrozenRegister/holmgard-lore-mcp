@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 
@@ -46,7 +54,10 @@ describe('canonical fixture — scene:threshold-discovery (YAML choice tree)', (
   })
 
   it('activate_scene loads scene and returns all four choice IDs', async () => {
-    const res = await callTool('scene_manage', { action: 'activate', scene_key: 'scene:threshold-discovery' })
+    const res = await callTool('scene_manage', {
+      action: 'activate',
+      scene_key: 'scene:threshold-discovery',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.scene_key).toBe('scene:threshold-discovery')
     const choices = res.result.available_choices as string[]

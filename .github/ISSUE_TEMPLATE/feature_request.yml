@@ -73,11 +73,14 @@ body:
     id: test-plan
     attributes:
       label: Test plan
-      description: What tests will you add? Both Workers vitest AND live smoke tests are required if tools change.
+      description: >-
+        What tests will you add? Both Workers vitest AND live smoke tests are required if tools change.
+        New test files go under tests/unit/, tests/worker/, or tests/live/ only (CLAUDE.md § Tests) —
+        never colocated beside source, never a new top-level test directory.
       placeholder: |
-        - Unit: new secrets query returns merged results from all three sources
-        - Unit: `reveal(entityId)` creates `secret_knowers` row
-        - Live: smoke test against production D1 with known secrets
+        - Unit (tests/unit/): new secrets query returns merged results from all three sources
+        - Worker (tests/worker/): `reveal(entityId)` creates `secret_knowers` row
+        - Live (tests/live/): smoke test against production D1 with known secrets
         - Coverage: 100% patch on all new code paths
     validations:
       required: true
@@ -88,6 +91,7 @@ body:
       label: CI checklist
       description: All of these must pass before merge. Check each one.
       value: |
+        - [ ] `test-layout` passes (new/moved test files under `tests/unit/`, `tests/worker/`, or `tests/live/` only)
         - [ ] `unit-tests` pass
         - [ ] `test` (sharded) pass
         - [ ] `type-check` passes

@@ -1,5 +1,6 @@
-import eslint from '@eslint/js';
-import tseslint from 'typescript-eslint';
+import eslint from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import eslintConfigPrettier from 'eslint-config-prettier'
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -22,5 +23,8 @@ export default tseslint.config(
   },
   {
     ignores: ['dist/**', 'node_modules/**', 'test-run-output.txt'],
-  }
-);
+  },
+  // Must stay last: disables any ESLint stylistic rule that would conflict
+  // with Prettier's formatting output, so the two tools never fight.
+  eslintConfigPrettier,
+)

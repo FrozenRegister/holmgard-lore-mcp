@@ -57,7 +57,10 @@ function parseName(text: string, kvKey: string): string {
   if (m) return m[1].trim()
   // Fallback: derive from key "character:elowen-thorne" → "Elowen-Thorne"
   const slug = kvKey.replace(/^character:/, '')
-  return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  return slug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 // ── Status → conditions[] ────────────────────────────────────────────────────
@@ -66,10 +69,10 @@ function parseConditions(statusStr: string | null): string[] {
   if (!statusStr) return []
   // "Scavenger (Alive, Wounded, Determined)" → strip parens/qualifiers, split
   return statusStr
-    .replace(/\(([^)]*)\)/g, ',$1')  // unwrap parens into comma list
+    .replace(/\(([^)]*)\)/g, ',$1') // unwrap parens into comma list
     .split(',')
-    .map(s => s.trim())
-    .filter(s => s && !/^alive$/i.test(s))  // drop generic "Alive"
+    .map((s) => s.trim())
+    .filter((s) => s && !/^alive$/i.test(s)) // drop generic "Alive"
 }
 
 // ── JSON block extraction ─────────────────────────────────────────────────────
@@ -77,7 +80,11 @@ function parseConditions(statusStr: string | null): string[] {
 function parseJsonBlock(text: string): Record<string, unknown> {
   const m = text.match(/```json\s*([\s\S]*?)```/i)
   if (!m) return {}
-  try { return JSON.parse(m[1]) as Record<string, unknown> } catch { return {} }
+  try {
+    return JSON.parse(m[1]) as Record<string, unknown>
+  } catch {
+    return {}
+  }
 }
 
 // ── character_type heuristic ─────────────────────────────────────────────────
@@ -107,7 +114,8 @@ export function parseKvCharToD1(kvKey: string, text: string, newId: string): D1C
   ])
 
   // Combine Mechanical Scaffolding + State Machine sub-section (### headings create separate boundaries)
-  const scaffolding = (sections['Mechanical Scaffolding'] ?? '') + '\n' + (sections['State Machine'] ?? '')
+  const scaffolding =
+    (sections['Mechanical Scaffolding'] ?? '') + '\n' + (sections['State Machine'] ?? '')
   const backgroundText =
     sections['Background & History'] ?? sections['Background'] ?? sections['History'] ?? ''
   const weightsText = sections['Interaction Weights'] ?? ''
@@ -141,8 +149,10 @@ export function parseKvCharToD1(kvKey: string, text: string, newId: string): D1C
 
   // ── Interaction Weights JSON ────────────────────────────────────────────────
   const weightsJson = parseJsonBlock(weightsText)
-  const jsonWeight1 = typeof weightsJson['Weight-1'] === 'number' ? weightsJson['Weight-1'] as number : null
-  const jsonWeight2 = typeof weightsJson['Weight-2'] === 'number' ? weightsJson['Weight-2'] as number : null
+  const jsonWeight1 =
+    typeof weightsJson['Weight-1'] === 'number' ? (weightsJson['Weight-1'] as number) : null
+  const jsonWeight2 =
+    typeof weightsJson['Weight-2'] === 'number' ? (weightsJson['Weight-2'] as number) : null
 
   // Scaffolding wins over JSON block when both present
   const weight1 = typeof scafWeight1 === 'number' ? scafWeight1 : (jsonWeight1 ?? 0)
@@ -267,7 +277,9 @@ export function formatD1CharToLore(row: Record<string, unknown>): string {
     for (const [k, v] of Object.entries(stats as Record<string, unknown>)) {
       lines.push(`**${k.toUpperCase()}:** ${v}`)
     }
-  } catch { /* skip malformed stats */ }
+  } catch {
+    /* skip malformed stats */
+  }
 
   lines.push('')
   lines.push('## Health')
@@ -306,9 +318,10 @@ export function formatD1CharToLore(row: Record<string, unknown>): string {
   }
 
   try {
-    const pools = typeof row.resource_pools === 'string'
-      ? JSON.parse(row.resource_pools)
-      : (row.resource_pools ?? {})
+    const pools =
+      typeof row.resource_pools === 'string'
+        ? JSON.parse(row.resource_pools)
+        : (row.resource_pools ?? {})
     const keys = Object.keys(pools as object)
     if (keys.length > 0) {
       lines.push('')
@@ -317,7 +330,9 @@ export function formatD1CharToLore(row: Record<string, unknown>): string {
         lines.push(`**${k}:** ${typeof v === 'object' ? JSON.stringify(v) : v}`)
       }
     }
-  } catch { /* skip malformed pools */ }
+  } catch {
+    /* skip malformed pools */
+  }
 
   lines.push('')
   lines.push('---')
@@ -329,7 +344,12 @@ export function formatD1CharToLore(row: Record<string, unknown>): string {
 function parseJsonArray(val: unknown): string[] {
   if (Array.isArray(val)) return val.map(String)
   if (typeof val === 'string') {
-    try { const p = JSON.parse(val); return Array.isArray(p) ? p.map(String) : [] } catch { return [] }
+    try {
+      const p = JSON.parse(val)
+      return Array.isArray(p) ? p.map(String) : []
+    } catch {
+      return []
+    }
   }
   return []
 }
@@ -369,7 +389,9 @@ export function formatD1CharToKv(row: Record<string, unknown>): string {
     for (const [k, v] of Object.entries(stats as Record<string, unknown>)) {
       lines.push(`**${k.toUpperCase()}:** ${v}`)
     }
-  } catch { /* skip malformed stats */ }
+  } catch {
+    /* skip malformed stats */
+  }
 
   lines.push('')
   lines.push('## Health')
@@ -408,9 +430,10 @@ export function formatD1CharToKv(row: Record<string, unknown>): string {
   }
 
   try {
-    const pools = typeof row.resource_pools === 'string'
-      ? JSON.parse(row.resource_pools)
-      : (row.resource_pools ?? {})
+    const pools =
+      typeof row.resource_pools === 'string'
+        ? JSON.parse(row.resource_pools)
+        : (row.resource_pools ?? {})
     const keys = Object.keys(pools as object)
     if (keys.length > 0) {
       lines.push('')
@@ -419,7 +442,9 @@ export function formatD1CharToKv(row: Record<string, unknown>): string {
         lines.push(`**${k}:** ${typeof v === 'object' ? JSON.stringify(v) : v}`)
       }
     }
-  } catch { /* skip malformed pools */ }
+  } catch {
+    /* skip malformed pools */
+  }
 
   lines.push('')
   lines.push('---')

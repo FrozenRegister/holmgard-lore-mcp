@@ -13,13 +13,18 @@ describe('character_manage tool', () => {
     const res = await SELF.fetch('http://example.com/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
     })
 
     const resClone = res.clone()
     let json: Record<string, any>
     try {
-      json = await res.json() as Record<string, any>
+      json = (await res.json()) as Record<string, any>
     } catch (e) {
       const text = await resClone.text()
       if (text.includes('Internal Server Error') || text.includes('Error:')) {
@@ -48,7 +53,7 @@ describe('character_manage tool', () => {
       characterType: 'pc',
       characterClass: 'Rogue',
       race: 'Half-Elf',
-      level: 3
+      level: 3,
     })
     expect(r.success).toBe(true)
     expect(r.characterId).toBeTruthy()
@@ -59,12 +64,17 @@ describe('character_manage tool', () => {
   it('create with default stats', async () => {
     const r = await callTool('character_manage', {
       action: 'create',
-      name: 'Basic Character'
+      name: 'Basic Character',
     })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: r.characterId })
     expect(char.character.stats).toEqual({
-      str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10
+      str: 10,
+      dex: 10,
+      con: 10,
+      int: 10,
+      wis: 10,
+      cha: 10,
     })
   })
 
@@ -73,7 +83,7 @@ describe('character_manage tool', () => {
     const r = await callTool('character_manage', {
       action: 'create',
       name: 'Barbarian',
-      stats
+      stats,
     })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: r.characterId })
@@ -158,7 +168,7 @@ describe('character_manage tool', () => {
   it('get retrieves character by ID', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Syreth'
+      name: 'Syreth',
     })
     const r = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(r.success).toBe(true)
@@ -169,9 +179,12 @@ describe('character_manage tool', () => {
   it('get with characterId parameter', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Lyra'
+      name: 'Lyra',
     })
-    const r = await callTool('character_manage', { action: 'get', characterId: created.characterId })
+    const r = await callTool('character_manage', {
+      action: 'get',
+      characterId: created.characterId,
+    })
     expect(r.success).toBe(true)
     expect(r.character.name).toBe('Lyra')
   })
@@ -209,7 +222,7 @@ describe('character_manage tool', () => {
     expect(r.error).toBe(true)
     expect(r.message).toContain('Multiple characters')
     expect(r.characters).toHaveLength(2)
-    const charIds = (r.characters as Array<{ id: string }>).map(c => c.id)
+    const charIds = (r.characters as Array<{ id: string }>).map((c) => c.id)
     expect(charIds).toContain(char1.characterId)
     expect(charIds).toContain(char2.characterId)
   })
@@ -250,17 +263,17 @@ describe('character_manage tool', () => {
     await callTool('character_manage', {
       action: 'create',
       name: 'PC Character',
-      characterType: 'pc'
+      characterType: 'pc',
     })
     await callTool('character_manage', {
       action: 'create',
       name: 'NPC Character',
-      characterType: 'npc'
+      characterType: 'npc',
     })
 
     const r = await callTool('character_manage', {
       action: 'list',
-      characterTypeFilter: 'pc'
+      characterTypeFilter: 'pc',
     })
     expect(r.success).toBe(true)
     const pcOnly = r.characters.filter((c: any) => c.character_type === 'pc')
@@ -271,12 +284,12 @@ describe('character_manage tool', () => {
     await callTool('character_manage', {
       action: 'create',
       name: 'Innkeeper',
-      characterType: 'npc'
+      characterType: 'npc',
     })
 
     const r = await callTool('character_manage', {
       action: 'list',
-      characterTypeFilter: 'npc'
+      characterTypeFilter: 'npc',
     })
     expect(r.success).toBe(true)
     const npcOnly = r.characters.filter((c: any) => c.character_type === 'npc')
@@ -287,12 +300,12 @@ describe('character_manage tool', () => {
     await callTool('character_manage', {
       action: 'create',
       name: 'Goblin',
-      characterType: 'enemy'
+      characterType: 'enemy',
     })
 
     const r = await callTool('character_manage', {
       action: 'list',
-      characterTypeFilter: 'enemy'
+      characterTypeFilter: 'enemy',
     })
     expect(r.success).toBe(true)
   })
@@ -300,7 +313,7 @@ describe('character_manage tool', () => {
   it('list returns empty when no characters match filter', async () => {
     const r = await callTool('character_manage', {
       action: 'list',
-      characterTypeFilter: 'neutral'
+      characterTypeFilter: 'neutral',
     })
     expect(r.success).toBe(true)
     expect(r.count).toBeGreaterThanOrEqual(0)
@@ -312,7 +325,7 @@ describe('character_manage tool', () => {
     const r = await callTool('character_manage', {
       action: 'create',
       name: 'World-Scoped Char',
-      worldId: 'world:calder'
+      worldId: 'world:calder',
     })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: r.characterId })
@@ -321,7 +334,11 @@ describe('character_manage tool', () => {
 
   it('list with worldId filters out cross-world characters (two Kael regression)', async () => {
     await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Kael',
+      worldId: 'world:verdant-verge',
+    })
 
     const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder' })
     expect(r.success).toBe(true)
@@ -330,19 +347,46 @@ describe('character_manage tool', () => {
   })
 
   it('list with worldId combined with characterTypeFilter', async () => {
-    await callTool('character_manage', { action: 'create', name: 'Calder PC', characterType: 'pc', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Calder NPC', characterType: 'npc', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Verge PC', characterType: 'pc', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Calder PC',
+      characterType: 'pc',
+      worldId: 'world:calder',
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Calder NPC',
+      characterType: 'npc',
+      worldId: 'world:calder',
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Verge PC',
+      characterType: 'pc',
+      worldId: 'world:verdant-verge',
+    })
 
-    const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder', characterTypeFilter: 'pc' })
+    const r = await callTool('character_manage', {
+      action: 'list',
+      worldId: 'world:calder',
+      characterTypeFilter: 'pc',
+    })
     expect(r.success).toBe(true)
     expect(r.characters.length).toBe(1)
     expect(r.characters[0].name).toBe('Calder PC')
   })
 
   it('list with no worldId is backward-compatible and returns all worlds', async () => {
-    await callTool('character_manage', { action: 'create', name: 'Calder Char', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Verge Char', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Calder Char',
+      worldId: 'world:calder',
+    })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Verge Char',
+      worldId: 'world:verdant-verge',
+    })
 
     const r = await callTool('character_manage', { action: 'list' })
     expect(r.success).toBe(true)
@@ -353,9 +397,17 @@ describe('character_manage tool', () => {
 
   it('search with worldId filters out cross-world matches', async () => {
     await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Kael',
+      worldId: 'world:verdant-verge',
+    })
 
-    const r = await callTool('character_manage', { action: 'search', query: 'Kael', worldId: 'world:calder' })
+    const r = await callTool('character_manage', {
+      action: 'search',
+      query: 'Kael',
+      worldId: 'world:calder',
+    })
     expect(r.success).toBe(true)
     expect(r.characters.length).toBe(1)
     expect(r.characters[0].world_id).toBe('world:calder')
@@ -363,7 +415,11 @@ describe('character_manage tool', () => {
 
   it('search with no worldId is backward-compatible and returns all worlds', async () => {
     await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Kael',
+      worldId: 'world:verdant-verge',
+    })
 
     const r = await callTool('character_manage', { action: 'search', query: 'Kael' })
     expect(r.success).toBe(true)
@@ -376,7 +432,11 @@ describe('character_manage tool', () => {
     // Zod silently drops unrecognized keys, so `world_id` was accepted
     // without erroring yet never actually filtered anything.
     await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Kael',
+      worldId: 'world:verdant-verge',
+    })
 
     const r = await callTool('character_manage', { action: 'list', world_id: 'world:calder' })
     expect(r.success).toBe(true)
@@ -386,41 +446,68 @@ describe('character_manage tool', () => {
 
   it('search with snake_case world_id filters out cross-world matches', async () => {
     await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:calder' })
-    await callTool('character_manage', { action: 'create', name: 'Kael', worldId: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Kael',
+      worldId: 'world:verdant-verge',
+    })
 
-    const r = await callTool('character_manage', { action: 'search', query: 'Kael', world_id: 'world:calder' })
+    const r = await callTool('character_manage', {
+      action: 'search',
+      query: 'Kael',
+      world_id: 'world:calder',
+    })
     expect(r.success).toBe(true)
     expect(r.characters.length).toBe(1)
     expect(r.characters[0].world_id).toBe('world:calder')
   })
 
   it('create accepts snake_case world_id', async () => {
-    const r = await callTool('character_manage', { action: 'create', name: 'Snake Case Char', world_id: 'world:calder' })
+    const r = await callTool('character_manage', {
+      action: 'create',
+      name: 'Snake Case Char',
+      world_id: 'world:calder',
+    })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: r.characterId })
     expect(char.character.world_id).toBe('world:calder')
   })
 
   it('update accepts snake_case world_id', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Unassigned Char 2' })
-    const r = await callTool('character_manage', { action: 'update', id: created.characterId, world_id: 'world:calder' })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Unassigned Char 2',
+    })
+    const r = await callTool('character_manage', {
+      action: 'update',
+      id: created.characterId,
+      world_id: 'world:calder',
+    })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.world_id).toBe('world:calder')
   })
 
   it('camelCase worldId still takes priority when both are given (defensive, not expected in practice)', async () => {
-    await callTool('character_manage', { action: 'create', name: 'Both Keys', worldId: 'world:calder', world_id: 'world:verdant-verge' })
+    await callTool('character_manage', {
+      action: 'create',
+      name: 'Both Keys',
+      worldId: 'world:calder',
+      world_id: 'world:verdant-verge',
+    })
     const r = await callTool('character_manage', { action: 'list', worldId: 'world:calder' })
     expect(r.characters.some((c: any) => c.name === 'Both Keys')).toBe(true)
   })
 
   it('update sets worldId on an existing character', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Unassigned Char' })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Unassigned Char',
+    })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      worldId: 'world:calder'
+      worldId: 'world:calder',
     })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
@@ -428,7 +515,10 @@ describe('character_manage tool', () => {
   })
 
   it('create defaults death_mode to instant', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Default Death Mode' })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Default Death Mode',
+    })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.death_mode).toBe('instant')
     expect(char.character.dissolution_stage).toBeNull()
@@ -457,10 +547,16 @@ describe('character_manage tool', () => {
   it('update can revert death_mode back to instant and clear dissolution_terminal', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Reverted' })
     await callTool('character_manage', {
-      action: 'update', id: created.characterId, deathMode: 'staged', dissolutionTerminal: 'mycelium-integrated',
+      action: 'update',
+      id: created.characterId,
+      deathMode: 'staged',
+      dissolutionTerminal: 'mycelium-integrated',
     })
     const r = await callTool('character_manage', {
-      action: 'update', id: created.characterId, deathMode: 'instant', dissolutionTerminal: null,
+      action: 'update',
+      id: created.characterId,
+      deathMode: 'instant',
+      dissolutionTerminal: null,
     })
     expect(r.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
@@ -471,12 +567,12 @@ describe('character_manage tool', () => {
   it('update modifies character properties', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Original Name'
+      name: 'Original Name',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      name: 'New Name'
+      name: 'New Name',
     })
     expect(r.success).toBe(true)
 
@@ -488,12 +584,12 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Test',
-      maxHp: 50
+      maxHp: 50,
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      hp: 25
+      hp: 25,
     })
     expect(r.success).toBe(true)
 
@@ -504,12 +600,12 @@ describe('character_manage tool', () => {
   it('update AC', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Armored'
+      name: 'Armored',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      ac: 18
+      ac: 18,
     })
     expect(r.success).toBe(true)
 
@@ -521,12 +617,12 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Novice',
-      level: 1
+      level: 1,
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      level: 5
+      level: 5,
     })
     expect(r.success).toBe(true)
 
@@ -537,12 +633,12 @@ describe('character_manage tool', () => {
   it('update background', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Mystery'
+      name: 'Mystery',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      background: 'Former soldier'
+      background: 'Former soldier',
     })
     expect(r.success).toBe(true)
 
@@ -553,12 +649,12 @@ describe('character_manage tool', () => {
   it('update alignment', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Moralist'
+      name: 'Moralist',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      alignment: 'Lawful Good'
+      alignment: 'Lawful Good',
     })
     expect(r.success).toBe(true)
 
@@ -569,7 +665,7 @@ describe('character_manage tool', () => {
   it('update accepts factionId, behavior, origin, currentRoomId, and bonus fields', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Sentinel'
+      name: 'Sentinel',
     })
     const r = await callTool('character_manage', {
       action: 'update',
@@ -594,12 +690,12 @@ describe('character_manage tool', () => {
   it('update with characterId parameter', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Original'
+      name: 'Original',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       characterId: created.characterId,
-      name: 'Updated'
+      name: 'Updated',
     })
     expect(r.success).toBe(true)
   })
@@ -607,7 +703,7 @@ describe('character_manage tool', () => {
   it('update without ID returns error', async () => {
     const r = await callTool('character_manage', {
       action: 'update',
-      name: 'New Name'
+      name: 'New Name',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
@@ -616,11 +712,11 @@ describe('character_manage tool', () => {
   it('delete removes character', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Doomed'
+      name: 'Doomed',
     })
     const r = await callTool('character_manage', {
       action: 'delete',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
 
@@ -631,11 +727,11 @@ describe('character_manage tool', () => {
   it('delete with characterId parameter', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Gone'
+      name: 'Gone',
     })
     const r = await callTool('character_manage', {
       action: 'delete',
-      characterId: created.characterId
+      characterId: created.characterId,
     })
     expect(r.success).toBe(true)
   })
@@ -652,13 +748,13 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Adventurer',
-      level: 1
+      level: 1,
     })
     // Level 2 requires 300 XP
     const r = await callTool('character_manage', {
       action: 'add_xp',
       id: created.characterId,
-      amount: 300
+      amount: 300,
     })
     expect(r.success).toBe(true)
     expect(r.totalXp).toBe(300)
@@ -669,12 +765,12 @@ describe('character_manage tool', () => {
   it('add_xp with xpAmount alias', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Test'
+      name: 'Test',
     })
     const r = await callTool('character_manage', {
       action: 'add_xp',
       characterId: created.characterId,
-      xpAmount: 100
+      xpAmount: 100,
     })
     expect(r.success).toBe(true)
     expect(r.totalXp).toBe(100)
@@ -683,12 +779,12 @@ describe('character_manage tool', () => {
   it('add_xp without level up', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Test'
+      name: 'Test',
     })
     const r = await callTool('character_manage', {
       action: 'add_xp',
       id: created.characterId,
-      amount: 100
+      amount: 100,
     })
     expect(r.success).toBe(true)
     expect(r.leveledUp).toBe(false)
@@ -697,11 +793,11 @@ describe('character_manage tool', () => {
   it('add_xp requires amount', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Test'
+      name: 'Test',
     })
     const r = await callTool('character_manage', {
       action: 'add_xp',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('required')
@@ -711,7 +807,7 @@ describe('character_manage tool', () => {
     const r = await callTool('character_manage', {
       action: 'add_xp',
       id: 'nonexistent',
-      amount: 100
+      amount: 100,
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('not found')
@@ -721,11 +817,11 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Test',
-      level: 1
+      level: 1,
     })
     const r = await callTool('character_manage', {
       action: 'get_progression',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.currentXp).toBe(0)
@@ -737,11 +833,11 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Legendary',
-      level: 20
+      level: 20,
     })
     const r = await callTool('character_manage', {
       action: 'get_progression',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.level).toBe(20)
@@ -751,11 +847,11 @@ describe('character_manage tool', () => {
   it('get_progression with characterId parameter', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Test'
+      name: 'Test',
     })
     const r = await callTool('character_manage', {
       action: 'get_progression',
-      characterId: created.characterId
+      characterId: created.characterId,
     })
     expect(r.success).toBe(true)
   })
@@ -770,14 +866,17 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Hero',
-      level: 1
+      level: 1,
     })
-    const charBefore = await callTool('character_manage', { action: 'get', id: created.characterId })
+    const charBefore = await callTool('character_manage', {
+      action: 'get',
+      id: created.characterId,
+    })
     const hpBefore = charBefore.character.max_hp
 
     const r = await callTool('character_manage', {
       action: 'level_up',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.newLevel).toBe(2)
@@ -792,11 +891,11 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Max',
-      level: 20
+      level: 20,
     })
     const r = await callTool('character_manage', {
       action: 'level_up',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.newLevel).toBe(20) // Capped at 20
@@ -806,11 +905,11 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Test',
-      level: 5
+      level: 5,
     })
     const r = await callTool('character_manage', {
       action: 'level_up',
-      characterId: created.characterId
+      characterId: created.characterId,
     })
     expect(r.success).toBe(true)
   })
@@ -824,7 +923,7 @@ describe('character_manage tool', () => {
   it('level_up non-existent character returns error', async () => {
     const r = await callTool('character_manage', {
       action: 'level_up',
-      id: 'nonexistent'
+      id: 'nonexistent',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('not found')
@@ -838,7 +937,7 @@ describe('character_manage tool', () => {
       const r = await callTool('character_manage', {
         action: 'create',
         name: `${type}-character`,
-        characterType: type as any
+        characterType: type as any,
       })
       expect(r.success).toBe(true)
       expect(r.characterType).toBe(type)
@@ -848,7 +947,7 @@ describe('character_manage tool', () => {
   it('create defaults to PC type', async () => {
     const r = await callTool('character_manage', {
       action: 'create',
-      name: 'Default Type'
+      name: 'Default Type',
     })
     expect(r.success).toBe(true)
     expect(r.characterType).toBe('pc')
@@ -859,7 +958,7 @@ describe('character_manage tool', () => {
   it('supports "new_character" alias for create', async () => {
     const r = await callTool('character_manage', {
       action: 'new_character',
-      name: 'Alias Test'
+      name: 'Alias Test',
     })
     expect(r.success).toBe(true)
     expect(r.characterId).toBeTruthy()
@@ -868,11 +967,11 @@ describe('character_manage tool', () => {
   it('supports "fetch" alias for get', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Fetch Test'
+      name: 'Fetch Test',
     })
     const r = await callTool('character_manage', {
       action: 'fetch',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.character.name).toBe('Fetch Test')
@@ -881,12 +980,12 @@ describe('character_manage tool', () => {
   it('supports "xp" alias for add_xp', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'XP Alias'
+      name: 'XP Alias',
     })
     const r = await callTool('character_manage', {
       action: 'xp',
       id: created.characterId,
-      amount: 150
+      amount: 150,
     })
     expect(r.success).toBe(true)
     expect(r.totalXp).toBe(150)
@@ -895,11 +994,11 @@ describe('character_manage tool', () => {
   it('supports "progression" alias for get_progression', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Progression'
+      name: 'Progression',
     })
     const r = await callTool('character_manage', {
       action: 'progression',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.currentXp).toBeDefined()
@@ -909,11 +1008,11 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Level Up',
-      level: 3
+      level: 3,
     })
     const r = await callTool('character_manage', {
       action: 'levelup',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
     expect(r.newLevel).toBe(4)
@@ -926,16 +1025,16 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Calculator',
-      stats
+      stats,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.ability_modifiers).toEqual({
-      str: 3,   // (16-10)/2 = 3
-      dex: 2,   // (14-10)/2 = 2
-      con: 2,   // (15-10)/2 = 2
-      int: 1,   // (12-10)/2 = 1
-      wis: 1,   // (13-10)/2 = 1
-      cha: -1   // (8-10)/2 = -1
+      str: 3, // (16-10)/2 = 3
+      dex: 2, // (14-10)/2 = 2
+      con: 2, // (15-10)/2 = 2
+      int: 1, // (12-10)/2 = 1
+      wis: 1, // (13-10)/2 = 1
+      cha: -1, // (8-10)/2 = -1
     })
   })
 
@@ -944,7 +1043,7 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Dexterous',
-      stats
+      stats,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.ac).toBe(13) // 10 + (16-10)/2 = 10 + 3 = 13
@@ -956,7 +1055,7 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Armored',
       stats,
-      ac: 18
+      ac: 18,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.ac).toBe(18)
@@ -967,7 +1066,7 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Perceptive',
-      stats
+      stats,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.perception_bonus).toBe(3) // (16-10)/2 = 3
@@ -979,7 +1078,7 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Expert',
       stats,
-      perceptionBonus: 7
+      perceptionBonus: 7,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.perception_bonus).toBe(7)
@@ -990,7 +1089,7 @@ describe('character_manage tool', () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Sneaky',
-      stats
+      stats,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.stealth_bonus).toBe(2) // (14-10)/2 = 2
@@ -1002,7 +1101,7 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Master',
       stats,
-      stealthBonus: 5
+      stealthBonus: 5,
     })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.stealth_bonus).toBe(5)
@@ -1016,19 +1115,32 @@ describe('character_manage tool', () => {
   })
 
   it('recompute_derived returns not found for an unknown characterId', async () => {
-    const r = await callTool('character_manage', { action: 'recompute_derived', characterId: 'nonexistent' })
+    const r = await callTool('character_manage', {
+      action: 'recompute_derived',
+      characterId: 'nonexistent',
+    })
     expect(r.error).toBe(true)
   })
 
   it('recompute_derived recalculates ac/perception_bonus/stealth_bonus from current stats for a single character', async () => {
     const stats = { str: 10, dex: 12, con: 18, int: 16, wis: 16, cha: 18 }
-    const created = await callTool('character_manage', { action: 'create', name: 'Stale Stats', stats })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Stale Stats',
+      stats,
+    })
     // Simulate a character whose level was restored after corruption but whose
     // derived combat stats were never re-synced — directly force them stale.
-    await env.RPG_DB.prepare('UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE id = ?')
-      .bind(created.characterId).run()
+    await env.RPG_DB.prepare(
+      'UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE id = ?',
+    )
+      .bind(created.characterId)
+      .run()
 
-    const r = await callTool('character_manage', { action: 'recompute_derived', characterId: created.characterId })
+    const r = await callTool('character_manage', {
+      action: 'recompute_derived',
+      characterId: created.characterId,
+    })
     expect(r.success).toBe(true)
     expect(r.charactersUpdated).toBe(1)
     expect(r.characterIds).toEqual([created.characterId])
@@ -1041,15 +1153,27 @@ describe('character_manage tool', () => {
 
   it('recompute_derived bulk-updates every character in a worldId', async () => {
     const a = await callTool('character_manage', {
-      action: 'create', name: 'World Char A', worldId: 'world-recompute', stats: { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 },
+      action: 'create',
+      name: 'World Char A',
+      worldId: 'world-recompute',
+      stats: { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 },
     })
     const b = await callTool('character_manage', {
-      action: 'create', name: 'World Char B', worldId: 'world-recompute', stats: { str: 10, dex: 8, con: 10, int: 10, wis: 18, cha: 10 },
+      action: 'create',
+      name: 'World Char B',
+      worldId: 'world-recompute',
+      stats: { str: 10, dex: 8, con: 10, int: 10, wis: 18, cha: 10 },
     })
-    await env.RPG_DB.prepare('UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE world_id = ?')
-      .bind('world-recompute').run()
+    await env.RPG_DB.prepare(
+      'UPDATE characters SET ac = 10, perception_bonus = 0, stealth_bonus = 0 WHERE world_id = ?',
+    )
+      .bind('world-recompute')
+      .run()
 
-    const r = await callTool('character_manage', { action: 'recompute_derived', worldId: 'world-recompute' })
+    const r = await callTool('character_manage', {
+      action: 'recompute_derived',
+      worldId: 'world-recompute',
+    })
     expect(r.success).toBe(true)
     expect(r.charactersUpdated).toBe(2)
     expect(r.characterIds.sort()).toEqual([a.characterId, b.characterId].sort())
@@ -1057,12 +1181,15 @@ describe('character_manage tool', () => {
     const charA = await callTool('character_manage', { action: 'get', id: a.characterId })
     const charB = await callTool('character_manage', { action: 'get', id: b.characterId })
     expect(charA.character.ac).toBe(12) // 10 + (14-10)/2
-    expect(charB.character.ac).toBe(9)  // 10 + (8-10)/2
+    expect(charB.character.ac).toBe(9) // 10 + (8-10)/2
     expect(charB.character.perception_bonus).toBe(4) // (18-10)/2
   })
 
   it('recompute_derived returns charactersUpdated: 0 for a worldId with no matching characters', async () => {
-    const r = await callTool('character_manage', { action: 'recompute_derived', worldId: 'no-such-world' })
+    const r = await callTool('character_manage', {
+      action: 'recompute_derived',
+      worldId: 'no-such-world',
+    })
     expect(r.success).toBe(true)
     expect(r.charactersUpdated).toBe(0)
     expect(r.characterIds).toEqual([])
@@ -1075,13 +1202,13 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Hero',
       level: 20,
-      hp: 150
+      hp: 150,
     })
     const updateStats = { str: 18, dex: 16, con: 16, int: 12, wis: 14, cha: 13 }
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      stats: updateStats
+      stats: updateStats,
     })
     expect(r.success).toBe(true)
 
@@ -1109,9 +1236,9 @@ describe('character_manage tool', () => {
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.stats).toEqual(newStats)
     // Derived fields should be recomputed from new stats without a manual recompute_derived call
-    expect(char.character.ac).toBe(13)           // 10 + (16-10)/2 = 13
+    expect(char.character.ac).toBe(13) // 10 + (16-10)/2 = 13
     expect(char.character.perception_bonus).toBe(1) // (12-10)/2 = 1
-    expect(char.character.stealth_bonus).toBe(3)    // (16-10)/2 = 3
+    expect(char.character.stealth_bonus).toBe(3) // (16-10)/2 = 3
   })
 
   it('update with stats respects explicit ac/perceptionBonus/stealthBonus over auto-compute (#225)', async () => {
@@ -1148,22 +1275,25 @@ describe('character_manage tool', () => {
       characterId: created.characterId,
       stats: { str: 16, dex: 16, con: 16, int: 14, wis: 12, cha: 14 },
     })
-    const char = await callTool('character_manage', { action: 'get', characterId: created.characterId })
-    expect(char.character.ac).toBe(13)           // 10 + DEX mod 3
+    const char = await callTool('character_manage', {
+      action: 'get',
+      characterId: created.characterId,
+    })
+    expect(char.character.ac).toBe(13) // 10 + DEX mod 3
     expect(char.character.perception_bonus).toBe(1) // WIS mod 1
-    expect(char.character.stealth_bonus).toBe(3)    // DEX mod 3
+    expect(char.character.stealth_bonus).toBe(3) // DEX mod 3
   })
 
   it('update with characterClass field', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
       name: 'Fighter',
-      characterClass: 'Barbarian'
+      characterClass: 'Barbarian',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      characterClass: 'Rogue'
+      characterClass: 'Rogue',
     })
     expect(r.success).toBe(true)
 
@@ -1174,12 +1304,12 @@ describe('character_manage tool', () => {
   it('update with born field', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Timeless'
+      name: 'Timeless',
     })
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
-      born: '2150-03-15'
+      born: '2150-03-15',
     })
     expect(r.success).toBe(true)
 
@@ -1191,7 +1321,7 @@ describe('character_manage tool', () => {
     const r = await callTool('character_manage', {
       action: 'create',
       name: 'Elf',
-      born: '2100-06-20'
+      born: '2100-06-20',
     })
     expect(r.success).toBe(true)
 
@@ -1204,14 +1334,14 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Ascending',
       level: 5,
-      stats: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+      stats: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
     })
     const newStats = { str: 18, dex: 18, con: 18, int: 18, wis: 18, cha: 18 }
     const r = await callTool('character_manage', {
       action: 'update',
       id: created.characterId,
       stats: newStats,
-      level: 15
+      level: 15,
     })
     expect(r.success).toBe(true)
 
@@ -1231,11 +1361,11 @@ describe('character_manage tool', () => {
   it('find_by_name returns exact match', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Thorgrim Stonefist'
+      name: 'Thorgrim Stonefist',
     })
     const r = await callTool('character_manage', {
       action: 'find_by_name',
-      name: 'Thorgrim Stonefist'
+      name: 'Thorgrim Stonefist',
     })
     expect(r.matches).toBeDefined()
     expect(r.matches.length).toBeGreaterThan(0)
@@ -1246,11 +1376,11 @@ describe('character_manage tool', () => {
   it('find_by_name with prefix match', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Alexander the Great'
+      name: 'Alexander the Great',
     })
     const r = await callTool('character_manage', {
       action: 'find_by_name',
-      name: 'Alexander'
+      name: 'Alexander',
     })
     expect(r.matches).toBeDefined()
     const match = r.matches.find((m: any) => m.characterId === created.characterId)
@@ -1261,11 +1391,11 @@ describe('character_manage tool', () => {
   it('find_by_name is case-insensitive', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Elara Windwhisper'
+      name: 'Elara Windwhisper',
     })
     const r = await callTool('character_manage', {
       action: 'find_by_name',
-      name: 'ELARA WINDWHISPER'
+      name: 'ELARA WINDWHISPER',
     })
     expect(r.matches.length).toBeGreaterThan(0)
     expect(r.matches[0].characterId).toBe(created.characterId)
@@ -1278,7 +1408,7 @@ describe('character_manage tool', () => {
     const r = await callTool('character_manage', {
       action: 'find_by_name',
       name: 'A',
-      limit: 2
+      limit: 2,
     })
     expect(r.matches.length).toBeLessThanOrEqual(2)
   })
@@ -1286,7 +1416,7 @@ describe('character_manage tool', () => {
   it('find_by_name returns no matches for non-existent name', async () => {
     const r = await callTool('character_manage', {
       action: 'find_by_name',
-      name: 'NonexistentCharacterName12345'
+      name: 'NonexistentCharacterName12345',
     })
     expect(r.matches.length).toBe(0)
   })
@@ -1294,11 +1424,11 @@ describe('character_manage tool', () => {
   it('find_by_name supports lookup alias', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'TestChar'
+      name: 'TestChar',
     })
     const r = await callTool('character_manage', {
       action: 'lookup',
-      name: 'TestChar'
+      name: 'TestChar',
     })
     expect(r.matches.length).toBeGreaterThan(0)
     expect(r.matches[0].characterId).toBe(created.characterId)
@@ -1317,11 +1447,11 @@ describe('character_manage tool', () => {
       action: 'create',
       name: 'Mortal',
       hp: 50,
-      maxHp: 50
+      maxHp: 50,
     })
     const r = await callTool('character_manage', {
       action: 'kill',
-      id: created.characterId
+      id: created.characterId,
     })
     expect(r.success).toBe(true)
 
@@ -1333,11 +1463,11 @@ describe('character_manage tool', () => {
   it('kill with characterId parameter', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Doomed'
+      name: 'Doomed',
     })
     const r = await callTool('character_manage', {
       action: 'kill',
-      characterId: created.characterId
+      characterId: created.characterId,
     })
     expect(r.success).toBe(true)
 
@@ -1348,12 +1478,12 @@ describe('character_manage tool', () => {
   it('kill records cause of death', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Victim'
+      name: 'Victim',
     })
     const r = await callTool('character_manage', {
       action: 'kill',
       id: created.characterId,
-      causeOfDeath: 'Fell from cliff'
+      causeOfDeath: 'Fell from cliff',
     })
     expect(r.success).toBe(true)
   })
@@ -1361,16 +1491,16 @@ describe('character_manage tool', () => {
   it('kill records killer ID', async () => {
     const victim = await callTool('character_manage', {
       action: 'create',
-      name: 'Victim'
+      name: 'Victim',
     })
     const killer = await callTool('character_manage', {
       action: 'create',
-      name: 'Killer'
+      name: 'Killer',
     })
     const r = await callTool('character_manage', {
       action: 'kill',
       id: victim.characterId,
-      killedBy: killer.characterId
+      killedBy: killer.characterId,
     })
     expect(r.success).toBe(true)
   })
@@ -1378,11 +1508,11 @@ describe('character_manage tool', () => {
   it('kill clears current location', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Located'
+      name: 'Located',
     })
     const r = await callTool('character_manage', {
       action: 'kill',
-      id: created.characterId
+      id: created.characterId,
     })
     if (!r.error) {
       expect(r.success).toBe(true)
@@ -1395,12 +1525,12 @@ describe('character_manage tool', () => {
   it('kill creates corpse record', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'To Be Slain'
+      name: 'To Be Slain',
     })
     const r = await callTool('character_manage', {
       action: 'kill',
       id: created.characterId,
-      worldId: 'world:test'
+      worldId: 'world:test',
     })
     expect(r.success).toBe(true)
     expect(r.corpse?.id).toBeTruthy()
@@ -1409,7 +1539,7 @@ describe('character_manage tool', () => {
   it('kill on non-existent character returns error', async () => {
     const r = await callTool('character_manage', {
       action: 'kill',
-      id: 'nonexistent'
+      id: 'nonexistent',
     })
     expect(r.error).toBe(true)
     expect(r.message).toContain('not found')
@@ -1418,11 +1548,11 @@ describe('character_manage tool', () => {
   it('kill supports slay alias', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Slay Test'
+      name: 'Slay Test',
     })
     const r = await callTool('character_manage', {
       action: 'slay',
-      id: created.characterId
+      id: created.characterId,
     })
     // slay should work like kill
     if (r.error) {
@@ -1438,11 +1568,11 @@ describe('character_manage tool', () => {
   it('kill supports die alias', async () => {
     const created = await callTool('character_manage', {
       action: 'create',
-      name: 'Die Test'
+      name: 'Die Test',
     })
     const r = await callTool('character_manage', {
       action: 'die',
-      id: created.characterId
+      id: created.characterId,
     })
     // die should work like kill
     if (r.error) {
@@ -1462,14 +1592,39 @@ describe('character_manage tool', () => {
   })
 
   it('kill removes the dead character from their party without disbanding it when others remain', async () => {
-    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Kill Party World', theme: 'fantasy' })
-    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Trio', worldId: world.worldId })
+    const world = await callTool('rpg', {
+      sub: 'world',
+      action: 'create',
+      name: 'Kill Party World',
+      theme: 'fantasy',
+    })
+    const party = await callTool('rpg', {
+      sub: 'party',
+      action: 'create',
+      name: 'Trio',
+      worldId: world.worldId,
+    })
     const alive1 = await callTool('character_manage', { action: 'create', name: 'Alive One' })
     const alive2 = await callTool('character_manage', { action: 'create', name: 'Alive Two' })
     const doomed = await callTool('character_manage', { action: 'create', name: 'Doomed Member' })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: alive1.characterId })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: alive2.characterId })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: alive1.characterId,
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: alive2.characterId,
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: doomed.characterId,
+    })
 
     const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
     expect(r.success).toBe(true)
@@ -1485,24 +1640,67 @@ describe('character_manage tool', () => {
   })
 
   it('kill flags a solo survivor when exactly one member remains', async () => {
-    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Solo Survivor World', theme: 'fantasy' })
-    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Duo', worldId: world.worldId })
+    const world = await callTool('rpg', {
+      sub: 'world',
+      action: 'create',
+      name: 'Solo Survivor World',
+      theme: 'fantasy',
+    })
+    const party = await callTool('rpg', {
+      sub: 'party',
+      action: 'create',
+      name: 'Duo',
+      worldId: world.worldId,
+    })
     const survivor = await callTool('character_manage', { action: 'create', name: 'Survivor' })
-    const doomed = await callTool('character_manage', { action: 'create', name: 'Doomed Duo Member' })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: survivor.characterId })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+    const doomed = await callTool('character_manage', {
+      action: 'create',
+      name: 'Doomed Duo Member',
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: survivor.characterId,
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: doomed.characterId,
+    })
 
     const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
     expect(r.partyUpdates).toEqual([
-      { partyId: party.partyId, remainingMembers: 1, archived: false, soloSurvivorId: survivor.characterId },
+      {
+        partyId: party.partyId,
+        remainingMembers: 1,
+        archived: false,
+        soloSurvivorId: survivor.characterId,
+      },
     ])
   })
 
   it('kill archives a party when the dying character was its last member', async () => {
-    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Last Member World', theme: 'fantasy' })
-    const party = await callTool('rpg', { sub: 'party', action: 'create', name: 'Solo Party', worldId: world.worldId })
+    const world = await callTool('rpg', {
+      sub: 'world',
+      action: 'create',
+      name: 'Last Member World',
+      theme: 'fantasy',
+    })
+    const party = await callTool('rpg', {
+      sub: 'party',
+      action: 'create',
+      name: 'Solo Party',
+      worldId: world.worldId,
+    })
     const doomed = await callTool('character_manage', { action: 'create', name: 'Last One' })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: party.partyId, characterId: doomed.characterId })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: party.partyId,
+      characterId: doomed.characterId,
+    })
 
     const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
     expect(r.partyUpdates).toEqual([
@@ -1514,18 +1712,50 @@ describe('character_manage tool', () => {
   })
 
   it('kill removes the dead character from every party they belonged to', async () => {
-    const world = await callTool('rpg', { sub: 'world', action: 'create', name: 'Multi Party World', theme: 'fantasy' })
-    const partyA = await callTool('rpg', { sub: 'party', action: 'create', name: 'Party A', worldId: world.worldId })
-    const partyB = await callTool('rpg', { sub: 'party', action: 'create', name: 'Party B', worldId: world.worldId })
+    const world = await callTool('rpg', {
+      sub: 'world',
+      action: 'create',
+      name: 'Multi Party World',
+      theme: 'fantasy',
+    })
+    const partyA = await callTool('rpg', {
+      sub: 'party',
+      action: 'create',
+      name: 'Party A',
+      worldId: world.worldId,
+    })
+    const partyB = await callTool('rpg', {
+      sub: 'party',
+      action: 'create',
+      name: 'Party B',
+      worldId: world.worldId,
+    })
     const other = await callTool('character_manage', { action: 'create', name: 'Other Member' })
     const doomed = await callTool('character_manage', { action: 'create', name: 'Double Booked' })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyA.partyId, characterId: other.characterId })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyA.partyId, characterId: doomed.characterId })
-    await callTool('rpg', { sub: 'party', action: 'add_member', partyId: partyB.partyId, characterId: doomed.characterId })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: partyA.partyId,
+      characterId: other.characterId,
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: partyA.partyId,
+      characterId: doomed.characterId,
+    })
+    await callTool('rpg', {
+      sub: 'party',
+      action: 'add_member',
+      partyId: partyB.partyId,
+      characterId: doomed.characterId,
+    })
 
     const r = await callTool('character_manage', { action: 'kill', id: doomed.characterId })
     expect(r.partyUpdates.length).toBe(2)
-    const byPartyId = Object.fromEntries(r.partyUpdates.map((u: { partyId: string; archived: boolean }) => [u.partyId, u.archived]))
+    const byPartyId = Object.fromEntries(
+      r.partyUpdates.map((u: { partyId: string; archived: boolean }) => [u.partyId, u.archived]),
+    )
     expect(byPartyId[partyA.partyId]).toBe(false)
     expect(byPartyId[partyB.partyId]).toBe(true)
   })
@@ -1533,26 +1763,44 @@ describe('character_manage tool', () => {
   // ── move_to_location / move_to_tile (#313) ────────────────────────────────
 
   it('move_to_location requires id or characterId', async () => {
-    const r = await callTool('character_manage', { action: 'move_to_location', locationKey: 'location:linwood-estate' })
+    const r = await callTool('character_manage', {
+      action: 'move_to_location',
+      locationKey: 'location:linwood-estate',
+    })
     expect(r.error).toBe(true)
   })
 
   it('move_to_location requires locationKey', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Catherine Vance' })
-    const r = await callTool('character_manage', { action: 'move_to_location', id: created.characterId })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Catherine Vance',
+    })
+    const r = await callTool('character_manage', {
+      action: 'move_to_location',
+      id: created.characterId,
+    })
     expect(r.error).toBe(true)
   })
 
   it('move_to_location on non-existent character returns error', async () => {
-    const r = await callTool('character_manage', { action: 'move_to_location', id: 'nonexistent', locationKey: 'location:helsinki' })
+    const r = await callTool('character_manage', {
+      action: 'move_to_location',
+      id: 'nonexistent',
+      locationKey: 'location:helsinki',
+    })
     expect(r.error).toBe(true)
     expect(r.message).toContain('not found')
   })
 
   it('move_to_location sets location_key', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Catherine Vance' })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Catherine Vance',
+    })
     const r = await callTool('character_manage', {
-      action: 'move_to_location', id: created.characterId, locationKey: 'location:helsinki-technate',
+      action: 'move_to_location',
+      id: created.characterId,
+      locationKey: 'location:helsinki-technate',
     })
     expect(r.success).toBe(true)
     expect(r.locationKey).toBe('location:helsinki-technate')
@@ -1563,11 +1811,15 @@ describe('character_manage tool', () => {
   it('move_to_location supports characterId parameter and relocate/set_location aliases', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Alias Test' })
     const r1 = await callTool('character_manage', {
-      action: 'relocate', characterId: created.characterId, locationKey: 'location:a',
+      action: 'relocate',
+      characterId: created.characterId,
+      locationKey: 'location:a',
     })
     expect(r1.success).toBe(true)
     const r2 = await callTool('character_manage', {
-      action: 'set_location', characterId: created.characterId, locationKey: 'location:b',
+      action: 'set_location',
+      characterId: created.characterId,
+      locationKey: 'location:b',
     })
     expect(r2.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
@@ -1581,12 +1833,20 @@ describe('character_manage tool', () => {
 
   it('move_to_tile requires q and r', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
-    const r = await callTool('character_manage', { action: 'move_to_tile', id: created.characterId })
+    const r = await callTool('character_manage', {
+      action: 'move_to_tile',
+      id: created.characterId,
+    })
     expect(r.error).toBe(true)
   })
 
   it('move_to_tile on non-existent character returns error', async () => {
-    const r = await callTool('character_manage', { action: 'move_to_tile', id: 'nonexistent', q: 1, r: 1 })
+    const r = await callTool('character_manage', {
+      action: 'move_to_tile',
+      id: 'nonexistent',
+      q: 1,
+      r: 1,
+    })
     expect(r.error).toBe(true)
     expect(r.message).toContain('not found')
   })
@@ -1594,7 +1854,10 @@ describe('character_manage tool', () => {
   it('move_to_tile sets hex coordinates and defaults mapId to main', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
     const r = await callTool('character_manage', {
-      action: 'move_to_tile', id: created.characterId, q: 52, r: 28,
+      action: 'move_to_tile',
+      id: created.characterId,
+      q: 52,
+      r: 28,
     })
     expect(r.success).toBe(true)
     expect(r.q).toBe(52)
@@ -1609,12 +1872,19 @@ describe('character_manage tool', () => {
   it('move_to_tile accepts an explicit mapId and supports move_to_hex/place_on_map aliases', async () => {
     const created = await callTool('character_manage', { action: 'create', name: 'Yield' })
     const r1 = await callTool('character_manage', {
-      action: 'move_to_hex', characterId: created.characterId, q: 1, r: 1, mapId: 'gotland',
+      action: 'move_to_hex',
+      characterId: created.characterId,
+      q: 1,
+      r: 1,
+      mapId: 'gotland',
     })
     expect(r1.success).toBe(true)
     expect(r1.mapId).toBe('gotland')
     const r2 = await callTool('character_manage', {
-      action: 'place_on_map', characterId: created.characterId, q: 2, r: 2,
+      action: 'place_on_map',
+      characterId: created.characterId,
+      q: 2,
+      r: 2,
     })
     expect(r2.success).toBe(true)
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
@@ -1623,9 +1893,21 @@ describe('character_manage tool', () => {
   })
 
   it('move_to_location and move_to_tile do not clear each other — a character can be dual-mode', async () => {
-    const created = await callTool('character_manage', { action: 'create', name: 'Dual Mode Yield' })
-    await callTool('character_manage', { action: 'move_to_location', id: created.characterId, locationKey: 'location:linwood-estate' })
-    await callTool('character_manage', { action: 'move_to_tile', id: created.characterId, q: 10, r: 10 })
+    const created = await callTool('character_manage', {
+      action: 'create',
+      name: 'Dual Mode Yield',
+    })
+    await callTool('character_manage', {
+      action: 'move_to_location',
+      id: created.characterId,
+      locationKey: 'location:linwood-estate',
+    })
+    await callTool('character_manage', {
+      action: 'move_to_tile',
+      id: created.characterId,
+      q: 10,
+      r: 10,
+    })
     const char = await callTool('character_manage', { action: 'get', id: created.characterId })
     expect(char.character.location_key).toBe('location:linwood-estate')
     expect(char.character.current_hex_q).toBe(10)

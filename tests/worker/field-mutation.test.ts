@@ -1,4 +1,12 @@
-import { describe, rpc, callTool, callToolWithApiKey, seedKV, ADMIN_SECRET, parseEncounterTable } from './support/helpers'
+import {
+  describe,
+  rpc,
+  callTool,
+  callToolWithApiKey,
+  seedKV,
+  ADMIN_SECRET,
+  parseEncounterTable,
+} from './support/helpers'
 import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach, vi } from 'vitest'
 
@@ -93,7 +101,12 @@ describe('increment_topic_field — concurrent write conflict detection', () => 
       return (original as (...a: unknown[]) => unknown)(...args)
     }) as typeof env.LORE_DB.get)
 
-    const res = await callTool('lore_manage', { action: 'increment', key: 'character:race-condition', field_path: 'score', increment: 1 })
+    const res = await callTool('lore_manage', {
+      action: 'increment',
+      key: 'character:race-condition',
+      field_path: 'score',
+      increment: 1,
+    })
     spy.mockRestore()
 
     expect(res.error).toBeDefined()
@@ -103,7 +116,10 @@ describe('increment_topic_field — concurrent write conflict detection', () => 
     expect(res.error.data.current_version).toBe(99)
 
     // The score was never touched by the losing request.
-    const final = await callTool('lore_manage', { action: 'get', query: 'character:race-condition' })
+    const final = await callTool('lore_manage', {
+      action: 'get',
+      query: 'character:race-condition',
+    })
     expect(final.result.text).toContain('**score:** 100')
   })
 })
@@ -147,7 +163,10 @@ describe('increment_topic_field — field not present in text', () => {
   })
 
   it('returns error when text has matching field name but no numeric value', async () => {
-    await seedKV('character:non-numeric-field', '**Status:** Test\n**days_remaining:** pending\n**character:** test-subject')
+    await seedKV(
+      'character:non-numeric-field',
+      '**Status:** Test\n**days_remaining:** pending\n**character:** test-subject',
+    )
     const res = await callTool('lore_manage', {
       action: 'increment',
       key: 'character:non-numeric-field',
@@ -174,7 +193,10 @@ describe('field extraction — bullet-style and float formats', () => {
   })
 
   it('extracts float from bullet + descriptor format', async () => {
-    await seedKV('character:bullet-float', '- **Weight-1 (Aggression/Predator-Drive):** 0.75\n**Status:** active')
+    await seedKV(
+      'character:bullet-float',
+      '- **Weight-1 (Aggression/Predator-Drive):** 0.75\n**Status:** active',
+    )
     const res = await callTool('lore_manage', {
       action: 'increment',
       key: 'character:bullet-float',
@@ -187,7 +209,10 @@ describe('field extraction — bullet-style and float formats', () => {
   })
 
   it('preserves bullet + descriptor format when updating', async () => {
-    await seedKV('character:preserve-format', '- **Weight-1 (Aggression):** 0.5\n**Status:** active')
+    await seedKV(
+      'character:preserve-format',
+      '- **Weight-1 (Aggression):** 0.5\n**Status:** active',
+    )
     await callTool('lore_manage', {
       action: 'increment',
       key: 'character:preserve-format',
@@ -229,12 +254,18 @@ describe('field extraction — bullet-style and float formats', () => {
 
 describe('extractRawField — bullet-style format', () => {
   it('thread_tick finds entity whose Thread field uses bullet+descriptor format', async () => {
-    await seedKV('character:bullet-thread-member', [
-      '- **Thread (Active):** bullet-thread-test',
-      '**Timeline-Value:** 5',
-      '**Current-Date:** 2099-01-01',
-    ].join('\n'))
-    const res = await callTool('world_manage', { action: 'thread_tick', thread_id: 'bullet-thread-test' })
+    await seedKV(
+      'character:bullet-thread-member',
+      [
+        '- **Thread (Active):** bullet-thread-test',
+        '**Timeline-Value:** 5',
+        '**Current-Date:** 2099-01-01',
+      ].join('\n'),
+    )
+    const res = await callTool('world_manage', {
+      action: 'thread_tick',
+      thread_id: 'bullet-thread-test',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.metadata.entities_ticked).toBe(1)
   })

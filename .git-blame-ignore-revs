@@ -1,0 +1,7 @@
+# Commits listed here are ignored by `git blame` when configured:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's web blame view picks this file up automatically with no config.)
+# Only add commits that are pure mechanical reformatting with zero logic changes.
+
+# style: apply one-time Prettier reformat across src/, tests/, scripts/
+91203e4403b6ab7e8afc9014d1ded26a1fbb7eb9

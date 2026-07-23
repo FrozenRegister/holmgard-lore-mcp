@@ -1,7 +1,16 @@
 // src/middleware/rate-limit.ts
-import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, WS_RECONNECT_WINDOW_MS, WS_RECONNECT_LIMIT } from '../constants'
+import {
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_MAX,
+  WS_RECONNECT_WINDOW_MS,
+  WS_RECONNECT_LIMIT,
+} from '../constants'
 
-async function notifySlack(webhookUrl: string | undefined, ip: string, windowEndMs: number): Promise<void> {
+async function notifySlack(
+  webhookUrl: string | undefined,
+  ip: string,
+  windowEndMs: number,
+): Promise<void> {
   if (!webhookUrl) return
   try {
     await fetch(webhookUrl, {
@@ -85,7 +94,9 @@ export function wsReconnectRateLimit(c: any, next: any): Promise<any> {
     if (entry.count === WS_RECONNECT_LIMIT + 1 && c.executionCtx?.waitUntil) {
       c.executionCtx.waitUntil(notifySlack(c.env?.SLACK_WEBHOOK_URL, ip, entry.resetAt))
     }
-    return Promise.resolve(c.json({ error: 'Too many reconnect attempts. Back off and retry.' }, 429))
+    return Promise.resolve(
+      c.json({ error: 'Too many reconnect attempts. Back off and retry.' }, 429),
+    )
   }
   return next()
 }

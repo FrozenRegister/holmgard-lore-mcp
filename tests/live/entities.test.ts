@@ -20,7 +20,10 @@ describe.skipIf(!MCP_API_KEY)('Direct-Read Tools', () => {
       setLore(relB, '**Faction:** order\nAlice mentored me.'),
       setLore(factionEntity, '**Rank:** Captain\n**Reputation:** 0.9\n**Faction:** order'),
       setLore(factionKey, 'Members: captain, paladin, squire.'),
-      setLore(knowledgeKey, '**Knows:** hidden-vault, patrol-routes\nI found the hidden-vault last night.'),
+      setLore(
+        knowledgeKey,
+        '**Knows:** hidden-vault, patrol-routes\nI found the hidden-vault last night.',
+      ),
       setLore(envLocKey, 'Stone walls surround you.\nA gem gleams [hidden] in the rock.'),
       setLore(envEntityKey, '**Perception:** 0.9'),
       setLore(invEntityKey, '**Inventory:** sword:3, shield:1, potion:10'),
@@ -28,57 +31,102 @@ describe.skipIf(!MCP_API_KEY)('Direct-Read Tools', () => {
   })
 
   afterAll(async () => {
-    await deleteLore(relA, relB, factionEntity, factionKey, knowledgeKey, envLocKey, envEntityKey, invEntityKey)
+    await deleteLore(
+      relA,
+      relB,
+      factionEntity,
+      factionKey,
+      knowledgeKey,
+      envLocKey,
+      envEntityKey,
+      invEntityKey,
+    )
   })
 
   it('get_relationship detects affinity and faction overlap', async () => {
-    const res = await tool('world_manage', { action: 'get_relationship', entity_a: relA, entity_b: relB })
+    const res = await tool('world_manage', {
+      action: 'get_relationship',
+      entity_a: relA,
+      entity_b: relB,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Relationship data found/)
   })
 
   it('get_relationship returns not-found for unrelated entities', async () => {
-    const res = await tool('world_manage', { action: 'get_relationship', entity_a: envLocKey, entity_b: knowledgeKey })
+    const res = await tool('world_manage', {
+      action: 'get_relationship',
+      entity_a: envLocKey,
+      entity_b: knowledgeKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/No relationship data found/)
   })
 
   it('get_relationship returns error for missing entity', async () => {
-    const res = await tool('world_manage', { action: 'get_relationship', entity_a: relA, entity_b: 'nonexistent:nobody' })
+    const res = await tool('world_manage', {
+      action: 'get_relationship',
+      entity_a: relA,
+      entity_b: 'nonexistent:nobody',
+    })
     expect(res.error).toBeTruthy()
   })
 
   it('get_faction_standing detects member', async () => {
-    const res = await tool('world_manage', { action: 'get_faction_standing', entity_key: factionEntity, faction_key: factionKey })
+    const res = await tool('world_manage', {
+      action: 'get_faction_standing',
+      entity_key: factionEntity,
+      faction_key: factionKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/member/)
   })
 
   it('get_faction_standing returns error for missing faction', async () => {
-    const res = await tool('world_manage', { action: 'get_faction_standing', entity_key: factionEntity, faction_key: 'faction:no-such' })
+    const res = await tool('world_manage', {
+      action: 'get_faction_standing',
+      entity_key: factionEntity,
+      faction_key: 'faction:no-such',
+    })
     expect(res.error).toBeTruthy()
   })
 
   it('get_entity_knowledge returns excerpts for known topic', async () => {
-    const res = await tool('world_manage', { action: 'get_entity_knowledge', entity_key: knowledgeKey, topic: 'hidden-vault' })
+    const res = await tool('world_manage', {
+      action: 'get_entity_knowledge',
+      entity_key: knowledgeKey,
+      topic: 'hidden-vault',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/has knowledge of/)
   })
 
   it('get_entity_knowledge returns not-known for unknown topic', async () => {
-    const res = await tool('world_manage', { action: 'get_entity_knowledge', entity_key: knowledgeKey, topic: 'secret-dragon' })
+    const res = await tool('world_manage', {
+      action: 'get_entity_knowledge',
+      entity_key: knowledgeKey,
+      topic: 'secret-dragon',
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/no knowledge of/)
   })
 
   it('sense_environment returns all details for high perception', async () => {
-    const res = await tool('world_manage', { action: 'sense_environment', location_key: envLocKey, entity_key: envEntityKey })
+    const res = await tool('world_manage', {
+      action: 'sense_environment',
+      location_key: envLocKey,
+      entity_key: envEntityKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/perception/)
   })
 
   it('sense_environment returns error for missing entity', async () => {
-    const res = await tool('world_manage', { action: 'sense_environment', location_key: envLocKey, entity_key: 'character:ghost' })
+    const res = await tool('world_manage', {
+      action: 'sense_environment',
+      location_key: envLocKey,
+      entity_key: 'character:ghost',
+    })
     expect(res.error).toBeTruthy()
   })
 
@@ -104,7 +152,14 @@ describe.skipIf(!MCP_API_KEY)('get_inventory D1 unification (#344)', () => {
     characterId = createRes.result.characterId
     entityKey = `character:${name.toLowerCase().replace(/\s+/g, '-')}`
 
-    const itemRes = await tool('rpg', { sub: 'item', action: 'create', name: `Emergency Ration ${uid()}`, type: 'consumable', weight: 0.5, value: 5 })
+    const itemRes = await tool('rpg', {
+      sub: 'item',
+      action: 'create',
+      name: `Emergency Ration ${uid()}`,
+      type: 'consumable',
+      weight: 0.5,
+      value: 5,
+    })
     itemId = itemRes.result.itemId
 
     await tool('rpg', { sub: 'inventory', action: 'add', characterId, itemId, quantity: 2 })
@@ -120,7 +175,9 @@ describe.skipIf(!MCP_API_KEY)('get_inventory D1 unification (#344)', () => {
     expect(res.error).toBeUndefined()
     expect(res.result.source).toBe('d1')
     expect(res.result.character_id).toBe(characterId)
-    expect(res.result.items.some((i: { item: string; quantity: number }) => i.quantity === 2)).toBe(true)
+    expect(res.result.items.some((i: { item: string; quantity: number }) => i.quantity === 2)).toBe(
+      true,
+    )
   })
 })
 
@@ -139,22 +196,34 @@ describe.skipIf(!MCP_API_KEY)('Entity Generation and Encounters', () => {
     ])
   })
 
-  afterAll(async () => { await deleteLore(archetypeKey, encounterLoc) })
+  afterAll(async () => {
+    await deleteLore(archetypeKey, encounterLoc)
+  })
 
   it('generate_entity creates from archetype', async () => {
-    const res = await tool('entity_manage', { action: 'generate', archetype_key: archetypeEntityKey })
+    const res = await tool('entity_manage', {
+      action: 'generate',
+      archetype_key: archetypeEntityKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/Generated entity/)
   })
 
   it('roll_encounter succeeds with encounter table', async () => {
-    const res = await tool('entity_manage', { action: 'roll_encounter', location_key: encounterLoc, threat_level: 5 })
+    const res = await tool('entity_manage', {
+      action: 'roll_encounter',
+      location_key: encounterLoc,
+      threat_level: 5,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/rolled/)
   })
 
   it('roll_encounter returns message for missing table', async () => {
-    const res = await tool('entity_manage', { action: 'roll_encounter', location_key: archetypeKey })
+    const res = await tool('entity_manage', {
+      action: 'roll_encounter',
+      location_key: archetypeKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/No Encounter-Table/)
   })
@@ -172,12 +241,16 @@ describe.skipIf(!MCP_API_KEY)('Compatibility', () => {
     ])
   })
 
-  afterAll(async () => { await deleteLore(compatA, compatB) })
+  afterAll(async () => {
+    await deleteLore(compatA, compatB)
+  })
 
   it('get_compatibility returns COMPATIBLE for matching entities', async () => {
     const res = await tool('entity_manage', {
       action: 'get_compatibility',
-      entity_a: compatA, entity_b: compatB, interaction_type: 'hunt',
+      entity_a: compatA,
+      entity_b: compatB,
+      interaction_type: 'hunt',
     })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/COMPATIBLE/)
@@ -196,16 +269,24 @@ describe.skipIf(!MCP_API_KEY)('Location and Exit Operations', () => {
     ])
   })
 
-  afterAll(async () => { await deleteLore(destKey, locKey) })
+  afterAll(async () => {
+    await deleteLore(destKey, locKey)
+  })
 
   it('get_reachable_locations parses exits and checks destinations', async () => {
-    const res = await tool('world_manage', { action: 'get_reachable_locations', origin_key: locKey })
+    const res = await tool('world_manage', {
+      action: 'get_reachable_locations',
+      origin_key: locKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/reachable/)
   })
 
   it('get_reachable_locations returns empty for missing Exits field', async () => {
-    const res = await tool('world_manage', { action: 'get_reachable_locations', origin_key: destKey })
+    const res = await tool('world_manage', {
+      action: 'get_reachable_locations',
+      origin_key: destKey,
+    })
     expect(res.error).toBeUndefined()
     expect(res.result.content[0].text).toMatch(/No exits defined/)
   })

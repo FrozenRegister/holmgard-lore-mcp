@@ -1,0 +1,5 @@
+### Fixed patch-coverage false positives from the Prettier reformat commit
+
+- `scripts/check-patch-coverage.mjs` now excludes lines that are only "changed" because a mechanical reformat commit (e.g. the one-time Prettier introduction) touched their text without touching their logic. Discovered when this PR's own `Coverage` CI job failed with 57 files / 198 lines flagged — all pre-existing, untested code the reformat happened to reflow, none of it actually new.
+- Reuses `.git-blame-ignore-revs` as the single source of truth: for each flagged line, `git blame --ignore-revs-file` identifies who really wrote it, and the line is excluded if that resolves to (a) an earlier commit already on the base branch, or (b) a commit `.git-blame-ignore-revs` itself lists — needed because blame's ignore-revs matching is best-effort and gives up on bigger reshapes (e.g. a long one-line statement Prettier wrapped across 9 lines), falling back to blaming the reformat commit itself.
+- The report (`patch-coverage-report.json`) and console output now note how many lines were excluded this way, for transparency.

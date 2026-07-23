@@ -44,11 +44,7 @@ export function stageMutationFor(
   stage: number,
   config: DissolutionConfig = DEFAULT_DISSOLUTION_CONFIG,
 ): StageMutation | null {
-  if (
-    stage >= 1 &&
-    stage <= config.terminalStage &&
-    Number.isInteger(stage)
-  ) {
+  if (stage >= 1 && stage <= config.terminalStage && Number.isInteger(stage)) {
     return config.stages[stage] ?? null
   }
   return null

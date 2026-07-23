@@ -35,14 +35,22 @@ export interface HookRunner {
   config: HookConfig
   dependsOn: string[]
   batchMode: boolean
-  execute: (env: AppBindings, worldId: string, date: string, snapshot: WorldSnapshot) => Promise<HookResult>
+  execute: (
+    env: AppBindings,
+    worldId: string,
+    date: string,
+    snapshot: WorldSnapshot,
+  ) => Promise<HookResult>
 }
 
 // ── World-Level Lock (Concurrency Control) ──────────────────────────────────
 
 const WORLD_LOCKS = new Map<string, { holderId: string; expiresAt: number }>()
 
-export async function acquireWorldLock(worldId: string, holderId: string = 'tick-driver'): Promise<boolean> {
+export async function acquireWorldLock(
+  worldId: string,
+  holderId: string = 'tick-driver',
+): Promise<boolean> {
   const now = Date.now()
   const lock = WORLD_LOCKS.get(worldId)
   if (lock && lock.expiresAt > now) return false
@@ -57,7 +65,10 @@ export function releaseWorldLock(worldId: string): void {
 // ── Shadow State System ───────────────────────────────────────────────────────
 
 export async function snapshotWorldState(db: D1Database, worldId: string): Promise<WorldSnapshot> {
-  const ws = (await db.prepare('SELECT * FROM world_state WHERE world_id = ?').bind(worldId).first()) as Record<string, any> | null
+  const ws = (await db
+    .prepare('SELECT * FROM world_state WHERE world_id = ?')
+    .bind(worldId)
+    .first()) as Record<string, any> | null
 
   const dateStr = ws?.current_date ?? new Date().toISOString().split('T')[0]
   return {
@@ -72,14 +83,17 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
 // ── Phase 1 Hooks ─────────────────────────────────────────────────────────────
 
 // weather_update — resolved hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const weatherUpdateHook: HookRunner = {
   name: 'weather_update',
   config: { enabled: true, batch_mode: true },
   dependsOn: [],
   batchMode: true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Reuse weather system from #364. For now, return stub.
     return {
       category: 'resolved',
@@ -90,14 +104,17 @@ const weatherUpdateHook: HookRunner = {
 }
 
 // resource_consume — resolved hook, batch mode
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const resourceConsumeHook: HookRunner = {
   name: 'resource_consume',
   config: { enabled: true, batch_mode: true },
   dependsOn: ['weather_update'],
   batchMode: true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Call resource-manage.ts consume for each active party.
     // For now, return stub.
     return {
@@ -109,14 +126,17 @@ const resourceConsumeHook: HookRunner = {
 }
 
 // encounter_check — flagged hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const encounterCheckHook: HookRunner = {
   name: 'encounter_check',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['weather_update'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Reuse encounter.resolve from #280. Report eligibility, do not auto-resolve.
     return {
       category: 'flagged',
@@ -127,14 +147,17 @@ const encounterCheckHook: HookRunner = {
 }
 
 // health_degradation — resolved hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const healthDegradationHook: HookRunner = {
   name: 'health_degradation',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['resource_consume'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Implement untreated wound worsening, HP/condition tick.
     return {
       category: 'resolved',
@@ -145,14 +168,17 @@ const healthDegradationHook: HookRunner = {
 }
 
 // dissolution_flag — flagged hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const dissolutionFlagHook: HookRunner = {
   name: 'dissolution_flag',
   config: { enabled: true, batch_mode: false },
   dependsOn: ['health_degradation', 'encounter_check'],
   batchMode: false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute: async (_env: AppBindings, worldId: string, date: string, _snapshot: WorldSnapshot): Promise<HookResult> => {
+  execute: async (
+    _env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
     // TODO: Scan staged entities via Phase 0's DissolutionStageCheck interface.
     // Report which are eligible to advance a stage. Never auto-advance.
     return {
@@ -243,7 +269,12 @@ export async function runTickDriver(
     try {
       sortedHooks = topologicalSort(hooks)
     } catch (e) {
-      return { success: false, resolved: [], flagged: [], narrator_summary: `Hook sort failed: ${(e as Error).message}` }
+      return {
+        success: false,
+        resolved: [],
+        flagged: [],
+        narrator_summary: `Hook sort failed: ${(e as Error).message}`,
+      }
     }
 
     // Snapshot world state

@@ -30,7 +30,11 @@ describe('scene_manage invalid params include schema_hint and example', () => {
   })
 
   it('brief: wrong type for include', async () => {
-    const res = await callTool('scene_manage', { action: 'brief', location_key: 'location:a', include: 'not-an-object' })
+    const res = await callTool('scene_manage', {
+      action: 'brief',
+      location_key: 'location:a',
+      include: 'not-an-object',
+    })
     expectSchemaHintError(res)
   })
 

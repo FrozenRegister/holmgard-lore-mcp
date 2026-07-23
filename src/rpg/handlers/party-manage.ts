@@ -43,27 +43,57 @@ import { applyDynamicFields } from '../utils/dynamic-fields'
 const PARTY_FIELDS_BLACKLIST = ['id', 'created_at', 'updated_at', 'world_id'] as const
 
 export const ACTIONS = [
-  'create', 'get', 'list', 'update', 'delete', 'add_member', 'remove_member', 'set_leader',
-  'trust_shift', 'resolve_conflict', 'betrayal_check', 'morale_roll', 'watch_rotation',
-  'begin_march', 'get_march_status', 'cohesion_check', 'group_break', 'cohesion_shift',
+  'create',
+  'get',
+  'list',
+  'update',
+  'delete',
+  'add_member',
+  'remove_member',
+  'set_leader',
+  'trust_shift',
+  'resolve_conflict',
+  'betrayal_check',
+  'morale_roll',
+  'watch_rotation',
+  'begin_march',
+  'get_march_status',
+  'cohesion_check',
+  'group_break',
+  'cohesion_shift',
 ] as const
-type PartyAction = typeof ACTIONS[number]
+type PartyAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, PartyAction> = {
   ...CRUD_ALIASES,
-  add_character: 'add_member', join: 'add_member',
-  remove_character: 'remove_member', leave: 'remove_member', kick: 'remove_member',
-  leader: 'set_leader', promote: 'set_leader',
-  form: 'create', get_state: 'get',
-  trust: 'trust_shift', shift_trust: 'trust_shift',
-  conflict: 'resolve_conflict', clash: 'resolve_conflict',
-  betrayal: 'betrayal_check', check_betrayal: 'betrayal_check',
-  morale: 'morale_roll', morale_check: 'morale_roll',
-  watch: 'watch_rotation', assign_watch: 'watch_rotation',
-  march: 'begin_march', travel_to: 'begin_march',
+  add_character: 'add_member',
+  join: 'add_member',
+  remove_character: 'remove_member',
+  leave: 'remove_member',
+  kick: 'remove_member',
+  leader: 'set_leader',
+  promote: 'set_leader',
+  form: 'create',
+  get_state: 'get',
+  trust: 'trust_shift',
+  shift_trust: 'trust_shift',
+  conflict: 'resolve_conflict',
+  clash: 'resolve_conflict',
+  betrayal: 'betrayal_check',
+  check_betrayal: 'betrayal_check',
+  morale: 'morale_roll',
+  morale_check: 'morale_roll',
+  watch: 'watch_rotation',
+  assign_watch: 'watch_rotation',
+  march: 'begin_march',
+  travel_to: 'begin_march',
   march_status: 'get_march_status',
-  cohesion: 'cohesion_check', check_cohesion: 'cohesion_check',
-  break: 'group_break', fracture: 'group_break', disband: 'group_break',
-  shift: 'cohesion_shift', apply_event: 'cohesion_shift',
+  cohesion: 'cohesion_check',
+  check_cohesion: 'cohesion_check',
+  break: 'group_break',
+  fracture: 'group_break',
+  disband: 'group_break',
+  shift: 'cohesion_shift',
+  apply_event: 'cohesion_shift',
 } as Record<string, PartyAction>
 
 // Transcribed from the issue's "Trust Events" table. `delta` is applied to
@@ -73,9 +103,18 @@ const TRUST_EVENTS: Record<string, { delta: number; note: string }> = {
   first_aid: { delta: 10, note: 'First aid administered — successful WIS check.' },
   saved_from_predator: { delta: 15, note: 'Saved from predator — direct intervention in combat.' },
   shared_intel: { delta: 8, note: 'Shared crucial intel — information acted upon.' },
-  caught_hoarding: { delta: -15, note: 'Caught hoarding resources — discovered via perception check.' },
-  abandoned_in_combat: { delta: -25, note: 'Abandoned during predator attack — fleeing while others fight.' },
-  led_predator_to_party: { delta: -40, note: 'Led predator toward party — deliberate misdirection.' },
+  caught_hoarding: {
+    delta: -15,
+    note: 'Caught hoarding resources — discovered via perception check.',
+  },
+  abandoned_in_combat: {
+    delta: -25,
+    note: 'Abandoned during predator attack — fleeing while others fight.',
+  },
+  led_predator_to_party: {
+    delta: -40,
+    note: 'Led predator toward party — deliberate misdirection.',
+  },
   stole_from_cache: { delta: -20, note: 'Stole from party cache — discovered.' },
   failed_watch: { delta: -10, note: 'Failed watch shift — party wakes to danger.' },
   successful_watch: { delta: 5, note: 'Successful watch — party warned in time.' },
@@ -112,7 +151,11 @@ const COHESION_EVENTS: Record<string, { delta: number; note: string }> = {
   predator_attack: { delta: -6, note: 'Predator attack stress' },
 }
 
-function moraleTier(morale: number): { cohesion: string; rollModifier: number; dissolved: boolean } {
+function moraleTier(morale: number): {
+  cohesion: string
+  rollModifier: number
+  dissolved: boolean
+} {
   if (morale >= 80) return { cohesion: 'high', rollModifier: 1, dissolved: false }
   if (morale >= 60) return { cohesion: 'stable', rollModifier: 0, dissolved: false }
   if (morale >= 40) return { cohesion: 'strained', rollModifier: -1, dissolved: false }
@@ -129,7 +172,10 @@ const InputSchema = z.object({
   status: z.enum(['active', 'dormant', 'archived']).optional(),
   partyId: z.string().optional(),
   characterId: z.string().optional(),
-  role: z.enum(['leader', 'member', 'companion', 'hireling', 'prisoner', 'mount']).optional().default('member'),
+  role: z
+    .enum(['leader', 'member', 'companion', 'hireling', 'prisoner', 'mount'])
+    .optional()
+    .default('member'),
   // trust_shift
   fromCharacterId: z.string().optional(),
   towardCharacterId: z.string().optional(),
@@ -147,11 +193,16 @@ const InputSchema = z.object({
   stressorType: z.string().optional(),
   customDelta: z.number().optional(),
   // watch_rotation
-  watchers: z.array(z.object({
-    characterId: z.string(),
-    conModifier: z.number().optional().default(0),
-    rollValue: z.number().int().min(1).max(20).optional(),
-  })).optional().default([]),
+  watchers: z
+    .array(
+      z.object({
+        characterId: z.string(),
+        conModifier: z.number().optional().default(0),
+        rollValue: z.number().int().min(1).max(20).optional(),
+      }),
+    )
+    .optional()
+    .default([]),
   // begin_march (#328 — Gotland real-world-distance movement)
   toWaypointId: z.string().optional(),
   toWaypointName: z.string().optional(),
@@ -168,14 +219,29 @@ const InputSchema = z.object({
   fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 })
 
-async function getTrustMatrix(db: D1Database, partyId: string): Promise<Array<{ from_character_id: string; to_character_id: string; trust_score: number }>> {
-  const { results } = await db.prepare('SELECT from_character_id, to_character_id, trust_score FROM party_trust WHERE party_id = ?').bind(partyId).all()
-  return results as Array<{ from_character_id: string; to_character_id: string; trust_score: number }>
+async function getTrustMatrix(
+  db: D1Database,
+  partyId: string,
+): Promise<Array<{ from_character_id: string; to_character_id: string; trust_score: number }>> {
+  const { results } = await db
+    .prepare(
+      'SELECT from_character_id, to_character_id, trust_score FROM party_trust WHERE party_id = ?',
+    )
+    .bind(partyId)
+    .all()
+  return results as Array<{
+    from_character_id: string
+    to_character_id: string
+    trust_score: number
+  }>
 }
 
-export async function handlePartyManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handlePartyManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -186,42 +252,90 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
     case 'create': {
       if (!a.name) return err('"name" is required')
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO parties (id, name, description, world_id, status, formation, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, a.name, a.description ?? null, a.worldId ?? null, a.status ?? 'active', 'standard', now, now).run()
+      await db
+        .prepare(
+          'INSERT INTO parties (id, name, description, world_id, status, formation, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(
+          id,
+          a.name,
+          a.description ?? null,
+          a.worldId ?? null,
+          a.status ?? 'active',
+          'standard',
+          now,
+          now,
+        )
+        .run()
       return ok({ success: true, actionType: 'create', partyId: id, name: a.name })
     }
     case 'get': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
-      const party = await db.prepare('SELECT * FROM parties WHERE id = ?').bind(partyId).first() as Record<string, unknown> | null
+      const party = (await db
+        .prepare('SELECT * FROM parties WHERE id = ?')
+        .bind(partyId)
+        .first()) as Record<string, unknown> | null
       if (!party) return err(`Party not found: ${partyId}`)
-      const { results: members } = await db.prepare(`
+      const { results: members } = await db
+        .prepare(
+          `
         SELECT pm.role, pm.is_active, c.id AS character_id, c.name, c.character_class, c.level, c.hp, c.max_hp
         FROM party_members pm JOIN characters c ON pm.character_id = c.id
         WHERE pm.party_id = ? ORDER BY pm.role DESC
-      `).bind(partyId).all()
+      `,
+        )
+        .bind(partyId)
+        .all()
       const trust = await getTrustMatrix(db, partyId)
       return ok({
-        success: true, actionType: match.matched, party: { ...party, members },
-        trust, cohesion: moraleTier(party.morale as number).cohesion, watchOrder: JSON.parse((party.watch_order as string) ?? '[]'),
+        success: true,
+        actionType: match.matched,
+        party: { ...party, members },
+        trust,
+        cohesion: moraleTier(party.morale as number).cohesion,
+        watchOrder: JSON.parse((party.watch_order as string) ?? '[]'),
       })
     }
     case 'list': {
-      const { results } = await db.prepare('SELECT id, name, status, world_id, created_at FROM parties ORDER BY created_at DESC').all()
+      const { results } = await db
+        .prepare(
+          'SELECT id, name, status, world_id, created_at FROM parties ORDER BY created_at DESC',
+        )
+        .all()
       return ok({ success: true, actionType: 'list', parties: results, count: results.length })
     }
     case 'update': {
       if (!a.id) return err('"id" is required')
       const sets: string[] = ['updated_at = ?']
       const vals: unknown[] = [now]
-      if (a.name) { sets.push('name = ?'); vals.push(a.name) }
-      if (a.description) { sets.push('description = ?'); vals.push(a.description) }
-      if (a.status) { sets.push('status = ?'); vals.push(a.status) }
-      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(a.fields, PARTY_FIELDS_BLACKLIST, sets, vals)
+      if (a.name) {
+        sets.push('name = ?')
+        vals.push(a.name)
+      }
+      if (a.description) {
+        sets.push('description = ?')
+        vals.push(a.description)
+      }
+      if (a.status) {
+        sets.push('status = ?')
+        vals.push(a.status)
+      }
+      const { applied: fieldsApplied, rejected: fieldsRejected } = applyDynamicFields(
+        a.fields,
+        PARTY_FIELDS_BLACKLIST,
+        sets,
+        vals,
+      )
       vals.push(a.id)
-      await db.prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+      await db
+        .prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`)
+        .bind(...vals)
+        .run()
       return ok({
-        success: true, actionType: 'update', id: a.id,
+        success: true,
+        actionType: 'update',
+        id: a.id,
         ...(a.fields ? { fields_applied: fieldsApplied, fields_rejected: fieldsRejected } : {}),
       })
     }
@@ -234,27 +348,47 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       const partyId = a.partyId ?? a.id
       if (!partyId || !a.characterId) return err('"partyId" and "characterId" are required')
       const memberId = crypto.randomUUID()
-      await db.prepare('INSERT OR REPLACE INTO party_members (id, party_id, character_id, role, is_active, joined_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(memberId, partyId, a.characterId, a.role, 1, now).run()
+      await db
+        .prepare(
+          'INSERT OR REPLACE INTO party_members (id, party_id, character_id, role, is_active, joined_at) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .bind(memberId, partyId, a.characterId, a.role, 1, now)
+        .run()
       await db.prepare('UPDATE parties SET updated_at = ? WHERE id = ?').bind(now, partyId).run()
-      return ok({ success: true, actionType: 'add_member', partyId, characterId: a.characterId, role: a.role })
+      return ok({
+        success: true,
+        actionType: 'add_member',
+        partyId,
+        characterId: a.characterId,
+        role: a.role,
+      })
     }
     case 'remove_member': {
       const partyId = a.partyId ?? a.id
       if (!partyId || !a.characterId) return err('"partyId" and "characterId" are required')
-      await db.prepare('DELETE FROM party_members WHERE party_id = ? AND character_id = ?').bind(partyId, a.characterId).run()
+      await db
+        .prepare('DELETE FROM party_members WHERE party_id = ? AND character_id = ?')
+        .bind(partyId, a.characterId)
+        .run()
       return ok({ success: true, actionType: 'remove_member', partyId, characterId: a.characterId })
     }
     case 'set_leader': {
       const partyId = a.partyId ?? a.id
       if (!partyId || !a.characterId) return err('"partyId" and "characterId" are required')
-      await db.prepare("UPDATE party_members SET role = 'member' WHERE party_id = ?").bind(partyId).run()
-      await db.prepare("UPDATE party_members SET role = 'leader' WHERE party_id = ? AND character_id = ?").bind(partyId, a.characterId).run()
+      await db
+        .prepare("UPDATE party_members SET role = 'member' WHERE party_id = ?")
+        .bind(partyId)
+        .run()
+      await db
+        .prepare("UPDATE party_members SET role = 'leader' WHERE party_id = ? AND character_id = ?")
+        .bind(partyId, a.characterId)
+        .run()
       return ok({ success: true, actionType: 'set_leader', partyId, leaderId: a.characterId })
     }
     case 'trust_shift': {
       const partyId = a.partyId ?? a.id
-      if (!partyId || !a.fromCharacterId || !a.towardCharacterId) return err('"partyId", "fromCharacterId", and "towardCharacterId" are required')
+      if (!partyId || !a.fromCharacterId || !a.towardCharacterId)
+        return err('"partyId", "fromCharacterId", and "towardCharacterId" are required')
       let delta = a.delta
       let note: string | null = null
       if (delta === undefined) {
@@ -264,20 +398,44 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         delta = event.delta
         note = event.note
       }
-      const existing = await db.prepare('SELECT trust_score FROM party_trust WHERE party_id = ? AND from_character_id = ? AND to_character_id = ?')
-        .bind(partyId, a.fromCharacterId, a.towardCharacterId).first() as { trust_score: number } | null
+      const existing = (await db
+        .prepare(
+          'SELECT trust_score FROM party_trust WHERE party_id = ? AND from_character_id = ? AND to_character_id = ?',
+        )
+        .bind(partyId, a.fromCharacterId, a.towardCharacterId)
+        .first()) as { trust_score: number } | null
       const newTrust = Math.max(0, Math.min(100, (existing?.trust_score ?? 50) + delta))
       const id = crypto.randomUUID()
-      await db.prepare('INSERT INTO party_trust (id, party_id, from_character_id, to_character_id, trust_score, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(party_id, from_character_id, to_character_id) DO UPDATE SET trust_score = excluded.trust_score, updated_at = excluded.updated_at')
-        .bind(id, partyId, a.fromCharacterId, a.towardCharacterId, newTrust, now).run()
-      return ok({ success: true, actionType: 'trust_shift', partyId, fromCharacterId: a.fromCharacterId, towardCharacterId: a.towardCharacterId, delta, trustScore: newTrust, note })
+      await db
+        .prepare(
+          'INSERT INTO party_trust (id, party_id, from_character_id, to_character_id, trust_score, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(party_id, from_character_id, to_character_id) DO UPDATE SET trust_score = excluded.trust_score, updated_at = excluded.updated_at',
+        )
+        .bind(id, partyId, a.fromCharacterId, a.towardCharacterId, newTrust, now)
+        .run()
+      return ok({
+        success: true,
+        actionType: 'trust_shift',
+        partyId,
+        fromCharacterId: a.fromCharacterId,
+        towardCharacterId: a.towardCharacterId,
+        delta,
+        trustScore: newTrust,
+        note,
+      })
     }
     case 'resolve_conflict': {
       const partyId = a.partyId ?? a.id
-      if (!partyId || !a.characterAId || !a.characterBId) return err('"partyId", "characterAId", and "characterBId" are required')
+      if (!partyId || !a.characterAId || !a.characterBId)
+        return err('"partyId", "characterAId", and "characterBId" are required')
       const matrix = await getTrustMatrix(db, partyId)
-      const aToB = matrix.find(t => t.from_character_id === a.characterAId && t.to_character_id === a.characterBId)?.trust_score ?? 50
-      const bToA = matrix.find(t => t.from_character_id === a.characterBId && t.to_character_id === a.characterAId)?.trust_score ?? 50
+      const aToB =
+        matrix.find(
+          (t) => t.from_character_id === a.characterAId && t.to_character_id === a.characterBId,
+        )?.trust_score ?? 50
+      const bToA =
+        matrix.find(
+          (t) => t.from_character_id === a.characterBId && t.to_character_id === a.characterAId,
+        )?.trust_score ?? 50
       const avgTrust = (aToB + bToA) / 2
 
       let outcome: string
@@ -286,21 +444,50 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       else if (avgTrust >= 20) outcome = Math.random() < 0.5 ? 'fight' : 'stolen_resources'
       else outcome = Math.random() < 0.5 ? 'exile' : 'fight'
 
-      return ok({ success: true, actionType: 'resolve_conflict', partyId, characterAId: a.characterAId, characterBId: a.characterBId, avgTrust, outcome })
+      return ok({
+        success: true,
+        actionType: 'resolve_conflict',
+        partyId,
+        characterAId: a.characterAId,
+        characterBId: a.characterBId,
+        avgTrust,
+        outcome,
+      })
     }
     case 'betrayal_check': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
       const matrix = await getTrustMatrix(db, partyId)
-      if (matrix.length === 0) return ok({ success: true, actionType: 'betrayal_check', partyId, betrayalLikely: false, likelihood: 0, likelyActor: null, likelyTarget: null, motivation: null, classification: 'loyal' })
+      if (matrix.length === 0)
+        return ok({
+          success: true,
+          actionType: 'betrayal_check',
+          partyId,
+          betrayalLikely: false,
+          likelihood: 0,
+          likelyActor: null,
+          likelyTarget: null,
+          motivation: null,
+          classification: 'loyal',
+        })
 
-      const lowest = matrix.reduce((min, t) => t.trust_score < min.trust_score ? t : min)
+      const lowest = matrix.reduce((min, t) => (t.trust_score < min.trust_score ? t : min))
       const multipliers = {
-        resource_desperation: a.resourceDesperation, injury_desperation: a.injuryDesperation,
-        audience_pressure: a.audiencePressure, extraction_pressure: a.extractionPressure,
+        resource_desperation: a.resourceDesperation,
+        injury_desperation: a.injuryDesperation,
+        audience_pressure: a.audiencePressure,
+        extraction_pressure: a.extractionPressure,
       }
-      const likelihood = (100 - lowest.trust_score) * multipliers.resource_desperation * multipliers.injury_desperation * multipliers.audience_pressure * multipliers.extraction_pressure
-      const motivation = Object.entries(multipliers).reduce((max, [k, v]) => v > multipliers[max as keyof typeof multipliers] ? k : max, 'resource_desperation')
+      const likelihood =
+        (100 - lowest.trust_score) *
+        multipliers.resource_desperation *
+        multipliers.injury_desperation *
+        multipliers.audience_pressure *
+        multipliers.extraction_pressure
+      const motivation = Object.entries(multipliers).reduce(
+        (max, [k, v]) => (v > multipliers[max as keyof typeof multipliers] ? k : max),
+        'resource_desperation',
+      )
 
       let classification: string
       if (likelihood > 60) classification = 'likely'
@@ -309,14 +496,24 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       else classification = 'loyal'
 
       return ok({
-        success: true, actionType: 'betrayal_check', partyId, betrayalLikely: likelihood > 60, likelihood,
-        likelyActor: lowest.from_character_id, likelyTarget: lowest.to_character_id, motivation, classification,
+        success: true,
+        actionType: 'betrayal_check',
+        partyId,
+        betrayalLikely: likelihood > 60,
+        likelihood,
+        likelyActor: lowest.from_character_id,
+        likelyTarget: lowest.to_character_id,
+        motivation,
+        classification,
       })
     }
     case 'morale_roll': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
-      const party = await db.prepare('SELECT morale FROM parties WHERE id = ?').bind(partyId).first() as { morale: number } | null
+      const party = (await db
+        .prepare('SELECT morale FROM parties WHERE id = ?')
+        .bind(partyId)
+        .first()) as { morale: number } | null
       if (!party) return err(`Party not found: ${partyId}`)
 
       let delta = a.customDelta
@@ -330,9 +527,22 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       }
       const newMorale = Math.max(0, Math.min(100, party.morale + delta))
       const tier = moraleTier(newMorale)
-      await db.prepare('UPDATE parties SET morale = ?, cohesion = ?, updated_at = ? WHERE id = ?').bind(newMorale, tier.cohesion, now, partyId).run()
+      await db
+        .prepare('UPDATE parties SET morale = ?, cohesion = ?, updated_at = ? WHERE id = ?')
+        .bind(newMorale, tier.cohesion, now, partyId)
+        .run()
 
-      return ok({ success: true, actionType: 'morale_roll', partyId, delta, morale: newMorale, cohesion: tier.cohesion, rollModifier: tier.rollModifier, dissolved: tier.dissolved, note })
+      return ok({
+        success: true,
+        actionType: 'morale_roll',
+        partyId,
+        delta,
+        morale: newMorale,
+        cohesion: tier.cohesion,
+        rollModifier: tier.rollModifier,
+        dissolved: tier.dissolved,
+        note,
+      })
     }
     case 'watch_rotation': {
       const partyId = a.partyId ?? a.id
@@ -341,13 +551,17 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       const party = await db.prepare('SELECT id FROM parties WHERE id = ?').bind(partyId).first()
       if (!party) return err(`Party not found: ${partyId}`)
 
-      const results = a.watchers.map(w => {
+      const results = a.watchers.map((w) => {
         const roll = w.rollValue ?? Math.floor(Math.random() * 20) + 1
         const total = roll + w.conModifier
         const criticalFail = roll === 1
         const passed = !criticalFail && total >= 12
         return {
-          characterId: w.characterId, roll, total, passed, criticalFail,
+          characterId: w.characterId,
+          roll,
+          total,
+          passed,
+          criticalFail,
           effect: criticalFail
             ? 'Fell asleep — no perception check for this watch.'
             : passed
@@ -356,82 +570,137 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         }
       })
 
-      const watchOrder = a.watchers.map(w => w.characterId)
-      await db.prepare('UPDATE parties SET watch_order = ?, current_watch = ?, updated_at = ? WHERE id = ?')
-        .bind(JSON.stringify(watchOrder), watchOrder[0], now, partyId).run()
+      const watchOrder = a.watchers.map((w) => w.characterId)
+      await db
+        .prepare(
+          'UPDATE parties SET watch_order = ?, current_watch = ?, updated_at = ? WHERE id = ?',
+        )
+        .bind(JSON.stringify(watchOrder), watchOrder[0], now, partyId)
+        .run()
 
       return ok({ success: true, actionType: 'watch_rotation', partyId, watchOrder, results })
     }
     case 'begin_march': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
-      if (!a.toWaypointId && !a.toWaypointName) return err('"toWaypointId" or "toWaypointName" is required')
-      const party = await db.prepare('SELECT world_id, current_waypoint_id FROM parties WHERE id = ?').bind(partyId).first() as
-        { world_id: string | null; current_waypoint_id: string | null } | null
+      if (!a.toWaypointId && !a.toWaypointName)
+        return err('"toWaypointId" or "toWaypointName" is required')
+      const party = (await db
+        .prepare('SELECT world_id, current_waypoint_id FROM parties WHERE id = ?')
+        .bind(partyId)
+        .first()) as { world_id: string | null; current_waypoint_id: string | null } | null
       if (!party) return err(`Party not found: ${partyId}`)
-      if (!party.world_id) return err('Party has no world_id — waypoint movement requires a world-scoped party')
+      if (!party.world_id)
+        return err('Party has no world_id — waypoint movement requires a world-scoped party')
 
       const toWaypoint = await getWaypoint(db, party.world_id, a.toWaypointId ?? a.toWaypointName!)
       if (!toWaypoint) return err(`Waypoint not found: ${a.toWaypointId ?? a.toWaypointName}`)
 
       const fromIdentifier = a.fromWaypointId ?? a.fromWaypointName ?? party.current_waypoint_id
-      if (!fromIdentifier) return err('Party has no current waypoint — provide "fromWaypointId"/"fromWaypointName" to start the first leg')
+      if (!fromIdentifier)
+        return err(
+          'Party has no current waypoint — provide "fromWaypointId"/"fromWaypointName" to start the first leg',
+        )
       const fromWaypoint = await getWaypoint(db, party.world_id, fromIdentifier)
       if (!fromWaypoint) return err(`Waypoint not found: ${fromIdentifier}`)
 
       const distance = await getWaypointDistance(db, party.world_id, fromWaypoint.id, toWaypoint.id)
       if (!distance.routable) {
         return ok({
-          success: true, actionType: 'begin_march', partyId, blocked: true, reason: distance.reason,
-          fromWaypoint: { id: fromWaypoint.id, name: fromWaypoint.name }, toWaypoint: { id: toWaypoint.id, name: toWaypoint.name },
+          success: true,
+          actionType: 'begin_march',
+          partyId,
+          blocked: true,
+          reason: distance.reason,
+          fromWaypoint: { id: fromWaypoint.id, name: fromWaypoint.name },
+          toWaypoint: { id: toWaypoint.id, name: toWaypoint.name },
         })
       }
 
-      const sets: string[] = ['travel_target_waypoint_id = ?', 'travel_remaining_km = ?', 'travel_status = ?', 'updated_at = ?']
+      const sets: string[] = [
+        'travel_target_waypoint_id = ?',
+        'travel_remaining_km = ?',
+        'travel_status = ?',
+        'updated_at = ?',
+      ]
       const vals: unknown[] = [toWaypoint.id, distance.distanceKm, 'marching', now]
-      if (a.pace !== undefined) { sets.push('travel_pace_km_per_day = ?'); vals.push(a.pace) }
+      if (a.pace !== undefined) {
+        sets.push('travel_pace_km_per_day = ?')
+        vals.push(a.pace)
+      }
       vals.push(partyId)
-      await db.prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+      await db
+        .prepare(`UPDATE parties SET ${sets.join(', ')} WHERE id = ?`)
+        .bind(...vals)
+        .run()
 
       return ok({
-        success: true, actionType: 'begin_march', partyId, blocked: false,
+        success: true,
+        actionType: 'begin_march',
+        partyId,
+        blocked: false,
         fromWaypoint: { id: fromWaypoint.id, name: fromWaypoint.name },
         toWaypoint: { id: toWaypoint.id, name: toWaypoint.name },
-        distanceKm: distance.distanceKm, travelStatus: 'marching',
+        distanceKm: distance.distanceKm,
+        travelStatus: 'marching',
       })
     }
     case 'get_march_status': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
-      const party = await db.prepare(
-        'SELECT world_id, current_waypoint_id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day, travel_status FROM parties WHERE id = ?'
-      ).bind(partyId).first() as {
-        world_id: string | null; current_waypoint_id: string | null; travel_target_waypoint_id: string | null
-        travel_remaining_km: number | null; travel_pace_km_per_day: number; travel_status: string
+      const party = (await db
+        .prepare(
+          'SELECT world_id, current_waypoint_id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day, travel_status FROM parties WHERE id = ?',
+        )
+        .bind(partyId)
+        .first()) as {
+        world_id: string | null
+        current_waypoint_id: string | null
+        travel_target_waypoint_id: string | null
+        travel_remaining_km: number | null
+        travel_pace_km_per_day: number
+        travel_status: string
       } | null
       if (!party) return err(`Party not found: ${partyId}`)
 
-      const currentWaypoint = party.world_id && party.current_waypoint_id ? await getWaypoint(db, party.world_id, party.current_waypoint_id) : null
-      const targetWaypoint = party.world_id && party.travel_target_waypoint_id ? await getWaypoint(db, party.world_id, party.travel_target_waypoint_id) : null
+      const currentWaypoint =
+        party.world_id && party.current_waypoint_id
+          ? await getWaypoint(db, party.world_id, party.current_waypoint_id)
+          : null
+      const targetWaypoint =
+        party.world_id && party.travel_target_waypoint_id
+          ? await getWaypoint(db, party.world_id, party.travel_target_waypoint_id)
+          : null
 
       return ok({
-        success: true, actionType: 'get_march_status', partyId,
+        success: true,
+        actionType: 'get_march_status',
+        partyId,
         travelStatus: party.travel_status,
-        currentWaypoint: currentWaypoint ? { id: currentWaypoint.id, name: currentWaypoint.name } : null,
-        targetWaypoint: targetWaypoint ? { id: targetWaypoint.id, name: targetWaypoint.name } : null,
-        remainingKm: party.travel_remaining_km, pace: party.travel_pace_km_per_day,
+        currentWaypoint: currentWaypoint
+          ? { id: currentWaypoint.id, name: currentWaypoint.name }
+          : null,
+        targetWaypoint: targetWaypoint
+          ? { id: targetWaypoint.id, name: targetWaypoint.name }
+          : null,
+        remainingKm: party.travel_remaining_km,
+        pace: party.travel_pace_km_per_day,
       })
     }
     case 'cohesion_check': {
       const partyId = a.partyId ?? a.id
       if (!partyId) return err('"partyId" or "id" is required')
-      const party = await db.prepare('SELECT cohesion_score FROM parties WHERE id = ?').bind(partyId).first() as { cohesion_score: number } | null
+      const party = (await db
+        .prepare('SELECT cohesion_score FROM parties WHERE id = ?')
+        .bind(partyId)
+        .first()) as { cohesion_score: number } | null
       if (!party) return err(`Party not found: ${partyId}`)
 
       const roll = Math.floor(Math.random() * 20) + 1
       const total = roll + (a.stressModifier ?? 0) + (a.cooperationModifier ?? 0)
 
-      let tier: string, fractureType: string | null = null
+      let tier: string,
+        fractureType: string | null = null
       if (total <= 4) {
         tier = 'fracture'
         const fractures = ['betrayal', 'abandonment', 'violence', 'mutual']
@@ -440,7 +709,10 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         let cumulative = 0
         for (let i = 0; i < fractures.length; i++) {
           cumulative += weights[i]
-          if (rand < cumulative) { fractureType = fractures[i]; break }
+          if (rand < cumulative) {
+            fractureType = fractures[i]
+            break
+          }
         }
       } else if (total <= 8) {
         tier = 'strain'
@@ -452,9 +724,21 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         tier = 'deepened'
       }
 
-      const cohesionDelta = tier === 'fracture' ? -20 : tier === 'strain' ? -10 : tier === 'stable' ? 0 : tier === 'strong' ? 8 : 15
+      const cohesionDelta =
+        tier === 'fracture'
+          ? -20
+          : tier === 'strain'
+            ? -10
+            : tier === 'stable'
+              ? 0
+              : tier === 'strong'
+                ? 8
+                : 15
       const newCohesion = Math.max(0, Math.min(100, party.cohesion_score + cohesionDelta))
-      await db.prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?').bind(newCohesion, now, partyId).run()
+      await db
+        .prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?')
+        .bind(newCohesion, now, partyId)
+        .run()
 
       const outcomes: Record<string, string> = {
         fracture: `Fracture — ${fractureType} (${fractureType === 'betrayal' ? '40%' : fractureType === 'abandonment' ? '30%' : fractureType === 'violence' ? '20%' : '10%'} chance)`,
@@ -465,9 +749,19 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       }
 
       return ok({
-        success: true, actionType: 'cohesion_check', partyId, roll, total,
-        modifiers: { stressModifier: a.stressModifier ?? 0, cooperationModifier: a.cooperationModifier ?? 0 },
-        tier, outcome: outcomes[tier], cohesionScore: newCohesion, fractureType,
+        success: true,
+        actionType: 'cohesion_check',
+        partyId,
+        roll,
+        total,
+        modifiers: {
+          stressModifier: a.stressModifier ?? 0,
+          cooperationModifier: a.cooperationModifier ?? 0,
+        },
+        tier,
+        outcome: outcomes[tier],
+        cohesionScore: newCohesion,
+        fractureType,
       })
     }
     case 'group_break': {
@@ -478,7 +772,10 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       const party = await db.prepare('SELECT id FROM parties WHERE id = ?').bind(partyId).first()
       if (!party) return err(`Party not found: ${partyId}`)
 
-      const { results: members } = await db.prepare('SELECT character_id FROM party_members WHERE party_id = ?').bind(partyId).all() as { results: Array<{ character_id: string }> }
+      const { results: members } = (await db
+        .prepare('SELECT character_id FROM party_members WHERE party_id = ?')
+        .bind(partyId)
+        .all()) as { results: Array<{ character_id: string }> }
 
       if (a.method === 'mutual') {
         await db.prepare('DELETE FROM party_members WHERE party_id = ?').bind(partyId).run()
@@ -486,11 +783,19 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
         await db.prepare('DELETE FROM party_members WHERE party_id = ?').bind(partyId).run()
       }
 
-      await db.prepare('UPDATE parties SET status = ?, updated_at = ? WHERE id = ?').bind('broken', now, partyId).run()
+      await db
+        .prepare('UPDATE parties SET status = ?, updated_at = ? WHERE id = ?')
+        .bind('broken', now, partyId)
+        .run()
 
       return ok({
-        success: true, actionType: 'group_break', partyId, method: a.method,
-        reason: a.reason ?? null, membersAffected: members.length, status: 'broken',
+        success: true,
+        actionType: 'group_break',
+        partyId,
+        method: a.method,
+        reason: a.reason ?? null,
+        membersAffected: members.length,
+        status: 'broken',
       })
     }
     case 'cohesion_shift': {
@@ -501,15 +806,26 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
       const event = COHESION_EVENTS[a.eventType]
       if (!event) return err(`Unknown eventType: ${a.eventType}`)
 
-      const party = await db.prepare('SELECT cohesion_score FROM parties WHERE id = ?').bind(partyId).first() as { cohesion_score: number } | null
+      const party = (await db
+        .prepare('SELECT cohesion_score FROM parties WHERE id = ?')
+        .bind(partyId)
+        .first()) as { cohesion_score: number } | null
       if (!party) return err(`Party not found: ${partyId}`)
 
       const newCohesion = Math.max(0, Math.min(100, party.cohesion_score + event.delta))
-      await db.prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?').bind(newCohesion, now, partyId).run()
+      await db
+        .prepare('UPDATE parties SET cohesion_score = ?, updated_at = ? WHERE id = ?')
+        .bind(newCohesion, now, partyId)
+        .run()
 
       return ok({
-        success: true, actionType: 'cohesion_shift', partyId, eventType: a.eventType,
-        delta: event.delta, note: event.note, cohesionScore: newCohesion,
+        success: true,
+        actionType: 'cohesion_shift',
+        partyId,
+        eventType: a.eventType,
+        delta: event.delta,
+        note: event.note,
+        cohesionScore: newCohesion,
       })
     }
   }
@@ -523,26 +839,69 @@ export async function handlePartyManage(env: AppBindings, args: Record<string, u
 // Leftover travel budget beyond arrival is discarded, not carried into a
 // next leg — a fresh begin_march starts the next leg.
 export async function tickAllPartiesMarch(
-  db: D1Database, worldId: string, daysToAdvance = 1
-): Promise<Array<{ partyId: string; status: 'marching' | 'arrived'; remainingKm: number | null; arrivedAtWaypointId?: string }>> {
+  db: D1Database,
+  worldId: string,
+  daysToAdvance = 1,
+): Promise<
+  Array<{
+    partyId: string
+    status: 'marching' | 'arrived'
+    remainingKm: number | null
+    arrivedAtWaypointId?: string
+  }>
+> {
   const now = new Date().toISOString()
-  const { results: marching } = await db.prepare(
-    'SELECT id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day FROM parties WHERE world_id = ? AND travel_status = ?'
-  ).bind(worldId, 'marching').all() as {
-    results: Array<{ id: string; travel_target_waypoint_id: string; travel_remaining_km: number; travel_pace_km_per_day: number }>
+  const { results: marching } = (await db
+    .prepare(
+      'SELECT id, travel_target_waypoint_id, travel_remaining_km, travel_pace_km_per_day FROM parties WHERE world_id = ? AND travel_status = ?',
+    )
+    .bind(worldId, 'marching')
+    .all()) as {
+    results: Array<{
+      id: string
+      travel_target_waypoint_id: string
+      travel_remaining_km: number
+      travel_pace_km_per_day: number
+    }>
   }
 
-  const out: Array<{ partyId: string; status: 'marching' | 'arrived'; remainingKm: number | null; arrivedAtWaypointId?: string }> = []
+  const out: Array<{
+    partyId: string
+    status: 'marching' | 'arrived'
+    remainingKm: number | null
+    arrivedAtWaypointId?: string
+  }> = []
   for (const party of marching) {
-    const remaining = Math.max(0, party.travel_remaining_km - party.travel_pace_km_per_day * daysToAdvance)
+    const remaining = Math.max(
+      0,
+      party.travel_remaining_km - party.travel_pace_km_per_day * daysToAdvance,
+    )
     if (remaining <= 0) {
       const target = await getWaypoint(db, worldId, party.travel_target_waypoint_id)
-      await db.prepare(
-        'UPDATE parties SET current_waypoint_id = ?, current_hex_q = ?, current_hex_r = ?, travel_target_waypoint_id = NULL, travel_remaining_km = NULL, travel_status = ?, updated_at = ? WHERE id = ?'
-      ).bind(party.travel_target_waypoint_id, target?.q ?? null, target?.r ?? null, 'stationary', now, party.id).run()
-      out.push({ partyId: party.id, status: 'arrived', remainingKm: 0, arrivedAtWaypointId: party.travel_target_waypoint_id })
+      await db
+        .prepare(
+          'UPDATE parties SET current_waypoint_id = ?, current_hex_q = ?, current_hex_r = ?, travel_target_waypoint_id = NULL, travel_remaining_km = NULL, travel_status = ?, updated_at = ? WHERE id = ?',
+        )
+        .bind(
+          party.travel_target_waypoint_id,
+          target?.q ?? null,
+          target?.r ?? null,
+          'stationary',
+          now,
+          party.id,
+        )
+        .run()
+      out.push({
+        partyId: party.id,
+        status: 'arrived',
+        remainingKm: 0,
+        arrivedAtWaypointId: party.travel_target_waypoint_id,
+      })
     } else {
-      await db.prepare('UPDATE parties SET travel_remaining_km = ?, updated_at = ? WHERE id = ?').bind(remaining, now, party.id).run()
+      await db
+        .prepare('UPDATE parties SET travel_remaining_km = ?, updated_at = ? WHERE id = ?')
+        .bind(remaining, now, party.id)
+        .run()
       out.push({ partyId: party.id, status: 'marching', remainingKm: remaining })
     }
   }

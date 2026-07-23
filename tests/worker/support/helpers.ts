@@ -52,11 +52,12 @@ export function seedKV(key: string, text: string) {
 export const ADMIN_SECRET = 'test-secret-123'
 
 // ── roll_encounter: parseEncounterTable helper ────────────────────────────
-export function parseEncounterTable(
-  tableRaw: string,
-): Array<{ key: string; weight: number }> {
+export function parseEncounterTable(tableRaw: string): Array<{ key: string; weight: number }> {
   const entries: Array<{ key: string; weight: number }> = []
-  for (const part of tableRaw.split(',').map((s) => s.trim()).filter(Boolean)) {
+  for (const part of tableRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     const m = part.match(/^(.+?)\s*:\s*([\d.]+)$/)
     if (m) {
       entries.push({ key: m[1].trim(), weight: parseFloat(m[2]) })

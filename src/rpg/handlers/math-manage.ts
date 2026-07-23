@@ -8,15 +8,38 @@ import { matchAction, isGuidingError, formatGuidingError } from '../utils/fuzzy-
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-export const ACTIONS = ['roll', 'probability', 'solve', 'simplify', 'projectile', 'get_history'] as const
-type MathAction = typeof ACTIONS[number]
+export const ACTIONS = [
+  'roll',
+  'probability',
+  'solve',
+  'simplify',
+  'projectile',
+  'get_history',
+] as const
+type MathAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, MathAction> = {
-  dice: 'roll', dice_roll: 'roll', d20: 'roll', throw: 'roll',
-  prob: 'probability', calculate_probability: 'probability', odds: 'probability', chance: 'probability',
-  algebra_solve: 'solve', equation: 'solve', solve_equation: 'solve',
-  algebra_simplify: 'simplify', reduce: 'simplify', simplify_expression: 'simplify',
-  physics: 'projectile', physics_projectile: 'projectile', trajectory: 'projectile', launch: 'projectile',
-  history: 'get_history', past: 'get_history', calculations: 'get_history', rolls: 'get_history',
+  dice: 'roll',
+  dice_roll: 'roll',
+  d20: 'roll',
+  throw: 'roll',
+  prob: 'probability',
+  calculate_probability: 'probability',
+  odds: 'probability',
+  chance: 'probability',
+  algebra_solve: 'solve',
+  equation: 'solve',
+  solve_equation: 'solve',
+  algebra_simplify: 'simplify',
+  reduce: 'simplify',
+  simplify_expression: 'simplify',
+  physics: 'projectile',
+  physics_projectile: 'projectile',
+  trajectory: 'projectile',
+  launch: 'projectile',
+  history: 'get_history',
+  past: 'get_history',
+  calculations: 'get_history',
+  rolls: 'get_history',
 }
 
 const InputSchema = z.object({
@@ -65,8 +88,12 @@ function randomInt(maxExclusive: number, rawSource: RngSource = defaultCryptoUin
   return value % maxExclusive
 }
 
-function rollDice(sides: number, rawSource?: RngSource): number { return randomInt(sides, rawSource) + 1 }
-function rollFudge(rawSource?: RngSource): number { return randomInt(3, rawSource) - 1 } // -1, 0, +1
+function rollDice(sides: number, rawSource?: RngSource): number {
+  return randomInt(sides, rawSource) + 1
+}
+function rollFudge(rawSource?: RngSource): number {
+  return randomInt(3, rawSource) - 1
+} // -1, 0, +1
 
 // ── Dice engine ──────────────────────────────────────────────────────────────
 
@@ -105,7 +132,9 @@ function parseDice(expr: string): ParsedDice {
   const successThreshold = tail[6] ? parseInt(tail[6]) : undefined
 
   if (successThreshold !== undefined && modifier !== 0) {
-    throw new Error('A success threshold (">N") cannot be combined with a flat modifier — the semantics are ambiguous')
+    throw new Error(
+      'A success threshold (">N") cannot be combined with a flat modifier — the semantics are ambiguous',
+    )
   }
   if (fudge && explode) {
     throw new Error('Exploding Fudge dice ("dF!") is not a supported mechanic')
@@ -115,7 +144,13 @@ function parseDice(expr: string): ParsedDice {
   }
 
   return {
-    count, sides, fudge, modifier, explode, rerollOnce, successThreshold,
+    count,
+    sides,
+    fudge,
+    modifier,
+    explode,
+    rerollOnce,
+    successThreshold,
     dropLowest: dropKeepType === 'dl' ? dropKeepN : undefined,
     dropHighest: dropKeepType === 'dh' ? dropKeepN : undefined,
     keepHighest: dropKeepType === 'kh' ? dropKeepN : undefined,
@@ -132,13 +167,28 @@ export interface RollResult {
 }
 
 function rollOnce(dice: ParsedDice, rawSource?: RngSource): RollResult {
-  const { count, sides, fudge, modifier, dropLowest, dropHighest, keepHighest, keepLowest, explode, rerollOnce, successThreshold } = dice
+  const {
+    count,
+    sides,
+    fudge,
+    modifier,
+    dropLowest,
+    dropHighest,
+    keepHighest,
+    keepLowest,
+    explode,
+    rerollOnce,
+    successThreshold,
+  } = dice
   const rolls: number[] = []
   for (let i = 0; i < count; i++) {
     let r = fudge ? rollFudge(rawSource) : rollDice(sides, rawSource)
     rolls.push(r)
     if (explode) {
-      while (r === sides) { r = rollDice(sides, rawSource); rolls.push(r) }
+      while (r === sides) {
+        r = rollDice(sides, rawSource)
+        rolls.push(r)
+      }
     }
   }
   const steps: string[] = [`Rolled ${count}${fudge ? 'dF' : 'd' + sides}: [${rolls.join(', ')}]`]
@@ -154,13 +204,29 @@ function rollOnce(dice: ParsedDice, rawSource?: RngSource): RollResult {
   }
 
   let kept = [...working]
-  if (dropLowest !== undefined) { kept.sort((a, b) => a - b); kept = kept.slice(dropLowest); steps.push(`Dropped lowest ${dropLowest}: kept [${kept.join(', ')}]`) }
-  if (dropHighest !== undefined) { kept.sort((a, b) => b - a); kept = kept.slice(dropHighest); steps.push(`Dropped highest ${dropHighest}: kept [${kept.join(', ')}]`) }
-  if (keepHighest !== undefined) { kept.sort((a, b) => b - a); kept = kept.slice(0, keepHighest); steps.push(`Kept highest ${keepHighest}: [${kept.join(', ')}]`) }
-  if (keepLowest !== undefined) { kept.sort((a, b) => a - b); kept = kept.slice(0, keepLowest); steps.push(`Kept lowest ${keepLowest}: [${kept.join(', ')}]`) }
+  if (dropLowest !== undefined) {
+    kept.sort((a, b) => a - b)
+    kept = kept.slice(dropLowest)
+    steps.push(`Dropped lowest ${dropLowest}: kept [${kept.join(', ')}]`)
+  }
+  if (dropHighest !== undefined) {
+    kept.sort((a, b) => b - a)
+    kept = kept.slice(dropHighest)
+    steps.push(`Dropped highest ${dropHighest}: kept [${kept.join(', ')}]`)
+  }
+  if (keepHighest !== undefined) {
+    kept.sort((a, b) => b - a)
+    kept = kept.slice(0, keepHighest)
+    steps.push(`Kept highest ${keepHighest}: [${kept.join(', ')}]`)
+  }
+  if (keepLowest !== undefined) {
+    kept.sort((a, b) => a - b)
+    kept = kept.slice(0, keepLowest)
+    steps.push(`Kept lowest ${keepLowest}: [${kept.join(', ')}]`)
+  }
 
   if (successThreshold !== undefined) {
-    const successes = kept.filter(v => v > successThreshold).length
+    const successes = kept.filter((v) => v > successThreshold).length
     steps.push(`Counted successes > ${successThreshold}: ${successes}`)
     return { total: successes, rolls, steps, successes }
   }
@@ -176,7 +242,11 @@ function rollOnce(dice: ParsedDice, rawSource?: RngSource): RollResult {
   // Omitted (not `null`) for anything else — 8d20 pools, 2d6+3, d%, dF, plain
   // 2d20 with no kh/kl — so callers can safely branch on `'critical' in result`.
   let critical: 'success' | 'failure' | null | undefined
-  if (sides === 20 && !fudge && (count === 1 || ((keepHighest === 1 || keepLowest === 1) && count === 2))) {
+  if (
+    sides === 20 &&
+    !fudge &&
+    (count === 1 || ((keepHighest === 1 || keepLowest === 1) && count === 2))
+  ) {
     const natural = kept[0]
     critical = natural === 20 ? 'success' : natural === 1 ? 'failure' : null
   }
@@ -184,7 +254,10 @@ function rollOnce(dice: ParsedDice, rawSource?: RngSource): RollResult {
   return { total, rolls, steps, critical }
 }
 
-export function executeRoll(expr: string, rawSource?: RngSource): RollResult & { dice: ParsedDice } {
+export function executeRoll(
+  expr: string,
+  rawSource?: RngSource,
+): RollResult & { dice: ParsedDice } {
   const dice = parseDice(expr)
   return { ...rollOnce(dice, rawSource), dice }
 }
@@ -196,11 +269,16 @@ function calcProbability(expr: string, target: number, comparison: string): numb
   let hits = 0
   for (let i = 0; i < SAMPLES; i++) {
     const { total } = rollOnce(dice, fastUint32)
-    const match = comparison === 'gte' ? total >= target
-      : comparison === 'lte' ? total <= target
-      : comparison === 'gt' ? total > target
-      : comparison === 'lt' ? total < target
-      : total === target
+    const match =
+      comparison === 'gte'
+        ? total >= target
+        : comparison === 'lte'
+          ? total <= target
+          : comparison === 'gt'
+            ? total > target
+            : comparison === 'lt'
+              ? total < target
+              : total === target
     if (match) hits++
   }
   return hits / SAMPLES
@@ -217,7 +295,11 @@ function projectile(velocity: number, angleDeg: number, gravity: number, initial
   const timeOfFlight = disc >= 0 ? (vy + Math.sqrt(disc)) / g : 0
   const range = vx * timeOfFlight
   const maxHeight = initialHeight + (vy * vy) / (2 * g)
-  return { range: Math.round(range * 100) / 100, maxHeight: Math.round(maxHeight * 100) / 100, timeOfFlight: Math.round(timeOfFlight * 100) / 100 }
+  return {
+    range: Math.round(range * 100) / 100,
+    maxHeight: Math.round(maxHeight * 100) / 100,
+    timeOfFlight: Math.round(timeOfFlight * 100) / 100,
+  }
 }
 
 function parseCalcRow(row: Record<string, unknown>) {
@@ -228,9 +310,12 @@ function parseCalcRow(row: Record<string, unknown>) {
   }
 }
 
-export async function handleMathManage(env: AppBindings, args: Record<string, unknown>): Promise<McpResponse> {
+export async function handleMathManage(
+  env: AppBindings,
+  args: Record<string, unknown>,
+): Promise<McpResponse> {
   const parsed = InputSchema.safeParse(args)
-  if (!parsed.success) return err(parsed.error.issues.map(i => i.message).join('; '))
+  if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join('; '))
   const a = parsed.data
   const match = matchAction(a.action, ACTIONS, ALIASES)
   if (isGuidingError(match)) return formatGuidingError(match)
@@ -249,19 +334,50 @@ export async function handleMathManage(env: AppBindings, args: Record<string, un
       const { total, rolls, steps, successes, critical, dice } = result
       const id = crypto.randomUUID()
       const metadata = JSON.stringify({
-        kind: 'roll', rolls,
-        dropLowest: dice.dropLowest, dropHighest: dice.dropHighest, keepHighest: dice.keepHighest, keepLowest: dice.keepLowest,
-        explode: dice.explode, rerollOnce: dice.rerollOnce, successThreshold: dice.successThreshold, critical,
+        kind: 'roll',
+        rolls,
+        dropLowest: dice.dropLowest,
+        dropHighest: dice.dropHighest,
+        keepHighest: dice.keepHighest,
+        keepLowest: dice.keepLowest,
+        explode: dice.explode,
+        rerollOnce: dice.rerollOnce,
+        successThreshold: dice.successThreshold,
+        critical,
       })
       if (db) {
-        await db.prepare('INSERT INTO calculations (id, session_id, input, result, steps, seed, timestamp, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, a.sessionId ?? null, a.expression, String(total), JSON.stringify(steps), a.seed ?? null, now, metadata).run()
+        await db
+          .prepare(
+            'INSERT INTO calculations (id, session_id, input, result, steps, seed, timestamp, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(
+            id,
+            a.sessionId ?? null,
+            a.expression,
+            String(total),
+            JSON.stringify(steps),
+            a.seed ?? null,
+            now,
+            metadata,
+          )
+          .run()
       }
-      return ok({ success: true, actionType: 'roll', expression: a.expression, total, rolls, steps, successes, critical, calculationId: id })
+      return ok({
+        success: true,
+        actionType: 'roll',
+        expression: a.expression,
+        total,
+        rolls,
+        steps,
+        successes,
+        critical,
+        calculationId: id,
+      })
     }
     case 'probability': {
       const expr = a.expression ?? (a.sides ? `1d${a.sides}` : undefined)
-      if (!expr || a.target === undefined) return err('"expression" (or "sides") and "target" are required')
+      if (!expr || a.target === undefined)
+        return err('"expression" (or "sides") and "target" are required')
       const comp = a.comparison ?? 'gte'
       let prob: number
       try {
@@ -270,37 +386,90 @@ export async function handleMathManage(env: AppBindings, args: Record<string, un
         return err(e instanceof Error ? e.message : `Invalid dice expression: ${expr}`)
       }
       const id = crypto.randomUUID()
-      const metadata = JSON.stringify({ kind: 'probability', comparison: comp, target: a.target, samples: 10000 })
+      const metadata = JSON.stringify({
+        kind: 'probability',
+        comparison: comp,
+        target: a.target,
+        samples: 10000,
+      })
       if (db) {
-        await db.prepare('INSERT INTO calculations (id, session_id, input, result, timestamp, metadata) VALUES (?, ?, ?, ?, ?, ?)')
-          .bind(id, a.sessionId ?? null, JSON.stringify({ expression: expr, target: a.target, comparison: comp }), String(prob), now, metadata).run()
+        await db
+          .prepare(
+            'INSERT INTO calculations (id, session_id, input, result, timestamp, metadata) VALUES (?, ?, ?, ?, ?, ?)',
+          )
+          .bind(
+            id,
+            a.sessionId ?? null,
+            JSON.stringify({ expression: expr, target: a.target, comparison: comp }),
+            String(prob),
+            now,
+            metadata,
+          )
+          .run()
       }
-      return ok({ success: true, actionType: 'probability', expression: expr, target: a.target, comparison: comp, probability: prob, probabilityPercent: `${(prob * 100).toFixed(1)}%`, calculationId: id })
+      return ok({
+        success: true,
+        actionType: 'probability',
+        expression: expr,
+        target: a.target,
+        comparison: comp,
+        probability: prob,
+        probabilityPercent: `${(prob * 100).toFixed(1)}%`,
+        calculationId: id,
+      })
     }
     case 'solve':
     case 'simplify':
-      return ok({ success: false, actionType: match.matched, message: 'Algebra solver not available in Workers context. Use roll for dice math.' })
+      return ok({
+        success: false,
+        actionType: match.matched,
+        message: 'Algebra solver not available in Workers context. Use roll for dice math.',
+      })
     case 'projectile': {
-      if (a.velocity === undefined || a.angle === undefined) return err('"velocity" and "angle" are required')
+      if (a.velocity === undefined || a.angle === undefined)
+        return err('"velocity" and "angle" are required')
       const result = projectile(a.velocity, a.angle, a.gravity ?? 9.81, a.height ?? 0)
-      return ok({ success: true, actionType: 'projectile', velocity: a.velocity, angle: a.angle, ...result })
+      return ok({
+        success: true,
+        actionType: 'projectile',
+        velocity: a.velocity,
+        angle: a.angle,
+        ...result,
+      })
     }
     case 'get_history': {
       if (a.calculationId) {
-        const row = await db!.prepare('SELECT * FROM calculations WHERE id = ?').bind(a.calculationId).first() as Record<string, unknown> | null
+        const row = (await db!
+          .prepare('SELECT * FROM calculations WHERE id = ?')
+          .bind(a.calculationId)
+          .first()) as Record<string, unknown> | null
         if (!row) return err(`Calculation not found: ${a.calculationId}`)
         return ok({ success: true, actionType: 'get_history', calculation: parseCalcRow(row) })
       }
       const conditions: string[] = []
       const binds: unknown[] = []
-      if (a.sessionId) { conditions.push('session_id = ?'); binds.push(a.sessionId) }
-      if (a.kind) { conditions.push("json_extract(metadata, '$.kind') = ?"); binds.push(a.kind) }
+      if (a.sessionId) {
+        conditions.push('session_id = ?')
+        binds.push(a.sessionId)
+      }
+      if (a.kind) {
+        conditions.push("json_extract(metadata, '$.kind') = ?")
+        binds.push(a.kind)
+      }
       let query = 'SELECT * FROM calculations'
       if (conditions.length) query += ' WHERE ' + conditions.join(' AND ')
       query += ' ORDER BY timestamp DESC LIMIT ?'
       binds.push(a.limit)
-      const { results } = await db!.prepare(query).bind(...binds).all()
-      return ok({ success: true, actionType: 'get_history', calculations: (results as Record<string, unknown>[]).map(parseCalcRow), count: results.length })
+      const { results } = await db!
+        .prepare(query)
+        .bind(...binds)
+        .all()
+      return ok({
+        success: true,
+        actionType: 'get_history',
+        calculations: (results as Record<string, unknown>[]).map(parseCalcRow),
+        count: results.length,
+      })
     }
   }
 }

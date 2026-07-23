@@ -2,9 +2,7 @@
 import { kvGet } from './kv'
 import { parseKvEntry } from './lore'
 
-export type ConflictCheck =
-  | { conflict: false }
-  | { conflict: true; currentVersion: number | null }
+export type ConflictCheck = { conflict: false } | { conflict: true; currentVersion: number | null }
 
 // Cloudflare KV has no compare-and-swap — a read-then-write cycle always has a
 // race window. Re-reading `key` immediately before the write and comparing its
