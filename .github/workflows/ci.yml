@@ -97,7 +97,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-blob-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          name: coverage-blob-report-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: .vitest-reports/
           retention-days: 7
 
@@ -222,8 +222,9 @@ jobs:
       - name: Download blob reports from all shards
         uses: actions/download-artifact@v4
         with:
-          name: coverage-blob-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          pattern: coverage-blob-report-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
           path: .vitest-reports/
+          merge-multiple: true
       - name: Merge coverage from sharded test runs
         # Merges blob reports from all 4 shards into unified coverage-final.json
         # and lcov.info (issue #483). This replaces the previous approach of
