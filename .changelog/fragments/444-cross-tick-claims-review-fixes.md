@@ -1,0 +1,6 @@
+### Review fixes for cross-tick claims and conflict resolution (#444, PR #478)
+
+- **Fixed a SQL-injection surface** in `updateCharacter()` (`src/rpg/handlers/character-manage.ts`): its dynamic field passthrough now routes through the shared `applyDynamicFields()` validator (`src/rpg/utils/dynamic-fields.ts`) instead of a hand-rolled blacklist-only check, matching the injection-safety design already used by `character_manage`'s `update` action. This also fixes `clearClaim()`, which writes `null` to clear `claimed_by`/`claimed_until`/`claimed_at` — previously silently dropped by an undefined/null filter that skipped both.
+- **Fixed a correctness bug** in `resolveTickConflicts()` (`src/rpg/utils/claims.ts`): a lone flagged event on a resource lock no longer shortcuts straight to `resolved` — it's still checked against an active claim, same as a contested lock.
+- **Closed a check-then-act race** in `setClaim()`: the claim write is now an atomic conditional `UPDATE ... WHERE (claimed_by IS NULL OR claimed_until <= ?)`, so two concurrent `setClaim` calls can no longer both succeed and silently overwrite each other.
+- Merged `main` (test-layout migration from #488/#489/#490) into this branch; relocated `claims.ts`/`tick-hooks.ts` tests to `tests/worker/rpg/` and added tests for the coverage gaps the merge and fixes above introduced.
