@@ -81,10 +81,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run tests with coverage
-        # Each shard runs with --coverage and outputs to a shard-specific
-        # directory. Coverage reports are merged later in the coverage job
-        # using istanbul-merge (see issue #483).
-        run: pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --coverage --outputFile.json=test-results-shard-${{ matrix.shard }}.json --coverage.reportsDirectory=./coverage-shard-${{ matrix.shard }}
+        # Each shard runs with --coverage. Coverage reports are generated to
+        # coverage/ and renamed with shard suffix, then merged in the coverage
+        # job (see issue #483).
+        run: |
+          pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --coverage --outputFile.json=test-results-shard-${{ matrix.shard }}.json
+          # Rename coverage files to include shard number for later merging
+          if [ -f coverage/coverage-final.json ]; then
+            mkdir -p coverage-shards
+            cp coverage/coverage-final.json coverage-shards/coverage-${{ matrix.shard }}.json
+          fi
       - name: Upload shard test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -97,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ./coverage-shard-${{ matrix.shard }}/
+          path: coverage-shards/coverage-${{ matrix.shard }}.json
           retention-days: 7
 
   type-check:
@@ -222,10 +228,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: coverage-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ./coverage-shards/
+          path: ./coverage-shards-downloads/
           merge-multiple: true
+      - name: Prepare coverage for merging
+        # Move downloaded coverage files into coverage-shards/ directory with
+        # standard names for the merge script
+        run: |
+          mkdir -p coverage-shards
+          # Find all coverage-*.json files and move them into coverage-shards
+          find coverage-shards-downloads -name "coverage-*.json" -exec cp {} coverage-shards/ \;
+          ls -la coverage-shards/ || true
       - name: Merge coverage from sharded test runs
-        # Merges coverage-final.json from all 4 shards into a unified report
+        # Merges coverage files from all 4 shards into a unified report
         # using the merge-coverage script (issue #483). This replaces the
         # previous approach of running the full suite a second time with --coverage.
         run: node scripts/merge-coverage.mjs
