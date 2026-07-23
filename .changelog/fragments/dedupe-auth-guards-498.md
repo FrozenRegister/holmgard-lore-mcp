@@ -1,0 +1,1 @@
+- Refactor: dedupe 6 repeated auth-guard blocks in src/index.ts into a single `unauthorizedIfNeeded(c, id)` helper (#498)
