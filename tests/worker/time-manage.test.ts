@@ -4,6 +4,7 @@ import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
 import { handleTimeManage, seedWorldState } from '@/rpg/handlers/time-manage'
+import { HOOK_REGISTRY, type HookResult } from '@/rpg/handlers/tick-hooks'
 
 describe('handleTimeManage', () => {
   beforeEach(async () => {
@@ -1149,6 +1150,92 @@ describe('handleTimeManage', () => {
     expect(body.tick_driver.flagged).toBeDefined()
     expect(Array.isArray(body.tick_driver.resolved)).toBe(true)
     expect(Array.isArray(body.tick_driver.flagged)).toBe(true)
+  })
+
+  it('advance surfaces conflict_resolutions computed by the tick driver (#512)', async () => {
+    // None of the shipped Phase 1 hooks emit FlaggedEvent-shaped data, so
+    // conflict_resolutions was computed by runTickDriver but never reachable
+    // through this response until #512 wired it through — regression-guards
+    // that wiring with a temporary hook that does emit one.
+    await seedWorld('w-tick-conflict-surface', '2184-07-01')
+    await seedChar('conflicttarget')
+    const testHook = {
+      name: 'conflict_surface_test_hook',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => ({
+        category: 'flagged',
+        data: {
+          events: [
+            {
+              id: 'event-1',
+              eventType: 'test_event',
+              priority: 'HIGH',
+              targetKey: 'character:conflicttarget',
+              sourceEntityKey: 'entity:alpha',
+              payload: {},
+              resourceLocks: ['character:conflicttarget'],
+            },
+          ],
+        },
+        narrator_summary: 'Test event flagged',
+      }),
+    }
+    HOOK_REGISTRY.set('conflict_surface_test_hook', testHook)
+
+    try {
+      const body = JSON.parse(
+        (
+          await handleTimeManage(db(), {
+            action: 'advance',
+            world_id: 'w-tick-conflict-surface',
+            by: '1 day',
+            hooks: ['conflict_surface_test_hook'],
+          })
+        ).content[0].text,
+      )
+
+      expect(body.tick_driver.conflict_resolutions).toBeDefined()
+      expect(body.tick_driver.conflict_resolutions).toHaveLength(1)
+      expect(body.tick_driver.conflict_resolutions[0].status).toBe('resolved')
+    } finally {
+      HOOK_REGISTRY.delete('conflict_surface_test_hook')
+    }
+  })
+
+  it('advance surfaces hook_failures computed by the tick driver (#512)', async () => {
+    await seedWorld('w-tick-failure-surface', '2184-07-01')
+    const throwingHook = {
+      name: 'failure_surface_test_hook',
+      config: { enabled: true, batch_mode: false },
+      dependsOn: [],
+      batchMode: false,
+      execute: async (): Promise<HookResult> => {
+        throw new Error('deliberate test failure')
+      },
+    }
+    HOOK_REGISTRY.set('failure_surface_test_hook', throwingHook)
+
+    try {
+      const body = JSON.parse(
+        (
+          await handleTimeManage(db(), {
+            action: 'advance',
+            world_id: 'w-tick-failure-surface',
+            by: '1 day',
+            hooks: ['failure_surface_test_hook'],
+          })
+        ).content[0].text,
+      )
+
+      expect(body.tick_driver.success).toBe(false)
+      expect(body.tick_driver.hook_failures).toEqual([
+        { hook: 'failure_surface_test_hook', error: 'deliberate test failure' },
+      ])
+    } finally {
+      HOOK_REGISTRY.delete('failure_surface_test_hook')
+    }
   })
 
   it('advance with single hook includes narrator_summary', async () => {
