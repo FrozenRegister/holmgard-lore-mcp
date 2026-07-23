@@ -232,9 +232,9 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 - `hex_to_latlon` — Convert hex coords to real-world lat/lon (only works if world is geo-calibrated)
 - Status: #341 is largely resolved (q/r already required); `lat`/`lon` remain required per migration 0021 schema
 
-### Simulation Layer — Tick Driver and Claims (#440, Phases 0.5–2 shipped)
+### Simulation Layer — Tick Driver and Claims (#440, Phases 0.5–2 shipped; hardened in #512/#519)
 
-**`tick-hooks.ts`** (`runTickDriver`, #442) — the `time.advance` heartbeat. Runs a topologically-sorted set of hooks once per call (not once per day in the `startDate`–`endDate` range — multi-day batching from #440 §3.2 was never implemented; every call executes hooks exactly once regardless of day count). A world-level in-memory lock (`WORLD_LOCKS`) serializes concurrent ticks per `world_id`.
+**`tick-hooks.ts`** (`runTickDriver`, #442) — the `time.advance` heartbeat. Runs a topologically-sorted set of hooks once per call (not once per day in the `startDate`–`endDate` range — multi-day batching from #440 §3.2 was never implemented; every call executes hooks exactly once regardless of day count). A **D1-backed world lock** (`world_locks` table, #512/#519) serializes concurrent ticks per `world_id`. This replaced an earlier in-memory `WORLD_LOCKS` Map that only protected the Streamable HTTP transport path (routed through the `HolmgardMCP` Durable Object); the separate "legacy hand-rolled JSON-RPC" `/mcp` handler — used by every test in this repo, and plausibly most real callers — never touched the DO and got zero protection from the in-memory version. `acquireWorldLock`/`releaseWorldLock` reuse the same atomic conditional-UPSERT pattern `setClaim` proved out in #444; `releaseWorldLock` is holder-scoped (an optional `holderId` param) so a caller past its own TTL can't clobber a different caller's legitimately-acquired lock.
 
 **`claims.ts`** (`getClaim`/`setClaim`/`clearClaim`/`resolveTickConflicts`, #444) — cross-tick resource locks on `characters.claimed_by`/`claimed_until`/`claimed_at`, plus in-memory-per-tick conflict resolution for flagged events. Known behavior, not obvious from a quick read:
 
@@ -243,7 +243,9 @@ Rationale: a single agent-usable read surface; secrets never exposed via MCP; bu
 - **Stale claims are only ever detected reactively.** `resolveTickConflicts` treats an expired `claimed_until` as unclaimed the moment it's checked, but nothing proactively clears `claimed_by` on a dead/removed claimant — that's explicitly deferred to `clearDeadPredatorClaims()` (currently a `#445` Phase 3 stub that only logs).
 - **`setClaim`'s collision check is atomic** (a conditional `UPDATE ... WHERE (claimed_by IS NULL OR claimed_until <= ?)`, checked via `meta.changes`) — two concurrent `setClaim` calls on the same target can't both succeed.
 
-**⚠️ Known gap, tracked for Phase 3 (#445) readiness — see #512:** neither of the above two systems currently makes `dry_run: true` on `time.advance` structurally safe, nor wraps a tick's hook executions in a rollback boundary. #512 has the game plan (three candidate approaches) and the open questions blocking a decision — resolve it before creature AI hooks start performing real per-tick D1 writes.
+**`dry_run: true` on `time.advance` is now structurally enforced, not just conventional (#519).** A new `HookConfig.mutates` flag marks which hooks perform real D1 writes; `runTickDriver` rejects `dry_run: true` combined with any selected mutating hook outright — before acquiring the world lock or running anything — instead of trusting each hook to honor `dry_run` internally.
+
+**⚠️ Remaining gap for Phase 3 (#445) readiness:** a tick's hook executions are still not wrapped in a rollback boundary. If hook N of M throws after hooks `1..N-1` have already written to D1, those writes are not undone. `runTickDriver` isolates the failure — it preserves the earlier hooks' `resolved`/`flagged`/`narrator_summary`, returns a `hook_failures` entry with the real error, and logs an audit row to `timeline_events` (verb `tick_hook_failure`) — but partial writes from the successful hooks before the throw stand. Acceptable for Phases 0.5–2 (mutating hooks so far are hand-invoked); Phase 3 creature-AI hooks should either tolerate partial-tick failure by design or this gap should be closed first — see #445 for the current status note.
 
 ## Documenting Discoveries (Capture Institutional Knowledge)
 
