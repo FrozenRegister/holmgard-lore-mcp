@@ -96,8 +96,24 @@ export async function acquireWorldLock(
   return (result.meta?.changes ?? 0) > 0
 }
 
-export async function releaseWorldLock(db: D1Database, worldId: string): Promise<void> {
-  await db.prepare('DELETE FROM world_locks WHERE world_id = ?').bind(worldId).run()
+export async function releaseWorldLock(
+  db: D1Database,
+  worldId: string,
+  holderId?: string,
+): Promise<void> {
+  // Holder-scoped when known (runTickDriver always passes its own lockId):
+  // an unconditional delete would let an abnormally slow caller release a
+  // lock that a different caller has since legitimately re-acquired after
+  // the first caller's own TTL expired, silently ending that second caller's
+  // protection while it still believes it holds the lock.
+  if (holderId !== undefined) {
+    await db
+      .prepare('DELETE FROM world_locks WHERE world_id = ? AND holder_id = ?')
+      .bind(worldId, holderId)
+      .run()
+  } else {
+    await db.prepare('DELETE FROM world_locks WHERE world_id = ?').bind(worldId).run()
+  }
 }
 
 // ── Shadow State System ───────────────────────────────────────────────────────
@@ -428,7 +444,10 @@ export async function runTickDriver(
           success: false,
           resolved,
           flagged,
-          narrator_summary: `Hook ${hookName} failed: ${errorMessage}`,
+          // Keep the narrator_summary from hooks that already succeeded
+          // earlier in this tick (same reasoning as resolved/flagged above)
+          // instead of replacing it outright with just the failure.
+          narrator_summary: [...summaries, `Hook ${hookName} failed: ${errorMessage}`].join(' '),
           hook_failures: [{ hook: hookName, error: errorMessage }],
         }
       }
@@ -477,6 +496,6 @@ export async function runTickDriver(
       conflict_resolutions: conflictResolutions.length > 0 ? conflictResolutions : undefined,
     }
   } finally {
-    await releaseWorldLock(db, worldId)
+    await releaseWorldLock(db, worldId, lockId)
   }
 }

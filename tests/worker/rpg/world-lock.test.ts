@@ -52,6 +52,25 @@ describe('World lock (#512)', () => {
     expect(reacquired).toBe(true)
   })
 
+  it('does not release a lock acquired by a different holder', async () => {
+    // Guards against a slow caller's own finally-block release clobbering a
+    // different caller's lock that was legitimately acquired in between
+    // (e.g. after the first caller's own TTL expired).
+    await acquireWorldLock(env.RPG_DB, 'lock-world', 'holder-1')
+    await releaseWorldLock(env.RPG_DB, 'lock-world', 'someone-else')
+
+    const stillHeld = await acquireWorldLock(env.RPG_DB, 'lock-world', 'holder-2')
+    expect(stillHeld).toBe(false)
+  })
+
+  it('releases a lock when the correct holder is given', async () => {
+    await acquireWorldLock(env.RPG_DB, 'lock-world', 'holder-1')
+    await releaseWorldLock(env.RPG_DB, 'lock-world', 'holder-1')
+
+    const reacquired = await acquireWorldLock(env.RPG_DB, 'lock-world', 'holder-2')
+    expect(reacquired).toBe(true)
+  })
+
   it('allows acquisition again once the previous lock has expired', async () => {
     await env.RPG_DB.prepare(
       `INSERT INTO world_locks (world_id, holder_id, expires_at) VALUES (?, ?, ?)`,
@@ -154,6 +173,11 @@ describe('World lock (#512)', () => {
       expect(result.hook_failures).toEqual([
         { hook: 'throwing_after_resolved_hook', error: 'boom' },
       ])
+      // narrator_summary keeps weather_update's summary too, not just the
+      // failure — same "don't discard what already happened" reasoning as
+      // resolved/flagged above.
+      expect(result.narrator_summary).toContain('Weather system placeholder.')
+      expect(result.narrator_summary).toContain('Hook throwing_after_resolved_hook failed: boom')
 
       const auditRow = await env.RPG_DB.prepare(
         `SELECT * FROM timeline_events WHERE world_id = ? AND verb = ? ORDER BY created_at DESC LIMIT 1`,
