@@ -153,6 +153,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history needed so `origin/<base>` is available locally for
+          # the diff artifacts below (same reason the coverage job needs it).
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -164,6 +168,26 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm run build
+      - name: Generate dependency + overall diff artifacts
+        # PR-only: diffing a push-to-main event against itself is meaningless.
+        # See #484 (CI Artifacts Phase 2) — reviewer/agent-facing summary of
+        # "did dependencies change" and "how big is this PR" with zero new
+        # dependencies, just git already in the checkout.
+        if: always() && github.event_name == 'pull_request'
+        env:
+          DIFF_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: |
+          git diff "$DIFF_BASE_REF" -- package.json > pkg-diff.txt || true
+          git diff "$DIFF_BASE_REF" --stat > diff-stat.txt || true
+      - name: Upload build diff artifacts
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diff-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            pkg-diff.txt
+            diff-stat.txt
+          retention-days: 7
 
   coverage:
     name: Coverage
@@ -229,6 +253,56 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+          retention-days: 7
+
+  job-durations:
+    name: Job Durations
+    needs: [test-layout, unit-tests, test, type-check, lint, build, coverage]
+    # always(), not success() — an anomalous duration (a shard silently running
+    # the full suite instead of its 1/4 slice, a job hanging) is exactly the
+    # signal this artifact exists to surface, and that's at least as likely to
+    # co-occur with a failing run as a passing one. See #484 (CI Artifacts
+    # Phase 2) — this would have caught PR #482's silent no-op-sharding and
+    # the full-suite-runs-twice issue (#483) automatically, from data GitHub
+    # already records, instead of requiring a human to notice the timing felt
+    # off.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Fetch per-job, per-step durations for this run
+        # No checkout needed — this only reads GitHub's own Jobs API for the
+        # run this job is already part of. By the time our `needs:` list is
+        # satisfied, every job/step listed there has a real started_at/
+        # completed_at; jq computes each duration in seconds. Steps that never
+        # ran (skipped via an `if:`) have null timestamps, guarded below.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=100" \
+            --jq '[.jobs[] | {
+              name: .name,
+              status: .status,
+              conclusion: .conclusion,
+              started_at: .started_at,
+              completed_at: .completed_at,
+              duration_seconds: (if .started_at and .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else null end),
+              steps: [.steps[] | {
+                name: .name,
+                status: .status,
+                conclusion: .conclusion,
+                started_at: .started_at,
+                completed_at: .completed_at,
+                duration_seconds: (if .started_at and .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else null end)
+              }]
+            }]' > job-durations.json
+      - name: Upload job durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-durations-${{ github.event.pull_request.head.sha || github.sha }}
+          path: job-durations.json
           retention-days: 7
 
   notify:
