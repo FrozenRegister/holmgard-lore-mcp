@@ -51,14 +51,10 @@ export function extractDefinitionNames(code) {
 }
 
 export function checkToolRegistrySync(overrides = {}) {
-  const toolsRegistryCode =
-    overrides.toolsRegistryCode ?? read('src/tools/registry.ts')
-  const rpgRegistryCode =
-    overrides.rpgRegistryCode ?? read('src/rpg/registry.ts')
-  const toolsDefinitionsCode =
-    overrides.toolsDefinitionsCode ?? read('src/tools/definitions.ts')
-  const rpgDefinitionsCode =
-    overrides.rpgDefinitionsCode ?? read('src/rpg/definitions.ts')
+  const toolsRegistryCode = overrides.toolsRegistryCode ?? read('src/tools/registry.ts')
+  const rpgRegistryCode = overrides.rpgRegistryCode ?? read('src/rpg/registry.ts')
+  const toolsDefinitionsCode = overrides.toolsDefinitionsCode ?? read('src/tools/definitions.ts')
+  const rpgDefinitionsCode = overrides.rpgDefinitionsCode ?? read('src/rpg/definitions.ts')
   const rpgMetaDefinitionsCode =
     overrides.rpgMetaDefinitionsCode ?? read('src/rpg/meta-definitions.ts')
 
@@ -78,12 +74,8 @@ export function checkToolRegistrySync(overrides = {}) {
     definitionNames.delete(ex)
   }
 
-  const missingFromDefinitions = [...registryNames]
-    .filter((n) => !definitionNames.has(n))
-    .sort()
-  const missingFromRegistry = [...definitionNames]
-    .filter((n) => !registryNames.has(n))
-    .sort()
+  const missingFromDefinitions = [...registryNames].filter((n) => !definitionNames.has(n)).sort()
+  const missingFromRegistry = [...definitionNames].filter((n) => !registryNames.has(n)).sort()
 
   return {
     ok: missingFromDefinitions.length === 0 && missingFromRegistry.length === 0,

@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  checkToolRegistrySync,
-} from '../../scripts/check-tool-registry-sync.mjs'
+import { checkToolRegistrySync } from '../../scripts/check-tool-registry-sync.mjs'
 
 describe('check-tool-registry-sync', () => {
   describe('checkToolRegistrySync', () => {
