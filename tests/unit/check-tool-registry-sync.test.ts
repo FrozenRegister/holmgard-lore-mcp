@@ -23,7 +23,9 @@ describe('check-tool-registry-sync', () => {
       const result = checkToolRegistrySync({
         toolsRegistryCode: `export const toolRegistry = {}`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
-        toolsDefinitionsCode: `export const toolDefinitions = [{ name: 'ghost_tool' }]`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+    { name: 'ghost_tool' },
+]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
       })
@@ -37,7 +39,9 @@ describe('check-tool-registry-sync', () => {
   my_tool: handle_my_tool,
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
-        toolsDefinitionsCode: `export const toolDefinitions = [{ name: 'my_tool' }]`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+    { name: 'my_tool' },
+]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
       })
@@ -50,24 +54,43 @@ describe('check-tool-registry-sync', () => {
       const result = checkToolRegistrySync({
         toolsRegistryCode: `export const toolRegistry = {}`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
-        toolsDefinitionsCode: `export const toolDefinitions = [{ name: 'math_manage' }]`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+    { name: 'math_manage' },
+]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
       })
       expect(result.ok).toBe(true)
     })
 
-    it('exempts math_manage even when it appears in both sets', () => {
+    it('ignores nested name fields inside descriptions and schemas', () => {
       const result = checkToolRegistrySync({
         toolsRegistryCode: `export const toolRegistry = {
-  math_manage: handle_math,
+  rpg: handle_rpg,
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
-        toolsDefinitionsCode: `export const toolDefinitions = [{ name: 'math_manage' }]`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+    {
+      name: 'rpg',
+      description: 'Examples: { sub: "character", action: "create", name: "Aldric" }',
+      inputSchema: {
+        properties: {
+          sub: {
+            name: 'nested_name_field',
+          },
+        },
+      },
+    },
+]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
       })
       expect(result.ok).toBe(true)
+      expect(result.registryNames).toContain('rpg')
+      expect(result.definitionNames).toContain('rpg')
+      // Aldric must not appear
+      expect(result.definitionNames).not.toContain('Aldric')
+      expect(result.definitionNames).not.toContain('nested_name_field')
     })
 
     it('extracts registry keys from object literal notation', () => {
@@ -81,9 +104,9 @@ describe('check-tool-registry-sync', () => {
   math_manage: wrap(handleMathManage),
 }`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-  { name: 'lore_manage' },
-  { name: 'entity_manage' },
-  { name: 'character_manage' },
+    { name: 'lore_manage' },
+    { name: 'entity_manage' },
+    { name: 'character_manage' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -102,8 +125,8 @@ describe('check-tool-registry-sync', () => {
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-  { name: 'alpha_tool', title: 'Alpha' },
-  { name: 'beta_tool', title: 'Beta' },
+    { name: 'alpha_tool', title: 'Alpha' },
+    { name: 'beta_tool', title: 'Beta' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,

@@ -35,9 +35,12 @@ export function extractRegistryNames(code) {
 
 export function extractDefinitionNames(code) {
   const names = new Set()
-  // Match name fields in ToolDefinition arrays:
-  //   { name: 'lore_manage', ... }
-  const re = /name:\s*['"](\w+)['"]/g
+  // Match top-level name fields in ToolDefinition entries. Anchored to
+  // line-start with exactly 4-space indent — that matches definition
+  // entries ({ name: 'tool_name', ... }) while skipping nested name
+  // fields inside input schemas (deeper indent) and verbatim name
+  // references inside description strings (no preceding indent).
+  const re = /^    name:\s*'(\w+)'/gm
   let m
   while ((m = re.exec(code)) !== null) names.add(m[1])
   return names
