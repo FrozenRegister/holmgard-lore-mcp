@@ -1,37 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   checkToolRegistrySync,
-  extractRegistryNames,
-  extractDefinitionNames,
 } from '../../scripts/check-tool-registry-sync.mjs'
 
 describe('check-tool-registry-sync', () => {
-  describe('extractRegistryNames', () => {
-    it('extracts keys from a registry object literal', () => {
-      const code = `export const toolRegistry = {
-  lore_manage: handle_lore_manage,
-  entity_manage: handle_entity_manage,
-  character_manage: wrap(handleCharacterManage),
-}`
-      const names = extractRegistryNames(code)
-      expect(names.has('lore_manage')).toBe(true)
-      expect(names.has('entity_manage')).toBe(true)
-      expect(names.has('character_manage')).toBe(true)
-    })
-  })
-
-  describe('extractDefinitionNames', () => {
-    it('extracts name fields from a ToolDefinition array', () => {
-      const code = `export const toolDefinitions = [
-  { name: 'lore_manage', title: 'Lore Manage', version: '1.0.0' },
-  { name: 'entity_manage', title: 'Entity Manage', version: '1.0.0' },
-]`
-      const names = extractDefinitionNames(code)
-      expect(names.has('lore_manage')).toBe(true)
-      expect(names.has('entity_manage')).toBe(true)
-    })
-  })
-
   describe('checkToolRegistrySync', () => {
     it('catches a tool in registry but not in definitions', () => {
       const result = checkToolRegistrySync({
@@ -96,6 +68,49 @@ describe('check-tool-registry-sync', () => {
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
       })
       expect(result.ok).toBe(true)
+    })
+
+    it('extracts registry keys from object literal notation', () => {
+      const result = checkToolRegistrySync({
+        toolsRegistryCode: `export const toolRegistry = {
+  lore_manage: handle_lore_manage,
+  entity_manage: handle_entity_manage,
+  character_manage: wrap(handleCharacterManage),
+}`,
+        rpgRegistryCode: `export const rpgToolRegistry = {
+  math_manage: wrap(handleMathManage),
+}`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+  { name: 'lore_manage' },
+  { name: 'entity_manage' },
+  { name: 'character_manage' },
+]`,
+        rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
+        rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
+      })
+      expect(result.ok).toBe(true)
+      expect(result.registryNames).toContain('lore_manage')
+      expect(result.registryNames).toContain('entity_manage')
+      expect(result.registryNames).toContain('character_manage')
+    })
+
+    it('extracts definition names from ToolDefinition arrays', () => {
+      const result = checkToolRegistrySync({
+        toolsRegistryCode: `export const toolRegistry = {
+  alpha_tool: handle_alpha,
+  beta_tool: handle_beta,
+}`,
+        rpgRegistryCode: `export const rpgToolRegistry = {}`,
+        toolsDefinitionsCode: `export const toolDefinitions = [
+  { name: 'alpha_tool', title: 'Alpha' },
+  { name: 'beta_tool', title: 'Beta' },
+]`,
+        rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
+        rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
+      })
+      expect(result.ok).toBe(true)
+      expect(result.definitionNames).toContain('alpha_tool')
+      expect(result.definitionNames).toContain('beta_tool')
     })
   })
 })
