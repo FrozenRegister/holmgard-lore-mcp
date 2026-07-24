@@ -23,6 +23,12 @@ describe('legacy bare methods (pre-tools/call)', () => {
     expect(res.result.keys).toContain('legacy:item1')
   })
 
+  it('list_topics direct method requires a valid X-Api-Key', async () => {
+    const res = await rpc('list_topics')
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32001)
+  })
+
   it('get_lore direct method retrieves by key param', async () => {
     await seedKV('legacy:thing', 'Legacy content')
     const res = await SELF.fetch('http://example.com/mcp', {
@@ -36,6 +42,13 @@ describe('legacy bare methods (pre-tools/call)', () => {
       }),
     }).then((r) => r.json() as Promise<Record<string, any>>)
     expect(res.result.text).toBe('Legacy content')
+  })
+
+  it('get_lore direct method requires a valid X-Api-Key', async () => {
+    await seedKV('legacy:thing', 'Legacy content')
+    const res = await rpc('get_lore', { key: 'legacy:thing' })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32001)
   })
 })
 
