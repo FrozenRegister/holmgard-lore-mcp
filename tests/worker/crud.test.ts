@@ -403,6 +403,37 @@ describe('get_lore_batch legacy bare method', () => {
     }).then((r) => r.json() as Promise<Record<string, any>>)
     expect(res.error.code).toBe(-32602)
   })
+
+  it('requires a valid X-Api-Key', async () => {
+    const res = await rpc('get_lore_batch', { keys: ['batch:x1'] })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32001)
+  })
+})
+
+describe('get_topic_histories legacy bare method', () => {
+  it('returns version history snapshots for each key', async () => {
+    await callTool('lore_manage', { action: 'set', key: 'history:topic1', text: 'v1' })
+    await callTool('lore_manage', { action: 'set', key: 'history:topic1', text: 'v2' })
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'get_topic_histories',
+        params: { keys: ['history:topic1', 'history:missing'] },
+      }),
+    }).then((r) => r.json() as Promise<Record<string, any>>)
+    expect(res.result['history:topic1'].length).toBe(1)
+    expect(res.result['history:missing']).toEqual([])
+  })
+
+  it('requires a valid X-Api-Key', async () => {
+    const res = await rpc('get_topic_histories', { keys: ['history:topic1'] })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32001)
+  })
 })
 
 describe('set_lore', () => {

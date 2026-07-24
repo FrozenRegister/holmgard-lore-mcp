@@ -89,6 +89,15 @@ describe('JSON-RPC protocol', () => {
     const body = (await res.json()) as Record<string, any>
     expect(body.error).toBeDefined()
   })
+
+  it('tools/call requires a valid X-Api-Key for actions other than ping/auth_check', async () => {
+    const res = await rpc('tools/call', {
+      name: 'lore_manage',
+      arguments: { action: 'get', query: 'anything' },
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32001)
+  })
 })
 
 describe('ping_tool (via lore_manage action=ping)', () => {

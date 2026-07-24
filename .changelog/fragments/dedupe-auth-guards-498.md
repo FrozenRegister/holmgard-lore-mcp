@@ -1,0 +1,2 @@
+- Refactor: dedupe 6 repeated auth-guard blocks in src/index.ts into a single `unauthorizedIfNeeded(c, id)` helper (#498)
+- Fix: the Streamable HTTP `/mcp` middleware now passes an explicit `401` HTTP status through `unauthorizedIfNeeded`, preserving its pre-refactor behavior of returning a real HTTP 401 (instead of HTTP 200 with a JSON-RPC error body, which is what every other auth-guard call site returns)
