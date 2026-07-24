@@ -464,6 +464,36 @@ Archisector (early eras, hours/days/consumption-stage ticks) and the Calder Arch
 eras, quarters/Judicial-Council sessions) both call this MCP against the same world's timeline —
 not a hypothetical narrative-vs-tactical split.
 
+**Known Behavior (#445, creature AI — feral + Shaper):** `rpg{sub:"creature"}` is the CRUD
+surface for the per-world `creature_ai_state` table read by the `creature_ai_tick` hook (a Phase 3
+tick hook, **off by default** — a world only runs it if `creature_ai_tick` is in its `time.advance`
+`hooks` set). Non-obvious behavior discovered/decided while building it:
+
+- **Two live behaviour trees, two documented no-ops.** `register` with `predatorTaxonomy: "feral"`
+  runs the CK3 hunger model (`patrolling → hunting → feeding`, plus `fleeing`); `"shaper"` runs
+  creative-drive/tenderizing/atelier. `"parasitic"` and `"environmental"` are accepted but tick as
+  **no-ops** (nothing persists) — deferred to a later phase, not a bug.
+- **The hook only *flags* hunts, it never resolves combat.** A feral hunt or Shaper tenderize that
+  reaches melee range emits a single flagged encounter event (`creature_hunt` / `creature_tenderize`)
+  for the narrator to resolve — the engine moves the creature and sets claims, the narrator writes
+  the fight. Each flagged event carries exactly **one** `resourceLocks` entry (the prey), because
+  `resolveTickConflicts` returns one verdict per lock, not per event.
+- **Prey detection is deterministic by range, not a random roll.** §3.6's `random(0..1) < perception`
+  is implemented as a range check (`round(territory_radius × perception)` hexes; doubled when
+  `hunger > 90`) so a tick is reproducible. There is no sub-day clock yet, so activity-pattern gating
+  treats every tick as daytime and `crepuscular` as always-active.
+- **Shaper claims and death-clearing use the `creature:` key namespace.** A Shaper claims prey via
+  `setClaim` with its own `creature_key`. `clearDeadPredatorClaims` (run at tick start) only releases
+  claims whose `claimed_by` is `creature:`-prefixed **and** no longer matches a live
+  `creature_ai_state` row — faction/other claims are never touched. Register creatures with a
+  `creature:`-prefixed `creatureKey` for death-clearing to apply.
+- **Prey are all positioned characters, not a world-scoped set.** The `characters` table has no
+  `world_id`, so the hook treats every character with a `current_hex_q/r` as candidate prey, and a
+  Shaper's `yieldPreference` currently falls back to nearest-prey (characters carry no yield-grade
+  column yet).
+- **Partial-tick writes are not rolled back.** Same Phase 0.5–2 gap as the rest of the tick driver
+  (#512): if the hook throws mid-loop, creatures already moved/claimed this tick stay moved/claimed.
+
 ---
 
 ### 9. **Scene & Narrative Tools** (Structuring the Story)

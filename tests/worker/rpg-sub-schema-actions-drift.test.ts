@@ -62,6 +62,7 @@ import { ACTIONS as RESOURCE_ACTIONS } from '@/rpg/handlers/resource-manage'
 import { ACTIONS as BROADCAST_ACTIONS } from '@/rpg/handlers/broadcast-manage'
 import { ACTIONS as WEATHER_ACTIONS } from '@/rpg/handlers/weather-manage'
 import { ACTIONS as CONFLICT_TYPE_ACTIONS } from '@/rpg/handlers/conflict-type-manage'
+import { ACTIONS as CREATURE_ACTIONS } from '@/rpg/handlers/creature-manage'
 
 // load_tool_schema (and every other rpg-registry tool routed through wrap() in
 // rpg/registry.ts) returns its payload as ok(data) — a JSON-stringified blob
@@ -130,6 +131,7 @@ const SUB_ACTIONS: Record<string, readonly string[]> = {
   broadcast: BROADCAST_ACTIONS,
   weather: WEATHER_ACTIONS,
   conflict_type: CONFLICT_TYPE_ACTIONS,
+  creature: CREATURE_ACTIONS,
 }
 
 describe('rpg sub-schema actions drift guard (#468)', () => {

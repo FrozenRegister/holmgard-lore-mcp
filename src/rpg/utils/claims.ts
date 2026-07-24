@@ -290,23 +290,56 @@ export async function resolveTickConflicts(
   return results
 }
 
+// Death-clearing (#445 Phase 3) only reconciles claims made by *creatures*.
+// Creature claims use the claimant's creature_key, which follows the repo's
+// lore-key namespace convention (`character:`, `setup:`, … → `creature:`). A
+// claim whose claimed_by is not `creature:`-prefixed (e.g. a faction claim) is
+// never touched here — only a creature that has been removed from
+// creature_ai_state leaves a claim we are entitled to clear.
+export const CREATURE_KEY_PREFIX = 'creature:'
+
 /**
- * Clear claims for dead or removed predators
+ * Clear claims left dangling by a dead or removed predator (#445 Phase 3).
  *
- * @param _env - App bindings
- * @param _db - D1 database
- * @param _currentTickTime - Current tick timestamp
+ * Runs at the start of creature_ai_tick: any character whose `claimed_by` is a
+ * `creature:`-namespaced key that no longer corresponds to a live row in
+ * `creature_ai_state` (for this world) has its claim released. This is the
+ * proactive counterpart to `resolveTickConflicts`'s reactive stale-claim check
+ * (which only treats an *expired* `claimed_until` as unclaimed) — a claim by a
+ * creature that was deleted mid-project would otherwise pin its prey forever.
+ *
+ * Only creature-namespaced claims are considered, so faction/other claims are
+ * left untouched.
+ *
+ * @returns the character keys whose claims were cleared
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function clearDeadPredatorClaims(
+export async function clearDeadPredatorClaims(
   env: AppBindings,
   db: D1Database,
-  currentTickTime: string,
-): void {
-  // This will be implemented in Phase 3 (creature AI)
-  // For now, we rely on the stale-claim check in resolveTickConflicts
-  void env
-  void db
-  void currentTickTime
-  console.log('clearDeadPredatorClaims: Phase 3 implementation pending')
+  worldId: string,
+): Promise<{ cleared: string[] }> {
+  // Live creatures for this world → the set of claimant keys still valid.
+  const { results: liveRows } = (await db
+    .prepare(
+      'SELECT creature_key FROM creature_ai_state WHERE world_id = ? AND creature_key IS NOT NULL',
+    )
+    .bind(worldId)
+    .all()) as { results: Array<{ creature_key: string }> }
+  const liveKeys = new Set(liveRows.map((r) => r.creature_key))
+
+  // Every currently-claimed character (characters are not world-scoped in the
+  // schema, so we filter to creature-namespaced claims instead).
+  const { results: claimedRows } = (await db
+    .prepare('SELECT id, claimed_by FROM characters WHERE claimed_by IS NOT NULL')
+    .bind()
+    .all()) as { results: Array<{ id: string; claimed_by: string }> }
+
+  const cleared: string[] = []
+  for (const row of claimedRows) {
+    if (!row.claimed_by.startsWith(CREATURE_KEY_PREFIX)) continue
+    if (liveKeys.has(row.claimed_by)) continue
+    await clearClaim(env, db, row.id)
+    cleared.push(row.id)
+  }
+  return { cleared }
 }

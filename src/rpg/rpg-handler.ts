@@ -1,5 +1,5 @@
 // src/rpg/rpg-handler.ts
-// Single dispatcher: routes { sub, action, ...rest } to one of 27 RPG handler functions.
+// Single dispatcher: routes { sub, action, ...rest } to one of 28 RPG handler functions.
 
 import type { ToolHandler } from '../tools/types'
 import { makeError, makeResult } from '../lib/rpc'
@@ -49,6 +49,7 @@ import { handleResourceManage } from './handlers/resource-manage'
 import { handleBroadcastManage } from './handlers/broadcast-manage'
 import { handleWeatherManage } from './handlers/weather-manage'
 import { handleConflictTypeManage } from './handlers/conflict-type-manage'
+import { handleCreatureManage } from './handlers/creature-manage'
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
@@ -107,6 +108,7 @@ const SUB_MAP: Record<string, RpgFn> = {
   broadcast: handleBroadcastManage,
   weather: handleWeatherManage,
   conflict_type: handleConflictTypeManage,
+  creature: handleCreatureManage,
 }
 
 export const handle_rpg: ToolHandler = async ({ c, id, args }) => {

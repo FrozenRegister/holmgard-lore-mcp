@@ -102,6 +102,20 @@ async function assertSchemaActions(sub: string, realActions: string[], staleActi
   }
 }
 
+describe('creature schema accuracy (#445)', () => {
+  it('advertises the real creature_ai_state CRUD + place actions', () =>
+    assertSchemaActions('creature', ['register', 'list', 'get', 'update', 'delete', 'place'], []))
+
+  it('exposes the taxonomy and hex-position parameters', async () => {
+    const r = await callTool('load_tool_schema', { toolName: 'rpg', sub: 'creature' })
+    const props = r.schema.inputSchema.properties
+    expect(props.predatorTaxonomy).toBeDefined()
+    expect(props.creatureKey).toBeDefined()
+    expect(props.currentHexQ).toBeDefined()
+    expect(props.atelierHexQ).toBeDefined()
+  })
+})
+
 describe('drama schema accuracy (#462)', () => {
   it('advertises the real ability-check/conflict-resolution actions, not the stale narrative-tension ones', () =>
     assertSchemaActions(
