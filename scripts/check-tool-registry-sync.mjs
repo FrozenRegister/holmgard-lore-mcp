@@ -22,7 +22,7 @@ function read(relPath) {
   return readFileSync(join(ROOT, relPath), 'utf8')
 }
 
-function extractRegistryNames(code) {
+export function extractRegistryNames(code) {
   const names = new Set()
   // Match keys in toolRegistry/rpgToolRegistry object literals:
   //   lore_manage: handle_lore_manage,
@@ -33,7 +33,7 @@ function extractRegistryNames(code) {
   return names
 }
 
-function extractDefinitionNames(code) {
+export function extractDefinitionNames(code) {
   const names = new Set()
   // Match name fields in ToolDefinition arrays:
   //   { name: 'lore_manage', ... }
