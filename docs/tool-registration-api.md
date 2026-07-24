@@ -6,6 +6,10 @@
 
 The registration system is additive — it exists alongside the existing `toolRegistry` and `toolDefinitions` without modifying them. Phase 1 (#542) introduces the infrastructure; Phase 2 (#543) and later phases migrate real tools onto it.
 
+## Dependency Note
+
+`zod-to-json-schema` is a **transitive dependency** via `@modelcontextprotocol/sdk` (not a direct dependency in `package.json`). This avoids lockfile churn while still making `zodToJsonSchema()` available for converting Zod schemas to JSON Schema.
+
 ## API
 
 ### `registerTool(tool: RegisteredTool): void`
