@@ -14,8 +14,10 @@ const master541: PhaseState = {
 };
 
 export function getPhase541MasterList(): PhaseState {
-  return master541;
+  return createPhasesState(master541);
 }
+
+function createPhasesState(state: PhaseState): PhaseState { return state; }
 
 export function completePhase541Task(taskId: string): boolean {
   const t = master541.tasks.find((x) => x.id === taskId);
