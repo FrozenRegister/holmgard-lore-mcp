@@ -122,14 +122,14 @@ describe('DO transport — initialize', () => {
 })
 
 describe('DO transport — tools/list', () => {
-  it('returns exactly 9 tools (same as legacy path)', async () => {
+  it('returns exactly 10 tools (same as legacy path)', async () => {
     const { sessionId } = await initialize()
     const { data } = await mcpPost(
       { jsonrpc: '2.0', id: 2, method: 'tools/list' },
       { 'Mcp-Session-Id': sessionId },
     )
     const tools: Array<{ name: string }> = data.result?.tools ?? []
-    expect(tools).toHaveLength(9)
+    expect(tools).toHaveLength(10)
   })
 
   it('includes all expected tool names', async () => {
@@ -145,8 +145,13 @@ describe('DO transport — tools/list', () => {
     expect(names).toContain('world_manage')
     expect(names).toContain('scene_manage')
     expect(names).toContain('continuity_manage')
+    // RPG engine
+    expect(names).toContain('rpg')
+    expect(names).toContain('agent_manage')
+    expect(names).toContain('character_manage')
     // Meta-tools
     expect(names).toContain('search_tools')
+    expect(names).toContain('load_tool_schema')
   })
 })
 

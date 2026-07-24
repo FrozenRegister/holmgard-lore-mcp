@@ -1841,10 +1841,7 @@ const unauthorizedIfNeeded = (
 ): ReturnType<typeof c.json> | null =>
   getIsAuthenticated(c)
     ? null
-    : c.json(
-        makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'),
-        httpStatus,
-      )
+    : c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), httpStatus)
 
 // Pre-built Streamable HTTP handler — routes spec-compliant MCP SDK clients to
 // the HolmgardMCP DO via the agents SDK session management.

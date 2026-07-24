@@ -24,10 +24,10 @@ describe('JSON-RPC protocol', () => {
     expect(res.result).toEqual({})
   })
 
-  it('tools/list returns exactly 9 tools', async () => {
+  it('tools/list returns exactly 10 tools', async () => {
     const res = await rpc('tools/list')
     const tools = res.result.tools as Array<{ name: string }>
-    expect(tools).toHaveLength(9)
+    expect(tools).toHaveLength(10)
     const names = tools.map((t) => t.name)
     // Core lore-layer tools (consolidated from 59)
     expect(names).toContain('lore_manage')
@@ -35,9 +35,10 @@ describe('JSON-RPC protocol', () => {
     expect(names).toContain('world_manage')
     expect(names).toContain('scene_manage')
     expect(names).toContain('continuity_manage')
-    // RPG engine (collapsed from 27 + agent_manage)
+    // RPG engine (collapsed from 27 + agent_manage + character_manage)
     expect(names).toContain('rpg')
     expect(names).toContain('agent_manage')
+    expect(names).toContain('character_manage')
     // Meta-tools
     expect(names).toContain('search_tools')
     expect(names).toContain('load_tool_schema')
