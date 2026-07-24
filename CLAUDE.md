@@ -136,6 +136,8 @@ Two more, not tied to a failing check — informational, not gates: `build-diff-
 
 Find and download via the GitHub MCP tools already available in-session — no `gh` CLI, no new auth: `actions_list(method: "list_workflow_run_artifacts", resource_id: <run_id>)` to find the artifact (its response includes `workflow_run.head_sha` — check this against the PR's current head before trusting it, no download needed), then `actions_get(method: "download_workflow_run_artifact", resource_id: <artifact_id>)` for the download URL.
 
+> **If `actions_list` / `actions_get` aren't in your tool list, that's the `actions` toolset not being enabled — not a missing capability.** GitHub's remote MCP server (`api.githubcopilot.com`) ships `pull_requests` on by default but **not** `actions`, so you get `pull_request_read` but no Actions tools. Fix is a one-line MCP config change: add `actions` to the `X-MCP-Toolsets` header (default set is `context,repos,issues,pull_requests,users`). The PAT needs Actions: Read + Contents: Read. This is a host/environment config change an agent can't make for itself mid-session — surface it to whoever owns the MCP config. Full config + path-scoping alternative: **[`docs/agent-ci-artifacts-guide.md`](./docs/agent-ci-artifacts-guide.md)** ("Prerequisite: the `actions` toolset must be enabled").
+
 **Rerunning locally is fine when you're actively iterating on a fix** (write code, run the one file you touched, repeat) — it's only wasteful when you're using it to find out why an *already-completed* CI run failed, which the artifacts above already answer.
 
 ## Workflows & Protocols
