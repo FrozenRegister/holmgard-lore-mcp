@@ -60,10 +60,30 @@ echo -e "${GREEN}✓ Markdown linting passed${RESET}"
 echo ""
 echo "[5/7] Checking changelog fragment requirement"
 STAGED=$(git diff --cached --name-only)
-REQUIRES_CHANGELOG=$(echo "$STAGED" | grep -E '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' || true)
+
+# A changelog fragment may have been added in an earlier commit on this branch
+# rather than the one currently being made (multi-commit PRs are the norm
+# here — see PR #550, 25 commits). Checking only $STAGED would false-fail on
+# every later commit once the fragment has already landed. Widen the check to
+# the whole branch diff against the merge-base with main, falling back to
+# staged-only when no base ref is resolvable (e.g. a shallow clone with no
+# origin/main, or committing directly on main).
+BASE_REF=""
+if git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+  BASE_REF=$(git merge-base origin/main HEAD 2>/dev/null || true)
+elif git rev-parse --verify -q main >/dev/null 2>&1; then
+  BASE_REF=$(git merge-base main HEAD 2>/dev/null || true)
+fi
+BRANCH_CHANGED=""
+if [[ -n "$BASE_REF" ]]; then
+  BRANCH_CHANGED=$(git diff "$BASE_REF" --name-only 2>/dev/null || true)
+fi
+ALL_CHANGED=$(printf '%s\n%s\n' "$STAGED" "$BRANCH_CHANGED" | sed '/^$/d' | sort -u)
+
+REQUIRES_CHANGELOG=$(echo "$ALL_CHANGED" | grep -E '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' || true)
 
 if [[ -n "$REQUIRES_CHANGELOG" ]]; then
-  if ! echo "$STAGED" | grep -q '^\.changelog/fragments/.*\.md$'; then
+  if ! echo "$ALL_CHANGED" | grep -q '^\.changelog/fragments/.*\.md$'; then
     echo -e "${RED}✗ A changelog fragment is required when modifying src/, docs/, wrangler.jsonc, or CLAUDE.md${RESET}"
     echo "  Add a file under .changelog/fragments/ (e.g. .changelog/fragments/my-feature.md)"
     exit 1
@@ -74,8 +94,8 @@ echo -e "${GREEN}✓ Changelog fragment check passed${RESET}"
 # [6/7] Docs warning
 echo ""
 echo "[6/7] Checking docs requirement"
-HAS_SRC=$(echo "$STAGED" | grep -E '^src/' || true)
-HAS_DOCS=$(echo "$STAGED" | grep -E '^docs/' || true)
+HAS_SRC=$(echo "$ALL_CHANGED" | grep -E '^src/' || true)
+HAS_DOCS=$(echo "$ALL_CHANGED" | grep -E '^docs/' || true)
 
 if [[ -n "$HAS_SRC" && -z "$HAS_DOCS" ]]; then
   echo -e "${YELLOW}  ⚠  No docs/ file staged.${RESET}"
