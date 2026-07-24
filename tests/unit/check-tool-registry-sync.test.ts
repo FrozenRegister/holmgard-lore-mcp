@@ -24,7 +24,7 @@ describe('check-tool-registry-sync', () => {
         toolsRegistryCode: `export const toolRegistry = {}`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    { name: 'ghost_tool' },
+  { name: 'ghost_tool' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -40,7 +40,7 @@ describe('check-tool-registry-sync', () => {
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    { name: 'my_tool' },
+  { name: 'my_tool' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -55,7 +55,7 @@ describe('check-tool-registry-sync', () => {
         toolsRegistryCode: `export const toolRegistry = {}`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    { name: 'math_manage' },
+  { name: 'math_manage' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -70,17 +70,17 @@ describe('check-tool-registry-sync', () => {
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    {
-      name: 'rpg',
-      description: 'Examples: { sub: "character", action: "create", name: "Aldric" }',
-      inputSchema: {
-        properties: {
-          sub: {
-            name: 'nested_name_field',
-          },
+  {
+    name: 'rpg',
+    description: 'Examples: { sub: "character", action: "create", name: "Aldric" }',
+    inputSchema: {
+      properties: {
+        sub: {
+          name: 'nested_name_field',
         },
       },
     },
+  },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -104,9 +104,9 @@ describe('check-tool-registry-sync', () => {
   math_manage: wrap(handleMathManage),
 }`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    { name: 'lore_manage' },
-    { name: 'entity_manage' },
-    { name: 'character_manage' },
+  { name: 'lore_manage' },
+  { name: 'entity_manage' },
+  { name: 'character_manage' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
@@ -125,8 +125,8 @@ describe('check-tool-registry-sync', () => {
 }`,
         rpgRegistryCode: `export const rpgToolRegistry = {}`,
         toolsDefinitionsCode: `export const toolDefinitions = [
-    { name: 'alpha_tool', title: 'Alpha' },
-    { name: 'beta_tool', title: 'Beta' },
+  { name: 'alpha_tool', title: 'Alpha' },
+  { name: 'beta_tool', title: 'Beta' },
 ]`,
         rpgDefinitionsCode: `export const rpgToolDefinitions = []`,
         rpgMetaDefinitionsCode: `export const rpgMetaToolDefinitions = []`,
