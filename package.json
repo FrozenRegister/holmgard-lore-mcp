@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "check:patch-coverage": "node scripts/check-patch-coverage.mjs",
     "check:test-layout": "node scripts/check-test-layout.mjs",
+    "check:tool-registry-sync": "node scripts/check-tool-registry-sync.mjs",
     "report:coverage-gaps": "node scripts/report-coverage-gaps.mjs",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:unit": "vitest run --config vitest.unit.config.ts",
