@@ -1752,6 +1752,55 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
       required: ['action'],
     },
   },
+  {
+    sub: 'creature',
+    description:
+      'Autonomous creature AI state registry (#445, #440 Phase 3). CRUD for the per-world creature_ai_state table read by the creature_ai_tick hook, which branches on predatorTaxonomy: feral (CK3 hunger model) and shaper (creative-drive/tenderizing/atelier) have live behaviour; parasitic/environmental are no-op stubs. Actions: register, list, get, update, delete, place (reposition on the hex map). Aliases: spawn/add/new/make/insert->register, fetch/read/find/show->get, all/query/browse->list, modify/edit/patch->update, remove/destroy/drop->delete, move/reposition/place_creature->place.',
+    schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string' },
+        id: { type: 'string' },
+        creatureId: { type: 'string' },
+        worldId: { type: 'string', description: 'Required for register and list.' },
+        creatureKey: {
+          type: 'string',
+          description:
+            'Lore key of the creature (register). Death-clearing only reconciles claims whose claimant follows the "creature:" namespace convention.',
+        },
+        predatorTaxonomy: {
+          type: 'string',
+          enum: ['feral', 'shaper', 'parasitic', 'environmental'],
+          description: 'Behaviour tree. Defaults to feral.',
+        },
+        homeNestQ: { type: 'integer' },
+        homeNestR: { type: 'integer' },
+        territoryRadius: { type: 'integer', minimum: 0 },
+        hunger: { type: 'integer', minimum: 0, maximum: 100 },
+        creativeDrive: { type: 'integer', minimum: 0, maximum: 100 },
+        aggression: { type: 'number', minimum: 0, maximum: 1 },
+        activityPattern: {
+          type: 'string',
+          enum: ['nocturnal', 'diurnal', 'crepuscular', 'always'],
+        },
+        movementSpeed: { type: 'integer', minimum: 0, description: 'Hexes per tick.' },
+        stealth: { type: 'number', minimum: 0, maximum: 1 },
+        perception: { type: 'number', minimum: 0, maximum: 1 },
+        currentState: { type: 'string' },
+        currentHexQ: { type: 'integer' },
+        currentHexR: { type: 'integer' },
+        targetHexQ: { type: 'integer' },
+        targetHexR: { type: 'integer' },
+        atelierHexQ: { type: 'integer', description: 'Shaper workshop hex.' },
+        atelierHexR: { type: 'integer', description: 'Shaper workshop hex.' },
+        yieldPreference: { type: 'string', description: 'Shaper preferred prey yield grade.' },
+        q: { type: 'integer', description: 'Required for place.' },
+        r: { type: 'integer', description: 'Required for place.' },
+        limit: { type: 'integer', minimum: 1, maximum: 500 },
+      },
+      required: ['action'],
+    },
+  },
 ]
 
 for (const s of SUB_SCHEMAS) {
