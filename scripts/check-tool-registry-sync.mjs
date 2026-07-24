@@ -35,12 +35,15 @@ export function extractRegistryNames(code) {
 
 export function extractDefinitionNames(code) {
   const names = new Set()
-  // Match top-level definition name fields, which appear in two forms:
-  //   Expanded:     name: 'tool_name',
-  //   Compact:   { name: 'tool_name', title: 'Title' },
-  // Both sit at 2–4 spaces of indent (array element + object level).
-  // Nested schema properties sit at 6+ spaces and are excluded.
-  // Mid-line name references in description strings are excluded by /^.
+  // Match top-level definition name fields. Definition entries use
+  // either compact (`  { name: 'tool' }`) or expanded form:
+  //     {
+  //       name: 'tool',
+  //     }
+  // Both sit at exactly 2–4 spaces of indent. Nested schema property
+  // names sit at 6+ spaces and are excluded. Mid-line name references
+  // inside description strings have no leading whitespace and are
+  // excluded by the ^ anchor.
   const re = /^ {2,4}(?:\{ )?name:\s*'(\w+)'/gm
   let m
   while ((m = re.exec(code)) !== null) names.add(m[1])
