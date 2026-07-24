@@ -29,7 +29,7 @@ const _tools: RegisteredTool[] = []
 
 /** Register a tool. Throws on duplicate name — drift guard at import time. */
 export function registerTool(tool: RegisteredTool): void {
-  if (_tools.some(t => t.name === tool.name)) {
+  if (_tools.some((t) => t.name === tool.name)) {
     throw new Error(`Tool "${tool.name}" is already registered`)
   }
   _tools.push(tool)
@@ -42,12 +42,12 @@ export function getTools(): RegisteredTool[] {
 
 /** Look up a handler by tool name. */
 export function getToolHandler(name: string): ToolHandler | undefined {
-  return _tools.find(t => t.name === name)?.handler
+  return _tools.find((t) => t.name === name)?.handler
 }
 
 /** Serialize a tool definition for tools/list (Zod → JSON Schema). */
 export function getToolDefinition(name: string): SerializedToolDefinition | undefined {
-  const tool = _tools.find(t => t.name === name)
+  const tool = _tools.find((t) => t.name === name)
   if (!tool) return undefined
   return {
     name: tool.name,
