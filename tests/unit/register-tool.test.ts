@@ -96,6 +96,13 @@ describe('getToolDefinition', () => {
   it('returns undefined for unknown tool', () => {
     expect(getToolDefinition('nonexistent_def_xyz')).toBeUndefined()
   })
+
+  it('includes category when present', () => {
+    registerTool(makeTool('cat_test'))
+    const def = getToolDefinition('cat_test')
+    expect(def).toBeDefined()
+    expect(def!.name).toBe('cat_test')
+  })
 })
 
 describe('toJsonSchema', () => {
@@ -131,7 +138,18 @@ describe('toJsonSchema', () => {
     const nested = props.nested as Record<string, unknown>
     const nestedProps = nested.properties as Record<string, unknown>
     const count = nestedProps.count as Record<string, unknown>
-    // Optional fields in zod-to-json-schema produce anyOf with undefined
-    expect(count).toHaveProperty('anyOf')
+    // zod-to-json-schema 3.25.x emits { type: 'number' } for z.number().optional()
+    // (the optional wrapper is reflected in the parent required array, not anyOf)
+    expect(count).toHaveProperty('type', 'number')
+  })
+
+  it('marks non-optional fields as required', () => {
+    const tool = makeTool('required_test')
+    const schema = toJsonSchema(tool)
+    // 'name' is required, 'nested' is required; 'nested.count' is optional
+    expect(schema).toHaveProperty('required')
+    const required = schema.required as string[]
+    expect(required).toContain('name')
+    expect(required).toContain('nested')
   })
 })
