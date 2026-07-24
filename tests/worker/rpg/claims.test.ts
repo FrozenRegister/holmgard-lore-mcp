@@ -13,7 +13,6 @@ import {
   clearClaim,
   isStaleClaim,
   resolveTickConflicts,
-  clearDeadPredatorClaims,
   type Priority,
   type FlaggedEvent,
 } from '@/rpg/utils/claims'
@@ -503,19 +502,9 @@ describe('Claims System', () => {
     })
   })
 
-  describe('clearDeadPredatorClaims', () => {
-    it('should log pending implementation message', () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-      clearDeadPredatorClaims(mockEnv, mockDb, '2187-01-10T00:00:00Z')
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'clearDeadPredatorClaims: Phase 3 implementation pending',
-      )
-
-      consoleSpy.mockRestore()
-    })
-  })
+  // clearDeadPredatorClaims (#445 Phase 3) does real D1 reads/writes, so its
+  // tests live in the real-D1 suite (tests/worker/rpg/creature-tick.test.ts)
+  // rather than this mock-based file.
 
   // ── Coverage: setClaim throws for non-existent character (line 97) ───────────
 

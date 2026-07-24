@@ -22,7 +22,18 @@ export interface HookResult {
 }
 
 // Import claims system for conflict resolution
-import { resolveTickConflicts, type FlaggedEvent } from '../utils/claims'
+import {
+  resolveTickConflicts,
+  setClaim,
+  clearDeadPredatorClaims,
+  type FlaggedEvent,
+} from '../utils/claims'
+import {
+  creatureAiTick,
+  type CreatureAiState,
+  type PreySnapshot,
+  type CreatureTickSnapshot,
+} from '../utils/creature-ai'
 
 export interface WorldSnapshot {
   date: string
@@ -243,6 +254,132 @@ const dissolutionFlagHook: HookRunner = {
   },
 }
 
+// creature_ai_tick — flagged hook (#445, #440 Phase 3 §3.6)
+//
+// Reads creature_ai_state for the world, branches each creature on
+// predator_taxonomy (feral / Shaper / stub), applies the returned mutations
+// (movement, hunger/creative_drive, claims), and flags any hunt/tenderize that
+// reaches melee as an encounter for the narrator to resolve. `mutates: true`
+// (#512) so dry_run rejects previewing it — the hook writes to D1 unconditionally.
+const creatureAiTickHook: HookRunner = {
+  name: 'creature_ai_tick',
+  config: { enabled: true, batch_mode: false, mutates: true },
+  dependsOn: ['resource_consume'],
+  batchMode: false,
+  execute: async (
+    env: AppBindings,
+    worldId: string,
+    date: string,
+    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<HookResult> => {
+    const db = env.RPG_DB!
+
+    // Reconcile claims left dangling by removed predators before anything moves.
+    const deathClearing = await clearDeadPredatorClaims(env, db, worldId)
+
+    // Batch-load creatures for this world and every positioned prey character
+    // in parallel (KV/D1 batch-read rule — no sequential awaits).
+    const [creatureRes, preyRes] = await Promise.all([
+      db.prepare('SELECT * FROM creature_ai_state WHERE world_id = ?').bind(worldId).all(),
+      db
+        .prepare(
+          `SELECT id, current_hex_q AS q, current_hex_r AS r, hp, claimed_by
+           FROM characters WHERE current_hex_q IS NOT NULL AND current_hex_r IS NOT NULL`,
+        )
+        .all(),
+    ])
+
+    const creatures = creatureRes.results as unknown as CreatureAiState[]
+    const prey: PreySnapshot[] = (
+      preyRes.results as Array<{
+        id: string
+        q: number
+        r: number
+        hp: number | null
+        claimed_by: string | null
+      }>
+    ).map((row) => ({
+      key: row.id,
+      q: row.q,
+      r: row.r,
+      hp: row.hp,
+      // Characters carry no yield-grade column yet, so a Shaper's yield
+      // preference currently falls back to nearest-prey selection.
+      yieldGrade: null,
+      claimedBy: row.claimed_by,
+    }))
+
+    // No sub-day clock exists, so day/night gating defaults to daytime.
+    const snapshot: CreatureTickSnapshot = { isDaytime: true, prey, currentTickTime: date }
+
+    const events: FlaggedEvent[] = []
+    let creaturesMoved = 0
+    let huntsInitiated = 0
+    const now = new Date().toISOString()
+
+    for (const creature of creatures) {
+      const result = creatureAiTick(creature, snapshot)
+      if (result.changed) {
+        await db
+          .prepare(
+            `UPDATE creature_ai_state
+             SET hunger = ?, creative_drive = ?, current_state = ?,
+                 current_hex_q = ?, current_hex_r = ?, target_hex_q = ?, target_hex_r = ?,
+                 updated_at = ?
+             WHERE id = ?`,
+          )
+          .bind(
+            result.hunger,
+            result.creativeDrive,
+            result.currentState,
+            result.currentHexQ,
+            result.currentHexR,
+            result.targetHexQ,
+            result.targetHexR,
+            now,
+            creature.id,
+          )
+          .run()
+      }
+      if (result.moved) creaturesMoved++
+      if (result.claim) {
+        try {
+          await setClaim(
+            env,
+            db,
+            result.claim.targetKey,
+            creature.creature_key ?? creature.id,
+            result.claim.until,
+            date,
+          )
+        } catch {
+          // Prey vanished between snapshot and write, or claim was contested —
+          // skip; next tick re-evaluates. Never let one claim break the tick.
+        }
+      }
+      if (result.flaggedEvent) {
+        events.push(result.flaggedEvent)
+        huntsInitiated++
+      }
+    }
+
+    return {
+      category: 'flagged',
+      data: {
+        action: 'creature_ai_tick',
+        worldId,
+        date,
+        events,
+        creatures_evaluated: creatures.length,
+        creatures_moved: creaturesMoved,
+        hunts_initiated: huntsInitiated,
+        claims_cleared: deathClearing.cleared.length,
+      },
+      narrator_summary: `Creature AI: ${creatures.length} creature(s), ${creaturesMoved} moved, ${huntsInitiated} hunt(s) flagged, ${deathClearing.cleared.length} stale claim(s) cleared.`,
+    }
+  },
+}
+
 // ── Hook Registry & Topological Sort ──────────────────────────────────────────
 
 export const HOOK_REGISTRY = new Map<string, HookRunner>([
@@ -251,6 +388,7 @@ export const HOOK_REGISTRY = new Map<string, HookRunner>([
   ['encounter_check', encounterCheckHook],
   ['health_degradation', healthDegradationHook],
   ['dissolution_flag', dissolutionFlagHook],
+  ['creature_ai_tick', creatureAiTickHook],
 ])
 
 function topologicalSort(hookNames: string[]): string[] {
