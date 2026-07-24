@@ -24,9 +24,40 @@ See #479 and #480 for the design history and rationale (including the fact that 
 
 ---
 
+## Prerequisite: the `actions` toolset must be enabled on your GitHub MCP server
+
+**If you don't see `actions_list` / `actions_get` in your tool list, none of the steps below will work — and the fix is a one-line MCP config change, not a workaround.** This is the single most common reason an agent reports "I can't access the artifacts": every step in "How to find and read an artifact" depends on the Actions tools, and the **`actions` toolset is not enabled by default** on GitHub's remote MCP server.
+
+The tell: you *can* call `pull_request_read` (the `pull_requests` toolset is on by default) but `actions_list` is missing. That's a toolset gap, not a different server — a `mcp_api_githubcopilo_*` tool prefix just means you're on GitHub's official remote MCP at `api.githubcopilot.com`, same as everyone.
+
+Default toolsets are `context, repos, issues, pull_requests, users`. Add `actions` explicitly:
+
+```json
+{
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PAT}",
+        "X-MCP-Toolsets": "context,repos,issues,pull_requests,users,actions",
+        "X-MCP-Readonly": "true"
+      }
+    }
+  }
+}
+```
+
+- **`X-MCP-Toolsets`** — the fix: add `actions` to the comma-separated list. This is what makes `actions_list` / `actions_get` appear.
+- **`Authorization: Bearer <token>`** — the PAT needs **Actions: Read** and **Contents: Read** on the repo. A fine-grained PAT scoped to this repo with those two permissions is sufficient to list runs/artifacts and get download URLs.
+- **`X-MCP-Readonly: true`** — recommended for read-only artifact agents; strips write tools and shrinks the tool surface.
+- **Alternative (path scoping):** `https://api.githubcopilot.com/mcp/x/actions` enables just the actions toolset via the URL if headers are awkward in your host. The header form is preferred (multiple toolsets at once).
+
+This is a **host/environment configuration** change — an agent can't set it for itself mid-session. If you hit this, surface it to whoever owns the fleet's MCP config rather than trying to route around it.
+
 ## How to find and read an artifact (no new auth, no `gh` CLI)
 
-This repo's GitHub MCP toolset already supports listing and downloading workflow artifacts — verified working directly against this repo. Don't reach for a `gh` CLI device-code flow or any other auth; you already have what you need in-session.
+This repo's GitHub MCP toolset already supports listing and downloading workflow artifacts — verified working directly against this repo, **provided the `actions` toolset is enabled** (see the prerequisite above). Don't reach for a `gh` CLI device-code flow or any other auth; you already have what you need in-session.
 
 ```
 1. pull_request_read (get) → get the PR's head SHA and check run statuses
