@@ -38,3 +38,14 @@ jobs:
         with:
           commit_message: 'style: auto-fix code formatting'
           file_pattern: 'src/**/*.ts tests/**/*.ts scripts/*.mjs *.ts *.mjs'
+          # `pnpm install` above runs the `prepare` lifecycle script, which sets
+          # core.hooksPath=scripts (see scripts/setup-git-hooks.mjs) — so the
+          # local pre-commit hook fires on this bot commit too. Its changelog-
+          # fragment check only looks at *this commit's* staged files, but
+          # file_pattern above deliberately never stages `.changelog/fragments/`,
+          # so the hook fails whenever a PR reformats any src/ file, even though
+          # the fragment already exists from an earlier commit and the real
+          # `Changelog Fragment` CI gate (which diffs the whole PR) already
+          # passed independently. Skip hooks for this narrowly-scoped,
+          # formatting-only bot commit. See PR #550.
+          commit_options: '--no-verify'

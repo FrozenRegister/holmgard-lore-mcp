@@ -75,10 +75,33 @@ try {
   # 5. Check if a changelog fragment should be added (mirrors check-changelog CI gate)
   Write-CheckHeader "Checking changelog fragment requirement"
   $stagedFiles = & git diff --cached --name-only
-  $requiresChangelog = $stagedFiles | Where-Object { $_ -match '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' }
+
+  # A changelog fragment may have been added in an earlier commit on this branch
+  # rather than the one currently being made (multi-commit PRs are the norm
+  # here). Checking only staged files would false-fail on every later commit
+  # once the fragment has already landed. Widen the check to the whole branch
+  # diff against the merge-base with main, falling back to staged-only when no
+  # base ref is resolvable.
+  $baseRef = $null
+  & git rev-parse --verify -q origin/main *> $null
+  if ($LASTEXITCODE -eq 0) {
+    $baseRef = (& git merge-base origin/main HEAD 2>$null)
+  } else {
+    & git rev-parse --verify -q main *> $null
+    if ($LASTEXITCODE -eq 0) {
+      $baseRef = (& git merge-base main HEAD 2>$null)
+    }
+  }
+  $branchChanged = @()
+  if ($baseRef) {
+    $branchChanged = & git diff $baseRef --name-only 2>$null
+  }
+  $allChanged = @($stagedFiles) + @($branchChanged) | Where-Object { $_ } | Select-Object -Unique
+
+  $requiresChangelog = $allChanged | Where-Object { $_ -match '^(src/|docs/|wrangler\.jsonc$|CLAUDE\.md$)' }
 
   if ($requiresChangelog) {
-    if (-not ($stagedFiles | Where-Object { $_ -match '^\.changelog/fragments/.*\.md$' })) {
+    if (-not ($allChanged | Where-Object { $_ -match '^\.changelog/fragments/.*\.md$' })) {
       Write-Error "A changelog fragment is required when modifying src/, docs/, wrangler.jsonc, or CLAUDE.md"
       Write-Host "  Add a file under .changelog/fragments/ (e.g. .changelog/fragments/my-feature.md)"
       exit 1
@@ -88,9 +111,8 @@ try {
 
   # 6. Check docs requirement (mirrors check-docs CI gate)
   Write-CheckHeader "Checking docs requirement"
-  $stagedFiles = & git diff --cached --name-only
-  $hasSrcChanges = $stagedFiles | Where-Object { $_ -match '^src/' }
-  $hasDocsFile   = $stagedFiles | Where-Object { $_ -match '^docs/' }
+  $hasSrcChanges = $allChanged | Where-Object { $_ -match '^src/' }
+  $hasDocsFile   = $allChanged | Where-Object { $_ -match '^docs/' }
 
   if ($hasSrcChanges -and -not $hasDocsFile) {
     Write-Host "  ⚠  No docs/ file staged." -ForegroundColor Yellow
