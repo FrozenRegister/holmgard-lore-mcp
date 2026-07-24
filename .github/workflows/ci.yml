@@ -24,8 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Guard against test files outside tests/{unit,worker,live}/
-        # No pnpm/node_modules needed — the script only uses node:child_process
-        # (git ls-files) and node:fs, so this is a near-instant job. See #490.
         run: node scripts/check-test-layout.mjs
 
   tool-registry-sync:
@@ -34,9 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Guard against toolRegistry/toolDefinitions name drift
-        # No pnpm/node_modules needed — the script only uses node:fs to read
-        # the source files and regex-match names, so this is a near-instant
-        # job. Exempts math_manage (intentionally schema-doc-only). See #541.
         run: node scripts/check-tool-registry-sync.mjs
 
   unit-tests:
@@ -54,22 +49,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run unit tests
-        # Invoked directly via `pnpm exec` rather than `pnpm run test:unit --
-        # <flags>`: pnpm always inserts a literal `--` before forwarded args,
-        # which vitest then treats as a positional test-file filter, not
-        # flags — silently swallowing --reporter/--outputFile (and, in the
-        # sharded `test` job below, --shard itself). Verified locally.
-        run: pnpm exec vitest run --config vitest.unit.config.ts --reporter=default --reporter=json --outputFile.json=test-results-unit.json
+        run: pnpm exec vitest run --config vitest.unit.config.ts --reporter=default --reporter=json --coverage --outputFile.json=test-results-unit.json
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # github.sha on a pull_request-triggered run is the ephemeral merge
-          # commit, not the PR branch's actual head commit — verified against
-          # a real run (differed from workflow_run.head_sha). Falls back to
-          # github.sha for push/workflow_dispatch, where it's correct as-is.
           name: test-results-unit-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-unit.json
+          retention-days: 7
+      - name: Upload unit coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: coverage-unit/coverage-final.json
           retention-days: 7
 
   test:
@@ -92,12 +85,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run tests with coverage
-        # Each shard runs with --coverage. Coverage reports are generated to
-        # coverage/ and renamed with shard suffix, then merged in the coverage
-        # job (see issue #483).
         run: |
           pnpm exec vitest run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=json --coverage --outputFile.json=test-results-shard-${{ matrix.shard }}.json
-          # Rename coverage files to include shard number for later merging
           if [ -f coverage/coverage-final.json ]; then
             mkdir -p coverage-shards
             cp coverage/coverage-final.json coverage-shards/coverage-${{ matrix.shard }}.json
@@ -177,8 +166,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history needed so `origin/<base>` is available locally for
-          # the diff artifacts below (same reason the coverage job needs it).
           fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
@@ -192,10 +179,6 @@ jobs:
       - name: Build
         run: pnpm run build
       - name: Generate dependency + overall diff artifacts
-        # PR-only: diffing a push-to-main event against itself is meaningless.
-        # See #484 (CI Artifacts Phase 2) — reviewer/agent-facing summary of
-        # "did dependencies change" and "how big is this PR" with zero new
-        # dependencies, just git already in the checkout.
         if: always() && github.event_name == 'pull_request'
         env:
           DIFF_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
@@ -214,7 +197,7 @@ jobs:
 
   coverage:
     name: Coverage
-    needs: [test]
+    needs: [test, unit-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -222,9 +205,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history needed to resolve the merge-base for the patch-coverage
-          # diff below (git diff base...HEAD) — the default shallow checkout
-          # doesn't have origin/main available locally.
           fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
@@ -241,18 +221,17 @@ jobs:
           pattern: coverage-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
           path: ./coverage-shards-downloads/
           merge-multiple: true
+      - name: Download unit coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ./coverage-shards-downloads/
       - name: Prepare coverage for merging
-        # Move downloaded coverage files into coverage-shards/ directory with
-        # standard names for the merge script
         run: |
           mkdir -p coverage-shards
-          # Find all coverage-*.json files and move them into coverage-shards
           find coverage-shards-downloads -name "coverage-*.json" -exec cp {} coverage-shards/ \;
           ls -la coverage-shards/ || true
       - name: Merge coverage from sharded test runs
-        # Merges coverage files from all 4 shards into a unified report
-        # using the merge-coverage script (issue #483). This replaces the
-        # previous approach of running the full suite a second time with --coverage.
         run: node scripts/merge-coverage.mjs
       - name: Enforce patch coverage (changed lines must be tested)
         if: always() && github.event_name == 'pull_request'
@@ -269,15 +248,9 @@ jobs:
           fail_ci_if_error: false
           verbose: true
       - name: Generate coverage gaps report
-        # No always() here on purpose: if pnpm test:coverage itself failed,
-        # coverage-summary.json may be missing or incomplete, and main being
-        # broken is not something a routine gaps-report update should paper
-        # over — let this step skip naturally rather than post stale data.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/report-coverage-gaps.mjs
       - name: Update pinned Coverage Gaps issue
-        # Standing downtime backlog (see #504) — always-current instead of a
-        # separate schedule, since this job already runs on every main push.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -299,33 +272,12 @@ jobs:
   job-durations:
     name: Job Durations
     needs: [test-layout, tool-registry-sync, unit-tests, test, type-check, lint, build, coverage]
-    # always(), not success() — an anomalous duration (a shard silently running
-    # the full suite instead of its 1/4 slice, a job hanging) is exactly the
-    # signal this artifact exists to surface, and that's at least as likely to
-    # co-occur with a failing run as a passing one. See #484 (CI Artifacts
-    # Phase 2) — this would have caught PR #482's silent no-op-sharding and
-    # the full-suite-runs-twice issue (#483) automatically, from data GitHub
-    # already records, instead of requiring a human to notice the timing felt
-    # off.
     if: always()
     runs-on: ubuntu-latest
     permissions:
       actions: read
     steps:
       - name: Fetch per-job, per-step durations for this run
-        # No checkout needed — this only reads GitHub's own Jobs API for the
-        # run this job is already part of. By the time our `needs:` list is
-        # satisfied, every job/step listed there has a real started_at/
-        # completed_at; jq computes each duration in seconds. Two separate
-        # null cases, both guarded: (1) a step that never ran (skipped via an
-        # `if:`) has null timestamps, so duration_seconds falls back to null
-        # instead of erroring; (2) `.jobs[]` also includes sibling jobs NOT
-        # in our needs: list (notify, trigger-auto-merge, this job itself)
-        # that may still be queued/not-yet-started when we query — the Jobs
-        # API returns `steps: null` (not `[]`) for those, and `.steps[]`
-        # unguarded throws "Cannot iterate over null" and kills the whole
-        # filter. `(.steps // [])[]` verified against a mock with exactly
-        # this shape before relying on it here.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -375,18 +327,12 @@ jobs:
   trigger-auto-merge:
     name: Trigger Auto-Merge Check
     needs: [test-layout, tool-registry-sync, unit-tests, test, type-check, lint, build, coverage]
-    # workflow_run only reliably fires for push-triggered runs, not pull_request-triggered
-    # ones (see auto-merge.yml) — dispatching directly here is the reliable fast path;
-    # the 5-min cron in auto-merge.yml remains as a fallback if this ever fails to fire.
     if: always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'auto-merge')
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
       - name: Dispatch auto-merge sweep
-        # Best-effort only — this is a speed optimization, never a merge
-        # requirement. The cron fallback in auto-merge.yml is the real safety
-        # net, so a failed dispatch must never block anything.
         continue-on-error: true
         uses: actions/github-script@v7
         with:
