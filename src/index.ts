@@ -1780,14 +1780,22 @@ const getIsAuthenticated = (c: any): boolean => {
 }
 
 // #498 — single auth guard for all bare-method handlers (was 5 copies in two styles).
-// Returns null when authenticated, or a 401 JSON-RPC error response to return directly.
+// Returns null when authenticated, or a JSON-RPC error response to return directly.
+// httpStatus defaults to 200 (JSON-RPC convention: errors are protocol-level, not
+// transport-level) except for the Streamable HTTP middleware, which — unlike every
+// other call site — must surface a real HTTP 401 for spec-compliant MCP SDK clients
+// that check status codes rather than parsing the JSON-RPC error body.
 const unauthorizedIfNeeded = (
   c: any,
   id: string | number | null,
+  httpStatus: 200 | 401 = 200,
 ): ReturnType<typeof c.json> | null =>
   getIsAuthenticated(c)
     ? null
-    : c.json(makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'), 200)
+    : c.json(
+        makeError(id, -32001, 'Unauthorized: valid X-Api-Key header required'),
+        httpStatus,
+      )
 
 // Pre-built Streamable HTTP handler — routes spec-compliant MCP SDK clients to
 // the HolmgardMCP DO via the agents SDK session management.
@@ -1837,7 +1845,10 @@ app.use('/mcp', async (c, next) => {
 
   if (!isStreamableHttp || !c.env.MCP_OBJECT) return next()
 
-  return unauthorizedIfNeeded(c, null) ?? mcpServeHandler.fetch(c.req.raw, c.env as any, c.executionCtx as any)
+  return (
+    unauthorizedIfNeeded(c, null, 401) ??
+    mcpServeHandler.fetch(c.req.raw, c.env as any, c.executionCtx as any)
+  )
 })
 
 app.get('/mcp', (c) => {
