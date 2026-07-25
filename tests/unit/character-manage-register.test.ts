@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import {
-  getToolHandler,
-  getToolDefinition,
-  getTools,
-} from '../../src/tools/register'
+import { getToolHandler, getToolDefinition, getTools } from '../../src/tools/register'
 import { registerCharacterManageTool } from '../../src/rpg/register-character-manage'
 
 describe('character_manage registration (Phase 2 #543)', () => {
