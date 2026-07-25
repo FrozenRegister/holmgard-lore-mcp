@@ -113,7 +113,7 @@ const StatsSchema = z.object({
   cha: z.number().default(10),
 })
 
-const InputSchema = z.object({
+export const InputSchema = z.object({
   action: z.string(),
   id: z.string().optional(),
   characterId: z.string().optional(),

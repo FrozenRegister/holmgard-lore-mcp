@@ -21,7 +21,7 @@ export { setToolIndex, setSchemaIndex, registerRpgSubSchema, registerRpgAlias }
 
 type RpgFn = (env: AppBindings, args: Record<string, unknown>) => Promise<McpResponse>
 
-function wrap(fn: RpgFn): ToolHandler {
+export function wrap(fn: RpgFn): ToolHandler {
   return async ({ c, id, args }) => {
     const result = await fn(c.env, args ?? {})
     return c.json(makeResult(id, result), 200)
