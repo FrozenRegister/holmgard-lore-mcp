@@ -167,8 +167,10 @@ for the step-by-step mechanics.
 
 **This is not the primary repo-update mechanism.** Normal file pushes
 (`create_or_update_file` / `PUT`) are the default. The patch pipeline exists for
-the narrow case where a file is too large to push whole (e.g. `package-lock.json`,
-generated files with thousands of lines) and only 1–2 lines need to change.
+the narrow case, within the allowlist below, where a file is too large to push
+whole cleanly (e.g. a long guide under `docs/`) and only 1–2 lines need to change.
+It cannot be used for files outside the allowlist regardless of size — a patch
+touching `pnpm-lock.yaml` or anything under `src/`, for example, is rejected.
 
 **Security model (summarized):**
 

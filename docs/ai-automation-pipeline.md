@@ -360,7 +360,7 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 
 **Failure handling:** If validation fails, read the error message in the PR's CI run — see [`docs/agent-ci-artifacts-guide.md`](./agent-ci-artifacts-guide.md) for how to read CI failures. Regenerate the patch against current file content and push again.
 
-**When to use:** This is a last-resort tool. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when the file is very large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering.
+**When to use:** This is a last-resort tool, and only within the path allowlist above (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`) — it cannot be used for files outside that allowlist regardless of size. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when an in-allowlist file is large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering.
 
 ---
 

@@ -10,34 +10,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Guard job: always runs, decides whether to apply patches.
-  check-for-patches:
-    runs-on: ubuntu-latest
-    outputs:
-      has_patches: ${{ steps.check.outputs.has_patches }}
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-
-      - name: Check for patches
-        id: check
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          patches=(.patches/*.patch)
-          if [ ${#patches[@]} -eq 0 ]; then
-            echo "No patches to apply."
-            echo "has_patches=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Found ${#patches[@]} patch(es)."
-            echo "has_patches=true" >> "$GITHUB_OUTPUT"
-          fi
-
   apply-patch:
-    needs: check-for-patches
-    if: needs.check-for-patches.outputs.has_patches == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
@@ -62,7 +35,7 @@ jobs:
             # 2. Dry-run validation
             git apply --check "$patch_file"
 
-            # 3. Path allowlist/deny-list
+            # 3. Path allowlist/deny-list, checked against the patch's real targets
             paths=$(git apply --numstat "$patch_file" | awk '{print $3}')
             for p in $paths; do
               case "$p" in

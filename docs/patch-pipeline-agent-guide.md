@@ -18,8 +18,11 @@ faster, and avoids the overhead of the patch pipeline.
 
 **Use a patch only as a last resort, when:**
 
-- The file is huge (e.g. `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, generated
-  files with thousands of lines) and you only need to add, remove, or change 1–2 lines.
+- The file is large (e.g. a long guide under `docs/`, or `README.md`) and you only need
+  to add, remove, or change 1–2 lines. This only helps *within* the allowlist below —
+  a file outside it (e.g. `pnpm-lock.yaml`, or anything under `src/`) can't be patched
+  through this pipeline regardless of size; use a normal push for those, or split the
+  change into a PR a human can review directly.
 - A full rewrite risks truncation due to the file's size.
 - A full rewrite would clobber concurrent edits from other agents or humans.
 - The token cost of sending the full file is prohibitive for the size of the change.
@@ -64,4 +67,3 @@ nothing is auto-merged and nothing reaches `main` without review.
 Any path outside the current allowlist — including the excluded agent-instruction/protocol
 documents above — is explicitly out of scope for Phase 1. Track requests to widen it as a
 follow-up issue referencing #554, not as a patch attempt (which will simply be rejected).
-> Smoke test applied.
