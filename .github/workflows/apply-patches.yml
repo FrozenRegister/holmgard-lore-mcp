@@ -11,6 +11,9 @@ permissions:
 
 jobs:
   apply-patch:
+    # Idempotency guard: skip when no patches exist (e.g. after the
+    # workflow itself commits the applied changes back onto the branch).
+    if: ${{ hashFiles('.patches/*.patch') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
@@ -18,26 +21,9 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - name: Check for patches
-        id: check
-        run: |
-          set -euo pipefail
-          # glob expansion with nullglob: if no matches, array is empty
-          shopt -s nullglob
-          patches=(.patches/*.patch)
-          if [ ${#patches[@]} -eq 0 ]; then
-            echo "No patches to apply."
-            echo "has_patches=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Found ${#patches[@]} patch(es)."
-            echo "has_patches=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Validate and apply patches
-        if: steps.check.outputs.has_patches == 'true'
         run: |
           set -euo pipefail
-          shopt -s nullglob
           for patch_file in .patches/*.patch; do
             [ -f "$patch_file" ] || continue
 
@@ -74,7 +60,6 @@ jobs:
           done
 
       - name: Commit applied changes
-        if: steps.check.outputs.has_patches == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'docs: apply patch ${{ github.event.pull_request.head.sha }}'
