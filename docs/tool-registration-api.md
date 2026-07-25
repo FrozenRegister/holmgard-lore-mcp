@@ -8,7 +8,7 @@ The registration system is additive — it exists alongside the existing `toolRe
 
 ## Dependency Note
 
-`zod-to-json-schema` is a **transitive dependency** via `@modelcontextprotocol/sdk` (not a direct dependency in `package.json`). This avoids lockfile churn while still making `zodToJsonSchema()` available for converting Zod schemas to JSON Schema.
+`zod-to-json-schema` is added as a **direct dependency** in `package.json` (`^3.24.6`), making `zodToJsonSchema()` available for converting Zod schemas to JSON Schema.
 
 ## API
 
