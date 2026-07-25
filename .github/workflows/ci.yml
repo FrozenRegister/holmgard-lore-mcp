@@ -59,7 +59,7 @@ jobs:
         # which vitest then treats as a positional test-file filter, not
         # flags — silently swallowing --reporter/--outputFile (and, in the
         # sharded `test` job below, --shard itself). Verified locally.
-        run: pnpm exec vitest run --config vitest.unit.config.ts --reporter=default --reporter=json --outputFile.json=test-results-unit.json
+        run: pnpm exec vitest run --config vitest.unit.config.ts --reporter=default --reporter=json --coverage --outputFile.json=test-results-unit.json
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,6 +70,13 @@ jobs:
           # github.sha for push/workflow_dispatch, where it's correct as-is.
           name: test-results-unit-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-unit.json
+          retention-days: 7
+      - name: Upload unit coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: coverage-unit/coverage-final.json
           retention-days: 7
 
   test:
@@ -177,8 +184,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history needed so `origin/<base>` is available locally for
-          # the diff artifacts below (same reason the coverage job needs it).
           fetch-depth: 0
       - uses: pnpm/action-setup@v4.0.0
         with:
@@ -214,7 +219,7 @@ jobs:
 
   coverage:
     name: Coverage
-    needs: [test]
+    needs: [test, unit-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -241,6 +246,11 @@ jobs:
           pattern: coverage-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
           path: ./coverage-shards-downloads/
           merge-multiple: true
+      - name: Download unit coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ./coverage-shards-downloads/
       - name: Prepare coverage for merging
         # Move downloaded coverage files into coverage-shards/ directory with
         # standard names for the merge script

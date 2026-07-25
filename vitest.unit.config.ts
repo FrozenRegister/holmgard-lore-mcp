@@ -11,6 +11,13 @@ export default defineConfig({
     name: 'unit',
     include: ['tests/unit/**/*.test.ts'],
     testTimeout: 5000,
+    coverage: {
+      provider: 'istanbul',
+      reporter: ['json'],
+      include: ['src/**/*.ts'],
+      exclude: ['node_modules/**', 'src/**/migrate-*.ts'],
+      reportsDirectory: './coverage-unit',
+    },
   },
   resolve: {
     alias: {
