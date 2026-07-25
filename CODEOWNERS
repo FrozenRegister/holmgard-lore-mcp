@@ -14,5 +14,13 @@ src/rpg/ @FrozenRegister
 src/tools/ @FrozenRegister
 src/lib/ @FrozenRegister
 
+# Patch-pipeline-writable paths (#554) — the apply-patches.yml workflow can write to
+# these paths unattended, so they need an enforced human reviewer, not just convention
+docs/ @FrozenRegister
+.changelog/fragments/ @FrozenRegister
+README.md @FrozenRegister
+CONTRIBUTING.md @FrozenRegister
+TODO.md @FrozenRegister
+
 # Everything else has no specific owner requirement
 # but should still go through PR review

@@ -1,0 +1,63 @@
+name: Apply Remote Repo Patches
+
+on:
+  pull_request:
+    paths:
+      - '.patches/*.patch'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Validate and apply patches
+        run: |
+          set -euo pipefail
+          for patch_file in .patches/*.patch; do
+            [ -f "$patch_file" ] || continue
+
+            # 1. Size limit (~200KB)
+            size=$(stat -c%s "$patch_file")
+            if [ "$size" -gt 204800 ]; then
+              echo "::error::$patch_file exceeds 200KB size limit ($size bytes)"
+              exit 1
+            fi
+
+            # 2. Dry-run validation
+            git apply --check "$patch_file"
+
+            # 3. Path allowlist/deny-list, checked against the patch's real targets
+            paths=$(git apply --numstat "$patch_file" | awk '{print $3}')
+            for p in $paths; do
+              case "$p" in
+                .github/*|CLAUDE.md|ISSUE_RESOLUTION_PROTOCOL.md|PROTOCOL_INVOCATION.md|ARCHITECTURE.md|SECURITY.md|CHANGELOG.md)
+                  echo "::error::$patch_file touches disallowed path: $p"
+                  exit 1
+                  ;;
+                docs/*|.changelog/fragments/*|README.md|CONTRIBUTING.md|TODO.md)
+                  ;;
+                *)
+                  echo "::error::$patch_file touches path outside Phase 1 allowlist: $p"
+                  exit 1
+                  ;;
+              esac
+            done
+
+            # 4. Apply and clean up
+            git apply "$patch_file"
+            rm "$patch_file"
+          done
+
+      - name: Commit applied changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'docs: apply patch ${{ github.event.pull_request.head.sha }}'
+          file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md'
