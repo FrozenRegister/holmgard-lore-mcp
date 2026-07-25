@@ -1,9 +1,0 @@
-diff --git a/docs/patch-pipeline-agent-guide.md b/docs/patch-pipeline-agent-guide.md
-index 3042b29..ef5b2bb 100644
---- a/docs/patch-pipeline-agent-guide.md
-+++ b/docs/patch-pipeline-agent-guide.md
-@@ -46,3 +46,4 @@ nothing is auto-merged and nothing reaches `main` without review.
- Any path outside the current allowlist — including the excluded agent-instruction/protocol
- documents above — is explicitly out of scope for Phase 1. Track requests to widen it as a
- follow-up issue referencing #554, not as a patch attempt (which will simply be rejected).
-+> Smoke test applied.
