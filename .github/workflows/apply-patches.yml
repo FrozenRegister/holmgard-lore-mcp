@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   # Guard job: always runs, decides whether to apply patches.
-  # When no patches exist, this succeeds (instead of skipping all jobs → GitHub reports failure).
   check-for-patches:
     runs-on: ubuntu-latest
     outputs:
@@ -63,7 +62,7 @@ jobs:
             # 2. Dry-run validation
             git apply --check "$patch_file"
 
-            # 3. Path allowlist/deny-list, checked against the patch's real targets
+            # 3. Path allowlist/deny-list
             paths=$(git apply --numstat "$patch_file" | awk '{print $3}')
             for p in $paths; do
               case "$p" in
@@ -89,4 +88,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'docs: apply patch ${{ github.event.pull_request.head.sha }}'
-          file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md'
+          file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md .patches/*.patch'
