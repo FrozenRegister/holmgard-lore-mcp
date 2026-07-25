@@ -25,9 +25,13 @@ import { mathManageSchemaDoc } from './rpg/definitions'
 import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
+import { registerCharacterManageTool } from './rpg/register-character-manage'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
+
+// Phase 2 pilot: register character_manage via registerTool() (#543)
+registerCharacterManageTool()
 
 // Initialize meta-tool indexes once at module load time
 setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
