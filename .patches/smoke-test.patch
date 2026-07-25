@@ -1,7 +1,7 @@
 --- a/docs/patch-pipeline-agent-guide.md
 +++ b/docs/patch-pipeline-agent-guide.md
-@@ -29,3 +29,4 @@ Any path outside the current allowlist — including the excluded agent-instruction
- documents above — is explicitly out of scope for Phase 1. Track requests to widen it as a
+@@ -45,3 +45,4 @@ Any path outside the current allowlist \u2014 including the excluded agent-instruction
+ documents above \u2014 is explicitly out of scope for Phase 1. Track requests to widen it as a
  follow-up issue referencing #554, not as a patch attempt (which will simply be rejected).
 +
 +> Smoke test applied.
