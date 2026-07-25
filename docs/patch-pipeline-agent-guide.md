@@ -9,6 +9,27 @@ submitting a unified diff instead of rewriting an entire file. See
 [issue #554](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/554) for the
 full design writeup, including the red-team review that shaped the security model below.
 
+## When to use this
+
+**Default: use a normal file push (`create_or_update_file` / `PUT`).** For the majority
+of changes — small files, new files, files under ~500 lines, or any edit where you're
+modifying more than a few lines — just rewrite the file and push it. It's simpler,
+faster, and avoids the overhead of the patch pipeline.
+
+**Use a patch only as a last resort, when:**
+
+- The file is large (e.g. a long guide under `docs/`, or `README.md`) and you only need
+  to add, remove, or change 1–2 lines. This only helps *within* the allowlist below —
+  a file outside it (e.g. `pnpm-lock.yaml`, or anything under `src/`) can't be patched
+  through this pipeline regardless of size; use a normal push for those, or split the
+  change into a PR a human can review directly.
+- A full rewrite risks truncation due to the file's size.
+- A full rewrite would clobber concurrent edits from other agents or humans.
+- The token cost of sending the full file is prohibitive for the size of the change.
+
+In short: if you can push the whole file cleanly, do that. Patches exist for the cases
+where you can't.
+
 ## Why a diff instead of a full-file rewrite
 
 Full-file rewrites via `create_or_update_file` / `PUT /repos/{owner}/{repo}/contents/{path}`

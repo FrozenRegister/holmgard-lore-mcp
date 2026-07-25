@@ -26,3 +26,5 @@ Read [CLAUDE.md](./CLAUDE.md) for storage selection (KV vs. D1), API surface con
 **New or moved test files go under `tests/unit/`, `tests/worker/`, or `tests/live/` — never colocated beside source, and never a new top-level test directory.** See CLAUDE.md § Tests. This is enforced by `pnpm run check:test-layout`, which runs as its own CI job and as the first step of the local pre-commit gate (auto-enabled by `pnpm install` via the `prepare` script — no manual `git config` needed).
 
 For the full autonomous-agent workflow, see [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) and [PROTOCOL_INVOCATION.md](./PROTOCOL_INVOCATION.md).
+
+For submitting small targeted edits to `docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, or `TODO.md` via a unified diff instead of a full-file rewrite (last resort, only when a file is too large to push whole cleanly — it cannot be used outside this allowlist regardless of size), see [`docs/patch-pipeline-agent-guide.md`](./docs/patch-pipeline-agent-guide.md) and [`.patches/README.md`](./.patches/README.md).

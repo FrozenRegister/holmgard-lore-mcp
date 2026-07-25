@@ -156,6 +156,31 @@ keeps the MCP tool count low (agents see 10 top-level tools — 5 lore-system
 `*_manage` tools plus `rpg`, `agent_manage`, `character_manage`, `search_tools`,
 `load_tool_schema` — not 70+) while still exposing fine-grained operations.
 
+## Patch pipeline for remote agents
+
+This repo includes an async patch pipeline (issue #554) for remote AI agents that
+need to make small, targeted edits to a narrow allowlist of low-risk paths
+(`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`)
+without rewriting entire files. See [`docs/patch-pipeline-agent-guide.md`](docs/patch-pipeline-agent-guide.md)
+for the full agent-facing documentation and [`.patches/README.md`](.patches/README.md)
+for the step-by-step mechanics.
+
+**This is not the primary repo-update mechanism.** Normal file pushes
+(`create_or_update_file` / `PUT`) are the default. The patch pipeline exists for
+the narrow case, within the allowlist below, where a file is too large to push
+whole cleanly (e.g. a long guide under `docs/`) and only 1–2 lines need to change.
+It cannot be used for files outside the allowlist regardless of size — a patch
+touching `pnpm-lock.yaml` or anything under `src/`, for example, is rejected.
+
+**Security model (summarized):**
+
+- Path allowlist/deny-list enforced via `git apply --numstat` before applying
+- Every patch goes through `git apply --check` (reject anything that doesn't apply cleanly)
+- ~200KB size cap
+- `.github/**`, `CLAUDE.md`, protocol documents, and this file (`ARCHITECTURE.md`) are explicitly denied
+- Patches land on a PR branch with the same CI and CODEOWNERS review as any human-authored PR; nothing is auto-merged
+- The workflow is at `.github/workflows/apply-patches.yml`
+
 ## Design decisions
 
 - **Why Hono?** Lightest router with good middleware support for Cloudflare Workers.
