@@ -4,7 +4,7 @@ This document describes the complete GitHub Actions automation system for `holmg
 
 ## Overview
 
-The automation pipeline consists of 12 workflows that work together to:
+The automation pipeline consists of 13 workflows that work together to:
 
 1. **Triage issues** by surface area and complexity depth
 2. **Batch open issues** into parallelizable groups
@@ -17,8 +17,9 @@ The automation pipeline consists of 12 workflows that work together to:
 9. **Auto-fix markdown formatting** on PRs that touch `.md` files
 10. **Detect upstream changes** in the Mnehmos source repo weekly
 11. **Validate workflow YAML** itself on every change to `.github/workflows/`
+12. **Apply remote repo patches** submitted by AI agents via `.patches/*.patch`
 
-The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–12 were added later and follow the same pattern of narrow, single-purpose automation.
+The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–13 were added later and follow the same pattern of narrow, single-purpose automation.
 
 ---
 
@@ -336,6 +337,31 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 
 **Purpose:** Lints every workflow file with `yamllint` and checks each has the required top-level `name:`/`on:`/`jobs:` fields — a workflow that validates the other workflows, catching a broken YAML edit before it merges rather than after a real job fails to even start.
 
+### 13. Apply Remote Repo Patches (`apply-patches.yml`)
+
+**Trigger:** `pull_request` (paths: `.patches/*.patch`)
+
+**Purpose:** Validate and apply unified-diff patches submitted by remote AI agents, enabling small targeted edits to low-risk paths without full-file rewrites. See [`docs/patch-pipeline-agent-guide.md`](./patch-pipeline-agent-guide.md) and [issue #554](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/554) for full details.
+
+**Security model:**
+
+- **Path allowlist:** Only `docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, and `TODO.md` can be modified. `.github/**`, `CLAUDE.md`, protocol documents, and `ARCHITECTURE.md` are explicitly denied.
+- **`git apply --check`:** Reject any patch that doesn't apply cleanly to the current branch.
+- **~200KB size cap:** Prevents oversized patches.
+- **No auto-merge:** Applied changes land on the PR branch and go through the same CI + CODEOWNERS review as any human-authored PR.
+
+**How it works:**
+
+1. Agent pushes a branch containing `.patches/<name>.patch` and opens a PR.
+2. The workflow runs `git apply --check` and `git apply --numstat` to validate format and target paths.
+3. If validation passes, the patch is applied and committed back onto the PR branch.
+4. The `.patches/*.patch` file is deleted — it's a one-shot submit format, not persistent.
+5. Normal review/CI takes over.
+
+**Failure handling:** If validation fails, read the error message in the PR's CI run — see [`docs/agent-ci-artifacts-guide.md`](./agent-ci-artifacts-guide.md) for how to read CI failures. Regenerate the patch against current file content and push again.
+
+**When to use:** This is a last-resort tool. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when the file is very large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering.
+
 ---
 
 ## Setting Up the Pipeline
@@ -465,3 +491,4 @@ This project is a Cloudflare Worker (backend only), with no browser code or fron
 - [CLAUDE.md](../CLAUDE.md) — Implementation guidelines, test patterns, architecture
 - [CHANGELOG.md](../CHANGELOG.md) — What changed, when
 - [Issue #33](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/33) — Original feature request
+- [`docs/patch-pipeline-agent-guide.md`](./patch-pipeline-agent-guide.md) — Patch pipeline for remote agents (#554)
