@@ -152,6 +152,8 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **Full Issue Resolution Protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) for the complete workflow (branching, testing, documentation, PR creation).
 
+**Patch-based repo updates (remote agents):** For small, targeted edits to a narrow allowlist of low-risk paths (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`), remote agents can submit a unified diff via `.patches/*.patch` in a PR instead of a full-file rewrite — see [`docs/patch-pipeline-agent-guide.md`](./docs/patch-pipeline-agent-guide.md) and [issue #554](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/554). `.github/**`, `CLAUDE.md`, and the other protocol/architecture documents are explicitly excluded from this pipeline.
+
 ### Delegation triage — when an issue is a cheaper-agent candidate
 
 **Whenever you pick up a GitHub Issue in this repo — for any reason, not just when explicitly asked — classify it before writing code.** Some issues are worth executing directly; others are pure spec-following work that a cheaper/faster agent (DeepSeek v4 Pro, DeepSeek v4 Flash, GLM-5.2, Kimi K2.5, Kimi K2.7-Code, MiMo-v2.5, MiMo-v2.5-Pro, MiniMax-M3, Qwen3.7-Max, Qwen3.7-Plus, or similar) can execute just as well once the judgment calls are already made. Getting this classification wrong in the "delegate" direction is expensive — the failure mode isn't slightly-worse code, it's a wrong architectural call (e.g. picking D1 where KV belongs, or guess-backfilling narrative data) that then needs a second pass to catch.
