@@ -38,6 +38,9 @@ lerna-debug.log*
 # coverage
 coverage/
 
+# agent worktrees (created by isolated background subagent runs)
+.claude/worktrees/
+
 # misc
 .DS_Store
 test-failures.json
