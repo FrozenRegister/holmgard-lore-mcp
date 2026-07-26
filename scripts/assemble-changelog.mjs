@@ -61,7 +61,9 @@ function parseFragment(filename, text) {
   }
 
   if (preambleText !== '') {
-    console.log(`${filename}: folding leading title/content into its first "${sections[0].heading}" section`)
+    console.log(
+      `${filename}: folding leading title/content into its first "${sections[0].heading}" section`,
+    )
     sections[0].lines.unshift('', preambleText, '')
   }
 
@@ -91,8 +93,7 @@ function splitSections(body) {
 // between sections, rather than trying to craft each insertion string exactly right.
 function serialize(preamble, sections) {
   return (
-    preamble +
-    sections.map((s) => `${s.heading}\n${s.content.replace(/\s+$/, '')}\n\n`).join('')
+    preamble + sections.map((s) => `${s.heading}\n${s.content.replace(/\s+$/, '')}\n\n`).join('')
   )
 }
 
@@ -167,15 +168,16 @@ function main() {
   // boundary between segments (e.g. Unreleased's own trailing blank line meeting
   // an empty tail at EOF) can't produce 2+ consecutive blank lines either —
   // then guarantee exactly one trailing newline, no trailing blank line.
-  const newChangelog = (head + newUnreleasedBody + tail)
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s+$/, '') + '\n'
+  const newChangelog =
+    (head + newUnreleasedBody + tail).replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n'
 
   if (dryRun) {
     console.log(`[dry-run] Would assemble ${consumed.length} fragment(s):`)
     for (const path of consumed) console.log(`  - ${path}`)
     if (skipped.length > 0) {
-      console.log(`[dry-run] Would leave ${skipped.length} fragment(s) in place (parse errors above):`)
+      console.log(
+        `[dry-run] Would leave ${skipped.length} fragment(s) in place (parse errors above):`,
+      )
       for (const file of skipped) console.log(`  - ${file}`)
     }
     return
@@ -186,7 +188,9 @@ function main() {
 
   console.log(`Assembled ${consumed.length} fragment(s) into ${CHANGELOG_PATH}.`)
   if (skipped.length > 0) {
-    console.log(`Left ${skipped.length} fragment(s) in place (parse errors above) — fix and re-run:`)
+    console.log(
+      `Left ${skipped.length} fragment(s) in place (parse errors above) — fix and re-run:`,
+    )
     for (const file of skipped) console.log(`  - ${file}`)
     process.exitCode = 1
   }
