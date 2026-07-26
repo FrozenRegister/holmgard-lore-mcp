@@ -7,7 +7,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import { findCloseMatches } from '../../lib/fuzzy-match'
 import type { AppBindings } from '../../types'
 
-const InputSchema = z.object({
+export const InputSchema = z.object({
   toolName: z.string().min(1).describe('Exact tool name to retrieve the schema for'),
   sub: z
     .string()
