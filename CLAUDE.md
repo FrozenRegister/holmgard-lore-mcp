@@ -152,7 +152,7 @@ This fetches the Issue and generates a copy-paste prompt for Claude Code. See [P
 
 **Full Issue Resolution Protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](./ISSUE_RESOLUTION_PROTOCOL.md) for the complete workflow (branching, testing, documentation, PR creation).
 
-**Patch-based repo updates (remote agents):** For small, targeted edits to a narrow allowlist of low-risk paths (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`), remote agents can submit a unified diff via `.patches/*.patch` in a PR instead of a full-file rewrite — see [`docs/patch-pipeline-agent-guide.md`](./docs/patch-pipeline-agent-guide.md) and [issue #554](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/554). `.github/**`, `CLAUDE.md`, and the other protocol/architecture documents are explicitly excluded from this pipeline.
+**Patch-based repo updates (remote agents):** For small, targeted edits to a narrow allowlist of low-risk paths (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`, `src/**`, `tests/**`), remote agents can submit a unified diff via `.patches/*.patch` in a PR instead of a full-file rewrite — see [`docs/patch-pipeline-agent-guide.md`](./docs/patch-pipeline-agent-guide.md) and [issue #554](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/554). Patches touching `.ts`/`.mjs` files are gated on `pnpm run type-check` passing. `.github/**`, `CLAUDE.md`, and the other protocol/architecture documents are explicitly excluded from this pipeline.
 
 ### Delegation triage — when an issue is a cheaper-agent candidate
 

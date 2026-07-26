@@ -16,16 +16,21 @@ can submit a unified diff here instead of rewriting a whole file.
      against the allowlist/deny-list below. Any path outside the allowlist fails the check.
    - Applies the patch, deletes the `.patch` file, and commits the result back onto your
      PR branch (not the original `.patch` file — only the applied changes).
+   - **If the patch touches `.ts` or `.mjs` files**, runs `pnpm install --frozen-lockfile`
+     followed by `pnpm run type-check` as a CI gate. Type errors fail the check; the PR
+     cannot merge until they're resolved.
 3. Your PR then goes through normal review and CI like any other PR — nothing is
    auto-merged, and nothing ever lands on `main` without passing `CODEOWNERS` review.
 
-## Allowed paths (Phase 1)
+## Allowed paths (Phase 2)
 
 - `docs/**` (including `docs/issues/**`)
 - `.changelog/fragments/**`
 - `README.md`
 - `CONTRIBUTING.md`
 - `TODO.md`
+- `src/**` — application source (subject to the type-check gate above)
+- `tests/**` — test files (subject to the type-check gate above)
 
 ## Explicitly denied, always
 
@@ -36,11 +41,17 @@ can submit a unified diff here instead of rewriting a whole file.
 - `SECURITY.md` — governance document
 - `CHANGELOG.md` — generated from `.changelog/fragments/` at release time, not a hand-edit target
 
-Any path not explicitly listed as allowed is denied by default. Widening this list is
-tracked as a follow-up to #554, not something to request via a patch itself.
+Any path not explicitly listed as allowed is denied by default. Widening this list beyond
+`src/**` and `tests/**` requires a new issue referencing #554 and #567.
 
 ## If your patch fails `git apply --check`
 
 The target file has drifted since you read it. Re-fetch the current file content, regenerate
 your diff against it, and push a new commit to the same PR branch — no `--reject`/fuzzy-patch
-fallback is supported in Phase 1.
+fallback is supported in Phase 2.
+
+## If your patch fails the type-check gate
+
+The patch applied cleanly but introduced a TypeScript type error. The workflow logs the
+exact `tsc` diagnostics. Fix the type error (either in the patched file or by adjusting the
+patch) and push a new commit to the same PR branch.
