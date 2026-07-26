@@ -18,11 +18,11 @@ faster, and avoids the overhead of the patch pipeline.
 
 **Use a patch only as a last resort, when:**
 
-- The file is large (e.g. a long guide under `docs/`, or `README.md`) and you only need
-  to add, remove, or change 1–2 lines. This only helps *within* the allowlist below —
-  a file outside it (e.g. `pnpm-lock.yaml`, or anything under `src/`) can't be patched
-  through this pipeline regardless of size; use a normal push for those, or split the
-  change into a PR a human can review directly.
+- The file is large (e.g. `src/index.ts` at ~2200 lines, a long guide under `docs/`, or
+  `README.md`) and you only need to add, remove, or change 1–2 lines. This only helps
+  *within* the allowlist below — a file outside it (e.g. `pnpm-lock.yaml`, or anything
+  under `.github/`) can't be patched through this pipeline regardless of size; use a normal
+  push for those, or split the change into a PR a human can review directly.
 - A full rewrite risks truncation due to the file's size.
 - A full rewrite would clobber concurrent edits from other agents or humans.
 - The token cost of sending the full file is prohibitive for the size of the change.
@@ -39,16 +39,18 @@ clobbering concurrent edits on large files. A small unified diff avoids all thre
 ## Security model
 
 This pipeline can only ever touch a fixed, narrow allowlist of paths — `docs/**`,
-`.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md` — enforced by parsing
-each patch's actual target paths (`git apply --numstat`) before applying it, not just by
-the workflow's trigger filter. `.github/**` (workflow definitions), `CLAUDE.md`,
-`ISSUE_RESOLUTION_PROTOCOL.md`, `PROTOCOL_INVOCATION.md` (agent-instruction / protocol
-documents), `ARCHITECTURE.md` (the repo's authoritative design reference), `SECURITY.md`,
-and the generated `CHANGELOG.md` are explicitly denied, regardless of what a patch claims
-to target. Every patch also goes through `git apply --check` (reject anything that doesn't
-apply cleanly) and a ~200KB size cap before being applied. Applied changes land on a normal
-PR branch and go through the same `CODEOWNERS` review and CI as any human-authored PR —
-nothing is auto-merged and nothing reaches `main` without review.
+`.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`, `src/**`, and
+`tests/**` — enforced by parsing each patch's actual target paths (`git apply --numstat`)
+before applying it, not just by the workflow's trigger filter. `.github/**` (workflow
+definitions), `CLAUDE.md`, `ISSUE_RESOLUTION_PROTOCOL.md`, `PROTOCOL_INVOCATION.md`
+(agent-instruction / protocol documents), `ARCHITECTURE.md` (the repo's authoritative
+design reference), `SECURITY.md`, and the generated `CHANGELOG.md` are explicitly denied,
+regardless of what a patch claims to target. Every patch also goes through `git apply --check`
+(reject anything that doesn't apply cleanly) and a ~200KB size cap before being applied.
+Patches that touch `.ts` or `.mjs` files are additionally gated on `pnpm run type-check`
+passing — type errors fail the check and the PR cannot merge until resolved. Applied changes
+land on a normal PR branch and go through the same `CODEOWNERS` review and CI as any
+human-authored PR — nothing is auto-merged and nothing reaches `main` without review.
 
 ## How to submit a patch
 
@@ -57,13 +59,14 @@ nothing is auto-merged and nothing reaches `main` without review.
    that diff's content.
 3. Open a PR. `.github/workflows/apply-patches.yml` validates and applies the patch,
    committing the result back onto your PR branch, then normal review/CI takes over.
-4. If the check fails (size, `apply --check`, or path allowlist), read the failure message
-   in the PR's CI run, regenerate the patch against the current file content, and push
-   again — see `docs/agent-ci-artifacts-guide.md` for how to read CI failures without
-   re-running everything locally.
+4. If the check fails (size, `apply --check`, path allowlist, or type-check), read the
+   failure message in the PR's CI run, regenerate the patch against the current file
+   content, and push again — see `docs/agent-ci-artifacts-guide.md` for how to read CI
+   failures without re-running everything locally.
 
 ## Widening the allowlist
 
 Any path outside the current allowlist — including the excluded agent-instruction/protocol
-documents above — is explicitly out of scope for Phase 1. Track requests to widen it as a
-follow-up issue referencing #554, not as a patch attempt (which will simply be rejected).
+documents above — is explicitly out of scope for Phase 2. Track requests to widen it as a
+follow-up issue referencing #554 and #567, not as a patch attempt (which will simply be
+rejected).
