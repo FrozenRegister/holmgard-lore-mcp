@@ -429,7 +429,7 @@ Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upg
    > **⚠️ Critical:** Never assume your local workspace is up-to-date. The repository may have received commits from other sessions. Pushing stale files overwrites newer code with old versions — this breaks builds and tests in CI. Always pull first.
 
 1. **Create a GitHub Issue** describing the problem or feature before writing any code. Use `gh issue create` or the GitHub UI. This gives the PR something to close and provides a paper trail.
-2. **Create a branch** using the appropriate prefix: `git checkout -b feat/my-feature`
+2. **Check whether a branch/PR already exists for this issue before creating a new one.** If an open PR already covers the work (e.g. you're fixing a bug introduced by that PR, or continuing unfinished work on it), ask the human which they want: push the fix onto the existing branch (preferred — keeps one PR, one CI run, one review thread) or start a fresh branch. Don't default to a new branch unprompted — it silently produces duplicate PRs for what should be one unit of work. If you do need a new branch, use the appropriate prefix: `git checkout -b feat/my-feature`
 3. **Commit** locally with a conventional commit message
 4. **Run the fast local gate** before pushing (type-check, lint, touched test file)
 5. **Push** to the branch: `git push -u origin feat/my-feature`
