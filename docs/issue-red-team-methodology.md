@@ -98,7 +98,7 @@ This is deliberate, not a shortcut:
 
 ## Output format
 
-The red-team comment template lives in [`.github/RED_TEAM_TEMPLATE/red-team-comment.md`](../blob/main/.github/RED_TEAM_TEMPLATE/red-team-comment.md).
+The red-team comment template lives in [`.github/RED_TEAM_TEMPLATE/red-team-comment.md`](../.github/RED_TEAM_TEMPLATE/red-team-comment.md).
 Every run reads that file and fills in the issue-specific values. Do not duplicate the template
 inline in this doc — if the format changes, update the template file, not this section.
 
@@ -106,6 +106,10 @@ At minimum, each comment MUST include:
 - The `## 🔴 Red Team: #NNN — [issue title]` heading
 - At least one finding block with a confidence tag, OR the "no significant attack surface" fallback
 - A recommendation sub-section for each finding
+
+Post **one comment per issue, on that issue directly** — never a single cross-issue digest comment
+(see the template's Rules section; this is a resolved design question from #563, not a style
+preference).
 
 ### All-clear run
 

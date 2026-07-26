@@ -45,6 +45,11 @@ No significant attack surface identified for this issue's current scope.
 
 ## Rules
 
+- **One comment per issue, posted on that issue directly.** Never batch multiple issues' findings
+  into a single cross-issue digest comment — a GitHub comment lives on one issue thread, so a
+  digest either buries findings for issues it isn't posted on, or posts somewhere their watchers
+  don't look. The per-run throttle (at most 3–5 issues, oldest-first) already caps notification
+  volume; this rule is not solving the same problem again.
 - Every finding MUST be grounded in the specific mechanics the issue actually proposes.
 - Do not produce a finding just to satisfy a quota.
 - Do not reflexively cite "race condition" on every issue that mentions D1.
