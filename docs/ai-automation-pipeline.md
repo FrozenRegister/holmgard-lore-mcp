@@ -4,7 +4,7 @@ This document describes the complete GitHub Actions automation system for `holmg
 
 ## Overview
 
-The automation pipeline consists of 13 workflows that work together to:
+The automation pipeline consists of 14 workflows that work together to:
 
 1. **Triage issues** by surface area and complexity depth
 2. **Batch open issues** into parallelizable groups
@@ -18,8 +18,9 @@ The automation pipeline consists of 13 workflows that work together to:
 10. **Detect upstream changes** in the Mnehmos source repo weekly
 11. **Validate workflow YAML** itself on every change to `.github/workflows/`
 12. **Apply remote repo patches** submitted by AI agents via `.patches/*.patch`
+13. **Assemble the changelog** by folding `.changelog/fragments/**` into `CHANGELOG.md` on manual dispatch
 
-The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–13 were added later and follow the same pattern of narrow, single-purpose automation.
+The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–14 were added later and follow the same pattern of narrow, single-purpose automation.
 
 ---
 
@@ -361,6 +362,30 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 **Failure handling:** If validation fails, read the error message in the PR's CI run — see [`docs/agent-ci-artifacts-guide.md`](./agent-ci-artifacts-guide.md) for how to read CI failures. Regenerate the patch against current file content and push again.
 
 **When to use:** This is a last-resort tool, and only within the path allowlist above (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`) — it cannot be used for files outside that allowlist regardless of size. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when an in-allowlist file is large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering.
+
+### 14. Assemble Changelog (`changelog-assemble.yml`)
+
+**Trigger:** `workflow_dispatch` (manual, with an optional `dry_run` boolean input)
+
+**Purpose:** Fold pending `.changelog/fragments/*.md` files into `CHANGELOG.md`'s `## [Unreleased]` section, then delete the consumed fragments — the assembly step `.patches/README.md` and `CLAUDE.md` describe as happening "at release time" but that nothing previously automated.
+
+**How it works** (`scripts/assemble-changelog.mjs`, invoked directly — no npm script wrapper):
+
+1. Reads every `.changelog/fragments/*.md` file.
+2. Parses each fragment's `###` heading(s) (`### Added`, `### Changed`, `### Fixed`, ...) and groups their bullet content by heading.
+3. Appends each heading's content to the matching heading already under `## [Unreleased]` in `CHANGELOG.md` (creating the heading if it doesn't exist yet).
+4. Deletes the fragment files that were successfully folded in.
+5. `changelog-assemble.yml` commits the result back via `git-auto-commit-action`.
+
+**Handles real formatting drift**, not just the clean `### Added`-first convention:
+
+- A fragment with a leading `#`/`##` title line before its first `###` heading (e.g. `## Consolidated ad-hoc Math.random() rolls...`) has that title folded into the following section as a bold list item, not inserted as a literal heading — a raw `##` landing between `### Changed` and `### Added` in `CHANGELOG.md` would otherwise read as a new release section and corrupt the document structure.
+- A fragment with **no** `###` heading at all (just a title + bullets) defaults to `### Added`.
+- Blank/empty fragments are skipped (left in place, logged) rather than silently dropped or crashing the run.
+
+**Deliberately manual, not automatic on push:** running this against the current backlog (~174 fragments as of this writing) produces one large `CHANGELOG.md` diff — a consequential one-time action that should be a deliberate human call, not something CI does silently the next time an unrelated PR merges to `main`. Use the `dry_run` input first to preview what would be assembled without writing or deleting anything.
+
+**Local usage:** `node scripts/assemble-changelog.mjs [--dry-run]`
 
 ---
 
