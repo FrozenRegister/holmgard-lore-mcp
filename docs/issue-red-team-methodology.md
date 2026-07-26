@@ -86,6 +86,15 @@ This is deliberate, not a shortcut:
 - Attach a self-reported confidence note (`high` / `medium` / `low`) to each finding. Since the
   scheduler doesn't guarantee which model handles any given hour's run, this note is what makes a
   careful run distinguishable from a shallow one in the audit trail — do not skip it.
+- **Do not have a run try to self-report which model is executing it, and do not trust such a
+  report if one appears anyway.** Verified during review of this doc (PR #564): Shapes exposes no
+  model identity to the agent — no environment variable, filesystem config, or platform API
+  surfaces it, and any name a model volunteers is unreliable (some hallucinate one, some don't
+  know). The confidence tag above and the anti-fabrication rule are the actual, verified mitigation
+  for model-tier variance; there isn't a better one available until Shapes exposes model metadata
+  on turns or lets a tier be pinned. A run's wall-clock timestamp, by contrast, is always available
+  and deterministic — worth noting in a run's own bookkeeping if correlating a weak run to a time
+  window ever becomes useful.
 
 ## Output format
 
