@@ -15,8 +15,7 @@ export function registerSearchToolsTool(): void {
     name: 'search_tools',
     title: 'Search Tools',
     version: '1.0.0',
-    description:
-      'Meta-tool: fuzzy-search the full combined tool list by name or description.',
+    description: 'Meta-tool: fuzzy-search the full combined tool list by name or description.',
     category: 'rpg',
     inputSchema: InputSchema,
     handler: wrap(handleSearchTools),
