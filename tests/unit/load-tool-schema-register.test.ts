@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import {
-  getToolHandler,
-  getToolDefinition,
-  toJsonSchema,
-} from '../../src/tools/register'
+import { getToolHandler, getToolDefinition, toJsonSchema } from '../../src/tools/register'
 import { registerLoadToolSchemaTool } from '../../src/rpg/register-load-tool-schema'
 
 describe('load_tool_schema registration (Phase 3 #544)', () => {
