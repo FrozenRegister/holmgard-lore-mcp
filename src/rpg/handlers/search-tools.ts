@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 
-const InputSchema = z.object({
+export const InputSchema = z.object({
   query: z.string().min(1).describe('Search term to match against tool names and descriptions'),
   limit: z.number().int().min(1).max(50).optional().default(10),
 })
