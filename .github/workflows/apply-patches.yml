@@ -43,10 +43,10 @@ jobs:
                   echo "::error::$patch_file touches disallowed path: $p"
                   exit 1
                   ;;
-                docs/*|.changelog/fragments/*|README.md|CONTRIBUTING.md|TODO.md)
+                docs/*|.changelog/fragments/*|README.md|CONTRIBUTING.md|TODO.md|src/*|tests/*)
                   ;;
                 *)
-                  echo "::error::$patch_file touches path outside Phase 1 allowlist: $p"
+                  echo "::error::$patch_file touches path outside allowlist: $p"
                   exit 1
                   ;;
               esac
@@ -57,8 +57,23 @@ jobs:
             rm "$patch_file"
           done
 
+      - name: Type-check (conditional on TS patches)
+        run: |
+          set -euo pipefail
+          # Re-derive the patch's targets from the now-applied changes on this branch.
+          # If any .ts or .mjs files changed, run the type-check gate.
+          changed=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(ts|mjs)$' || true)
+          if [ -n "$changed" ]; then
+            echo "TypeScript files changed — running type-check:"
+            echo "$changed"
+            pnpm install --frozen-lockfile
+            pnpm run type-check
+          else
+            echo "No TypeScript files in patch — skipping type-check."
+          fi
+
       - name: Commit applied changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'docs: apply patch ${{ github.event.pull_request.head.sha }}'
-          file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md .patches/*.patch'
+          commit_message: 'chore: apply patch ${{ github.event.pull_request.head.sha }}'
+          file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md src/** tests/** .patches/*.patch'
