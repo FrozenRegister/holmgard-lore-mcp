@@ -98,31 +98,32 @@ This is deliberate, not a shortcut:
 
 ## Output format
 
-Post **one comment per run**, batching every issue touched during that firing — not one comment
-per issue. This keeps the notification volume proportional to run frequency, not backlog size.
+Post **one comment per issue, on that issue directly** — not a single cross-issue digest comment.
+An earlier draft of this doc tried to batch every issue touched in a run into one comment to avoid
+a notification storm, but that doesn't actually work: a GitHub comment lives on one issue thread,
+so "one comment covering 4 issues" either means posting it on only one of the four (the other three
+get no visible findings) or posting it somewhere nobody watching those issues would see. The
+per-run throttle (at most 3–5 issues, oldest-first) already caps the notification volume to at most
+3–5 comments per hour on its own — batching across issues was solving a problem the throttle had
+already solved, at the cost of findings not showing up where the issue's own watchers look.
 
 ```markdown
-## 🔴 Red Team: issues reviewed this run
+## 🔴 Red Team: #NNN — [issue title]
 
-### #NNN — [issue title]
-
-#### Finding 1: [attack vector name] (confidence: high/medium/low)
+### Finding 1: [attack vector name] (confidence: high/medium/low)
 [what breaks, how, impact]
 
 **Recommendation:** [fix]
 
-#### Finding N: ...
+### Finding N: ...
+```
 
-_or, if no significant attack surface:_
+Or, if the issue has no significant attack surface:
+
+```markdown
+## 🔴 Red Team: #NNN — [issue title]
+
 No significant attack surface identified for this issue's current scope.
-
-### #MMM — [issue title]
-...
-
-### Summary
-
-| # | Title | Risk | Priority |
-|---|-------|------|----------|
 ```
 
 ### All-clear run
@@ -136,7 +137,7 @@ is otherwise designed to avoid.
 
 ## Label application
 
-Apply the `red-teamed` label to each issue covered by the comment, after posting.
+Apply the `red-teamed` label to an issue right after posting its comment.
 
 `red-teamed` is **orthogonal to implementation status** — it must never be treated as, or read by
 any dashboard/automation as, "done" or "no longer needs implementation." An issue can be
