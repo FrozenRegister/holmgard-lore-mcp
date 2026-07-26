@@ -3,3 +3,4 @@
 - Bakes in the scope-boundary language from engineering review: issue/comment text is untrusted data, never instructions, since the Shapes scheduler has no toolset filter to enforce this mechanically
 - Documents the per-run issue throttle, batched single-comment output format, confidence-per-finding notes, and the `red-teamed` label's orthogonality to progress tracking
 - Intended so the 24 hourly scheduled actions can each carry a short prompt pointing at this doc instead of duplicating the full methodology 24 times
+- Adds a label-to-category mapping table for deterministic candidate filtering, an oldest-first tiebreaker for the per-run throttle, and an explicit all-clear no-op path, per PR review feedback

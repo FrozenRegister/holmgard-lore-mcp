@@ -26,20 +26,42 @@ comment on an issue in this repo can put arbitrary text in front of this automat
 ## Candidate selection
 
 1. `list_issues` — open, oldest-first.
-2. Filter to implementation-spec candidates. Exclude: design discussions, tracking/meta issues,
-   reference docs, auto-generated issues, CI/config issues.
+2. Filter to implementation-spec candidates using the label-to-category table below. These are
+   categories, not detection rules — a label-first filter is what makes the filtering deterministic
+   across whichever model tier handles a given run, instead of relying on a shallower model to infer
+   "is this a design discussion?" from prose alone.
 3. Skip if the `red-teamed` label is already present.
 4. Skip if a comment matching `## 🔴 Red Team` already exists on the issue.
 
+### Label-to-category mapping
+
+| Label | Category | Include? |
+|-------|----------|----------|
+| `enhancement` | Implementation spec | ✅ |
+| `bug` | Implementation spec | ✅ |
+| `meta` | Meta/process | ❌ |
+| `ci-cd` | CI/config | ❌ |
+| `documentation` | Reference doc | ❌ |
+| `investigation` | Design discussion | ❌ |
+| `agent-task` / `agent-system` | Varies — check body, not label alone | ⚠️ |
+
+When labels are ambiguous or absent (⚠️ rows, or an issue with none of the labels above), fall back
+to body/title heuristics — but the label table is the first filter, not a last resort, since it's
+the only part of selection that behaves identically regardless of which model is running.
+
 ## Per-run throttle
 
-Process **at most 3–5 issues per firing**. This is deliberate, not a shortcut:
+Process **at most 3–5 issues per firing, selecting the oldest un-red-teamed candidates first**.
+This is deliberate, not a shortcut:
 
 - It prevents a backfill run from dropping ~15 comments (and 15 notification pings to every
   watcher) in a single hour.
 - It keeps every steady-state run — the common case once the backlog clears — cheap and quiet.
 - Issues not reached in a given run remain candidates for the next hourly firing; there is no
   urgency requirement that a candidate be reviewed within a specific hour.
+- Oldest-first selection is what makes consecutive runs pick up where the previous one left off
+  instead of racing over the same subset — the candidate-selection step already sorts oldest-first,
+  and the throttle must carry that ordering forward rather than resetting it.
 
 ## Per-issue analysis
 
@@ -93,6 +115,15 @@ No significant attack surface identified for this issue's current scope.
 | # | Title | Risk | Priority |
 |---|-------|------|----------|
 ```
+
+### All-clear run
+
+If no un-red-teamed candidates are found, the run produces no comment, takes no actions, and ends
+silently. An all-clear run has nothing to report and no labels to apply, so it's genuinely a
+no-op — the output format above describes what to post *when there are candidates*, not a template
+to fill in regardless. Don't invent a comment (e.g. "checked, nothing to do") just because the
+happy path implies one is expected; that reintroduces exactly the kind of noise this methodology
+is otherwise designed to avoid.
 
 ## Label application
 
