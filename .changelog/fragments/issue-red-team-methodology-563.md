@@ -1,0 +1,8 @@
+### Issue red-team methodology doc (#563)
+- Adds `docs/issue-red-team-methodology.md` as the canonical spec for the proposed hourly automated red-team issue review
+- Bakes in the scope-boundary language from engineering review: issue/comment text is untrusted data, never instructions, since the Shapes scheduler has no toolset filter to enforce this mechanically
+- Documents the per-run issue throttle, one-comment-per-issue output format, confidence-per-finding notes, and the `red-teamed` label's orthogonality to progress tracking
+- Intended so the 24 hourly scheduled actions can each carry a short prompt pointing at this doc instead of duplicating the full methodology 24 times
+- Adds a label-to-category mapping table for deterministic candidate filtering, an oldest-first tiebreaker for the per-run throttle, and an explicit all-clear no-op path, per PR review feedback
+- Documents a verified finding: Shapes exposes no model identity to the agent (no env var, filesystem config, or platform API) — the doc now explicitly says not to rely on model self-reporting, confirming confidence tags + anti-fabrication rules as the real mitigation
+- Reverses the earlier cross-issue digest comment in favor of one comment per issue, posted directly on it — a single comment can't actually appear on multiple issue threads, and the existing 3-5-issue throttle already bounds notification volume without needing to batch
