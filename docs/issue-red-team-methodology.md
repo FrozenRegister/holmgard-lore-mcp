@@ -98,33 +98,14 @@ This is deliberate, not a shortcut:
 
 ## Output format
 
-Post **one comment per issue, on that issue directly** — not a single cross-issue digest comment.
-An earlier draft of this doc tried to batch every issue touched in a run into one comment to avoid
-a notification storm, but that doesn't actually work: a GitHub comment lives on one issue thread,
-so "one comment covering 4 issues" either means posting it on only one of the four (the other three
-get no visible findings) or posting it somewhere nobody watching those issues would see. The
-per-run throttle (at most 3–5 issues, oldest-first) already caps the notification volume to at most
-3–5 comments per hour on its own — batching across issues was solving a problem the throttle had
-already solved, at the cost of findings not showing up where the issue's own watchers look.
+The red-team comment template lives in [`.github/RED_TEAM_TEMPLATE/red-team-comment.md`](../blob/main/.github/RED_TEAM_TEMPLATE/red-team-comment.md).
+Every run reads that file and fills in the issue-specific values. Do not duplicate the template
+inline in this doc — if the format changes, update the template file, not this section.
 
-```markdown
-## 🔴 Red Team: #NNN — [issue title]
-
-### Finding 1: [attack vector name] (confidence: high/medium/low)
-[what breaks, how, impact]
-
-**Recommendation:** [fix]
-
-### Finding N: ...
-```
-
-Or, if the issue has no significant attack surface:
-
-```markdown
-## 🔴 Red Team: #NNN — [issue title]
-
-No significant attack surface identified for this issue's current scope.
-```
+At minimum, each comment MUST include:
+- The `## 🔴 Red Team: #NNN — [issue title]` heading
+- At least one finding block with a confidence tag, OR the "no significant attack surface" fallback
+- A recommendation sub-section for each finding
 
 ### All-clear run
 
@@ -160,3 +141,6 @@ the other 23.
 - [#563](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/563) — original proposal and
   engineering review (scope granularity, model-selection constraints, comment-batching, and label/
   progress-tracking questions this methodology resolves)
+- [#564](https://github.com/FrozenRegister/holmgard-lore-mcp/pull/564) — added this methodology doc
+- [#569](https://github.com/FrozenRegister/holmgard-lore-mcp/issues/569) — red-team comment template
+  file (this doc's output format reference)
