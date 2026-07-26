@@ -26,12 +26,20 @@ import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 import { registerCharacterManageTool } from './rpg/register-character-manage'
+import { registerAgentManageTool } from './rpg/register-agent-manage'
+import { registerSearchToolsTool } from './rpg/register-search-tools'
+import { registerLoadToolSchemaTool } from './rpg/register-load-tool-schema'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
 
 // Phase 2 pilot: register character_manage via registerTool() (#543)
 registerCharacterManageTool()
+
+// Phase 3: register agent_manage, search_tools, load_tool_schema via registerTool() (#544)
+registerAgentManageTool()
+registerSearchToolsTool()
+registerLoadToolSchemaTool()
 
 // Initialize meta-tool indexes once at module load time
 setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
@@ -63,7 +71,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
   {
     sub: 'corpse',
     description:
-      'Corpse ecology — decomposition, scavenging, looting, psychological impact. Actions: create, get, list, loot, decay, generate_loot, delete, register, decompose, scavenge_check, loot_corpse, recover, get_state, psychological_impact. NOTE: "id" is the corpse UUID (primary key of the corpses table), NOT a character ID. "characterId" is the dead character\'s UUID (required for create/register). "looterCharacterId" and "observerCharacterId" are living characters acting on the corpse. See docs/parameter-naming-conventions.md for the full cross-tool reference.',
+      'Corpse ecology — decomposition, scavenging, looting, psychological impact. Actions: create, get, list, loot, decay, generate_loot, delete, register, decompose, scavenge_check, loot_corpse, recover, get_state, psychological_impact. NOTE: "id" is the corpse UUID (primary key of the corpses table), NOT a character ID. "characterId" is the dead character's UUID (required for create/register). "looterCharacterId" and "observerCharacterId" are living characters acting on the corpse. See docs/parameter-naming-conventions.md for the full cross-tool reference.',
     schema: {
       type: 'object',
       properties: {
@@ -1821,7 +1829,7 @@ for (const s of SUB_SCHEMAS) {
     registerRpgSubSchema(s.sub, canonical.description, canonical.schema)
     registerRpgAlias(s.sub, s.aliasOf)
   } else {
-    registerRpgSubSchema(s.sub, s.description, s.schema)
+    registerRpgSubSchema(s.sub, s.description, canonical.schema)
   }
 }
 
