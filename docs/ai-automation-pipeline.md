@@ -4,7 +4,7 @@ This document describes the complete GitHub Actions automation system for `holmg
 
 ## Overview
 
-The automation pipeline consists of 13 workflows that work together to:
+The automation pipeline consists of 14 workflows that work together to:
 
 1. **Triage issues** by surface area and complexity depth
 2. **Batch open issues** into parallelizable groups
@@ -18,8 +18,9 @@ The automation pipeline consists of 13 workflows that work together to:
 10. **Detect upstream changes** in the Mnehmos source repo weekly
 11. **Validate workflow YAML** itself on every change to `.github/workflows/`
 12. **Apply remote repo patches** submitted by AI agents via `.patches/*.patch`
+13. **Auto-label PRs** by changed file paths (`surface:*`) and diff size (`size/*`)
 
-The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–13 were added later and follow the same pattern of narrow, single-purpose automation.
+The 8 workflows below (§1–8) are the original triage/CI pipeline; §9–14 were added later and follow the same pattern of narrow, single-purpose automation.
 
 ---
 
@@ -71,6 +72,20 @@ Applied during the `parallelize-issues` workflow:
 
 Issues within the same batch share surface areas and must be worked sequentially (to avoid KV conflicts). Issues in different batches can be worked in parallel.
 
+### Size Labels
+
+Applied automatically to PRs by `pr-labeler.yml`, from `additions + deletions` on the PR:
+
+| Label | Range |
+|-------|-------|
+| `size/XS` | 0–9 changed lines |
+| `size/S` | 10–29 changed lines |
+| `size/M` | 30–99 changed lines |
+| `size/L` | 100–499 changed lines |
+| `size/XL` | 500+ changed lines |
+
+Kept in sync on every push to the PR — a size label is added/swapped as the diff grows or shrinks, mirroring how `surface:*` labels sync via `actions/labeler`'s `sync-labels: true`.
+
 ### Agent Labels
 
 Applied automatically when a batch label is applied:
@@ -103,7 +118,7 @@ Applied automatically when a batch label is applied:
 
 1. Go to **Actions** → **Setup Labels**
 2. Click **Run workflow**
-3. Confirm: all 35 labels now appear in **Settings** → **Labels**
+3. Confirm: all 40 labels now appear in **Settings** → **Labels**
 
 **Notes:**
 
@@ -345,7 +360,7 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 
 **Security model:**
 
-- **Path allowlist:** Only `docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, and `TODO.md` can be modified. `.github/**`, `CLAUDE.md`, protocol documents, and `ARCHITECTURE.md` are explicitly denied.
+- **Path allowlist:** `docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`, `src/**`, and `tests/**` can be modified (Phase 2, #567). `.github/**`, `CLAUDE.md`, protocol documents, and `ARCHITECTURE.md` are explicitly denied. Patches touching `.ts`/`.mjs` files additionally run `pnpm run type-check` as a CI gate.
 - **`git apply --check`:** Reject any patch that doesn't apply cleanly to the current branch.
 - **~200KB size cap:** Prevents oversized patches.
 - **No auto-merge:** Applied changes land on the PR branch and go through the same CI + CODEOWNERS review as any human-authored PR.
@@ -360,7 +375,23 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 
 **Failure handling:** If validation fails, read the error message in the PR's CI run — see [`docs/agent-ci-artifacts-guide.md`](./agent-ci-artifacts-guide.md) for how to read CI failures. Regenerate the patch against current file content and push again.
 
-**When to use:** This is a last-resort tool, and only within the path allowlist above (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`) — it cannot be used for files outside that allowlist regardless of size. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when an in-allowlist file is large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering.
+**When to use:** This is a last-resort tool, and only within the path allowlist above (`docs/**`, `.changelog/fragments/**`, `README.md`, `CONTRIBUTING.md`, `TODO.md`, `src/**`, `tests/**`) — it cannot be used for files outside that allowlist regardless of size. Use normal `create_or_update_file` / `PUT` for the majority of edits. Only reach for patches when an in-allowlist file is large and you're changing 1–2 lines, or when a full rewrite risks truncation/clobbering. See [`docs/patch-pipeline-agent-guide.md`](./patch-pipeline-agent-guide.md) for the full guide.
+
+### 14. PR Labeler (`pr-labeler.yml`)
+
+**Trigger:** `pull_request` (types: `opened`, `synchronize`, `reopened`)
+
+**Purpose:** Auto-label PRs the same way `issue-tagger.yml` auto-labels issues, but using the actual diff instead of keyword heuristics over prose.
+
+**Two independent jobs:**
+
+- **Surface Area Labels** — the official [`actions/labeler`](https://github.com/actions/labeler) action, configured via [`.github/labeler.yml`](../.github/labeler.yml), maps changed file globs to the same `surface:API/state/utils/build/docs/tests/admin` labels `issue-tagger.yml` applies to issues. `sync-labels: true` means labels are added *and removed* as the diff changes across pushes, not just appended.
+- **Size Label** — an inline `actions/github-script` step (same pattern as `issue-tagger.yml`, no new dependency) computes `additions + deletions` from the PR payload and applies one `size/XS`–`size/XL` label, swapping it out on every push.
+
+**Notes:**
+
+- Both jobs are deterministic — no keyword guessing, no LLM calls. Precision is higher than the issue tagger because a diff doesn't need interpretation the way free-text does.
+- `surface:*` here can attach multiple labels to one PR (e.g. a PR touching both `src/lib/kv.ts` and `tests/worker/kv.test.ts` gets `surface:state`, `surface:utils`, and `surface:tests`) — same multi-label behavior as the issue tagger.
 
 ---
 
@@ -441,6 +472,12 @@ If the auto-assigned agent is unavailable, manually:
 
 - Check that the issue title/body contains relevant keywords (see Surface Area table)
 - The tagger runs on issue open/edit only; manually re-open or re-edit the issue to trigger
+
+### PR not getting surface/size labels
+
+- Ensure the **Setup Labels** workflow has been run first (`size/*` labels must exist before `pr-labeler.yml` can apply them)
+- Surface labels are path-based (`.github/labeler.yml`) — a PR only gets a label if it touches a path in that file's globs; a PR that only touches, say, `pnpm-lock.yaml` outside every glob gets no `surface:*` label, which is expected
+- Both jobs run on `opened`/`synchronize`/`reopened` — pushing a new commit re-evaluates and syncs labels; a stale label from an earlier version of the diff should disappear on the next push
 
 ### Batch assignment not applying
 

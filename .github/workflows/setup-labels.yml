@@ -33,6 +33,12 @@ jobs:
               { name: 'batch:1', color: '00aabb', description: 'Parallel work batch 1' },
               { name: 'batch:2', color: '00bbaa', description: 'Parallel work batch 2' },
               { name: 'batch:3', color: '00ccbb', description: 'Parallel work batch 3' },
+              // PR size labels (auto-applied by pr-labeler.yml from additions+deletions)
+              { name: 'size/XS', color: 'c2e0c6', description: '0-9 changed lines' },
+              { name: 'size/S',  color: '9fd8a2', description: '10-29 changed lines' },
+              { name: 'size/M',  color: 'e0c341', description: '30-99 changed lines' },
+              { name: 'size/L',  color: 'e08b41', description: '100-499 changed lines' },
+              { name: 'size/XL', color: 'd73a4a', description: '500+ changed lines' },
               // Agent labels (workflow dispatch targets)
               { name: 'agent:claude', color: '003d82', description: 'Assigned to Claude agent' },
               { name: 'agent:cline',  color: '1a5c1a', description: 'Assigned to Cline agent' },
