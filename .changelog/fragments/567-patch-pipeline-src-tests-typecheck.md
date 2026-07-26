@@ -1,0 +1,3 @@
+### Added
+
+- Patch pipeline Phase 2 (#567): extended the `.patches/` allowlist from docs-only to also cover `src/**` and `tests/**`, enabling remote agents to make small, targeted edits to large source files (e.g. `src/index.ts` at ~2200 lines) via unified diff instead of full-file rewrites that risk truncation. Added a conditional type-check gate in `.github/workflows/apply-patches.yml`: when a patch touches `.ts` or `.mjs` files, `pnpm install --frozen-lockfile` + `pnpm run type-check` runs as a CI gate before the PR can merge. The deny-list (`.github/**`, `CLAUDE.md`, protocol/architecture docs) is unchanged. Updated `.patches/README.md`, `docs/patch-pipeline-agent-guide.md`, and `CLAUDE.md` to reflect the widened allowlist and the new type-check gate.
