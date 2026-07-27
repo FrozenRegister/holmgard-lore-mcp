@@ -3,6 +3,44 @@
 This file mirrors the Shapes.Inc form fields for this agent. Shapes.Inc does not
 read this file directly — copy each section into the matching form field.
 
+## Setup: Add MCP Skill (backend room config, not a form field below)
+
+This is done once in the room's own MCP integration settings, not in chat, and not
+by pasting a token anywhere in this file or a conversation.
+
+**Required — GitHub:**
+
+| Field | Value |
+|---|---|
+| Skill name | `github` |
+| Transport | `HTTP` |
+| Server URL | `https://api.githubcopilot.com/mcp/x/all` |
+| Authentication | Bearer token — a GitHub **fine-grained PAT** scoped to only `FrozenRegister/holmgard-lore-mcp` |
+
+Use the `/mcp/x/all` path specifically, not the bare `/mcp` root — GitHub's hosted MCP
+server otherwise defaults to a toolset subset (`context, repos, issues, pull_requests,
+users`) that excludes `actions`, which this agent's CI-debugging workflow (job logs,
+workflow runs, coverage/lint artifacts) depends on.
+
+Token permissions needed (fine-grained, least-privilege — no Administration, no
+org-wide scope): **Contents** (read/write), **Issues** (read/write), **Pull requests**
+(read/write), **Actions** (read), **Metadata** (read, required on every fine-grained
+token).
+
+**Optional — Cloudflare Docs (read-only research):** Cloudflare's docs MCP server lets
+the agent look up current Wrangler/D1/KV/Workers API behavior instead of relying on
+stale training knowledge — useful given how much debugging here is Cloudflare-platform-
+specific. Verify the exact URL against Cloudflare's own MCP server list before adding,
+since these can change.
+
+**Deliberately not added:** Cloudflare's Workers Bindings MCP server (direct D1
+query / KV read-write). This repo's CLAUDE.md treats KV namespace isolation as
+critical and routes all production changes through PR review + CI + the auto-migration
+workflow — a chat agent with a standing, direct D1/KV write connection bypasses that
+gate entirely. If this is ever wanted, scope it to a **read-only** Cloudflare API token
+and treat it as a separate, deliberately more locked-down addition, not bundled with
+the GitHub connection above.
+
 ## Name
 
 ```
