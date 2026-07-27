@@ -6,8 +6,8 @@ describe('scene_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
     try {
       registerSceneManageTool()
-    } catch (e: any) {
-      if (!e.message?.includes('already registered')) {
+    } catch (e: unknown) {
+      if (!(e instanceof Error) || !e.message?.includes('already registered')) {
         throw e
       }
     }
