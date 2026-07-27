@@ -145,7 +145,7 @@ export async function handleTravelManage(
 
   switch (match.matched) {
     case 'travel': {
-      let targetRoom: Record<string, unknown> | null = null
+      let targetRoom: Record<string, unknown> | null
       if (a.toRoomId) {
         targetRoom = (await db
           .prepare('SELECT id, name, base_description, biome_context FROM room_nodes WHERE id = ?')

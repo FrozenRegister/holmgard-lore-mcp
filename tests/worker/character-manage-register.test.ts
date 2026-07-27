@@ -31,7 +31,7 @@ describe('character_manage via registerTool() (Phase 2 #543)', () => {
       if (text.includes('Internal Server Error') || text.includes('Error:')) {
         return { error: true, message: text }
       }
-      throw new Error(`Failed to parse response: ${text}`)
+      throw new Error(`Failed to parse response: ${text}`, { cause: e })
     }
 
     const text = json.result?.content?.[0]?.text
