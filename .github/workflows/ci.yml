@@ -241,13 +241,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download coverage reports from all shards
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-shard-*-${{ github.event.pull_request.head.sha || github.sha }}
           path: ./coverage-shards-downloads/
           merge-multiple: true
       - name: Download unit coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
           path: ./coverage-shards-downloads/
