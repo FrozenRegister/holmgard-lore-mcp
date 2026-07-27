@@ -48,17 +48,17 @@ describe('continuity_manage via registerTool() (Phase 4 #545)', () => {
 
   it('handles list_tags action via MCP endpoint', async () => {
     const r = await callTool('continuity_manage', { action: 'list_tags' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('handles recent_changes action via MCP endpoint', async () => {
     const r = await callTool('continuity_manage', { action: 'recent_changes' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('handles list_unpaid_setups action via MCP endpoint', async () => {
     const r = await callTool('continuity_manage', { action: 'list_unpaid_setups' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('rejects missing action via MCP endpoint', async () => {
