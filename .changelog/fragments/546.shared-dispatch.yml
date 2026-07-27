@@ -1,0 +1,3 @@
+type: feat
+issue: 546
+note: Extract shared `dispatchToolCall()` function used by both the legacy JSON-RPC (`src/index.ts`) and Durable Object (`src/do/HolmgardMCP.ts`) MCP transports, eliminating duplicated ping/auth_check special-casing and tool registry lookups. Each transport adapts the returned `DispatchResult` into its own response shape.

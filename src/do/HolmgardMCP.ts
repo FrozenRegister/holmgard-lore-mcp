@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
-import { toolRegistry } from '../tools/registry'
+import { dispatchToolCall } from '../tools/dispatch'
 import { coerceTransportArgs } from '../lib/coerce-transport-args'
 import { normalizeParamCasing } from '../lib/normalize-param-casing'
 import { makeSyntheticContext } from './context-adapter'
@@ -27,35 +27,40 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
         coerceTransportArgs((request.params.arguments ?? {}) as Record<string, unknown>),
       )
 
-      if (toolName === 'lore_manage') {
-        const action = typeof args?.action === 'string' ? args.action : null
-        if (action === 'ping') {
-          return {
-            content: [{ type: 'text' as const, text: 'pong' }],
-            metadata: { source: 'internal' },
-          }
+      // #546 — shared dispatch decision (ping/auth_check special-casing + toolRegistry
+      // lookup). Response shape (content/isError) stays transport-local — see issue #546
+      // judgment call (3).
+      const dispatchResult = dispatchToolCall({
+        name: toolName,
+        args,
+        // Auth is validated at the Worker level before routing here — see src/index.ts
+        // Streamable HTTP middleware. The DO never sees an unauthenticated request.
+        authenticated: true,
+      })
+
+      if (dispatchResult.kind === 'short-circuit') {
+        return {
+          content: [dispatchResult.content],
+          metadata: dispatchResult.metadata,
         }
-        if (action === 'auth_check') {
-          // Auth is validated at the Worker level before routing here
-          return {
-            content: [{ type: 'text' as const, text: 'Authenticated.' }],
-            metadata: { authenticated: true },
-          }
-        }
-        // fall through to registry for all other lore_manage actions
       }
 
-      const handler = toolRegistry[toolName]
-      if (!handler) {
+      if (dispatchResult.kind === 'not-found') {
         return {
-          content: [{ type: 'text' as const, text: `Method not found: tool "${toolName}"` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Method not found: tool "${dispatchResult.toolName}"`,
+            },
+          ],
           isError: true,
         }
       }
 
+      // dispatchResult.kind === 'handler'
       try {
         const c = makeSyntheticContext(this.env)
-        const response = await handler({
+        const response = await dispatchResult.handler({
           c: c as any,
           id: null,
           args: args as Record<string, any>,
