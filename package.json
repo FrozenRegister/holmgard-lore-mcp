@@ -49,7 +49,7 @@
     "eslint-config-prettier": "^10.1.8",
     "markdownlint-cli2": "^0.15.0",
     "prettier": "^3.9.6",
-    "rimraf": "^5.0.10",
+    "rimraf": "^6.1.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.25.0",
     "vitest": "^4.1.8",
