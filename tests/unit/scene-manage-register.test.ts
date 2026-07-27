@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { getToolHandler, getToolDefinition } from '../../src/tools/register'
+import { getToolHandler, getToolDefinition, getTools } from '../../src/tools/register'
 import { registerSceneManageTool } from '../../src/tools/register-scene-manage'
 
 describe('scene_manage registration (Phase 4 #545)', () => {
@@ -29,43 +29,94 @@ describe('scene_manage registration (Phase 4 #545)', () => {
       expect(def!.title).toBe('Scene Manage')
       expect(def!.version).toBe('1.0.0')
       expect(def!.description).toContain('Scene management')
-      expect(def!.inputSchema).toHaveProperty('type', 'object')
+      expect(def!.inputSchema).toBeDefined()
+    })
+  })
+
+  describe('schema serialization', () => {
+    it('includes all 6 action branches', () => {
+      const def = getToolDefinition('scene_manage')
+      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const actions = anyOf
+        .map((branch: Record<string, unknown>) => {
+          const props = branch.properties as Record<string, unknown> | undefined
+          const action = props?.action as Record<string, unknown> | undefined
+          return action?.const as string | undefined
+        })
+        .filter(Boolean)
+        .sort()
+      expect(actions).toEqual([
+        'activate',
+        'brief',
+        'commit_choice',
+        'get_history',
+        'present_choices',
+        'render_pov',
+      ])
     })
 
-    it('includes action field in the schema', () => {
+    it('activate requires scene_key', () => {
       const def = getToolDefinition('scene_manage')
-      const props = def!.inputSchema.properties as Record<string, unknown>
-      expect(props).toHaveProperty('action')
+      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const actBranch = anyOf.find((b: Record<string, unknown>) => {
+        const props = b.properties as Record<string, unknown> | undefined
+        const action = props?.action as Record<string, unknown> | undefined
+        return action?.const === 'activate'
+      })
+      const required = (actBranch!.required as string[]) || []
+      expect(required).toContain('scene_key')
     })
 
-    it('marks action as required', () => {
+    it('render_pov has optional scene_key and location_key', () => {
       const def = getToolDefinition('scene_manage')
-      const required = (def!.inputSchema.required as string[]) || []
-      expect(required).toContain('action')
+      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const rpBranch = anyOf.find((b: Record<string, unknown>) => {
+        const props = b.properties as Record<string, unknown> | undefined
+        const action = props?.action as Record<string, unknown> | undefined
+        return action?.const === 'render_pov'
+      })
+      const required = (rpBranch!.required as string[]) || []
+      expect(required).toContain('pov_entity_key')
+      expect(required.includes('scene_key')).toBe(false)
+      expect(required.includes('location_key')).toBe(false)
     })
 
-    it('includes scene_key field', () => {
+    it('brief has nested include object', () => {
       const def = getToolDefinition('scene_manage')
-      const props = def!.inputSchema.properties as Record<string, unknown>
-      expect(props).toHaveProperty('scene_key')
+      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const briefBranch = anyOf.find((b: Record<string, unknown>) => {
+        const props = b.properties as Record<string, unknown> | undefined
+        const action = props?.action as Record<string, unknown> | undefined
+        return action?.const === 'brief'
+      })
+      const props = briefBranch!.properties as Record<string, unknown>
+      expect(props).toHaveProperty('include')
+      const include = props.include as Record<string, unknown>
+      expect(include).toHaveProperty('properties')
     })
 
-    it('includes entity_key field', () => {
+    it('render_pov includes reveal_threshold with min/max', () => {
       const def = getToolDefinition('scene_manage')
-      const props = def!.inputSchema.properties as Record<string, unknown>
-      expect(props).toHaveProperty('entity_key')
-    })
-
-    it('includes choice_id field for commit_choice', () => {
-      const def = getToolDefinition('scene_manage')
-      const props = def!.inputSchema.properties as Record<string, unknown>
-      expect(props).toHaveProperty('choice_id')
-    })
-
-    it('includes reveal_threshold field for render_pov', () => {
-      const def = getToolDefinition('scene_manage')
-      const props = def!.inputSchema.properties as Record<string, unknown>
+      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const rpBranch = anyOf.find((b: Record<string, unknown>) => {
+        const props = b.properties as Record<string, unknown> | undefined
+        const action = props?.action as Record<string, unknown> | undefined
+        return action?.const === 'render_pov'
+      })
+      const props = rpBranch!.properties as Record<string, unknown>
       expect(props).toHaveProperty('reveal_threshold')
+      const rt = props.reveal_threshold as Record<string, unknown>
+      expect(rt).toHaveProperty('minimum', 0)
+      expect(rt).toHaveProperty('maximum', 1)
+    })
+  })
+
+  describe('getTools', () => {
+    it('includes scene_manage in the registered tool list', () => {
+      const tools = getTools()
+      const sceneManage = tools.find((t) => t.name === 'scene_manage')
+      expect(sceneManage).toBeDefined()
+      expect(sceneManage!.category).toBe('lore')
     })
   })
 })
