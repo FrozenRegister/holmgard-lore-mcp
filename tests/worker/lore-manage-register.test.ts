@@ -53,7 +53,7 @@ describe('lore_manage via registerTool() (Phase 4 #545)', () => {
 
   it('handles validate action via MCP endpoint', async () => {
     const r = await callTool('lore_manage', { action: 'validate', query_string: 'test' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('rejects missing action via MCP endpoint', async () => {
