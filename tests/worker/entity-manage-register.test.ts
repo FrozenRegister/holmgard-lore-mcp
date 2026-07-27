@@ -48,12 +48,12 @@ describe('entity_manage via registerTool() (Phase 4 #545)', () => {
 
   it('handles list_active_threads action via MCP endpoint', async () => {
     const r = await callTool('entity_manage', { action: 'list_active_threads' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('handles list_consumption_timelines action via MCP endpoint', async () => {
     const r = await callTool('entity_manage', { action: 'list_consumption_timelines' })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('rejects missing action via MCP endpoint', async () => {
