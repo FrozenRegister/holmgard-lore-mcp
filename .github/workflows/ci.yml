@@ -62,7 +62,7 @@ jobs:
         run: pnpm exec vitest run --config vitest.unit.config.ts --reporter=default --reporter=json --coverage --outputFile.json=test-results-unit.json
       - name: Upload unit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # github.sha on a pull_request-triggered run is the ephemeral merge
           # commit, not the PR branch's actual head commit — verified against
@@ -73,7 +73,7 @@ jobs:
           retention-days: 7
       - name: Upload unit coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-unit-${{ github.event.pull_request.head.sha || github.sha }}
           path: coverage-unit/coverage-final.json
@@ -111,14 +111,14 @@ jobs:
           fi
       - name: Upload shard test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: test-results-shard-${{ matrix.shard }}.json
           retention-days: 7
       - name: Upload shard coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-shard-${{ matrix.shard }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: coverage-shards/coverage-${{ matrix.shard }}.json
@@ -145,7 +145,7 @@ jobs:
         run: npx tsc --noEmit --pretty false 2>&1 | head -n 5000 > tsc-diagnostics.txt || true
       - name: Upload type-check diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: typecheck-report-${{ github.event.pull_request.head.sha || github.sha }}
           path: tsc-diagnostics.txt
@@ -172,7 +172,7 @@ jobs:
         run: npx eslint --format json src tests > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
       - name: Upload lint report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-report-${{ github.event.pull_request.head.sha || github.sha }}
           path: eslint-report.json
@@ -209,7 +209,7 @@ jobs:
           git diff "$DIFF_BASE_REF" --stat > diff-stat.txt || true
       - name: Upload build diff artifacts
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-diff-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
@@ -300,7 +300,7 @@ jobs:
           gh issue edit "$ISSUE_NUM" --repo ${{ github.repository }} --body-file coverage/coverage-gaps-report.md
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -358,7 +358,7 @@ jobs:
             }]' > job-durations.json
       - name: Upload job durations
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: job-durations-${{ github.event.pull_request.head.sha || github.sha }}
           path: job-durations.json
