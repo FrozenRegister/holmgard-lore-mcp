@@ -1,0 +1,66 @@
+# Path-based PR labeling config for actions/labeler (pr-labeler.yml).
+# Mirrors the surface:* taxonomy issue-tagger.yml applies to issues via keyword regex —
+# here it's applied to PRs via the actual changed file paths, which is more precise
+# than keyword matching since a diff doesn't need interpretation.
+
+surface:API:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/tools/**'
+          - 'src/rpg/handlers/**'
+          - 'src/rpg/rpg-handler.ts'
+          - 'src/rpg/registry.ts'
+          - 'src/rpg/action-aliases.ts'
+          - 'src/rpg/definitions.ts'
+          - 'src/rpg/meta-definitions.ts'
+          - 'src/api/**'
+          - 'src/do/**'
+          - 'src/middleware/**'
+          - 'src/changes/**'
+          - 'src/internal/**'
+          - 'src/index.ts'
+
+surface:state:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/kv.ts'
+          - 'src/lib/indexes.ts'
+          - 'src/lib/history.ts'
+          - 'src/lib/cache.ts'
+          - 'src/lib/lore.ts'
+          - 'schema/**'
+
+surface:utils:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/**'
+          - 'src/rpg/utils/**'
+
+surface:build:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - 'wrangler.jsonc'
+          - 'package.json'
+          - 'pnpm-lock.yaml'
+          - 'tsconfig*.json'
+          - 'eslint.config.mjs'
+          - 'vitest*.config.ts'
+          - '.prettierrc*'
+          - 'scripts/**'
+
+surface:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+
+surface:tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+
+surface:admin:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/admin/**'

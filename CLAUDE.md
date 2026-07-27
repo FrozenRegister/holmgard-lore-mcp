@@ -412,6 +412,8 @@ Every branch must use one of these prefixes, matching the conventional commit ty
 | `chore/` | Maintenance — deps, config, CI, tooling |
 | `perf/` | Performance improvement |
 
+**Enforced, not just convention:** `pr-quality.yml`'s `check-naming` job blocks the PR unless the branch starts with one of the prefixes above *and* the PR title matches conventional-commit format (`type: subject` or `type(scope): subject`). The title is what's checked, not individual commits — this repo squash-merges, so the PR title becomes the permanent commit message on `main`; messy WIP commits mid-PR are fine. Apply `skip-quality-checks` to bypass for a legitimate exception.
+
 Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upgrade-vitest`.
 
 **Never push directly to `main`.** All changes must go through a PR so CI runs first.
