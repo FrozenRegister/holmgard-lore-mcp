@@ -6,8 +6,8 @@ describe('world_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
     try {
       registerWorldManageTool()
-    } catch (e: any) {
-      if (!e.message?.includes('already registered')) {
+    } catch (e: unknown) {
+      if (!(e instanceof Error) || !e.message?.includes('already registered')) {
         throw e
       }
     }
@@ -89,15 +89,12 @@ describe('world_manage registration (Phase 4 #545)', () => {
     it('get_faction_standing is represented as a nested anyOf (4-way OR)', () => {
       const def = getToolDefinition('world_manage')
       const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
-      // Find the branch that contains a nested anyOf for get_faction_standing
       const nestedBranch = anyOf.find((b: Record<string, unknown>) => {
         return b.anyOf !== undefined
       })
       expect(nestedBranch).toBeDefined()
       const nested = nestedBranch!.anyOf as Array<Record<string, unknown>>
-      // Should be a 4-way union
       expect(nested.length).toBe(4)
-      // First variant should have entity_key and faction_key
       const firstVarProps = nested[0].properties as Record<string, unknown>
       const firstAction = firstVarProps?.action as Record<string, unknown>
       expect(firstAction?.const).toBe('get_faction_standing')
@@ -106,13 +103,13 @@ describe('world_manage registration (Phase 4 #545)', () => {
     it('get_entity_knowledge is represented as nested anyOf (2-way OR)', () => {
       const def = getToolDefinition('world_manage')
       const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
-      // Find a 2-element nested anyOf for get_entity_knowledge
       const nestedBranches = anyOf.filter((b: Record<string, unknown>) => {
         if (!b.anyOf || !Array.isArray(b.anyOf)) return false
         const nested = b.anyOf as Array<Record<string, unknown>>
         if (nested.length !== 2) return false
         const firstProps = nested[0]?.properties as Record<string, unknown> | undefined
-        return firstProps?.action?.const === 'get_entity_knowledge'
+        const action = firstProps?.action as Record<string, unknown> | undefined
+        return action?.const === 'get_entity_knowledge'
       })
       expect(nestedBranches.length).toBeGreaterThanOrEqual(1)
     })
@@ -124,7 +121,8 @@ describe('world_manage registration (Phase 4 #545)', () => {
         if (!b.anyOf || !Array.isArray(b.anyOf)) return false
         const nested = b.anyOf as Array<Record<string, unknown>>
         const firstProps = nested[0]?.properties as Record<string, unknown> | undefined
-        return firstProps?.action?.const === 'sense_environment'
+        const action = firstProps?.action as Record<string, unknown> | undefined
+        return action?.const === 'sense_environment'
       })
       expect(nestedBranches.length).toBeGreaterThanOrEqual(1)
     })
