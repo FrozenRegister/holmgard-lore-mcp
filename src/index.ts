@@ -66,3 +66,6 @@ setSchemaIndex(
     inputSchema: t.inputSchema,
   })),
 )
+
+// Default export for Cloudflare module-worker format (required by @cloudflare/vitest-pool-workers)
+export default HolmgardMCP
