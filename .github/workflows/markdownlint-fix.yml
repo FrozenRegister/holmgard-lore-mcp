@@ -30,7 +30,7 @@ jobs:
 
       - run: pnpm fix:md
 
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'fix: auto-fix markdown formatting'
           file_pattern: '**.md'
