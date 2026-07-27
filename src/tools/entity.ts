@@ -1702,7 +1702,7 @@ export async function handle_get_inventory({
 
   // Multi-line format: **Inventory:** alone on its line, items on following lines
   // Must check this first — extractRawField's \s*$ can swallow \n and grab only the first item
-  let invRaw: string | null = null
+  let invRaw: string | null
   const lines = text.split('\n')
   let collecting = false
   const collected: string[] = []
