@@ -9,9 +9,15 @@
 import type { ToolHandler } from './types'
 import { toolRegistry } from './registry'
 
+/** A single MCP content block (text-shaped). Each transport wraps these in an array. */
+export interface TextContentBlock {
+  type: 'text'
+  text: string
+}
+
 /** Transport-agnostic description of what dispatch decided. */
 export type DispatchResult =
-  | { kind: 'short-circuit'; content: unknown; metadata?: Record<string, unknown> }
+  | { kind: 'short-circuit'; content: TextContentBlock; metadata?: Record<string, unknown> }
   | { kind: 'handler'; handler: ToolHandler }
   | { kind: 'not-found'; toolName: string }
 
