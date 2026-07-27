@@ -6,8 +6,8 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
     try {
       registerContinuityManageTool()
-    } catch (e: any) {
-      if (!e.message?.includes('already registered')) {
+    } catch (e: unknown) {
+      if (!(e instanceof Error) || !e.message?.includes('already registered')) {
         throw e
       }
     }
@@ -44,7 +44,6 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
       const def = getToolDefinition('continuity_manage')
       const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
 
-      // Collect action names by descending into nested unions where needed
       const collectActions = (branches: Array<Record<string, unknown>>, acc: Set<string>): void => {
         for (const b of branches) {
           if (b.anyOf && Array.isArray(b.anyOf)) {
@@ -125,15 +124,8 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
 
       const nested = collectNestedBranches(anyOf)
       expect(nested.length).toBe(2)
-      // First variant requires id, second requires setup_id
-      const firstReq = nested[0].required as string[]
-      const secondReq = nested[1].required as string[]
-      const allFirstReq = [...(firstReq || []), 'action']
-      const allSecondReq = [...(secondReq || []), 'action']
-      // Check that 'id' is required in first and 'setup_id' in second
       const idInFirst = (nested[0].required as string[]).includes('id')
       const setupIdInSecond = (nested[1].required as string[]).includes('setup_id')
-      // At least one requirement checks out
       expect(idInFirst || setupIdInSecond).toBe(true)
     })
 
@@ -147,7 +139,6 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
       })
       expect(sgBranch).toBeDefined()
       const required = (sgBranch!.required as string[]) || []
-      // Only 'action' should be required in the flat model
       expect(required).toEqual(['action'])
     })
 
