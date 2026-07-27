@@ -46,7 +46,7 @@ registerLoadToolSchemaTool()
 registerSearchToolsTool()
 registerAgentManageTool()
 
-// Phase 4: register lore-family tools (#545)
+// Phase 4: register lore-family tools with Zod schemas (#545)
 registerLoreManageTool()
 registerEntityManageTool()
 registerWorldManageTool()
@@ -54,4 +54,15 @@ registerSceneManageTool()
 registerContinuityManageTool()
 
 // Initialize meta-tool indexes once at module load time
-setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' }))
+setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
+// mathManageSchemaDoc is schema-index-only — it documents rpg({sub:'math',...})'s
+// dice-notation grammar for load_tool_schema, but "math_manage" has no registry
+// handler of its own, so it must not be added to the tool index (that would
+// advertise a callable tool that 404s on tools/call).
+setSchemaIndex(
+  [...toolDefinitions, mathManageSchemaDoc].map((t: any) => ({
+    name: t.name,
+    description: t.description ?? '',
+    inputSchema: t.inputSchema,
+  })),
+)
