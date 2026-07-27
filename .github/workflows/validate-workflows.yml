@@ -16,7 +16,7 @@ jobs:
     name: Validate Workflow YAML
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate workflow files
         run: |
