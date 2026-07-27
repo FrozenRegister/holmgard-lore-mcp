@@ -6,8 +6,8 @@ describe('lore_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
     try {
       registerLoreManageTool()
-    } catch (e: any) {
-      if (!e.message?.includes('already registered')) {
+    } catch (e: unknown) {
+      if (!(e instanceof Error) || !e.message?.includes('already registered')) {
         throw e
       }
     }
@@ -44,11 +44,10 @@ describe('lore_manage registration (Phase 4 #545)', () => {
   describe('schema serialization', () => {
     it('produces a valid JSON Schema with anyOf branches', () => {
       const def = getToolDefinition('lore_manage')
-      // discriminatedUnion renders as anyOf with discriminators
       const schema = def!.inputSchema as Record<string, unknown>
       expect(schema).toHaveProperty('anyOf')
       const anyOf = schema.anyOf as Array<Record<string, unknown>>
-      expect(anyOf.length).toBeGreaterThanOrEqual(17) // all 17 actions
+      expect(anyOf.length).toBeGreaterThanOrEqual(17)
     })
 
     it('includes all action branches', () => {
@@ -93,7 +92,6 @@ describe('lore_manage registration (Phase 4 #545)', () => {
       })
       expect(setBranch).toBeDefined()
       const required = (setBranch!.required as string[]) || []
-      // dry_run is optional — not in required
       expect(required.includes('dry_run')).toBe(false)
       expect(required).toContain('key')
       expect(required).toContain('text')
