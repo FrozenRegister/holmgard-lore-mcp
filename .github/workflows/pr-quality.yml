@@ -21,6 +21,11 @@ jobs:
               pull_number: context.payload.pull_request.number,
             })
 
+            if (pr.user.login === 'dependabot[bot]') {
+              console.log('Skipping (Dependabot PR)')
+              return
+            }
+
             if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
               console.log('Skipping (skip-quality-checks label present)')
               return
@@ -53,6 +58,11 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             })
+
+            if (pr.user.login === 'dependabot[bot]') {
+              console.log('Skipping (Dependabot PR)')
+              return
+            }
 
             if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
               console.log('Skipping (skip-quality-checks label present)')
@@ -104,6 +114,11 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             })
+
+            if (pr.user.login === 'dependabot[bot]') {
+              console.log('Skipping (Dependabot PR)')
+              return
+            }
 
             if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
               console.log('Skipping (skip-quality-checks label present)')
@@ -164,6 +179,11 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             })
+
+            if (pr.user.login === 'dependabot[bot]') {
+              console.log('Skipping (Dependabot PR)')
+              return
+            }
 
             if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
               console.log('Skipping (skip-quality-checks label present)')
