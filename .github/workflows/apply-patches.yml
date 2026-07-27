@@ -73,7 +73,7 @@ jobs:
           fi
 
       - name: Commit applied changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'chore: apply patch ${{ github.event.pull_request.head.sha }}'
           file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md src/** tests/** .patches/*.patch'

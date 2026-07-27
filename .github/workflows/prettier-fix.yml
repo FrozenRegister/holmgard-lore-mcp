@@ -34,7 +34,7 @@ jobs:
 
       - run: pnpm run format
 
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'style: auto-fix code formatting'
           file_pattern: 'src/**/*.ts tests/**/*.ts scripts/*.mjs *.ts *.mjs'
