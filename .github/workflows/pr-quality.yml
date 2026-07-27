@@ -152,9 +152,67 @@ jobs:
               console.log('OK Documentation section or docs/ files found')
             }
 
+  check-naming:
+    name: Naming Conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+
+            if (pr.labels.some(l => l.name === 'skip-quality-checks')) {
+              console.log('Skipping (skip-quality-checks label present)')
+              return
+            }
+
+            const errors = []
+
+            // Branch prefix — see CLAUDE.md "Branch naming"
+            const branchPrefixes = ['feat/', 'fix/', 'refactor/', 'test/', 'docs/', 'chore/', 'perf/']
+            const branch = pr.head.ref
+            if (!branchPrefixes.some((p) => branch.startsWith(p))) {
+              errors.push(
+                `Branch \`${branch}\` doesn't start with an allowed prefix: ` +
+                  branchPrefixes.map((p) => `\`${p}\``).join(', ')
+              )
+            }
+
+            // PR title — conventional-commit type. This repo squash-merges (confirmed:
+            // main's history is one commit per PR, defaulting to the PR title), so the
+            // title is what actually lands as the permanent commit message — individual
+            // commits on the branch are free to be messy WIP, that's not checked here.
+            const allowedTypes = [
+              'feat', 'fix', 'refactor', 'test', 'docs', 'chore', 'perf',
+              'style', 'build', 'ci', 'revert', 'changelog',
+            ]
+            const titleRe = new RegExp(`^(${allowedTypes.join('|')})(\\([a-z0-9_-]+\\))?!?: .+`)
+            if (!titleRe.test(pr.title)) {
+              errors.push(
+                `PR title \`${pr.title}\` doesn't match conventional-commit format ` +
+                  `(\`type: subject\` or \`type(scope): subject\`). Allowed types: ` +
+                  allowedTypes.map((t) => `\`${t}\``).join(', ')
+              )
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(
+                'ERROR **Naming conventions**\n\n' +
+                errors.map((e) => `- ${e}`).join('\n') +
+                '\n\nSee CLAUDE.md "Branch naming" and "Git workflow" for the full convention.\n\n' +
+                'If this PR has a legitimate reason to deviate, apply the `skip-quality-checks` label.'
+              )
+            } else {
+              console.log('OK Branch name and PR title follow naming conventions')
+            }
+
   trigger-auto-merge:
     name: Trigger Auto-Merge Check
-    needs: [check-issue-link, check-changelog, check-docs]
+    needs: [check-issue-link, check-changelog, check-docs, check-naming]
     # workflow_run only reliably fires for push-triggered runs, not pull_request-triggered
     # ones (see auto-merge.yml) — dispatching directly here is the reliable fast path;
     # the 5-min cron in auto-merge.yml remains as a fallback if this ever fails to fire.

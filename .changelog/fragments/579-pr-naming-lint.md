@@ -1,0 +1,3 @@
+### Added
+
+- Enforce branch-naming and PR-title conventional-commit conventions in CI (#579). New `check-naming` job in `pr-quality.yml`, matching the style of the existing `check-issue-link`/`check-changelog`/`check-docs` jobs: the branch must start with an allowed prefix (`feat/fix/refactor/test/docs/chore/perf`) and the PR title must match `type: subject` or `type(scope): subject`. Checks the PR *title*, not individual commits — this repo squash-merges, so the title is what becomes the permanent commit message on `main`. Sampled 200 commits on `main` before adding this: 100% already comply, so this is a real blocking gate rather than advisory. `CLAUDE.md`'s "Branch naming" section now notes this is enforced, not just documented convention.
