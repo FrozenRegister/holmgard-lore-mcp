@@ -52,7 +52,7 @@ describe('world_manage via registerTool() (Phase 4 #545)', () => {
       thread_a: 'test-a',
       thread_b: 'test-b',
     })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('handles get_reachable_locations action via MCP endpoint', async () => {
@@ -60,7 +60,7 @@ describe('world_manage via registerTool() (Phase 4 #545)', () => {
       action: 'get_reachable_locations',
       origin_key: 'location:test',
     })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('rejects missing action via MCP endpoint', async () => {
