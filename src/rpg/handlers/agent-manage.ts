@@ -72,7 +72,7 @@ const ALIASES: Record<string, AgentAction> = {
   replay_call: 'replay',
 } as Record<string, AgentAction>
 
-const InputSchema = z.object({
+export const InputSchema = z.object({
   action: z.string(),
   id: z.string().optional(),
   agentId: z.string().optional(),

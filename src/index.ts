@@ -26,12 +26,20 @@ import { handleBiomeManage } from './rpg/handlers/biome-manage'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 import { registerCharacterManageTool } from './rpg/register-character-manage'
+import { registerLoadToolSchemaTool } from './rpg/register-load-tool-schema'
+import { registerSearchToolsTool } from './rpg/register-search-tools'
+import { registerAgentManageTool } from './rpg/register-agent-manage'
 
 // Export the DO class so wrangler can bind it
 export { HolmgardMCP }
 
 // Phase 2 pilot: register character_manage via registerTool() (#543)
 registerCharacterManageTool()
+
+// Phase 3: register load_tool_schema, search_tools, agent_manage (#544)
+registerLoadToolSchemaTool()
+registerSearchToolsTool()
+registerAgentManageTool()
 
 // Initialize meta-tool indexes once at module load time
 setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
