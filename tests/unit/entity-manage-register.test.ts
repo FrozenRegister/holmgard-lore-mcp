@@ -6,8 +6,8 @@ describe('entity_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
     try {
       registerEntityManageTool()
-    } catch (e: any) {
-      if (!e.message?.includes('already registered')) {
+    } catch (e: unknown) {
+      if (!(e instanceof Error) || !e.message?.includes('already registered')) {
         throw e
       }
     }
@@ -32,7 +32,7 @@ describe('entity_manage registration (Phase 4 #545)', () => {
       expect(def!.name).toBe('entity_manage')
       expect(def!.title).toBe('Entity Manage')
       expect(def!.version).toBe('1.0.0')
-      expect(def!.description).toContain('entity')
+      expect(def!.description).toContain('Entity')
       expect(def!.inputSchema).toBeDefined()
     })
 
