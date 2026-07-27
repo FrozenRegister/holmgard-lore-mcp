@@ -10,12 +10,16 @@
 // aliased fields are kept optional in a single flat Zod object and the handler's
 // existing runtime check enforces the OR requirement. This is a deliberate
 // fidelity loss documented in PR #545.
+//
+// Top-level z.union (not z.discriminatedUnion) because plant_setup uses a nested
+// z.union(), which is incompatible with discriminatedUnion's requirement that
+// every member be a flat ZodObject.
 
 import { z } from 'zod'
 import { registerTool, type RegisteredTool } from './register'
 import { handle_continuity_manage } from './continuity-manage'
 
-export const InputSchema = z.discriminatedUnion('action', [
+export const InputSchema = z.union([
   z
     .object({
       action: z.literal('append_event'),
