@@ -26,7 +26,7 @@ describe('scene_manage via registerTool() (Phase 4 #545)', () => {
       if (text.includes('Internal Server Error') || text.includes('Error:')) {
         return { error: true, message: text }
       }
-      throw new Error(`Failed to parse response: ${text}`, { cause: e })
+      throw new Error(`Failed to parse response: ${text} (${String(e)})`)
     }
 
     const text = json.result?.content?.[0]?.text

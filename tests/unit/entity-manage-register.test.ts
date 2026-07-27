@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { getToolHandler, getToolDefinition, getTools } from '../../src/tools/register'
-import { registerEntityManageTool } from '../../src/tools/register-entity-manage'
+import { registerEntityManageTool, InputSchema } from '../../src/tools/register-entity-manage'
 
 describe('entity_manage registration (Phase 4 #545)', () => {
   beforeAll(() => {
@@ -140,6 +140,26 @@ describe('entity_manage registration (Phase 4 #545)', () => {
       const entityManage = tools.find((t) => t.name === 'entity_manage')
       expect(entityManage).toBeDefined()
       expect(entityManage!.category).toBe('lore')
+    })
+  })
+
+  describe('set_attributes minProperties fidelity (review fix)', () => {
+    it('rejects an empty attributes object', () => {
+      const result = InputSchema.safeParse({
+        action: 'set_attributes',
+        entity_key: 'character:test',
+        attributes: {},
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('accepts an attributes object with at least one property', () => {
+      const result = InputSchema.safeParse({
+        action: 'set_attributes',
+        entity_key: 'character:test',
+        attributes: { 'weight-1': 0.5 },
+      })
+      expect(result.success).toBe(true)
     })
   })
 })

@@ -1,11 +1,24 @@
 // src/tools/register-entity-manage.ts
 // Registration of entity_manage tool via the Phase 1 registerTool() infrastructure (#545).
+//
+// Top-level z.union (not z.discriminatedUnion) because set_attributes needs a
+// .refine() to enforce "at least one attribute" (matching the hand-written
+// schema's minProperties: 1 on ENTITY_MANAGE_SCHEMA's set_attributes branch).
+// discriminatedUnion's constructor requires every member to be a flat ZodObject
+// with a literal discriminator key — wrapping a branch in .refine() produces a
+// ZodEffects, which fails that check. Same workaround already used by
+// world_manage/continuity_manage for their OR-alias branches (see #545/#603
+// review). Note this doesn't surface as minProperties in the generated JSON
+// Schema (zod-to-json-schema treats .refine() as an opaque predicate, not a
+// translatable constraint) — the constraint is enforced at parse time, not
+// documented in tools/list output, same trade-off already accepted for the
+// alias-OR branches elsewhere in this phase.
 
 import { z } from 'zod'
 import { registerTool, type RegisteredTool } from './register'
 import { handle_entity_manage } from './entity-manage'
 
-export const InputSchema = z.discriminatedUnion('action', [
+export const InputSchema = z.union([
   z
     .object({
       action: z.literal('generate'),
@@ -160,7 +173,11 @@ export const InputSchema = z.discriminatedUnion('action', [
       attributes: z.record(z.string(), z.number()),
       merge: z.boolean().optional(),
     })
-    .strict(),
+    .strict()
+    .refine((val) => Object.keys(val.attributes).length >= 1, {
+      message: 'attributes must have at least one property',
+      path: ['attributes'],
+    }),
 ])
 
 export function registerEntityManageTool(): void {
