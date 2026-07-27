@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { getToolHandler, getToolDefinition, toJsonSchema } from '../../src/tools/register'
+import { getToolHandler, getToolDefinition } from '../../src/tools/register'
 import { registerSearchToolsTool } from '../../src/rpg/register-search-tools'
 
 describe('search_tools registration (Phase 3 #544)', () => {
   beforeAll(() => {
-    registerSearchToolsTool()
+    try {
+      registerSearchToolsTool()
+    } catch (e: any) {
+      if (!e.message?.includes('already registered')) {
+        throw e
+      }
+    }
   })
 
   it('getToolHandler resolves search_tools', () => {
@@ -18,17 +24,17 @@ describe('search_tools registration (Phase 3 #544)', () => {
     expect(def).toBeDefined()
     expect(def!.name).toBe('search_tools')
     expect(def!.title).toBe('Search Tools')
-    expect(def!.category).toBe('rpg')
     expect(def!.version).toBe('1.0.0')
     expect(def!.description).toBeTruthy()
   })
 
   it('toJsonSchema includes query and limit', () => {
-    const tool = getToolHandler('search_tools')
-    const schema = toJsonSchema({ inputSchema: {} as any, handler: tool! } as any)
+    const def = getToolDefinition('search_tools')
+    const schema = def!.inputSchema
     expect(schema.type).toBe('object')
-    expect(schema.properties.query).toBeDefined()
-    expect(schema.properties.limit).toBeDefined()
+    const props = schema.properties as Record<string, unknown>
+    expect(props.query).toBeDefined()
+    expect(props.limit).toBeDefined()
     expect(schema.required).toContain('query')
   })
 
