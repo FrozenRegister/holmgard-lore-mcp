@@ -1,0 +1,11 @@
+---
+type: feature
+---
+
+Added real Zod input schemas for the 5 lore-family tools (`lore_manage`, `entity_manage`, `world_manage`, `scene_manage`, `continuity_manage`) and registered each via the existing `registerTool()` infrastructure. This is additive only — the existing hand-written JSON Schema definitions and dispatch paths remain unchanged.
+
+**Schema deviations from the hand-written definitions:**
+
+1. **`world_manage` and `continuity_manage`** use `z.union` at the top level instead of `z.discriminatedUnion` because 4 actions in `world_manage` (`get_faction_standing`, `get_entity_knowledge`, `get_location_occupants`, `sense_environment`) and 1 action in `continuity_manage` (`plant_setup`) have OR-alias field requirements that cannot be expressed within a single `z.discriminatedUnion` branch. Zod's `discriminatedUnion` constructor calls `option.shape[discriminator].value` on each option, which fails on `z.union` instances. Each OR-alias action is modeled as multiple flat objects with the same `action` literal but different required fields.
+
+2. **`continuity_manage.set_goal`** has three independent OR-pairs (`entity_key`/`entity_name`, `goal_id`/`goal_name`, `description`/`goal_description`). Building the 8-way combinatorial union would be verbose and fragile. Instead, all six aliased fields are optional in a single flat Zod object, and the handler's existing runtime check enforces the OR requirement. This is a deliberate, documented fidelity loss for this one action only.
