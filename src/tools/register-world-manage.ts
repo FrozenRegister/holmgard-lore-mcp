@@ -4,6 +4,10 @@
 // Note: Several actions have field-A OR field-B requirements (anyOf in the
 // hand-written schema). These are modelled as z.union([variantA, variantB])
 // so zod-to-json-schema emits real anyOf — see #545 schema-modeling rules.
+//
+// Top-level z.union (not z.discriminatedUnion) because the OR-branch actions
+// require nested z.union() calls, which are incompatible with discriminatedUnion's
+// requirement that every member be a flat ZodObject.
 
 import { z } from 'zod'
 import { registerTool, type RegisteredTool } from './register'
@@ -12,7 +16,7 @@ import { handle_world_manage } from './world-manage'
 // Shared action literal for get_faction_standing union variants
 const factionStandingAction = { action: z.literal('get_faction_standing') } as const
 
-export const InputSchema = z.discriminatedUnion('action', [
+export const InputSchema = z.union([
   z
     .object({
       action: z.literal('thread_tick'),
