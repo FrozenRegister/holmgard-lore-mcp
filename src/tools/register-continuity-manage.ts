@@ -186,9 +186,7 @@ export const InputSchema = z.union([
     .object({
       action: z.literal('check_continuity'),
       scope: z.string().optional(),
-      checks: z
-        .array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory']))
-        .optional(),
+      checks: z.array(z.enum(['dangling', 'occupancy', 'knowledge', 'inventory'])).optional(),
       severity_floor: z
         .enum(['info', 'warn', 'error', 'low', 'medium', 'moderate', 'high', 'critical'])
         .optional(),

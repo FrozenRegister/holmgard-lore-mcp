@@ -45,10 +45,7 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
       const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
 
       // Collect action names by descending into nested unions where needed
-      const collectActions = (
-        branches: Array<Record<string, unknown>>,
-        acc: Set<string>,
-      ): void => {
+      const collectActions = (branches: Array<Record<string, unknown>>, acc: Set<string>): void => {
         for (const b of branches) {
           if (b.anyOf && Array.isArray(b.anyOf)) {
             collectActions(b.anyOf as Array<Record<string, unknown>>, acc)
