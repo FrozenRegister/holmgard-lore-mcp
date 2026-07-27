@@ -372,7 +372,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.create({
@@ -398,7 +398,7 @@ jobs:
         # requirement. The cron fallback in auto-merge.yml is the real safety
         # net, so a failed dispatch must never block anything.
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({

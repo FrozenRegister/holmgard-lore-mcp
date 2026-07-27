@@ -94,7 +94,7 @@ jobs:
 
       - name: Open GitHub Issue if changes detected
         if: steps.diff.outputs.changed_count != '0'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs')

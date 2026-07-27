@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const batchCount = Math.min(5, Math.max(1, parseInt('${{ inputs.batch_count }}', 10) || 3))

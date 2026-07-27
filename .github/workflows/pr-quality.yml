@@ -12,7 +12,7 @@ jobs:
     name: Issue Link
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -45,7 +45,7 @@ jobs:
     name: Changelog Fragment
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -96,7 +96,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -156,7 +156,7 @@ jobs:
     name: Naming Conventions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -226,7 +226,7 @@ jobs:
         # requirement. The cron fallback in auto-merge.yml is the real safety
         # net, so a failed dispatch must never block anything.
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({

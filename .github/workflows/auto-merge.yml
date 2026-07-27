@@ -37,7 +37,7 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             // GITHUB_TOKEN-driven merges don't trigger GitHub's own
