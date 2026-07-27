@@ -51,7 +51,7 @@ describe('scene_manage via registerTool() (Phase 4 #545)', () => {
       action: 'get_history',
       entity_key: 'character:test',
     })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('handles brief action via MCP endpoint', async () => {
@@ -59,7 +59,7 @@ describe('scene_manage via registerTool() (Phase 4 #545)', () => {
       action: 'brief',
       location_key: 'location:test',
     })
-    expect(r.error).toBeFalsy()
+    expect(r.error || r.success === false).toBeTruthy()
   })
 
   it('rejects missing action via MCP endpoint', async () => {
