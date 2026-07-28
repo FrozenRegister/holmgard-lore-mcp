@@ -68,9 +68,8 @@ export function dispatchToolCall({
     }
   }
 
-  const handler = toolRegistry[name]
-  if (handler) {
-    return { kind: 'handler', handler }
+  if (name in toolRegistry) {
+    return { kind: 'handler', handler: toolRegistry[name] }
   }
 
   return { kind: 'not-found', toolName: name }
