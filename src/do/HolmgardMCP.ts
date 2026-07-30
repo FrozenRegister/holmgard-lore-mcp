@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { DOEnv } from '../types'
 import { toolDefinitions } from '../tools/definitions'
-import { toolRegistry } from '../tools/registry'
+import { dispatchToolCall } from '../tools/dispatch'
 import { coerceTransportArgs } from '../lib/coerce-transport-args'
 import { normalizeParamCasing } from '../lib/normalize-param-casing'
 import { makeSyntheticContext } from './context-adapter'
@@ -27,35 +27,28 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
         coerceTransportArgs((request.params.arguments ?? {}) as Record<string, unknown>),
       )
 
-      if (toolName === 'lore_manage') {
-        const action = typeof args?.action === 'string' ? args.action : null
-        if (action === 'ping') {
-          return {
-            content: [{ type: 'text' as const, text: 'pong' }],
-            metadata: { source: 'internal' },
-          }
-        }
-        if (action === 'auth_check') {
-          // Auth is validated at the Worker level before routing here
-          return {
-            content: [{ type: 'text' as const, text: 'Authenticated.' }],
-            metadata: { authenticated: true },
-          }
-        }
-        // fall through to registry for all other lore_manage actions
+      // Auth is validated at the Worker level before routing here — a request
+      // never reaches this dispatch unauthenticated, so `authenticated: true`
+      // is always correct for the DO transport (unlike JSON-RPC, which computes
+      // a real per-request value).
+      const dispatch = dispatchToolCall(toolName, args, { authenticated: true })
+
+      if (dispatch.kind === 'short-circuit') {
+        return { content: dispatch.content, metadata: dispatch.metadata }
       }
 
-      const handler = toolRegistry[toolName]
-      if (!handler) {
+      if (dispatch.kind === 'not-found') {
         return {
-          content: [{ type: 'text' as const, text: `Method not found: tool "${toolName}"` }],
+          content: [
+            { type: 'text' as const, text: `Method not found: tool "${dispatch.toolName}"` },
+          ],
           isError: true,
         }
       }
 
       try {
         const c = makeSyntheticContext(this.env)
-        const response = await handler({
+        const response = await dispatch.handler({
           c: c as any,
           id: null,
           args: args as Record<string, any>,

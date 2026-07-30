@@ -99,6 +99,13 @@ describe('JSON-RPC protocol', () => {
     expect(res.error).toBeDefined()
     expect(res.error.code).toBe(-32001)
   })
+
+  it('tools/call returns method-not-found for an unknown tool name', async () => {
+    const res = await callTool('totally_unknown_tool_xyz', {})
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32601)
+    expect(res.error.message).toContain('Method not found: tool "totally_unknown_tool_xyz"')
+  })
 })
 
 describe('ping_tool (via lore_manage action=ping)', () => {
