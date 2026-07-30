@@ -62,12 +62,16 @@ function seasonFromDate(dateStr: string): string {
   return 'autumn'
 }
 
+// #629 — was reading production_day, which belongs to the unrelated
+// production/broadcast minigame subsystem and is only advanced by
+// production-manage.ts's own advance_day action. world_day is the
+// general-purpose counter advanced by time-manage.ts's `advance` action.
 async function currentWorldDay(db: D1Database, worldId: string): Promise<number> {
   const row = (await db
-    .prepare('SELECT production_day FROM world_state WHERE world_id = ?')
+    .prepare('SELECT world_day FROM world_state WHERE world_id = ?')
     .bind(worldId)
-    .first()) as { production_day: number | null } | null
-  return row?.production_day ?? 0
+    .first()) as { world_day: number | null } | null
+  return row?.world_day ?? 0
 }
 
 async function currentWorldDate(db: D1Database, worldId: string): Promise<string | null> {

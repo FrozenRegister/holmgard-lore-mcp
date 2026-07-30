@@ -371,9 +371,13 @@ export async function handleTimeManage(
         return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
 
       const ws = (await db
-        .prepare('SELECT "current_date", time_owner FROM world_state WHERE world_id = ?')
+        .prepare('SELECT "current_date", time_owner, world_day FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first()) as { current_date: string; time_owner: string | null } | null
+        .first()) as {
+        current_date: string
+        time_owner: string | null
+        world_day: number | null
+      } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
 
       // #312 — ownership guard. Only enforced when the caller identifies itself
@@ -393,20 +397,25 @@ export async function handleTimeManage(
       const oldDate = ws.current_date
       const newDate = addToDate(oldDate, parsed_by.amount, parsed_by.unit)
       const now = new Date().toISOString()
+      // #629 — general-purpose day-counter for tick-hooks.ts's day-based
+      // sub-hooks (resource_consume, weather_update), independent of
+      // production-manage.ts's production_day. Advances by the same
+      // days_elapsed already computed below for the response.
+      const newWorldDay = (ws.world_day ?? 0) + dateDiff(oldDate, newDate)
 
       if (willClaim) {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ?, world_day = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, identifiedOwner, now, a.world_id)
+          .bind(newDate, now, identifiedOwner, now, newWorldDay, a.world_id)
           .run()
       } else {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, world_day = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, a.world_id)
+          .bind(newDate, now, newWorldDay, a.world_id)
           .run()
       }
 
@@ -442,6 +451,7 @@ export async function handleTimeManage(
         new_date: newDate,
         by: a.by,
         days_elapsed: dateDiff(oldDate, newDate),
+        world_day: newWorldDay,
         birthdays_triggered: birthdaysTriggered,
         time_owner: willClaim ? identifiedOwner : ws.time_owner,
       }

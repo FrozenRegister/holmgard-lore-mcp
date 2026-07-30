@@ -176,7 +176,7 @@ describe('World lock (#512)', () => {
       // narrator_summary keeps weather_update's summary too, not just the
       // failure — same "don't discard what already happened" reasoning as
       // resolved/flagged above.
-      expect(result.narrator_summary).toContain('Weather system placeholder.')
+      expect(result.narrator_summary).toContain('No weather recorded for day 0')
       expect(result.narrator_summary).toContain('Hook throwing_after_resolved_hook failed: boom')
 
       const auditRow = await env.RPG_DB.prepare(

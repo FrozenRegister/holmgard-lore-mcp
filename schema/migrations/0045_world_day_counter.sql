@@ -1,0 +1,26 @@
+-- Migration 0045: general-purpose world day-counter (#629)
+--
+-- tick-hooks.ts's resource_consume and weather_update sub-hooks (#502) both
+-- need an absolute day-count integer to call day-based subsystems:
+-- tickAllOwnersDegradation (resource-manage.ts) compares against
+-- resource_inventory.expires_on_day/degradation_timer, and weather_log rows
+-- are keyed by (world_id, day). But runTickDriver's only clock input is
+-- current_date (a calendar string from world_state) — there was no
+-- day-count anywhere in the tick-driver's data model.
+--
+-- world_state.production_day (migration 0013) looked like a candidate but
+-- isn't: it belongs to the production/broadcast minigame subsystem and is
+-- only ever advanced by production-manage.ts's own advance_day action, never
+-- by the general time.advance tick. Reusing it would silently couple the
+-- general resource/weather tick-hooks to whether a world happens to be
+-- running the production subsystem.
+--
+-- world_day is a plain incrementing counter, advanced by time-manage.ts's
+-- `advance` action by the same days_elapsed it already computes for the
+-- date arithmetic (see dateDiff in time-manage.ts), independent of
+-- production_day. This is additive only — resource-manage.ts and
+-- weather-manage.ts keep their existing day: number parameters unchanged;
+-- only tick-hooks.ts (WorldSnapshot/snapshotWorldState) and
+-- weather-manage.ts's currentWorldDay() fallback read the new column.
+
+ALTER TABLE world_state ADD COLUMN world_day INTEGER NOT NULL DEFAULT 0;

@@ -111,6 +111,36 @@ describe('weather_manage tool', () => {
     expect(r.wind_speed).toBe(10)
   })
 
+  // #629 — currentWorldDay() used to default to world_state.production_day,
+  // a separate counter only advanced by production-manage.ts's own
+  // advance_day. It now reads world_state.world_day, the general-purpose
+  // counter time-manage.ts's `advance` action maintains.
+  it('get_forecast without an explicit day falls back to world_state.world_day, not production_day', async () => {
+    await createWorld('world:test-day-fallback')
+    await env.RPG_DB.prepare(
+      'INSERT INTO world_state (world_id, current_date, world_day, production_day) VALUES (?, ?, ?, ?)',
+    )
+      .bind('world:test-day-fallback', '2187-01-10', 9, 99)
+      .run()
+
+    await callTool('rpg', {
+      sub: 'weather',
+      action: 'set_forecast',
+      worldId: 'world:test-day-fallback',
+      temperatureHigh: 12,
+      conditions: 'rain',
+    })
+
+    const r = await callTool('rpg', {
+      sub: 'weather',
+      action: 'get_forecast',
+      worldId: 'world:test-day-fallback',
+    })
+    expect(r.found).toBe(true)
+    expect(r.day).toBe(9)
+    expect(r.conditions).toBe('rain')
+  })
+
   it('get_forecast with explicit day parameter', async () => {
     await createWorld('world:test-days')
     await callTool('rpg', {

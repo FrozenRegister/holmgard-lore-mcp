@@ -36,9 +36,17 @@ import {
   type CreatureTickSnapshot,
 } from '../utils/creature-ai'
 import { dissolutionStageCheck } from '../utils/dissolution'
+import { tickAllOwnersDegradation } from './resource-manage'
 
 export interface WorldSnapshot {
   date: string
+  // #629 — general-purpose day-counter (world_state.world_day), advanced by
+  // time-manage.ts's `advance` action alongside current_date. Distinct from
+  // production-manage.ts's production_day (a separate, opt-in minigame
+  // subsystem counter). Lets day-based sub-hooks (resource_consume,
+  // weather_update) call day: number APIs (tickAllOwnersDegradation,
+  // weather_log lookups) without inventing their own epoch.
+  day: number
   parties: Map<string, any>
   characters: Map<string, any>
   encounters: Map<string, any>
@@ -140,6 +148,7 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
   const dateStr = ws?.current_date ?? new Date().toISOString().split('T')[0]
   return {
     date: dateStr,
+    day: (ws?.world_day as number | undefined) ?? 0,
     parties: new Map(),
     characters: new Map(),
     encounters: new Map(),
@@ -149,45 +158,73 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
 
 // ── Phase 1 Hooks ─────────────────────────────────────────────────────────────
 
-// weather_update — resolved hook
+// weather_update — resolved hook (#629). weather-manage.ts is deliberately a
+// narrator-authored cache, not an auto-generating oracle (see its module
+// header) — on a cache miss this hook reports the gap rather than inventing
+// weather, exactly like weather-manage.ts's own get_forecast action does.
 const weatherUpdateHook: HookRunner = {
   name: 'weather_update',
   config: { enabled: true, batch_mode: true },
   dependsOn: [],
   batchMode: true,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
-    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+    snapshot: WorldSnapshot,
   ): Promise<HookResult> => {
-    // TODO: Reuse weather system from #364. For now, return stub.
+    const db = env.RPG_DB!
+    const day = snapshot.day
+    const row = (await db
+      .prepare('SELECT * FROM weather_log WHERE world_id = ? AND day = ?')
+      .bind(worldId, day)
+      .first()) as Record<string, unknown> | null
+
+    if (row) {
+      return {
+        category: 'resolved',
+        data: {
+          action: 'weather_update',
+          worldId,
+          date,
+          day,
+          found: true,
+          conditions: row.conditions,
+          temperature_high: row.temperature_high,
+          temperature_low: row.temperature_low,
+        },
+        narrator_summary: `Weather for day ${day}: ${row.conditions ?? 'unrecorded'}.`,
+      }
+    }
+
     return {
       category: 'resolved',
-      data: { action: 'weather_update', worldId, date },
-      narrator_summary: 'Weather system placeholder.',
+      data: { action: 'weather_update', worldId, date, day, found: false },
+      narrator_summary: `No weather recorded for day ${day} — narrator should fill it via rpg{sub:"weather", action:"set_forecast"}.`,
     }
   },
 }
 
-// resource_consume — resolved hook, batch mode
+// resource_consume — resolved hook, batch mode (#629)
 const resourceConsumeHook: HookRunner = {
   name: 'resource_consume',
   config: { enabled: true, batch_mode: true },
   dependsOn: ['weather_update'],
   batchMode: true,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
-    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+    snapshot: WorldSnapshot,
   ): Promise<HookResult> => {
-    // TODO: Call resource-manage.ts consume for each active party.
-    // For now, return stub.
+    const db = env.RPG_DB!
+    const results = await tickAllOwnersDegradation(db, worldId, snapshot.day)
+    const spoiledCount = results.filter((r) => r.spoiled.length > 0).length
+
     return {
       category: 'resolved',
-      data: { action: 'resource_consume', worldId, date },
-      narrator_summary: 'Party resources consumed.',
+      data: { action: 'resource_consume', worldId, date, day: snapshot.day, results },
+      narrator_summary: `${results.length} owner(s) ticked, ${spoiledCount} with spoilage.`,
     }
   },
 }
@@ -216,9 +253,9 @@ const encounterCheckHook: HookRunner = {
       .bind(worldId)
       .all()
 
-    const parties = (
-      partiesResult.results as Array<{ id: string; q: number; r: number }>
-    ).map((row) => ({ partyId: row.id, q: row.q, r: row.r }))
+    const parties = (partiesResult.results as Array<{ id: string; q: number; r: number }>).map(
+      (row) => ({ partyId: row.id, q: row.q, r: row.r }),
+    )
 
     // If no positioned active parties, return early with empty result
     if (parties.length === 0) {
