@@ -11,11 +11,7 @@ import { toolRegistry } from '../../src/tools/registry'
 describe('dispatchToolCall', () => {
   describe('ping special-case', () => {
     it('short-circuits lore_manage ping when authenticated', () => {
-      const result = dispatchToolCall(
-        'lore_manage',
-        { action: 'ping' },
-        { authenticated: true },
-      )
+      const result = dispatchToolCall('lore_manage', { action: 'ping' }, { authenticated: true })
 
       expect(result.kind).toBe('short-circuit')
       const shortCircuit = result as DispatchShortCircuit
@@ -24,11 +20,7 @@ describe('dispatchToolCall', () => {
     })
 
     it('short-circuits lore_manage ping when not authenticated', () => {
-      const result = dispatchToolCall(
-        'lore_manage',
-        { action: 'ping' },
-        { authenticated: false },
-      )
+      const result = dispatchToolCall('lore_manage', { action: 'ping' }, { authenticated: false })
 
       expect(result.kind).toBe('short-circuit')
       const shortCircuit = result as DispatchShortCircuit
@@ -47,9 +39,7 @@ describe('dispatchToolCall', () => {
 
       expect(result.kind).toBe('short-circuit')
       const shortCircuit = result as DispatchShortCircuit
-      expect(shortCircuit.content).toEqual([
-        { type: 'text', text: 'Authenticated.' },
-      ])
+      expect(shortCircuit.content).toEqual([{ type: 'text', text: 'Authenticated.' }])
       expect(shortCircuit.metadata.authenticated).toBe(true)
     })
 
@@ -74,11 +64,7 @@ describe('dispatchToolCall', () => {
 
   describe('registry fallthrough for lore_manage', () => {
     it('falls through to registry when lore_manage action is not ping or auth_check', () => {
-      const result = dispatchToolCall(
-        'lore_manage',
-        { action: 'get' },
-        { authenticated: true },
-      )
+      const result = dispatchToolCall('lore_manage', { action: 'get' }, { authenticated: true })
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
@@ -95,11 +81,7 @@ describe('dispatchToolCall', () => {
     })
 
     it('falls through to registry when lore_manage action is not a string', () => {
-      const result = dispatchToolCall(
-        'lore_manage',
-        { action: 123 },
-        { authenticated: false },
-      )
+      const result = dispatchToolCall('lore_manage', { action: 123 }, { authenticated: false })
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
@@ -109,11 +91,7 @@ describe('dispatchToolCall', () => {
 
   describe('handler lookup in registry', () => {
     it('returns handler for known tool in registry', () => {
-      const result = dispatchToolCall(
-        'entity_manage',
-        { action: 'list' },
-        { authenticated: true },
-      )
+      const result = dispatchToolCall('entity_manage', { action: 'list' }, { authenticated: true })
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
@@ -122,11 +100,7 @@ describe('dispatchToolCall', () => {
     })
 
     it('returns handler for another known tool in registry', () => {
-      const result = dispatchToolCall(
-        'world_manage',
-        {},
-        { authenticated: false },
-      )
+      const result = dispatchToolCall('world_manage', {}, { authenticated: false })
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
@@ -136,11 +110,7 @@ describe('dispatchToolCall', () => {
 
   describe('not-found case', () => {
     it('returns not-found for unknown tool', () => {
-      const result = dispatchToolCall(
-        'totally_not_a_real_tool',
-        {},
-        { authenticated: true },
-      )
+      const result = dispatchToolCall('totally_not_a_real_tool', {}, { authenticated: true })
 
       expect(result.kind).toBe('not-found')
       const notFound = result as DispatchNotFound
