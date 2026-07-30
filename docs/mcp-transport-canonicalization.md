@@ -101,6 +101,6 @@ None of it is done here — this doc is the decision, not the implementation.
 | What | Scope |
 | --- | --- |
 | Cut `tools/list` over to `register.ts`; retire `toolDefinitions` | §4 — the last unrealized phase of #539/#540's registration work |
-| Fix the synthetic-context header stub | §5 — latent correctness bug |
-| Fix (or validate) the DO's `json.result` unwrap | §5 — latent correctness bug |
+| Fix the synthetic-context header stub (#620) | §5 — latent correctness bug |
+| Fix (or validate) the DO's `json.result` unwrap (#621) | §5 — latent correctness bug |
 | Add live smoke coverage for the Streamable HTTP path | §2 — the advertised surface currently has zero live tests |

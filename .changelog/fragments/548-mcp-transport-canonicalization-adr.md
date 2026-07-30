@@ -12,7 +12,7 @@
 ### Documented (no code change)
 
 - Two divergences between the transports are recorded as **intentional**: the auth asymmetry (the DO hardcodes `authenticated: true` because the Worker-level middleware gates the request before it reaches the DO — preserved deliberately by #546) and the bare-method gap (structural, per above).
-- Two are recorded as **latent bugs**, with follow-up issues: `src/do/context-adapter.ts` stubs every request header to `null`, so any header-reading handler silently behaves differently under the DO; and `HolmgardMCP.ts:69`'s `json.result ?? …` unwrap assumes every handler's JSON-RPC `result` is already MCP-content-block shaped without ever checking.
+- Two are recorded as **latent bugs**, with follow-up issues: `src/do/context-adapter.ts` stubs every request header to `null`, so any header-reading handler silently behaves differently under the DO (#620); and `HolmgardMCP.ts:69`'s `json.result ?? …` unwrap assumes every handler's JSON-RPC `result` is already MCP-content-block shaped without ever checking (#621).
 
 ### Out of scope
 
