@@ -8,6 +8,22 @@
 // startDate–endDate gap) and true shadow-state diff/rollback across multiple
 // hooks in one tick — a thrown hook stops the remaining hooks in that tick but
 // does not undo whatever earlier hooks in the same call already wrote.
+//
+// Cross-hook rollback via a D1 transaction (#502's last checkbox) was
+// evaluated and is not achievable with D1's current API, not merely
+// unimplemented: D1Database exposes only prepare()/batch()/exec(), no
+// interactive BEGIN/COMMIT/ROLLBACK, and batch() requires every statement
+// bound and known upfront — it can't express "read this row, branch on the
+// result, then maybe write" across multiple hooks the way each hook here
+// does (weather → resource → encounter/health → dissolution, each importing
+// its own handler module). Closing this out as an accepted platform
+// limitation rather than papering over it with fake rollback bookkeeping.
+// If Phase 3 (#445) creature-AI hooks need real atomicity, the honest options
+// are: (a) restructure hooks to gather all writes as prepared statements
+// first and commit them in one batch() at the end (loses per-hook branching
+// on a prior hook's just-written state), or (b) each mutating hook records a
+// compensating action so a later failure can be manually/semi-automatically
+// unwound — real design work, not a wrapper to add.
 
 import type { AppBindings } from '../../types'
 import { resolveEncounterCore, type EncounterResolveResult } from './encounter-manage'
