@@ -412,7 +412,7 @@ Every branch must use one of these prefixes, matching the conventional commit ty
 | `chore/` | Maintenance — deps, config, CI, tooling |
 | `perf/` | Performance improvement |
 
-**Enforced, not just convention:** `pr-quality.yml`'s `check-naming` job blocks the PR unless the branch starts with one of the prefixes above *and* the PR title matches conventional-commit format (`type: subject` or `type(scope): subject`). The title is what's checked, not individual commits — this repo squash-merges, so the PR title becomes the permanent commit message on `main`; messy WIP commits mid-PR are fine. Apply `skip-quality-checks` to bypass for a legitimate exception.
+**Enforced, not just convention:** `pr-quality.yml`'s `check-naming` job blocks the PR unless the branch starts with one of the prefixes above *and* the PR title matches conventional-commit format (`type: subject` or `type(scope): subject`). The title is what's checked, not individual commits — this repo squash-merges, so the PR title becomes the permanent commit message on `main`; messy WIP commits mid-PR are fine. Apply the `skip-naming-check` label to bypass only this check (e.g. an externally-assigned branch name that can't be renamed) — it does not silence `check-issue-link`/`check-changelog`/`check-docs`. Use the broader `skip-quality-checks` label only when you need to bypass all four PR-quality checks at once.
 
 Example: `feat/batch-admin-endpoints`, `fix/ws-reconnect-rate-limit`, `chore/upgrade-vitest`.
 
