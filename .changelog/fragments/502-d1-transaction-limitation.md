@@ -1,0 +1,1 @@
+Document that cross-hook D1 transaction rollback in the tick driver (#502's last checkbox) is a platform limitation, not an unimplemented feature — D1 has no interactive transaction API compatible with each hook's read-then-branch-then-write pattern.
