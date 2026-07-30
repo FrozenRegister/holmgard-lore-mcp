@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { runTickDriver, type HookResult } from '@/rpg/handlers/tick-hooks'
 import type { AppBindings } from '@/types'
 import * as characterManager from '@/rpg/handlers/character-manage'
+import * as encounterManager from '@/rpg/handlers/encounter-manage'
 
 // Mock environment and database
 const mockEnv: AppBindings = {
@@ -540,6 +541,62 @@ describe('Tick Hooks - Conflict Resolution', () => {
     const data = encounterResult.data as Record<string, unknown>
     expect(data.parties_checked).toBe(3)
     expect(Array.isArray(data.triggered)).toBe(true)
+  })
+
+  it('reports a party in triggered when resolveEncounterCore signals an encounter', async () => {
+    // Set up mockEnv.RPG_DB to use mockDb
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', weather: null })
+      } else if (query.includes('parties')) {
+        mockStmt.all.mockResolvedValue({ results: [{ id: 'party-1', q: 0, r: 0 }] })
+      }
+
+      return mockStmt
+    })
+
+    // resolveEncounterCore does its own dice rolls/zone resolution — rather
+    // than reverse-engineering a D1 mock chain that forces a random roll to
+    // land past threshold, mock the function's return directly to exercise
+    // the hook's `if (result.encounter)` branch deterministically.
+    const spy = vi.spyOn(encounterManager, 'resolveEncounterCore').mockResolvedValue({
+      worldId: 'world-1',
+      q: 0,
+      r: 0,
+      encounter: true,
+      roll: 18,
+      threshold: 10,
+      modifiers: {},
+    })
+
+    try {
+      const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+        hooks: ['encounter_check'],
+      })
+
+      expect(result.success).toBe(true)
+      const data = result.flagged[0].data as Record<string, unknown>
+      expect(data.parties_checked).toBe(1)
+      const triggered = data.triggered as Array<{ partyId: string; encounter: boolean }>
+      expect(triggered).toHaveLength(1)
+      expect(triggered[0].partyId).toBe('party-1')
+      expect(triggered[0].encounter).toBe(true)
+      expect(result.flagged[0].narrator_summary).toContain('1 encounter(s) eligible')
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   // ── Coverage: circular dependency → topological sort failure ──────────────────
