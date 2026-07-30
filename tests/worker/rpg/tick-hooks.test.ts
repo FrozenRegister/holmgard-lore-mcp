@@ -391,6 +391,157 @@ describe('Tick Hooks - Conflict Resolution', () => {
     }
   })
 
+  // ── Coverage: encounter_check hook tests ────────────────────────────────────
+
+  it('should check encounters for active positioned parties', async () => {
+    // Set up mockEnv.RPG_DB to use mockDb
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    // Create a mock implementation that tracks queries
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({
+          current_date: '2187-01-10',
+          weather: null,
+        })
+      } else if (query.includes('parties')) {
+        // Mock one active positioned party
+        mockStmt.all.mockResolvedValue({
+          results: [{ id: 'party-1', q: 0, r: 0 }],
+        })
+      } else if (query.includes('hexes')) {
+        mockStmt.first.mockResolvedValue({ biome: 'grassland' })
+      } else if (query.includes('biome_registry')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      } else if (query.includes('encounter_types')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      } else if (query.includes('zones_at')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['encounter_check'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.flagged).toHaveLength(1)
+    const encounterResult = result.flagged[0]
+    expect(encounterResult.data).toBeDefined()
+    const data = encounterResult.data as Record<string, unknown>
+    expect(data.action).toBe('encounter_check')
+    expect(data.parties_checked).toBe(1)
+    expect(data.triggered).toBeDefined()
+    expect(Array.isArray(data.triggered)).toBe(true)
+  })
+
+  it('should report no encounters when no parties are positioned', async () => {
+    // Set up mockEnv.RPG_DB to use mockDb
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    // Mock database to return no parties
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({
+          current_date: '2187-01-10',
+          weather: null,
+        })
+      }
+      // parties query returns empty array by default
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['encounter_check'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.flagged).toHaveLength(1)
+    const encounterResult = result.flagged[0]
+    const data = encounterResult.data as Record<string, unknown>
+    expect(data.parties_checked).toBe(0)
+    expect(data.triggered).toStrictEqual([])
+    expect(encounterResult.narrator_summary).toContain('No positioned active parties')
+  })
+
+  it('should handle multiple positioned parties in parallel', async () => {
+    // Set up mockEnv.RPG_DB to use mockDb
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    // Mock database to return multiple active positioned parties
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({
+          current_date: '2187-01-10',
+          weather: null,
+        })
+      } else if (query.includes('parties')) {
+        // Mock three active positioned parties
+        mockStmt.all.mockResolvedValue({
+          results: [
+            { id: 'party-1', q: 0, r: 0 },
+            { id: 'party-2', q: 1, r: 1 },
+            { id: 'party-3', q: 2, r: 2 },
+          ],
+        })
+      } else if (query.includes('hexes')) {
+        mockStmt.first.mockResolvedValue({ biome: 'forest' })
+      } else if (query.includes('biome_registry')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      } else if (query.includes('encounter_types')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      } else if (query.includes('zones_at')) {
+        mockStmt.all.mockResolvedValue({ results: [] })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['encounter_check'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.flagged).toHaveLength(1)
+    const encounterResult = result.flagged[0]
+    const data = encounterResult.data as Record<string, unknown>
+    expect(data.parties_checked).toBe(3)
+    expect(Array.isArray(data.triggered)).toBe(true)
+  })
+
   // ── Coverage: circular dependency → topological sort failure ──────────────────
 
   it('should handle circular dependencies gracefully', async () => {

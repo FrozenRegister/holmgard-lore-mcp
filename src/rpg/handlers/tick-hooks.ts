@@ -10,6 +10,7 @@
 // does not undo whatever earlier hooks in the same call already wrote.
 
 import type { AppBindings } from '../../types'
+import { resolveEncounterCore, type EncounterResolveResult } from './encounter-manage'
 
 // ── Hook Categories ──────────────────────────────────────────────────────────
 
@@ -197,16 +198,77 @@ const encounterCheckHook: HookRunner = {
   dependsOn: ['weather_update'],
   batchMode: false,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Reuse encounter.resolve from #280. Report eligibility, do not auto-resolve.
+    const db = env.RPG_DB!
+
+    // Query for active, positioned parties
+    const partiesResult = await db
+      .prepare(
+        `SELECT id, current_hex_q AS q, current_hex_r AS r
+         FROM parties
+         WHERE world_id = ? AND status = 'active' AND current_hex_q IS NOT NULL AND current_hex_r IS NOT NULL`,
+      )
+      .bind(worldId)
+      .all()
+
+    const parties = (
+      partiesResult.results as Array<{ id: string; q: number; r: number }>
+    ).map((row) => ({ partyId: row.id, q: row.q, r: row.r }))
+
+    // If no positioned active parties, return early with empty result
+    if (parties.length === 0) {
+      return {
+        category: 'flagged',
+        data: {
+          action: 'encounter_check',
+          worldId,
+          date,
+          parties_checked: 0,
+          triggered: [],
+        },
+        narrator_summary: 'No positioned active parties to check.',
+      }
+    }
+
+    // Check encounters for all parties in parallel
+    const results = await Promise.all(
+      parties.map((party) =>
+        resolveEncounterCore(db, {
+          worldId,
+          q: party.q,
+          r: party.r,
+          lightweight: true,
+        }),
+      ),
+    )
+
+    // Collect parties where an encounter was triggered
+    const triggered: Array<EncounterResolveResult & { partyId: string }> = []
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (result.encounter) {
+        triggered.push({
+          ...result,
+          partyId: parties[i].partyId,
+        })
+      }
+    }
+
+    const triggeredCount = triggered.length
     return {
       category: 'flagged',
-      data: { action: 'encounter_check', worldId, date },
-      narrator_summary: 'Encounter eligibility checked.',
+      data: {
+        action: 'encounter_check',
+        worldId,
+        date,
+        parties_checked: parties.length,
+        triggered,
+      },
+      narrator_summary: `${parties.length} party(ies) checked, ${triggeredCount} encounter(s) eligible.`,
     }
   },
 }
