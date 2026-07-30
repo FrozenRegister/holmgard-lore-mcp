@@ -34,6 +34,7 @@ import {
   type PreySnapshot,
   type CreatureTickSnapshot,
 } from '../utils/creature-ai'
+import { dissolutionStageCheck } from '../utils/dissolution'
 
 export interface WorldSnapshot {
   date: string
@@ -239,17 +240,63 @@ const dissolutionFlagHook: HookRunner = {
   dependsOn: ['health_degradation', 'encounter_check'],
   batchMode: false,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Scan staged entities via Phase 0's DissolutionStageCheck interface.
-    // Report which are eligible to advance a stage. Never auto-advance.
+    const db = env.RPG_DB!
+
+    // Query for characters in this world with death_mode = 'staged'
+    const result = await db
+      .prepare(
+        `SELECT id, death_mode, dissolution_stage, dissolution_stages
+         FROM characters
+         WHERE world_id = ? AND death_mode = 'staged'`,
+      )
+      .bind(worldId)
+      .all()
+
+    const rows = result.results as unknown as Array<{
+      id: string
+      death_mode: string | null
+      dissolution_stage: number | null
+      dissolution_stages: number | null
+    }>
+
+    const stagedCharacters: Array<{
+      id: string
+      stage: number | null
+      total_stages: number | null
+    }> = []
+
+    // Check each row and collect staged characters
+    for (const row of rows) {
+      const check = dissolutionStageCheck(row)
+      if (check.is_staged) {
+        stagedCharacters.push({
+          id: row.id,
+          stage: check.stage,
+          total_stages: check.total_stages,
+        })
+      }
+    }
+
+    // Build narrator summary
+    const narratorSummary =
+      stagedCharacters.length > 0
+        ? `${stagedCharacters.length} character(s) in active dissolution stage(s) flagged for review.`
+        : 'No characters in active dissolution stages.'
+
     return {
       category: 'flagged',
-      data: { action: 'dissolution_flag', worldId, date },
-      narrator_summary: 'Dissolution stage eligibility checked.',
+      data: {
+        action: 'dissolution_flag',
+        worldId,
+        date,
+        staged_characters: stagedCharacters,
+      },
+      narrator_summary: narratorSummary,
     }
   },
 }

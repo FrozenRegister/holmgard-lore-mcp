@@ -435,4 +435,21 @@ describe('Tick Hooks - Conflict Resolution', () => {
       HOOK_REGISTRY.delete('circ_b')
     }
   })
+
+  // ── Dissolution Flag Hook Tests ──────────────────────────────────────────────
+
+  it('should invoke dissolution_flag hook when requested', async () => {
+    // Ensure mockEnv.RPG_DB is set to mockDb for the hook to use
+    mockEnv.RPG_DB = mockDb
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['dissolution_flag'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.flagged).toHaveLength(1)
+    expect(result.flagged[0].data).toBeDefined()
+    const data = result.flagged[0].data as { action: string }
+    expect(data.action).toBe('dissolution_flag')
+  })
 })
