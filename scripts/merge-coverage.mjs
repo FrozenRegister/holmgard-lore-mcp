@@ -5,6 +5,9 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import libCoverage from 'istanbul-lib-coverage'
+import libReport from 'istanbul-lib-report'
+import reports from 'istanbul-reports'
 
 const COVERAGE_SHARDS_DIR = './coverage-shards'
 const OUTPUT_DIR = './coverage'
@@ -91,6 +94,23 @@ try {
   console.log(`✓ Merged coverage written to ${outputFile}`)
 } catch (err) {
   console.error(`Error writing merged coverage:`, err.message)
+  process.exit(1)
+}
+
+// Derive coverage-summary.json from the merged map — scripts/report-coverage-gaps.mjs
+// (and any other json-summary consumer) reads this file, not coverage-final.json, and
+// the sharded merge above only ever produced coverage-final.json (issue #617).
+const summaryFile = path.join(OUTPUT_DIR, 'coverage-summary.json')
+try {
+  const coverageMap = libCoverage.createCoverageMap(mergedCoverage)
+  const context = libReport.createContext({
+    dir: OUTPUT_DIR,
+    coverageMap,
+  })
+  reports.create('json-summary').execute(context)
+  console.log(`✓ Coverage summary written to ${summaryFile}`)
+} catch (err) {
+  console.error(`Error writing coverage summary:`, err.message)
   process.exit(1)
 }
 

@@ -48,6 +48,15 @@ importers:
       eslint-config-prettier:
         specifier: ^10.1.8
         version: 10.1.8(eslint@10.8.0)
+      istanbul-lib-coverage:
+        specifier: ^3.2.2
+        version: 3.2.2
+      istanbul-lib-report:
+        specifier: ^3.0.1
+        version: 3.0.1
+      istanbul-reports:
+        specifier: ^3.2.0
+        version: 3.2.0
       markdownlint-cli2:
         specifier: ^0.23.2
         version: 0.23.2
