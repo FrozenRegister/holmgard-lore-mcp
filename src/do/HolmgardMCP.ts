@@ -1,5 +1,6 @@
 // src/do/HolmgardMCP.ts — McpAgent Durable Object for Streamable HTTP transport
 import { McpAgent } from 'agents/mcp'
+import { getCurrentAgent } from 'agents'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { DOEnv } from '../types'
@@ -47,7 +48,16 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
       }
 
       try {
-        const c = makeSyntheticContext(this.env)
+        // `onRequest` (base Agent class) wraps the whole request in
+        // `agentContext.run({ request, ... })`, so the originating Streamable
+        // HTTP request — headers included — is available here via
+        // getCurrentAgent(), even though nothing was passed down explicitly.
+        // Previously the synthetic context stubbed every header to `null`
+        // unconditionally (#620); this restores real header reads while
+        // still degrading to `null` if no request is on the async context
+        // (e.g. this handler somehow ran outside onRequest).
+        const { request } = getCurrentAgent()
+        const c = makeSyntheticContext(this.env, request?.headers)
         const response = await dispatch.handler({
           c: c as any,
           id: null,
