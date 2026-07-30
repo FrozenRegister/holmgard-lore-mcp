@@ -1,7 +1,7 @@
 // src/tools/scene.ts
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
-import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
+import { kvGet, kvList, kvPut, getKV } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import {
   parseKvEntry,
@@ -72,7 +72,6 @@ export async function handle_activate_scene({
     'system:active-scene',
     JSON.stringify({ text: activeText, meta: { version: 1, updatedAt: now, createdAt: now } }),
   )
-  loreDB['system:active-scene'] = activeText
 
   return c.json(
     makeResult(id, {
@@ -225,7 +224,6 @@ export async function handle_commit_choice({
     }),
   )
   await appendChangelog(c, entityKey, entityVersion)
-  loreDB[entityKey] = newEntityText
 
   // #350 — narrow bridge: a committed choice is a discrete, queryable fact,
   // so mirror it into D1 timeline_events (making it visible to `rpg scene

@@ -105,6 +105,7 @@ export async function kvListMaps(c: { env: AppBindings }): Promise<string[]> {
 }
 
 export async function kvPut(c: { env: AppBindings }, key: string, value: string): Promise<boolean> {
+  loreDB[key] = value
   try {
     const kv = getKV(c)
     if (kv) {
@@ -118,6 +119,7 @@ export async function kvPut(c: { env: AppBindings }, key: string, value: string)
 }
 
 export async function kvDelete(c: { env: AppBindings }, key: string): Promise<boolean> {
+  delete loreDB[key]
   try {
     const kv = getKV(c)
     if (kv) {

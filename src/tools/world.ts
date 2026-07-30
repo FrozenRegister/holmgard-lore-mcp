@@ -1,7 +1,7 @@
 // src/tools/world.ts
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
-import { kvGet, kvList, kvPut, loreDB } from '../lib/kv'
+import { kvGet, kvList, kvPut } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import { applyAliases } from '../lib/aliases'
 import { resolveEntityKey } from '../lib/entity-resolve'
@@ -155,7 +155,6 @@ export const handle_thread_tick: TypedToolHandler<typeof threadTickSchema> = asy
       }),
     )
     await appendChangelog(c, entity.key, version)
-    loreDB[entity.key] = updatedText
     local_shifts.push({
       key: entity.key,
       old_value: timelineValue,
