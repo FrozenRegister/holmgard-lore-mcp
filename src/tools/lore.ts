@@ -62,7 +62,6 @@ export async function handle_set_lore({
   await kvPut(c, key, payload)
   await updateIndexes(c, key, text, existingText)
   await appendChangelog(c, key, version)
-  loreDB[key] = text
   clearRequestCache(c)
   return c.json(
     makeResult(id, {
@@ -113,7 +112,6 @@ export async function handle_delete_lore({
     await updateIndexes(c, key, '', existingText)
     await appendChangelog(c, key, 0, 'delete')
   }
-  delete loreDB[key]
   clearRequestCache(c)
   return c.json(
     makeResult(id, {
@@ -330,7 +328,6 @@ export async function handle_patch_lore({
 
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
-  loreDB[key] = updatedText
   clearRequestCache(c)
   return c.json(
     makeResult(id, {
@@ -376,7 +373,6 @@ export async function handle_batch_set_lore({
         await kvPut(c, e.key, payload)
         await updateIndexes(c, e.key, e.text, existingText)
         await appendChangelog(c, e.key, version)
-        loreDB[e.key] = e.text
         batchResults[e.key] = { ok: true, version }
       } catch (err) {
         batchResults[e.key] = { ok: false, error: String(err) }
@@ -499,7 +495,6 @@ export async function handle_batch_mutate({
       await updateIndexes(c, key, updatedText, text)
       await appendChangelog(c, key, version)
       liveTexts.set(key, updatedText)
-      loreDB[key] = updatedText
       mutationResults.push({
         key,
         action: 'increment',
@@ -640,7 +635,6 @@ export async function handle_batch_mutate({
       await updateIndexes(c, key, updatedText, text)
       await appendChangelog(c, key, version)
       liveTexts.set(key, updatedText)
-      loreDB[key] = updatedText
       mutationResults.push({ key, action: `patch:${op}`, ok: true, message: msg })
     }
   }
@@ -849,7 +843,6 @@ export async function handle_increment_topic_field({
 
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
-  loreDB[key] = updatedText
   clearRequestCache(c)
   return c.json(
     makeResult(id, {
@@ -940,7 +933,6 @@ export async function handle_append_to_section({
 
   await kvPut(c, key, payload)
   await appendChangelog(c, key, version)
-  loreDB[key] = mutatedText
   clearRequestCache(c)
 
   return c.json(
@@ -992,7 +984,6 @@ export async function handle_move_entity({
   )
   await updateIndexes(c, key, updatedText, oldText)
   await appendChangelog(c, key, version)
-  loreDB[key] = updatedText
   clearRequestCache(c)
 
   return c.json(

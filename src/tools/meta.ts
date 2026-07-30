@@ -1,7 +1,7 @@
 // src/tools/meta.ts
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
-import { kvGet, kvList, kvPut, getKV, loreDB } from '../lib/kv'
+import { kvGet, kvList, kvPut, getKV } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import {
   parseKvEntry,
@@ -881,7 +881,6 @@ export async function handle_tag_topic({
     }),
   )
   await appendChangelog(c, topicKey, version)
-  loreDB[topicKey] = updatedText
 
   const kv = getKV(c)
   if (kv) {
@@ -1276,7 +1275,6 @@ export async function handle_plant_setup({
   )
   await updateIndexes(c, setupKey, text, existingRaw ? parseKvEntry(existingRaw).text : null)
   await appendChangelog(c, setupKey, version)
-  loreDB[setupKey] = text
 
   return c.json(
     makeResult(id, {
@@ -1320,7 +1318,6 @@ export async function handle_pay_off_setup({
   )
   await updateIndexes(c, setupKey, updatedText, text)
   await appendChangelog(c, setupKey, version)
-  loreDB[setupKey] = updatedText
 
   return c.json(
     makeResult(id, {
@@ -1452,7 +1449,6 @@ export async function handle_set_goal({
     }),
   )
   await appendChangelog(c, entityKey, version)
-  loreDB[entityKey] = updatedText
 
   return c.json(
     makeResult(id, {
@@ -1743,7 +1739,6 @@ export async function handle_check_continuity({
         }),
       )
       await appendChangelog(c, key, version)
-      loreDB[key] = text
     }
   }
 

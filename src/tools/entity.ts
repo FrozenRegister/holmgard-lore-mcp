@@ -1,6 +1,6 @@
 // src/tools/entity.ts
 import { z } from 'zod'
-import { kvGet, kvPut, kvDelete, loreDB, clearRequestCache } from '../lib/kv'
+import { kvGet, kvPut, kvDelete, clearRequestCache } from '../lib/kv'
 import { makeResult, makeError } from '../lib/rpc'
 import {
   parseKvEntry,
@@ -113,7 +113,6 @@ export async function handle_resolve_interaction({
         }),
       )
       await appendChangelog(c, keyA, version)
-      loreDB[keyA] = updatedTextA
       clearRequestCache(c)
     }
   }
@@ -166,7 +165,6 @@ export async function handle_destroy_entity({
   await updateIndexes(c, key, '', text)
   await kvDelete(c, key)
   await appendChangelog(c, key, 0, 'destroy')
-  delete loreDB[key]
   clearRequestCache(c)
 
   return c.json(
@@ -596,7 +594,6 @@ export async function handle_map_integration({
     }),
   )
   await appendChangelog(c, targetKey, version)
-  loreDB[targetKey] = updatedTargetText
 
   return c.json(
     makeResult(id, {
@@ -671,7 +668,6 @@ export async function handle_generate_entity({
       meta: { version: 1, updatedAt: now, createdAt: now, generated_from: archetypeKey },
     }),
   )
-  loreDB[newEntityKey] = entityText
 
   return c.json(
     makeResult(id, {
@@ -820,7 +816,6 @@ export async function handle_roll_encounter({
       },
     }),
   )
-  loreDB[newEntityKey] = entityText
 
   return c.json(
     makeResult(id, {
@@ -1062,7 +1057,6 @@ export async function handle_advance_state_stage({
     }),
   )
   await appendChangelog(c, entityKey, version)
-  loreDB[entityKey] = updatedText
 
   // #411 — mirror the KV stage advance into D1's characters.dissolution_stage
   // when this entity is also a "staged" character (#314). Per Archisector's
@@ -1211,7 +1205,6 @@ export async function handle_process_stage_batch({
         }),
       )
       await appendChangelog(c, key, version)
-      loreDB[key] = updatedText
       return {
         kind: 'outcome' as const,
         key,
@@ -1904,8 +1897,6 @@ export async function handle_transfer_item({
     appendChangelog(c, fromKey, fromVersion),
     appendChangelog(c, toKey, toVersion),
   ])
-  loreDB[fromKey] = newFromText
-  loreDB[toKey] = newToText
   clearRequestCache(c)
 
   return c.json(
@@ -2104,7 +2095,6 @@ export async function handle_create_consumption_timeline({
     }),
   )
   await appendChangelog(c, entityKey, version)
-  loreDB[entityKey] = updatedText
 
   return c.json(
     makeResult(id, {
@@ -2225,7 +2215,6 @@ export async function handle_set_consumption_timeline({
     }),
   )
   await appendChangelog(c, entityKey, version)
-  loreDB[entityKey] = updatedText
 
   const changedFields = Object.keys(updates)
 
@@ -2311,7 +2300,6 @@ export async function handle_set_sensory_profile({
     }),
   )
   await appendChangelog(c, entityKey, version)
-  loreDB[entityKey] = updatedText
 
   return c.json(
     makeResult(id, {

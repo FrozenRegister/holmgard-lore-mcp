@@ -2,7 +2,7 @@
 import { Hono, type Context } from 'hono'
 import type { AppBindings } from '../types'
 import type { RequestIdVariables } from '../middleware/request-id'
-import { kvGet, kvPut, kvDelete, getKV, loreDB } from '../lib/kv'
+import { kvGet, kvPut, kvDelete, getKV } from '../lib/kv'
 import { parseKvEntry } from '../lib/lore'
 import { pushHistory, appendChangelog } from '../lib/history'
 import { updateIndexes } from '../lib/indexes'
@@ -110,7 +110,6 @@ admin.post('/set-lore', async (c) => {
     await kvPut(c, key, payload)
     await updateIndexes(c, key, text, existingText)
     await appendChangelog(c, key, version)
-    loreDB[key] = text
     return c.json({ ok: true, version }, 200)
   } catch (e) {
     console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
@@ -136,7 +135,6 @@ admin.post('/delete-lore', async (c) => {
       await updateIndexes(c, key, '', existingText)
       await appendChangelog(c, key, 0, 'delete')
     }
-    delete loreDB[key]
     return c.json({ ok: true, source: deleted ? 'kv' : 'in-memory' }, 200)
   } catch (e) {
     console.error(`[admin] ${c.req.method} ${c.req.path}:`, e)
@@ -183,7 +181,6 @@ admin.post('/set-lore-batch', async (c) => {
           await kvPut(c, key, payload)
           await updateIndexes(c, key, text, existingText)
           await appendChangelog(c, key, version)
-          loreDB[key] = text
         } catch {
           failedKeys.push(key)
         }
@@ -230,7 +227,6 @@ admin.post('/delete-lore-batch', async (c) => {
           await updateIndexes(c, key, '', existingText)
           await appendChangelog(c, key, 0, 'delete')
         }
-        delete loreDB[key]
       }),
     )
 
@@ -457,7 +453,6 @@ admin.post('/migrate-character', async (c) => {
         meta: { ...meta, version: newVersion, updatedAt: now },
       }),
     )
-    loreDB[key] = updatedText
 
     return c.json({ ok: true, d1Id: newId, key, name: insert.name }, 200)
   } catch (e) {
@@ -618,7 +613,6 @@ admin.post('/migrate-all-characters', async (c) => {
             meta: { ...meta, version: newVersion, updatedAt: now },
           }),
         )
-        loreDB[key] = updatedText
 
         results.push({ key, status: 'migrated', d1Id: newId })
       } catch (err) {
