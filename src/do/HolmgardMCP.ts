@@ -9,6 +9,7 @@ import { dispatchToolCall } from '../tools/dispatch'
 import { coerceTransportArgs } from '../lib/coerce-transport-args'
 import { normalizeParamCasing } from '../lib/normalize-param-casing'
 import { makeSyntheticContext } from './context-adapter'
+import { normalizeToolResult } from '../tools/normalize-tool-result'
 
 export class HolmgardMCP extends McpAgent<DOEnv> {
   server = new Server(
@@ -76,7 +77,10 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
           }
         }
 
-        return json.result ?? { content: [{ type: 'text' as const, text: 'ok' }] }
+        // Validate/normalize rather than trust the shape (#621) — a handler's
+        // `result` is only guaranteed content-block-shaped by convention, not
+        // by any type the compiler enforces across this transport boundary.
+        return normalizeToolResult(json.result)
       } catch (e) {
         console.error('Unhandled error in DO tool handler', e)
         return {

@@ -1,0 +1,1 @@
+Validate and normalize a resolved tool handler's `result` at the `HolmgardMCP` Durable Object's `tools/call` boundary instead of trusting it's already MCP content-block-shaped, and stop synthesizing a fake "ok" success for a missing result (#621).
