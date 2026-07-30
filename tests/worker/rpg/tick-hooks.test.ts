@@ -90,6 +90,7 @@ afterEach(() => {
 
 describe('Tick Hooks - Conflict Resolution', () => {
   it('should return empty conflict_resolutions when no flagged events', async () => {
+    mockEnv.RPG_DB = mockDb
     const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
       hooks: ['weather_update'],
     })

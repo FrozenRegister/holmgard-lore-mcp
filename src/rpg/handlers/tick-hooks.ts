@@ -36,6 +36,9 @@ import {
   type CreatureTickSnapshot,
 } from '../utils/creature-ai'
 import { dissolutionStageCheck } from '../utils/dissolution'
+import { handleWeatherManage } from './weather-manage'
+import { tickAllOwnersDegradation, type DegradeResult } from './resource-manage'
+import { computeInfectionStage } from './encounter-manage'
 
 export interface WorldSnapshot {
   date: string
@@ -156,16 +159,24 @@ const weatherUpdateHook: HookRunner = {
   dependsOn: [],
   batchMode: true,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Reuse weather system from #364. For now, return stub.
+    // Reuses weather-manage.ts's get_forecast (#364) rather than duplicating
+    // its logic. weather-manage is deliberately a cache, not an oracle: if no
+    // forecast is cached for the day it returns a structured `gap` instead of
+    // inventing one, so this hook surfaces that gap for the narrator to fill
+    // via set_forecast rather than generating weather itself.
+    const res = await handleWeatherManage(env, { action: 'get_forecast', worldId })
+    const forecast = JSON.parse(res.content[0].text) as { found: boolean; conditions?: string }
     return {
       category: 'resolved',
-      data: { action: 'weather_update', worldId, date },
-      narrator_summary: 'Weather system placeholder.',
+      data: { action: 'weather_update', worldId, date, forecast },
+      narrator_summary: forecast.found
+        ? `Weather: ${forecast.conditions ?? 'unknown conditions'}.`
+        : 'Weather forecast not yet cached for today — narrator input needed.',
     }
   },
 }
@@ -177,17 +188,38 @@ const resourceConsumeHook: HookRunner = {
   dependsOn: ['weather_update'],
   batchMode: true,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Call resource-manage.ts consume for each active party.
-    // For now, return stub.
+    const db = env.RPG_DB!
+
+    // production-manage.ts's advance_day tracks a separate Preserve-specific
+    // "production day" counter in world_state, reused here only as the
+    // integer day resource_inventory's expires_on_day/degradation_timer
+    // columns are keyed against — this hook does not touch production_day
+    // itself, it just reads the current value.
+    const stateRow = (await db
+      .prepare('SELECT production_day FROM world_state WHERE world_id = ?')
+      .bind(worldId)
+      .first()) as { production_day: number | null } | null
+    const day = stateRow?.production_day ?? 0
+
+    const degradation: DegradeResult[] = await tickAllOwnersDegradation(db, worldId, day)
+    const spoiledCount = degradation.reduce((n, r) => n + r.spoiled.length, 0)
+    const starvingCount = degradation.filter((r) => r.daysWithoutFood > 0).length
+
     return {
       category: 'resolved',
-      data: { action: 'resource_consume', worldId, date },
-      narrator_summary: 'Party resources consumed.',
+      data: {
+        action: 'resource_consume',
+        worldId,
+        date,
+        owners_ticked: degradation.length,
+        degradation,
+      },
+      narrator_summary: `${degradation.length} owner(s) ticked, ${spoiledCount} item(s) spoiled, ${starvingCount} owner(s) without food.`,
     }
   },
 }
@@ -216,9 +248,9 @@ const encounterCheckHook: HookRunner = {
       .bind(worldId)
       .all()
 
-    const parties = (
-      partiesResult.results as Array<{ id: string; q: number; r: number }>
-    ).map((row) => ({ partyId: row.id, q: row.q, r: row.r }))
+    const parties = (partiesResult.results as Array<{ id: string; q: number; r: number }>).map(
+      (row) => ({ partyId: row.id, q: row.q, r: row.r }),
+    )
 
     // If no positioned active parties, return early with empty result
     if (parties.length === 0) {
@@ -281,16 +313,76 @@ const healthDegradationHook: HookRunner = {
   dependsOn: ['resource_consume'],
   batchMode: false,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Implement untreated wound worsening, HP/condition tick.
+    const db = env.RPG_DB!
+
+    // Reuses encounter-manage.ts's computeInfectionStage (#280) rather than
+    // reimplementing infection timing. Reports worsening untreated injuries
+    // as data for the narrator, the same way encounter_check reports
+    // eligible encounters without auto-resolving them and dissolution_flag
+    // reports staged characters without dissolving them — this repo's
+    // established convention (see resource-manage.ts's header) is that a
+    // mechanics handler never silently mutates a character's hp/stats;
+    // narrative consequences of an infection worsening are for the narrator
+    // to apply, not for a tick hook to write to `characters.hp` directly.
+    const result = await db
+      .prepare(
+        `SELECT id, character_id, severity, created_at FROM character_injuries
+         WHERE world_id = ? AND treated = 0 AND character_id IS NOT NULL`,
+      )
+      .bind(worldId)
+      .all()
+
+    const rows = result.results as unknown as Array<{
+      id: string
+      character_id: string
+      severity: string
+      created_at: string
+    }>
+
+    const tickTime = new Date(date).getTime()
+    const worsening: Array<{
+      characterId: string
+      injuryId: string
+      severity: string
+      stage: string
+      effect: string | null
+    }> = []
+
+    for (const row of rows) {
+      const hoursSinceInjury = Math.max(
+        0,
+        (tickTime - new Date(row.created_at).getTime()) / 3_600_000,
+      )
+      const infection = computeInfectionStage(row.severity, hoursSinceInjury, 'none')
+      if (infection.infected) {
+        worsening.push({
+          characterId: row.character_id,
+          injuryId: row.id,
+          severity: row.severity,
+          stage: infection.stage,
+          effect: infection.effect,
+        })
+      }
+    }
+
     return {
       category: 'resolved',
-      data: { action: 'health_degradation', worldId, date },
-      narrator_summary: 'Character health degraded.',
+      data: {
+        action: 'health_degradation',
+        worldId,
+        date,
+        injuries_checked: rows.length,
+        worsening,
+      },
+      narrator_summary:
+        worsening.length > 0
+          ? `${worsening.length} untreated injury(ies) worsened (health degradation check).`
+          : 'No untreated injuries worsened (health degradation check).',
     }
   },
 }

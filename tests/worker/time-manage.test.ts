@@ -1256,6 +1256,152 @@ describe('handleTimeManage', () => {
     expect(body.tick_driver.narrator_summary.length).toBeGreaterThan(0)
   })
 
+  it('advance reuses a cached weather_log forecast for weather_update (#502)', async () => {
+    await seedWorld('w-tick-weather-cached', '2184-07-01')
+    await env.RPG_DB.prepare(
+      `INSERT INTO weather_log (id, world_id, day, conditions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), 'w-tick-weather-cached', 0, 'storm', now, now)
+      .run()
+
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-weather-cached',
+          by: '1 day',
+          hooks: ['weather_update'],
+        })
+      ).content[0].text,
+    )
+
+    expect(body.success).toBe(true)
+    expect(body.tick_driver.narrator_summary).toBe('Weather: storm.')
+    const weatherResult = body.tick_driver.resolved.find(
+      (r: { data: { action: string } }) => r.data.action === 'weather_update',
+    )
+    expect(weatherResult.data.forecast.found).toBe(true)
+  })
+
+  it('advance reports untreated injuries worsening toward infection for health_degradation (#502)', async () => {
+    await seedWorld('w-tick-health-worsen', '2184-07-01')
+    await env.RPG_DB.prepare(
+      `INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, treated, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        'char-injured',
+        'w-tick-health-worsen',
+        'severe',
+        'laceration',
+        '2184-06-01T00:00:00.000Z',
+        now,
+      )
+      .run()
+
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-health-worsen',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+
+    expect(body.success).toBe(true)
+    const healthResult = body.tick_driver.resolved.find(
+      (r: { data: { action: string } }) => r.data.action === 'health_degradation',
+    )
+    expect(healthResult.data.worsening).toHaveLength(1)
+    expect(healthResult.data.worsening[0]).toMatchObject({
+      characterId: 'char-injured',
+      severity: 'severe',
+      stage: 'sepsis',
+    })
+    expect(body.tick_driver.narrator_summary).toContain('1 untreated injury(ies) worsened')
+  })
+
+  it('reports no worsening for a freshly-created untreated injury (#502)', async () => {
+    await seedWorld('w-tick-health-fresh', '2184-07-01')
+    await env.RPG_DB.prepare(
+      `INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, treated, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        'char-fresh',
+        'w-tick-health-fresh',
+        'severe',
+        'laceration',
+        '2184-07-01T00:00:00.000Z',
+        now,
+      )
+      .run()
+
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-health-fresh',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+
+    expect(body.success).toBe(true)
+    const healthResult = body.tick_driver.resolved.find(
+      (r: { data: { action: string } }) => r.data.action === 'health_degradation',
+    )
+    expect(healthResult.data.worsening).toHaveLength(0)
+    expect(body.tick_driver.narrator_summary).toContain('No untreated injuries worsened')
+  })
+
+  it('advance ticks resource degradation for owners holding inventory (#502)', async () => {
+    await seedWorld('w-tick-resource-spoil', '2184-07-01')
+    await env.RPG_DB.prepare(
+      `INSERT INTO resource_inventory (id, world_id, owner_type, owner_id, item_name, category, quantity, degradation_timer, expires_on_day, acquired_day, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        'w-tick-resource-spoil',
+        'character',
+        'char-hungry',
+        'Standard Ration Pack',
+        'food',
+        1,
+        0,
+        null,
+        0,
+        now,
+        now,
+      )
+      .run()
+
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-resource-spoil',
+          by: '1 day',
+          hooks: ['resource_consume'],
+        })
+      ).content[0].text,
+    )
+
+    expect(body.success).toBe(true)
+    const resourceResult = body.tick_driver.resolved.find(
+      (r: { data: { action: string } }) => r.data.action === 'resource_consume',
+    )
+    expect(resourceResult.data.owners_ticked).toBe(1)
+    expect(resourceResult.data.degradation[0].spoiled).toContain('Standard Ration Pack')
+    expect(body.tick_driver.narrator_summary).toContain('1 item(s) spoiled')
+  })
+
   it('advance dry_run with single hook returns mutations', async () => {
     await seedWorld('w-tick-dry-single', '2184-07-01')
     const body = JSON.parse(

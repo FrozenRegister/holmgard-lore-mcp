@@ -313,7 +313,7 @@ function buildInjury(
   }
 }
 
-function computeInfectionStage(
+export function computeInfectionStage(
   severity: string,
   hoursSinceInjury: number,
   treatment: string,
