@@ -92,6 +92,17 @@ HTTP request
 Both paths call into the same `toolRegistry`, so a handler is written once and
 works from either transport.
 
+**Neither transport is canonical — the shared core is.** `dispatchToolCall()`
+(`src/tools/dispatch.ts`) plus `toolRegistry` is the authoritative implementation;
+both transports are adapters over it, and **no logic may live in a transport**
+(the `WORLD_LOCKS` incident, #512/#519, is what happens when it does). The DO is
+the *public* MCP surface — the spec transport we document and point external
+clients at — while the hand-rolled JSON-RPC handler's permanent job is the
+bare-method aliases the SDK's `Server` structurally cannot serve. See
+[`docs/mcp-transport-canonicalization.md`](./docs/mcp-transport-canonicalization.md)
+for the full decision, the rules it implies for new work, and two latent
+transport divergences documented there.
+
 ### Auth model
 
 Two independent secrets gate two independent surfaces:
