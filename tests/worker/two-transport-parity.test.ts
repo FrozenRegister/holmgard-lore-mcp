@@ -210,7 +210,11 @@ describe('Two-transport parity — tools/call', () => {
   })
 
   it('real handler error (lore_manage increment on missing key): same error text on both transports', async () => {
-    const args = { action: 'increment', key: 'character:does-not-exist-parity', field_path: 'Reputation' }
+    const args = {
+      action: 'increment',
+      key: 'character:does-not-exist-parity',
+      field_path: 'Reputation',
+    }
 
     const jsonRpcData = await jsonRpcCall('tools/call', { name: 'lore_manage', arguments: args })
     const sessionId = await doInitialize()
