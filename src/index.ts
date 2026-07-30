@@ -9,7 +9,7 @@ import { parseKvEntry } from './lib/lore'
 import rateLimitMiddleware, { wsReconnectRateLimit } from './middleware/rate-limit'
 import { requestIdMiddleware, type RequestIdVariables } from './middleware/request-id'
 import { toolDefinitions } from './tools/definitions'
-import { toolRegistry } from './tools/registry'
+import { dispatchToolCall } from './tools/dispatch'
 import { coerceTransportArgs } from './lib/coerce-transport-args'
 import { normalizeParamCasing } from './lib/normalize-param-casing'
 import adminRoutes from './admin/routes'
@@ -1994,46 +1994,24 @@ app.post('/mcp', async (c) => {
         return c.json(makeError(id, -32602, 'Invalid params: missing tool name'), 200)
 
       const isAuthenticated = getIsAuthenticated(c)
+      const dispatch = dispatchToolCall(toolName, args, { authenticated: isAuthenticated })
 
-      if (toolName === 'lore_manage') {
-        const action = typeof args?.action === 'string' ? args.action : null
-        if (action === 'ping') {
-          return c.json(
-            makeResult(id, {
-              content: [{ type: 'text', text: 'pong' }],
-              metadata: { source: 'internal' },
-            }),
-            200,
-          )
-        }
-        if (action === 'auth_check') {
-          return c.json(
-            makeResult(id, {
-              content: [
-                {
-                  type: 'text',
-                  text: isAuthenticated
-                    ? 'Authenticated.'
-                    : 'Not authenticated — request was made without a valid API key.',
-                },
-              ],
-              metadata: { authenticated: isAuthenticated },
-            }),
-            200,
-          )
-        }
-        // fall through to auth guard + registry for all other lore_manage actions
+      if (dispatch.kind === 'short-circuit') {
+        return c.json(
+          makeResult(id, { content: dispatch.content, metadata: dispatch.metadata }),
+          200,
+        )
       }
+      // fall through to auth guard + registry for all other lore_manage actions
 
       const unauth = unauthorizedIfNeeded(c, id)
       if (unauth) return unauth
 
-      const handler = toolRegistry[toolName]
-      if (handler) {
-        return handler({ c, id, args, isAuthenticated })
+      if (dispatch.kind === 'handler') {
+        return dispatch.handler({ c, id, args, isAuthenticated })
       }
 
-      return c.json(makeError(id, -32601, `Method not found: tool "${toolName}"`), 200)
+      return c.json(makeError(id, -32601, `Method not found: tool "${dispatch.toolName}"`), 200)
     }
 
     // ── Legacy bare-method handlers (pre-tools/call clients) ──────────────────
