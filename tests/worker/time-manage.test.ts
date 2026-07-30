@@ -1156,6 +1156,180 @@ describe('handleTimeManage', () => {
     expect(body.tick_driver.flagged).toBeDefined()
   })
 
+  // ── health_degradation (#631) ─────────────────────────────────────────────
+
+  async function createTestInjury(
+    worldId: string,
+    severity: string,
+    hoursAgo: number,
+    treated = 0,
+  ): Promise<string> {
+    const id = crypto.randomUUID()
+    const createdAt = new Date(Date.now() - hoursAgo * 3600000).toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        'char-hd-1',
+        worldId,
+        severity,
+        'deep_laceration',
+        'forearm',
+        'DEX',
+        -2,
+        '1_HP_per_hour',
+        'CON_DC_14_after_24h',
+        'first_aid',
+        'A wound.',
+        treated,
+        createdAt,
+        createdAt,
+      )
+      .run()
+    return id
+  }
+
+  it('health_degradation reports no worsening when there are no untreated injuries', async () => {
+    await seedWorld('w-hd-none', '2184-07-01')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-none',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    expect(hook).toBeDefined()
+    const data = hook.data as { injuries_checked: number; worsened: unknown[] }
+    expect(data.injuries_checked).toBe(0)
+    expect(data.worsened).toEqual([])
+  })
+
+  it('health_degradation does not escalate a moderate injury only 20h untreated', async () => {
+    await seedWorld('w-hd-early', '2184-07-01')
+    await createTestInjury('w-hd-early', 'moderate', 20)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-early',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as { injuries_checked: number; worsened: unknown[] }
+    expect(data.injuries_checked).toBe(1)
+    expect(data.worsened).toEqual([])
+  })
+
+  it('health_degradation escalates a moderate injury 50h untreated to severe', async () => {
+    await seedWorld('w-hd-mid', '2184-07-01')
+    const injuryId = await createTestInjury('w-hd-mid', 'moderate', 50)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-mid',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as {
+      worsened: Array<{
+        injuryId: string
+        previousSeverity: string
+        severity: string
+        tiersAdvanced: number
+      }>
+    }
+    expect(data.worsened).toHaveLength(1)
+    expect(data.worsened[0].injuryId).toBe(injuryId)
+    expect(data.worsened[0].previousSeverity).toBe('moderate')
+    expect(data.worsened[0].severity).toBe('severe')
+    expect(data.worsened[0].tiersAdvanced).toBe(1)
+  })
+
+  it('health_degradation escalates a minor injury 80h untreated all the way to critical', async () => {
+    await seedWorld('w-hd-late', '2184-07-01')
+    await createTestInjury('w-hd-late', 'minor', 80)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-late',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as {
+      worsened: Array<{ previousSeverity: string; severity: string; tiersAdvanced: number }>
+    }
+    expect(data.worsened).toHaveLength(1)
+    expect(data.worsened[0].previousSeverity).toBe('minor')
+    expect(data.worsened[0].severity).toBe('critical')
+    expect(data.worsened[0].tiersAdvanced).toBe(3)
+  })
+
+  it('health_degradation never downgrades a critical injury created recently', async () => {
+    await seedWorld('w-hd-crit', '2184-07-01')
+    await createTestInjury('w-hd-crit', 'critical', 1)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-crit',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as { worsened: unknown[] }
+    expect(data.worsened).toEqual([])
+  })
+
+  it('health_degradation excludes treated injuries from consideration', async () => {
+    await seedWorld('w-hd-treated', '2184-07-01')
+    await createTestInjury('w-hd-treated', 'minor', 80, 1)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-treated',
+          by: '1 day',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as { injuries_checked: number; worsened: unknown[] }
+    expect(data.injuries_checked).toBe(0)
+    expect(data.worsened).toEqual([])
+  })
+
   it('advance tick_driver fields exist regardless of hook results', async () => {
     await seedWorld('w-tick-fields', '2184-07-01')
     const body = JSON.parse(

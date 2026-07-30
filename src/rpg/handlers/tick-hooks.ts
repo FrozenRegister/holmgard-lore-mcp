@@ -311,6 +311,70 @@ const encounterCheckHook: HookRunner = {
   },
 }
 
+// ── Wound escalation formula (#631) ─────────────────────────────────────────
+//
+// Design decision (see #631): a standalone severity-tier escalation model,
+// deliberately not sharing computeInfectionStage() from encounter-manage.ts
+// (that function models a different concept — fever/sepsis onset for the
+// `encounter.check_infection` action — and stays untouched). This hook only
+// steps an injury's severity tier up the longer it stays untreated. Out of
+// scope per the #631 decision: numeric HP loss from bleeding_rate, and any
+// write to characters.death_mode/dissolution_stage — sepsis-adjacent effects
+// stay purely descriptive here, the same as encounter-manage.ts's existing
+// flavor text. The hook is read-only: it *reports* which untreated injuries
+// would step up a tier: it never writes the escalated severity back to
+// character_injuries.severity, so the same injury is re-evaluated from its
+// original severity on every call (idempotent, no persisted escalation
+// state/history needed).
+//
+// Known gap: character_injuries.created_at is a real wall-clock timestamp
+// (`new Date().toISOString()` at injury-creation time in
+// encounter-manage.ts), not in-game simulation time — there is no in-game
+// timestamp column on character_injuries to diff against the tick driver's
+// in-game `date` argument (the same real-time/in-game-time domain split
+// already called out for claims.ts claimed_at/claimed_until, #444). This
+// hook therefore measures "hours untreated" against real wall-clock time
+// (Date.now() - created_at), consistent with the other known elapsed-time
+// gaps documented at the top of this file, rather than in-game elapsed time.
+
+const WOUND_SEVERITY_TIERS = ['minor', 'moderate', 'severe', 'critical'] as const
+type WoundSeverityTier = (typeof WOUND_SEVERITY_TIERS)[number]
+
+// Hours untreated (since injury creation) at which an injury reaches at
+// least this tier. Index-aligned with WOUND_SEVERITY_TIERS.
+const WOUND_ESCALATION_HOURS: Record<WoundSeverityTier, number> = {
+  minor: 0,
+  moderate: 24,
+  severe: 48,
+  critical: 72,
+}
+
+function computeWoundEscalation(
+  currentSeverity: string,
+  hoursUntreated: number,
+): { severity: WoundSeverityTier; escalated: boolean; tiersAdvanced: number } {
+  const currentIndex = WOUND_SEVERITY_TIERS.indexOf(currentSeverity as WoundSeverityTier)
+  const startIndex = currentIndex === -1 ? 0 : currentIndex
+
+  let timeIndex = 0
+  for (let i = WOUND_SEVERITY_TIERS.length - 1; i >= 0; i--) {
+    if (hoursUntreated >= WOUND_ESCALATION_HOURS[WOUND_SEVERITY_TIERS[i]]) {
+      timeIndex = i
+      break
+    }
+  }
+
+  // Never downgrade: an injury created at a higher tier than time alone
+  // would justify (e.g. a "severe" injury only 1 hour old) stays at its
+  // original tier.
+  const finalIndex = Math.max(startIndex, timeIndex)
+  return {
+    severity: WOUND_SEVERITY_TIERS[finalIndex],
+    escalated: finalIndex > startIndex,
+    tiersAdvanced: finalIndex - startIndex,
+  }
+}
+
 // health_degradation — resolved hook
 const healthDegradationHook: HookRunner = {
   name: 'health_degradation',
@@ -318,16 +382,67 @@ const healthDegradationHook: HookRunner = {
   dependsOn: ['resource_consume'],
   batchMode: false,
   execute: async (
-    _env: AppBindings,
+    env: AppBindings,
     worldId: string,
     date: string,
     _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<HookResult> => {
-    // TODO: Implement untreated wound worsening, HP/condition tick.
+    const db = env.RPG_DB!
+
+    const injuriesResult = await db
+      .prepare(
+        `SELECT id, character_id, severity, created_at
+         FROM character_injuries
+         WHERE world_id = ? AND treated = 0`,
+      )
+      .bind(worldId)
+      .all()
+
+    const injuries = injuriesResult.results as unknown as Array<{
+      id: string
+      character_id: string | null
+      severity: string
+      created_at: string
+    }>
+
+    const now = Date.now()
+    const worsened: Array<{
+      injuryId: string
+      characterId: string | null
+      previousSeverity: string
+      severity: WoundSeverityTier
+      hoursUntreated: number
+      tiersAdvanced: number
+    }> = []
+
+    for (const injury of injuries) {
+      const hoursUntreated = Math.max(0, (now - new Date(injury.created_at).getTime()) / 3600000)
+      const escalation = computeWoundEscalation(injury.severity, hoursUntreated)
+      if (escalation.escalated) {
+        worsened.push({
+          injuryId: injury.id,
+          characterId: injury.character_id,
+          previousSeverity: injury.severity,
+          severity: escalation.severity,
+          hoursUntreated: Math.round(hoursUntreated),
+          tiersAdvanced: escalation.tiersAdvanced,
+        })
+      }
+    }
+
     return {
       category: 'resolved',
-      data: { action: 'health_degradation', worldId, date },
-      narrator_summary: 'Character health degraded.',
+      data: {
+        action: 'health_degradation',
+        worldId,
+        date,
+        injuries_checked: injuries.length,
+        worsened,
+      },
+      narrator_summary:
+        worsened.length > 0
+          ? `Character health degraded: ${worsened.length} untreated wound(s) worsened.`
+          : 'Character health checked: no untreated wounds worsened.',
     }
   },
 }
