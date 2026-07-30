@@ -44,12 +44,12 @@ export interface NormalizedToolResult {
  * - `undefined` (no `result` and no `error` — an unexpected transport-level
  *   state) → an explicit error result, not a synthesized "ok".
  */
-export function normalizeToolResult(result: Record<string, unknown> | undefined): NormalizedToolResult {
+export function normalizeToolResult(
+  result: Record<string, unknown> | undefined,
+): NormalizedToolResult {
   if (result === undefined) {
     return {
-      content: [
-        { type: 'text', text: 'Internal error: tool handler returned no result' },
-      ],
+      content: [{ type: 'text', text: 'Internal error: tool handler returned no result' }],
       isError: true,
     }
   }
