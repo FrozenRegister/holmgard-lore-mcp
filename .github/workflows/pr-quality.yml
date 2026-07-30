@@ -190,6 +190,15 @@ jobs:
               return
             }
 
+            // Narrower escape hatch than skip-quality-checks (which also bypasses
+            // check-issue-link/check-changelog/check-docs) — for the common case of
+            // an externally-assigned branch name that can't be renamed, without
+            // silencing the other three checks too. See issue #614 discussion.
+            if (pr.labels.some(l => l.name === 'skip-naming-check')) {
+              console.log('Skipping (skip-naming-check label present)')
+              return
+            }
+
             const errors = []
 
             // Branch prefix — see CLAUDE.md "Branch naming"
@@ -224,7 +233,9 @@ jobs:
                 'ERROR **Naming conventions**\n\n' +
                 errors.map((e) => `- ${e}`).join('\n') +
                 '\n\nSee CLAUDE.md "Branch naming" and "Git workflow" for the full convention.\n\n' +
-                'If this PR has a legitimate reason to deviate, apply the `skip-quality-checks` label.'
+                'If only this check has a legitimate reason to fail (e.g. an externally-assigned ' +
+                'branch name), apply the `skip-naming-check` label — it bypasses this check only. ' +
+                'Use `skip-quality-checks` instead if you need to bypass all four PR-quality checks.'
               )
             } else {
               console.log('OK Branch name and PR title follow naming conventions')

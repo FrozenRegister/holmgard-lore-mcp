@@ -109,7 +109,7 @@ endpoints, consistent with `/mcp`'s own read paths.
 ## Storage layers
 
 | Binding | Type | Role |
-|---|---|---|
+| --- | --- | --- |
 | `LORE_DB` | KV namespace | Source of truth for the lore system. Falls back to a module-level `loreDB` in-memory object when the binding is absent (local dev without bindings) — see `src/lib/kv.ts`. |
 | `RPG_DB` | D1 database | Source of truth for RPG character data (in-progress migration off KV) and the read-only `/api/entities/*` list endpoints. |
 

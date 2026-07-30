@@ -3,7 +3,7 @@
 ## Which issue template do I use?
 
 | Template | Use for |
-|---|---|
+| --- | --- |
 | [Bug Report](.github/ISSUE_TEMPLATE/bug_report.yml) | CI failures, type errors, test regressions, runtime crashes |
 | [Feature Request](.github/ISSUE_TEMPLATE/feature_request.yml) | New tool, handler, migration, or MCP capability |
 | [Design Proposal](.github/ISSUE_TEMPLATE/design_proposal.yml) | Architectural design — no code, no implementation |
