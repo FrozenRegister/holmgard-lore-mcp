@@ -449,7 +449,69 @@ describe('Tick Hooks - Conflict Resolution', () => {
     expect(result.success).toBe(true)
     expect(result.flagged).toHaveLength(1)
     expect(result.flagged[0].data).toBeDefined()
-    const data = result.flagged[0].data as { action: string }
+    const data = result.flagged[0].data as { action: string; staged_characters: unknown[] }
     expect(data.action).toBe('dissolution_flag')
+    // Default mock returns { results: [] } for any unmatched query — covers
+    // the "no staged characters" branch (empty staged_characters, and the
+    // narrator_summary's "No characters..." ternary arm).
+    expect(data.staged_characters).toEqual([])
+    expect(result.flagged[0].narrator_summary).toBe('No characters in active dissolution stages.')
+  })
+
+  it('reports staged characters and excludes non-staged ones', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue(
+          query.includes('world_state') ? { current_date: '2187-01-10', weather: null } : null,
+        ),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('characters') && query.includes('death_mode')) {
+        mockStmt.all = vi.fn().mockResolvedValue({
+          results: [
+            {
+              id: 'char-staged-1',
+              death_mode: 'staged',
+              dissolution_stage: 2,
+              dissolution_stages: 5,
+            },
+            {
+              // Present in the result set despite the SQL filter (this is a
+              // mock, not a real DB) — exercises dissolutionStageCheck's own
+              // client-side is_staged guard, not just the SQL WHERE clause.
+              id: 'char-not-staged',
+              death_mode: 'instant',
+              dissolution_stage: null,
+              dissolution_stages: null,
+            },
+          ],
+        })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['dissolution_flag'],
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.flagged[0].data as {
+      staged_characters: Array<{ id: string; stage: number | null; total_stages: number | null }>
+    }
+    expect(data.staged_characters).toEqual([
+      { id: 'char-staged-1', stage: 2, total_stages: 5 },
+    ])
+    expect(result.flagged[0].narrator_summary).toBe(
+      '1 character(s) in active dissolution stage(s) flagged for review.',
+    )
   })
 })
