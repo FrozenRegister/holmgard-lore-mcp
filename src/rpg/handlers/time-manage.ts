@@ -371,11 +371,13 @@ export async function handleTimeManage(
         return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
 
       const ws = (await db
-        .prepare(
-          'SELECT "current_date", time_owner, world_day FROM world_state WHERE world_id = ?',
-        )
+        .prepare('SELECT "current_date", time_owner, world_day FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first()) as { current_date: string; time_owner: string | null; world_day: number | null } | null
+        .first()) as {
+        current_date: string
+        time_owner: string | null
+        world_day: number | null
+      } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
 
       // #312 — ownership guard. Only enforced when the caller identifies itself

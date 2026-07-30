@@ -253,9 +253,9 @@ const encounterCheckHook: HookRunner = {
       .bind(worldId)
       .all()
 
-    const parties = (
-      partiesResult.results as Array<{ id: string; q: number; r: number }>
-    ).map((row) => ({ partyId: row.id, q: row.q, r: row.r }))
+    const parties = (partiesResult.results as Array<{ id: string; q: number; r: number }>).map(
+      (row) => ({ partyId: row.id, q: row.q, r: row.r }),
+    )
 
     // If no positioned active parties, return early with empty result
     if (parties.length === 0) {

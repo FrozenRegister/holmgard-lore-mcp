@@ -675,9 +675,11 @@ describe('Tick Hooks - Conflict Resolution', () => {
     vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
       const mockStmt: any = {
         bind: vi.fn().mockReturnThis(),
-        first: vi.fn().mockResolvedValue(
-          query.includes('world_state') ? { current_date: '2187-01-10', weather: null } : null,
-        ),
+        first: vi
+          .fn()
+          .mockResolvedValue(
+            query.includes('world_state') ? { current_date: '2187-01-10', weather: null } : null,
+          ),
         run: query.includes('world_locks')
           ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
           : vi.fn().mockResolvedValue({ success: true }),
@@ -718,9 +720,7 @@ describe('Tick Hooks - Conflict Resolution', () => {
     const data = result.flagged[0].data as {
       staged_characters: Array<{ id: string; stage: number | null; total_stages: number | null }>
     }
-    expect(data.staged_characters).toEqual([
-      { id: 'char-staged-1', stage: 2, total_stages: 5 },
-    ])
+    expect(data.staged_characters).toEqual([{ id: 'char-staged-1', stage: 2, total_stages: 5 }])
     expect(result.flagged[0].narrator_summary).toBe(
       '1 character(s) in active dissolution stage(s) flagged for review.',
     )
@@ -743,7 +743,11 @@ describe('Tick Hooks - Conflict Resolution', () => {
       if (query.includes('world_state')) {
         mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', world_day: 7 })
       } else if (query.includes('weather_log')) {
-        mockStmt.first.mockResolvedValue({ conditions: 'storm', temperature_high: 4, temperature_low: -2 })
+        mockStmt.first.mockResolvedValue({
+          conditions: 'storm',
+          temperature_high: 4,
+          temperature_low: -2,
+        })
       }
 
       return mockStmt
