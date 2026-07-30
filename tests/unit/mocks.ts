@@ -5,6 +5,7 @@
 import type { Context } from 'hono'
 import type { AppBindings } from '../../src/types'
 import type { RequestIdVariables } from '../../src/middleware/request-id'
+import { loreDB } from '../../src/lib/kv'
 
 /** Minimal KVNamespace-compatible interface for mocks. */
 export interface MockKVStore {
@@ -134,6 +135,15 @@ export function createMockContext(
   seed?: Record<string, string>,
   includeD1: boolean = false,
 ): Context<{ Bindings: AppBindings; Variables: RequestIdVariables }> {
+  // kvPut/kvDelete (src/lib/kv.ts) unconditionally write through to the
+  // module-level loreDB fallback now, even when a real KV mock is provided
+  // and succeeds (#499) — loreDB is a shared singleton across every test in
+  // this process, and kvGet falls back to it whenever kv.get() returns null.
+  // Without clearing it here, a write in one test (using a reused fixture
+  // key like "character:eira-holt") can leak into an unrelated later test
+  // that expects that key to not exist. Each fresh mock context must start
+  // from a clean loreDB to keep the "not found" test cases meaningful.
+  for (const key of Object.keys(loreDB)) delete loreDB[key]
   const kv = createMockKV(seed)
   const d1 = includeD1 ? createMockD1Database() : undefined
 
