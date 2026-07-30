@@ -125,7 +125,7 @@ Then push and let CI run the full matrix + coverage (~2 min). Treat green CI as 
 The short version:
 
 | Failing check | Artifact | File | Answers |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Coverage` | `coverage-report` | `patch-coverage-report.json` | Exact uncovered file:line pairs |
 | `Lint` | `lint-report-{sha}` | `eslint-report.json` | Exact rule/file/line for every violation |
 | `Type Check` | `typecheck-report-{sha}` | `tsc-diagnostics.txt` | Compiler errors, plain text |
@@ -403,7 +403,7 @@ Never access properties on `unknown` without a type assertion — TypeScript wil
 Every branch must use one of these prefixes, matching the conventional commit type for the primary change:
 
 | Prefix | When to use |
-|---|---|
+| --- | --- |
 | `feat/` | New feature or capability |
 | `fix/` | Bug fix |
 | `refactor/` | Code restructuring with no behavior change |
@@ -493,7 +493,7 @@ This separation is critical: **never allow these IDs to be identical**, or `wran
 ### Coverage Targets by File Type
 
 | Category | Requirement | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **New utility functions** | 100% lines | All code paths, error cases, early returns |
 | **New handler actions** | 100% lines | Happy path + error cases (missing fields, invalid inputs, DB failures) |
 | **New MCP tools** | 100% lines + both Node versions | Must pass on Node 20 AND Node 22 |

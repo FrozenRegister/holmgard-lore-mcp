@@ -121,7 +121,7 @@ Every issue resolution follows seven phases, each with a defined output. The pro
 ## Issue Type Reference
 
 | Template | Labels | CI Gates | Changelog Required |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Bug Report | `bug`, `triage` | All | Yes |
 | Feature Request | `enhancement` | All | Yes |
 | Design Proposal | `design`, `architecture` | None (design only) | No |
