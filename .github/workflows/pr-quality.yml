@@ -201,8 +201,13 @@ jobs:
 
             const errors = []
 
-            // Branch prefix — see CLAUDE.md "Branch naming"
-            const branchPrefixes = ['feat/', 'fix/', 'refactor/', 'test/', 'docs/', 'chore/', 'perf/']
+            // Branch prefix — see CLAUDE.md "Branch naming". `claude/` is included
+            // alongside the conventional-commit-type prefixes because it's the
+            // session branch name Claude Code agent sessions are assigned
+            // automatically (e.g. `claude/next-issues-juu8qd`) and can't rename —
+            // exempting it here means agent-driven PRs don't need the
+            // `skip-naming-check` label applied by hand every time (see #623).
+            const branchPrefixes = ['feat/', 'fix/', 'refactor/', 'test/', 'docs/', 'chore/', 'perf/', 'claude/']
             const branch = pr.head.ref
             if (!branchPrefixes.some((p) => branch.startsWith(p))) {
               errors.push(
