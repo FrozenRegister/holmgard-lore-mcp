@@ -393,6 +393,34 @@ describe('handleTimeManage', () => {
     expect(body.success).toBe(true)
     expect(body.old_date).toBe('2184-07-15')
     expect(body.new_date).toBe('2184-07-25')
+    expect(body.world_day).toBe(10)
+  })
+
+  // #629 — world_day is a general-purpose day-counter, independent of
+  // production-manage.ts's production_day, that tick-hooks.ts's
+  // resource_consume/weather_update sub-hooks read via snapshotWorldState.
+  it('advance accumulates world_day across successive calls', async () => {
+    await seedWorld('w-day-counter', '2184-07-15')
+    const first = JSON.parse(
+      (
+        await handleTimeManage(db(), { action: 'advance', world_id: 'w-day-counter', by: '3 days' })
+      ).content[0].text,
+    )
+    expect(first.world_day).toBe(3)
+
+    const second = JSON.parse(
+      (
+        await handleTimeManage(db(), { action: 'advance', world_id: 'w-day-counter', by: '2 days' })
+      ).content[0].text,
+    )
+    expect(second.world_day).toBe(5)
+
+    const row = await env.RPG_DB.prepare(
+      'SELECT world_day FROM world_state WHERE world_id = ?',
+    )
+      .bind('w-day-counter')
+      .first()
+    expect(row?.world_day).toBe(5)
   })
 
   it('advance by months', async () => {
@@ -1016,7 +1044,7 @@ describe('handleTimeManage', () => {
     )
     expect(body.success).toBe(true)
     expect(body.tick_driver.narrator_summary).toBeDefined()
-    expect(body.tick_driver.narrator_summary).toContain('Weather')
+    expect(body.tick_driver.narrator_summary).toContain('weather')
     expect(body.tick_driver.narrator_summary).toContain('health')
   })
 

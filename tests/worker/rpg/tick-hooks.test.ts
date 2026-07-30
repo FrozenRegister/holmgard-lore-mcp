@@ -9,6 +9,7 @@ import { runTickDriver, type HookResult } from '@/rpg/handlers/tick-hooks'
 import type { AppBindings } from '@/types'
 import * as characterManager from '@/rpg/handlers/character-manage'
 import * as encounterManager from '@/rpg/handlers/encounter-manage'
+import * as resourceManager from '@/rpg/handlers/resource-manage'
 
 // Mock environment and database
 const mockEnv: AppBindings = {
@@ -90,6 +91,8 @@ afterEach(() => {
 
 describe('Tick Hooks - Conflict Resolution', () => {
   it('should return empty conflict_resolutions when no flagged events', async () => {
+    mockEnv.RPG_DB = mockDb
+
     const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
       hooks: ['weather_update'],
     })
@@ -721,5 +724,106 @@ describe('Tick Hooks - Conflict Resolution', () => {
     expect(result.flagged[0].narrator_summary).toBe(
       '1 character(s) in active dissolution stage(s) flagged for review.',
     )
+  })
+
+  // ── weather_update / resource_consume hook tests (#629) ─────────────────────
+
+  it('weather_update hook reports a cached forecast for the current world_day', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', world_day: 7 })
+      } else if (query.includes('weather_log')) {
+        mockStmt.first.mockResolvedValue({ conditions: 'storm', temperature_high: 4, temperature_low: -2 })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['weather_update'],
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.resolved[0].data as Record<string, unknown>
+    expect(data.found).toBe(true)
+    expect(data.day).toBe(7)
+    expect(data.conditions).toBe('storm')
+    expect(result.resolved[0].narrator_summary).toContain('storm')
+  })
+
+  it('weather_update hook reports a gap when no forecast is cached for the day', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['weather_update'],
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.resolved[0].data as Record<string, unknown>
+    expect(data.found).toBe(false)
+    expect(data.day).toBe(0)
+    expect(result.resolved[0].narrator_summary).toContain('No weather recorded')
+  })
+
+  it('resource_consume hook ticks degradation for every owner at the current world_day', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', world_day: 12 })
+      }
+
+      return mockStmt
+    })
+
+    const spy = vi.spyOn(resourceManager, 'tickAllOwnersDegradation').mockResolvedValue([
+      {
+        ownerType: 'party',
+        ownerId: 'party-1',
+        spoiled: ['jerky'],
+        daysWithoutFood: 0,
+        starvation: { deathSaveRequired: false } as any,
+      },
+      {
+        ownerType: 'character',
+        ownerId: 'char-1',
+        spoiled: [],
+        daysWithoutFood: 1,
+        starvation: { deathSaveRequired: false } as any,
+      },
+    ])
+
+    try {
+      const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+        hooks: ['resource_consume'],
+      })
+
+      expect(result.success).toBe(true)
+      expect(spy).toHaveBeenCalledWith(mockDb, 'world-1', 12)
+      const data = result.resolved[0].data as Record<string, unknown>
+      expect(data.day).toBe(12)
+      expect(Array.isArray(data.results)).toBe(true)
+      expect(result.resolved[0].narrator_summary).toBe('2 owner(s) ticked, 1 with spoilage.')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
