@@ -1942,7 +1942,10 @@ app.post('/mcp', async (c) => {
 
   try {
     try {
-      console.log('MCP incoming:', JSON.stringify({ request_id: requestId, body }))
+      const b = body as { method?: string; params?: { name?: string } } | null
+      const summary =
+        b?.method === 'tools/call' ? { method: b.method, tool: b?.params?.name } : { method: b?.method }
+      console.log('MCP incoming:', JSON.stringify({ request_id: requestId, ...summary }))
     } catch {
       /* ignore log error */
     }
