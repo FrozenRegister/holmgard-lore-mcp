@@ -1,0 +1,26 @@
+-- Migration 0046: sub-day clock — hour-of-day on world_state (#534)
+--
+-- #445's creature_ai_tick hook gates activity_pattern (nocturnal/diurnal/
+-- crepuscular/always) against isDaytime, but there was no sub-day clock
+-- anywhere in the data model — the tick driver's only time input is
+-- current_date (a whole calendar day). The hook hardcoded isDaytime: true,
+-- so nocturnal creatures never woke and crepuscular was treated as
+-- always-active. Documented as Known Behavior in docs/holmgard-user-guide.md,
+-- not fixed, until now.
+--
+-- `hour` is a plain 0-23 integer, advanced by time-manage.ts's `advance`
+-- action when its `by` string specifies an hour unit (e.g. "3 hours"),
+-- rolling over into the existing day/date arithmetic (dateDiff/addToDate)
+-- exactly like world_day (migration 0045) does for whole-day advances.
+--
+-- Default is 12 (noon), not 0 (midnight): existing/unset worlds must keep
+-- today's behavior of creatures always treating it as daytime until a world
+-- explicitly advances by hours. Defaulting to midnight would silently flip
+-- every existing world's creatures to "night" the moment this migration
+-- lands, which is a behavior change, not a schema-only addition.
+--
+-- No FK, no dependency on world_day — hour and world_day are independent
+-- counters both derived from the same advance() call, same as production_day
+-- (0013) and world_day (0045) already coexist independently.
+
+ALTER TABLE world_state ADD COLUMN hour INTEGER NOT NULL DEFAULT 12;

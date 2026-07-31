@@ -8,13 +8,14 @@
 // flaggedEvent into resolveTickConflicts). This keeps the behaviour trees
 // deterministic and unit-testable without a database.
 //
-// Two intentional, documented deviations from the raw §3.6 pseudocode:
+// One intentional, documented deviation from the raw §3.6 pseudocode:
 //   1. Prey detection is deterministic by range, not a per-tick random roll
 //      (random(0..1) < PERCEPTION). A reproducible tick is worth more here than
 //      a coin flip the narrator can't replay.
-//   2. There is no sub-day clock, so activity-pattern gating uses a single
-//      isDaytime boolean on the snapshot; 'crepuscular' is treated as
-//      always-active until a dawn/dusk clock exists.
+//
+// #534 closed the second deviation that used to be documented here: activity
+// gating now uses a real 4-phase day/night clock (dawn/day/dusk/night)
+// derived from world_state.hour, instead of a hardcoded isDaytime: true.
 
 import type { FlaggedEvent } from './claims'
 
@@ -70,8 +71,24 @@ export interface PreySnapshot {
   claimedBy?: string | null // creature_key currently tenderizing this prey
 }
 
+// #534 — coarse 4-phase day/night clock, derived from world_state.hour.
+// Chosen over a full hour-resolution behaviour model because nothing in the
+// creature AI (or #440 §3.9's on_nightfall on-actions, §3.5's time_of_day
+// trigger) needs finer than "is it dawn/day/dusk/night right now" — see
+// computeDayPhase below for the hour boundaries.
+export type DayPhase = 'dawn' | 'day' | 'dusk' | 'night'
+
+/** Hour (0-23) -> coarse day phase. Boundaries: dawn 5-6, day 7-17, dusk 18-19, night 20-4. */
+export function computeDayPhase(hour: number): DayPhase {
+  const h = ((hour % 24) + 24) % 24
+  if (h >= 5 && h < 7) return 'dawn'
+  if (h >= 7 && h < 18) return 'day'
+  if (h >= 18 && h < 20) return 'dusk'
+  return 'night'
+}
+
 export interface CreatureTickSnapshot {
-  isDaytime: boolean
+  phase: DayPhase
   prey: PreySnapshot[]
   currentTickTime: string // in-game datetime — a claim's `until` is derived from this
 }
@@ -114,11 +131,12 @@ export function stepToward(
   return { q: Math.round(cq + (tq - cq) * t), r: Math.round(cr + (tr - cr) * t) }
 }
 
-/** Whether a creature with this activity pattern acts on a day/night tick. */
-export function isActiveTime(pattern: string | null, isDaytime: boolean): boolean {
-  if (pattern === 'nocturnal') return !isDaytime
-  if (pattern === 'diurnal') return isDaytime
-  return true // 'always', 'crepuscular', or unset
+/** Whether a creature with this activity pattern acts during this day phase. */
+export function isActiveTime(pattern: string | null, phase: DayPhase): boolean {
+  if (pattern === 'nocturnal') return phase !== 'day'
+  if (pattern === 'diurnal') return phase === 'day'
+  if (pattern === 'crepuscular') return phase === 'dawn' || phase === 'dusk'
+  return true // 'always' or unset
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n))
@@ -214,7 +232,7 @@ export function feralTick(
   const hasPos = cq !== null && cr !== null
 
   // 1–2. Activity gating: an out-of-phase creature rests and conserves.
-  if (!isActiveTime(creature.activity_pattern, snapshot.isDaytime)) {
+  if (!isActiveTime(creature.activity_pattern, snapshot.phase)) {
     res.hunger = clamp(res.hunger - REST_CONSERVATION, 0, 100)
     res.currentState = 'resting'
     res.changed = true

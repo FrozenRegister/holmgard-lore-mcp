@@ -47,6 +47,7 @@ import {
 } from '../utils/claims'
 import {
   creatureAiTick,
+  computeDayPhase,
   type CreatureAiState,
   type PreySnapshot,
   type CreatureTickSnapshot,
@@ -63,6 +64,11 @@ export interface WorldSnapshot {
   // weather_update) call day: number APIs (tickAllOwnersDegradation,
   // weather_log lookups) without inventing their own epoch.
   day: number
+  // #534 — sub-day clock (world_state.hour, 0-23). Defaults to 12 (noon) when
+  // unset, matching the migration's default so existing/unset worlds keep
+  // today's always-daytime creature behavior instead of silently flipping to
+  // night the moment this snapshot starts being read.
+  hour: number
   parties: Map<string, any>
   characters: Map<string, any>
   encounters: Map<string, any>
@@ -165,6 +171,7 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
   return {
     date: dateStr,
     day: (ws?.world_day as number | undefined) ?? 0,
+    hour: (ws?.hour as number | undefined) ?? 12,
     parties: new Map(),
     characters: new Map(),
     encounters: new Map(),
@@ -547,7 +554,7 @@ const creatureAiTickHook: HookRunner = {
     env: AppBindings,
     worldId: string,
     date: string,
-    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+    snapshot: WorldSnapshot,
   ): Promise<HookResult> => {
     const db = env.RPG_DB!
 
@@ -586,8 +593,12 @@ const creatureAiTickHook: HookRunner = {
       claimedBy: row.claimed_by,
     }))
 
-    // No sub-day clock exists, so day/night gating defaults to daytime.
-    const snapshot: CreatureTickSnapshot = { isDaytime: true, prey, currentTickTime: date }
+    // #534 — real day/night phase from world_state.hour instead of a hardcoded daytime default.
+    const creatureSnapshot: CreatureTickSnapshot = {
+      phase: computeDayPhase(snapshot.hour),
+      prey,
+      currentTickTime: date,
+    }
 
     const events: FlaggedEvent[] = []
     let creaturesMoved = 0
@@ -595,7 +606,7 @@ const creatureAiTickHook: HookRunner = {
     const now = new Date().toISOString()
 
     for (const creature of creatures) {
-      const result = creatureAiTick(creature, snapshot)
+      const result = creatureAiTick(creature, creatureSnapshot)
       if (result.changed) {
         await db
           .prepare(

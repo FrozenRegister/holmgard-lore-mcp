@@ -10,6 +10,7 @@ import {
   hexDistance,
   stepToward,
   isActiveTime,
+  computeDayPhase,
   nearestLivePrey,
   type CreatureAiState,
   type CreatureTickSnapshot,
@@ -45,7 +46,7 @@ function makeCreature(overrides: Partial<CreatureAiState> = {}): CreatureAiState
 }
 
 function snap(overrides: Partial<CreatureTickSnapshot> = {}): CreatureTickSnapshot {
-  return { isDaytime: true, prey: [], currentTickTime: '2187-01-10T00:00:00.000Z', ...overrides }
+  return { phase: 'day', prey: [], currentTickTime: '2187-01-10T00:00:00.000Z', ...overrides }
 }
 
 describe('creature-ai pure helpers', () => {
@@ -68,14 +69,32 @@ describe('creature-ai pure helpers', () => {
     expect(stepToward(0, 0, 2, 0, 5)).toEqual({ q: 2, r: 0 })
   })
 
-  it('isActiveTime respects activity pattern', () => {
-    expect(isActiveTime('nocturnal', true)).toBe(false)
-    expect(isActiveTime('nocturnal', false)).toBe(true)
-    expect(isActiveTime('diurnal', true)).toBe(true)
-    expect(isActiveTime('diurnal', false)).toBe(false)
-    expect(isActiveTime('always', true)).toBe(true)
-    expect(isActiveTime('crepuscular', false)).toBe(true)
-    expect(isActiveTime(null, true)).toBe(true)
+  it('isActiveTime respects activity pattern across all 4 phases', () => {
+    expect(isActiveTime('nocturnal', 'day')).toBe(false)
+    expect(isActiveTime('nocturnal', 'night')).toBe(true)
+    expect(isActiveTime('nocturnal', 'dawn')).toBe(true)
+    expect(isActiveTime('nocturnal', 'dusk')).toBe(true)
+    expect(isActiveTime('diurnal', 'day')).toBe(true)
+    expect(isActiveTime('diurnal', 'night')).toBe(false)
+    expect(isActiveTime('diurnal', 'dawn')).toBe(false)
+    expect(isActiveTime('diurnal', 'dusk')).toBe(false)
+    expect(isActiveTime('crepuscular', 'dawn')).toBe(true)
+    expect(isActiveTime('crepuscular', 'dusk')).toBe(true)
+    expect(isActiveTime('crepuscular', 'day')).toBe(false)
+    expect(isActiveTime('crepuscular', 'night')).toBe(false)
+    expect(isActiveTime('always', 'night')).toBe(true)
+    expect(isActiveTime(null, 'day')).toBe(true)
+  })
+
+  it('computeDayPhase maps hours to dawn/day/dusk/night', () => {
+    expect(computeDayPhase(6)).toBe('dawn')
+    expect(computeDayPhase(12)).toBe('day')
+    expect(computeDayPhase(19)).toBe('dusk')
+    expect(computeDayPhase(23)).toBe('night')
+    expect(computeDayPhase(2)).toBe('night')
+    // out-of-range hours wrap rather than throwing
+    expect(computeDayPhase(-1)).toBe('night')
+    expect(computeDayPhase(24)).toBe('night') // 24 wraps to hour 0
   })
 
   it('nearestLivePrey skips dead + out-of-range prey and picks the closest', () => {
@@ -95,11 +114,30 @@ describe('creature-ai pure helpers', () => {
 describe('feralTick', () => {
   it('rests and conserves hunger when out of phase (nocturnal by day)', () => {
     const c = makeCreature({ activity_pattern: 'nocturnal', hunger: 50 })
-    const r = feralTick(c, snap({ isDaytime: true }))
+    const r = feralTick(c, snap({ phase: 'day' }))
     expect(r.currentState).toBe('resting')
     expect(r.hunger).toBe(45)
     expect(r.moved).toBe(false)
     expect(r.changed).toBe(true)
+  })
+
+  it('a nocturnal creature wakes and hunts at night', () => {
+    const c = makeCreature({ activity_pattern: 'nocturnal', hunger: 75 })
+    const r = feralTick(c, snap({ phase: 'night', prey: [{ key: 'deer', q: 2, r: 0 }] }))
+    expect(r.currentState).toBe('hunting')
+  })
+
+  it('a crepuscular creature acts at dusk but rests at midday', () => {
+    const active = feralTick(
+      makeCreature({ activity_pattern: 'crepuscular', hunger: 10 }),
+      snap({ phase: 'dusk' }),
+    )
+    expect(active.currentState).not.toBe('resting')
+    const resting = feralTick(
+      makeCreature({ activity_pattern: 'crepuscular', hunger: 10 }),
+      snap({ phase: 'day' }),
+    )
+    expect(resting.currentState).toBe('resting')
   })
 
   it('wakes a resting creature to patrol when back in phase', () => {
