@@ -4,12 +4,19 @@ import { setupRpgDb } from './support/setup-d1'
 import { handleCharacterManage } from '@/rpg/handlers/character-manage'
 import type { AppBindings } from '@/types'
 
+type McpResponse = { content?: Array<{ text?: string }> }
+type ParsedResponse = Record<string, unknown>
+type CreateCharacterResult = ParsedResponse & { success: boolean; characterId: string }
+type SnapshotResult = ParsedResponse & { success: boolean; snapshotId: string; characterId: string; actionType: string }
+type ErrorResult = ParsedResponse & { error: boolean; message: string }
+type DatabaseRow = Record<string, unknown> & { stats_json?: string; state_json?: string }
+
 // Helper to parse McpResponse
-function parseResponse(mcpResponse: any) {
+function parseResponse(mcpResponse: McpResponse): ParsedResponse {
   const text = mcpResponse.content?.[0]?.text
   if (!text) return { error: true, message: 'No text in response' }
   try {
-    return JSON.parse(text)
+    return JSON.parse(text) as ParsedResponse
   } catch {
     return { error: true, message: `Failed to parse: ${text}` }
   }
@@ -33,10 +40,10 @@ describe('Character Snapshots', () => {
       stats: { str: 16, dex: 12, con: 14, int: 10, wis: 13, cha: 11 },
     })
 
-    const createResult = parseResponse(createMcpResponse)
+    const createResult = parseResponse(createMcpResponse) as CreateCharacterResult
     expect(createResult).toHaveProperty('success', true)
-    expect((createResult as any).characterId).toBeDefined()
-    const charId = (createResult as any).characterId
+    expect(createResult.characterId).toBeDefined()
+    const charId = createResult.characterId
 
     // Snapshot the character
     const snapshotMcpResponse = await handleCharacterManage(testEnv, {
@@ -46,11 +53,11 @@ describe('Character Snapshots', () => {
       capturedBy: 'manual',
     })
 
-    const snapshotResult = parseResponse(snapshotMcpResponse)
+    const snapshotResult = parseResponse(snapshotMcpResponse) as SnapshotResult
     expect(snapshotResult).toHaveProperty('success', true)
     expect(snapshotResult).toHaveProperty('actionType', 'snapshot')
-    expect((snapshotResult as any).snapshotId).toBeDefined()
-    expect((snapshotResult as any).characterId).toBe(charId)
+    expect(snapshotResult.snapshotId).toBeDefined()
+    expect(snapshotResult.characterId).toBe(charId)
   })
 
   it('captures state for multiple snapshots of same character', async () => {
@@ -67,8 +74,8 @@ describe('Character Snapshots', () => {
       maxHp: 20,
     })
 
-    const createResult = parseResponse(createMcpResponse)
-    const charId = (createResult as any).characterId
+    const createResult = parseResponse(createMcpResponse) as CreateCharacterResult
+    const charId = createResult.characterId
 
     // First snapshot
     const snap1McpResponse = await handleCharacterManage(testEnv, {
@@ -77,9 +84,9 @@ describe('Character Snapshots', () => {
       narrativeNote: 'Before combat',
     })
 
-    const snap1Result = parseResponse(snap1McpResponse)
+    const snap1Result = parseResponse(snap1McpResponse) as SnapshotResult
     expect(snap1Result).toHaveProperty('success', true)
-    const snap1Id = (snap1Result as any).snapshotId
+    const snap1Id = snap1Result.snapshotId
 
     // Update character (take damage)
     await handleCharacterManage(testEnv, {
@@ -95,9 +102,9 @@ describe('Character Snapshots', () => {
       narrativeNote: 'After combat, wounded',
     })
 
-    const snap2Result = parseResponse(snap2McpResponse)
+    const snap2Result = parseResponse(snap2McpResponse) as SnapshotResult
     expect(snap2Result).toHaveProperty('success', true)
-    const snap2Id = (snap2Result as any).snapshotId
+    const snap2Id = snap2Result.snapshotId
 
     // Snapshots should have different IDs
     expect(snap1Id).not.toBe(snap2Id)
@@ -137,9 +144,9 @@ describe('Character Snapshots', () => {
       characterId: 'non-existent-id',
     })
 
-    const result = parseResponse(resultMcpResponse)
+    const result = parseResponse(resultMcpResponse) as ErrorResult
     expect(result).toHaveProperty('error', true)
-    expect((result as any).message).toContain('not found')
+    expect(result.message).toContain('not found')
   })
 
   it('stores stats in snapshot as JSON', async () => {
@@ -154,8 +161,8 @@ describe('Character Snapshots', () => {
       stats: { str: 8, dex: 14, con: 12, int: 16, wis: 13, cha: 10 },
     })
 
-    const createResult = parseResponse(createMcpResponse)
-    const charId = (createResult as any).characterId
+    const createResult = parseResponse(createMcpResponse) as CreateCharacterResult
+    const charId = createResult.characterId
 
     // Snapshot
     const snapshotMcpResponse = await handleCharacterManage(testEnv, {
@@ -163,8 +170,8 @@ describe('Character Snapshots', () => {
       characterId: charId,
     })
 
-    const snapshotResult = parseResponse(snapshotMcpResponse)
-    const snapshotId = (snapshotResult as any).snapshotId
+    const snapshotResult = parseResponse(snapshotMcpResponse) as SnapshotResult
+    const snapshotId = snapshotResult.snapshotId
 
     // Verify snapshot in database
     const db = testEnv.RPG_DB!
@@ -174,7 +181,7 @@ describe('Character Snapshots', () => {
       .first()
 
     expect(row).toBeDefined()
-    const stats = JSON.parse((row as any).stats_json)
+    const stats = JSON.parse((row as DatabaseRow).stats_json!)
     expect(stats).toEqual({ str: 8, dex: 14, con: 12, int: 16, wis: 13, cha: 10 })
   })
 
@@ -189,8 +196,8 @@ describe('Character Snapshots', () => {
       race: 'Orc',
     })
 
-    const createResult = parseResponse(createMcpResponse)
-    const charId = (createResult as any).characterId
+    const createResult = parseResponse(createMcpResponse) as CreateCharacterResult
+    const charId = createResult.characterId
 
     // Snapshot with custom state
     const customState = {
@@ -205,8 +212,8 @@ describe('Character Snapshots', () => {
       stateJson: customState,
     })
 
-    const snapshotResult = parseResponse(snapshotMcpResponse)
-    const snapshotId = (snapshotResult as any).snapshotId
+    const snapshotResult = parseResponse(snapshotMcpResponse) as SnapshotResult
+    const snapshotId = snapshotResult.snapshotId
 
     // Verify custom state stored
     const db = testEnv.RPG_DB!
@@ -216,7 +223,7 @@ describe('Character Snapshots', () => {
       .first()
 
     expect(row).toBeDefined()
-    const stateJson = JSON.parse((row as any).state_json)
+    const stateJson = JSON.parse((row as DatabaseRow).state_json!)
     expect(stateJson).toEqual(customState)
   })
 
@@ -231,8 +238,8 @@ describe('Character Snapshots', () => {
       race: 'Human',
     })
 
-    const createResult = parseResponse(createMcpResponse)
-    const charId = (createResult as any).characterId
+    const createResult = parseResponse(createMcpResponse) as CreateCharacterResult
+    const charId = createResult.characterId
 
     // Use 'snap' alias
     const snapResultMcpResponse = await handleCharacterManage(testEnv, {
@@ -241,9 +248,9 @@ describe('Character Snapshots', () => {
       narrativeNote: 'Using snap alias',
     })
 
-    const snapResult = parseResponse(snapResultMcpResponse)
+    const snapResult = parseResponse(snapResultMcpResponse) as SnapshotResult
     expect(snapResult).toHaveProperty('success', true)
-    expect((snapResult as any).actionType).toBe('snapshot')
+    expect(snapResult.actionType).toBe('snapshot')
 
     // Use 'save_state' alias
     const saveResultMcpResponse = await handleCharacterManage(testEnv, {
@@ -252,8 +259,8 @@ describe('Character Snapshots', () => {
       narrativeNote: 'Using save_state alias',
     })
 
-    const saveResult = parseResponse(saveResultMcpResponse)
+    const saveResult = parseResponse(saveResultMcpResponse) as SnapshotResult
     expect(saveResult).toHaveProperty('success', true)
-    expect((saveResult as any).actionType).toBe('snapshot')
+    expect(saveResult.actionType).toBe('snapshot')
   })
 })
