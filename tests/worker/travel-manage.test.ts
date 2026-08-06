@@ -1040,7 +1040,10 @@ describe('handleTravelManage', () => {
   it('takeoff allows aircraft class when LZ meets minimum', async () => {
     await createWorld()
     // Set up hex with clearing biome (suitable for light aircraft)
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 11, 11, 'glade', 100)
       .run()
 
@@ -1091,7 +1094,10 @@ describe('handleTravelManage', () => {
   it('takeoff can produce aborted outcome', async () => {
     await createWorld()
     // Set up hex with clearing (more difficult)
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 13, 13, 'glade', 100)
       .run()
 
@@ -1118,7 +1124,10 @@ describe('handleTravelManage', () => {
   it('takeoff can produce crash outcome', async () => {
     await createWorld()
     // Set up hex with clearing
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 14, 14, 'glade', 100)
       .run()
 
@@ -1238,7 +1247,10 @@ describe('handleTravelManage', () => {
   it('land allows aircraft class when LZ meets minimum', async () => {
     await createWorld()
     // Set up hex with clearing biome (suitable for light aircraft)
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 21, 21, 'glade', 100)
       .run()
 
@@ -1289,7 +1301,10 @@ describe('handleTravelManage', () => {
   it('land can produce go_around outcome', async () => {
     await createWorld()
     // Set up hex with clearing
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 23, 23, 'glade', 100)
       .run()
 
@@ -1316,7 +1331,10 @@ describe('handleTravelManage', () => {
   it('land can produce hard_landing outcome', async () => {
     await createWorld()
     // Set up hex with clearing (more difficult than road)
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 24, 24, 'glade', 100)
       .run()
 
@@ -1345,7 +1363,10 @@ describe('handleTravelManage', () => {
   it('land can produce crash outcome', async () => {
     await createWorld()
     // Set up hex with clearing
-    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
+      )
       .bind(WORLD, 25, 25, 'glade', 100)
       .run()
 
