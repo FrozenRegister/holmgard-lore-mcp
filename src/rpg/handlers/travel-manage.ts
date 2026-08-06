@@ -9,6 +9,8 @@ import type { AppBindings } from '../../types'
 import { resolveEncounterCore } from './encounter-manage'
 import { executeRoll } from './math-manage'
 import { getBiomeRegistry, effectiveMovementCost } from './biome-manage'
+import { computeLandingZone } from './world-map'
+import { handleWeatherManage } from './weather-manage'
 
 // #429 — transport modes for hex-grid travel. Base speeds are game-balance
 // constants (not narrative/world data), so hardcoding them here is fine —
@@ -47,7 +49,7 @@ export function fordingCost(waterDepth: number | null, mode: TravelMode): Fordin
   return { cost: 2.0, swimRisk: waterDepth > 0.6 }
 }
 
-export const ACTIONS = ['travel', 'loot', 'rest', 'move_hex', 'rappel'] as const
+export const ACTIONS = ['travel', 'loot', 'rest', 'move_hex', 'rappel', 'takeoff', 'land'] as const
 type TravelAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, TravelAction> = {
   move: 'travel',
@@ -70,6 +72,10 @@ const ALIASES: Record<string, TravelAction> = {
   rappel: 'rappel',
   fast_rope: 'rappel',
   insert: 'rappel',
+  takeoff: 'takeoff',
+  launch: 'takeoff',
+  land: 'land',
+  touchdown: 'land',
 }
 
 const InputSchema = z.object({
@@ -109,6 +115,8 @@ const InputSchema = z.object({
   characterId: z.string().optional(),
   height: z.enum(['low', 'high', 'extreme']).optional(),
   proficient: z.boolean().optional().default(false),
+  // #436 — takeoff/land action parameters (slice 2)
+  aircraftClass: z.string().optional(),
 })
 
 const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
@@ -470,6 +478,415 @@ export async function handleTravelManage(
         },
         damage,
         effects,
+      })
+    }
+    case 'takeoff': {
+      // #436 — aircraft takeoff action (slice 2)
+      if (!a.characterId) return err('"characterId" is required')
+      if (!a.worldId) return err('"worldId" is required')
+      if (a.q === undefined || a.r === undefined) return err('"q" and "r" are required')
+      if (!a.aircraftClass) return err('"aircraftClass" is required')
+
+      // Fetch the departure hex
+      const departureHex = (await db
+        .prepare('SELECT biome, elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+        .bind(a.worldId, a.q, a.r)
+        .first()) as { biome: string | null; elevation: number | null } | null
+
+      if (!departureHex) return err(`Hex (${a.q}, ${a.r}) not found`)
+
+      // Compute landing zone using same logic as world_map.hexes action
+      const biome = (departureHex.biome as string) || ''
+      const elevation = (departureHex.elevation as number) || 0
+
+      // Compute slope: maximum absolute elevation difference to any neighbor
+      // (using a 3-hex radius to approximate neighbors in the query window)
+      let maxSlope = 0
+      const HEX_DIRECTIONS: Array<[number, number]> = [
+        [1, 0],
+        [0, 1],
+        [-1, 1],
+        [-1, 0],
+        [0, -1],
+        [1, -1],
+      ]
+      const neighbors = await Promise.all(
+        HEX_DIRECTIONS.map(
+          (dir) =>
+            db
+              .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+              .bind(a.worldId, a.q! + dir[0], a.r! + dir[1])
+              .first() as Promise<{ elevation: number | null } | null>,
+        ),
+      )
+      for (const neighbor of neighbors) {
+        if (neighbor) {
+          const neighborElevation = (neighbor.elevation as number) || 0
+          const elevationDiff = Math.abs(elevation - neighborElevation)
+          maxSlope = Math.max(maxSlope, elevationDiff)
+        }
+      }
+
+      const landingZone = computeLandingZone(biome, maxSlope)
+
+      // Aircraft class minimum LZ requirements (from #436 issue spec)
+      const aircraftMinLz: Record<string, string[]> = {
+        light_fixed_wing: ['clearing', 'improved_strip', 'runway', 'road'],
+        medium_fixed_wing: ['improved_strip', 'runway'],
+        heavy_fixed_wing: ['runway'],
+        light_rotorcraft: ['clearing', 'rooftop', 'slope'],
+        heavy_rotorcraft: ['clearing', 'rooftop'],
+        floatplane: ['water'],
+        amphibious: ['water', 'clearing', 'improved_strip', 'runway', 'road'],
+      }
+
+      const minLzClasses = aircraftMinLz[a.aircraftClass] || []
+
+      // LZ class check — if this fails, no roll is attempted
+      if (!minLzClasses.includes(landingZone || '')) {
+        return ok({
+          success: true,
+          phase: 'takeoff',
+          outcome: 'rejected',
+          reason: `Aircraft class "${a.aircraftClass}" cannot take off from "${landingZone || 'unlandable'}" landing zone`,
+          landingZone: landingZone || 'unlandable',
+          fuelWasted: false,
+        })
+      }
+
+      // Weather gate: fetch current weather via weather-manage handler
+      const weatherResult = await handleWeatherManage(env, {
+        action: 'get_forecast',
+        worldId: a.worldId,
+      })
+      const weatherBody = JSON.parse(weatherResult.content[0].text) as Record<string, unknown>
+
+      const weatherData = weatherBody as Record<string, unknown>
+      let weatherBlocks = false
+      let weatherReason = ''
+
+      if (weatherData.found) {
+        const conditions = (weatherData.conditions as string) || ''
+        const windSpeed = (weatherData.wind_speed as number) || 0
+        const visibility = (weatherData.visibility as string) || 'unlimited'
+        const precipType = (weatherData.precipitation_type as string) || 'none'
+
+        // Weather gate table from #436
+        if (conditions === 'storm') {
+          weatherBlocks = true
+          weatherReason = 'Storm conditions prohibit takeoff'
+        } else if (precipType === 'snow' || precipType === 'hail' || precipType === 'sleet') {
+          weatherBlocks = true
+          weatherReason = `Heavy ${precipType} prohibits takeoff`
+        } else if (visibility === 'nil' || visibility === 'poor') {
+          weatherBlocks = true
+          weatherReason = 'Visibility below VFR minimums without IFR equipment'
+        } else {
+          // Crosswind check (simplified: assume wind perpendicular, class-based limits)
+          const crosswindLimits: Record<string, number> = {
+            light_fixed_wing: 15,
+            medium_fixed_wing: 20,
+            heavy_fixed_wing: 25,
+            light_rotorcraft: 30,
+            heavy_rotorcraft: 25,
+            floatplane: 12,
+            amphibious: 18,
+          }
+          const limit = crosswindLimits[a.aircraftClass] || 20
+          if (windSpeed > limit) {
+            weatherBlocks = true
+            weatherReason = `Crosswind (${windSpeed} kph) exceeds limit (${limit} kph) for this class`
+          }
+        }
+      }
+      // If weather.found === false, proceed as clear (no block)
+
+      if (weatherBlocks) {
+        return ok({
+          success: true,
+          phase: 'takeoff',
+          outcome: 'rejected',
+          reason: weatherReason,
+          landingZone,
+          fuelWasted: false,
+        })
+      }
+
+      // Difficulty modifier based on landing zone class
+      const lzDifficultyMod: Record<string, number> = {
+        runway: 0,
+        improved_strip: 0,
+        clearing: -2,
+        road: -2,
+        rooftop: -4,
+        slope: -3,
+        water: -2,
+        unlandable: -5,
+      }
+      const difficultyMod = lzDifficultyMod[landingZone || 'unlandable'] || -5
+
+      // Pilot skill check (using standard 1d20 roll)
+      const roll = executeRoll('1d20')
+      const rollTotal = roll.total + difficultyMod
+
+      // DC 12 placeholder — tune once a broader skill-DC convention exists
+      const DC = 12
+      const margin = rollTotal - DC
+
+      // Takeoff outcomes from #436
+      let outcome: string
+      let damage = 0
+      const effects: string[] = []
+      let fuelWasted = false
+
+      if ('critical' in roll && roll.critical === 'failure') {
+        // Natural 1: catastrophic crash on runway overrun
+        outcome = 'crash'
+        damage = executeRoll('2d6').total
+        effects.push('runway overrun')
+        effects.push('aircraft damaged')
+        fuelWasted = true
+      } else if (margin >= 0) {
+        // Success: clean takeoff
+        outcome = 'success'
+      } else if (margin >= -5) {
+        // Fail by ≤5: aborted takeoff, fuel wasted
+        outcome = 'aborted'
+        fuelWasted = true
+      } else {
+        // Fail by >5: catastrophic crash on runway overrun
+        outcome = 'crash'
+        damage = executeRoll('2d6').total
+        effects.push('runway overrun')
+        effects.push('aircraft damaged')
+        fuelWasted = true
+      }
+
+      return ok({
+        success: true,
+        phase: 'takeoff',
+        outcome,
+        landingZone,
+        aircraftClass: a.aircraftClass,
+        roll: {
+          expr: '1d20',
+          total: roll.total,
+          modifier: difficultyMod,
+          final: rollTotal,
+          dc: DC,
+          margin,
+          critical: roll.critical ?? null,
+        },
+        damage,
+        effects,
+        fuelWasted,
+      })
+    }
+    case 'land': {
+      // #436 — aircraft landing action (slice 2)
+      if (!a.characterId) return err('"characterId" is required')
+      if (!a.worldId) return err('"worldId" is required')
+      if (a.toQ === undefined || a.toR === undefined) return err('"toQ" and "toR" are required')
+      if (!a.aircraftClass) return err('"aircraftClass" is required')
+
+      // Fetch the destination hex
+      const destinationHex = (await db
+        .prepare('SELECT biome, elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+        .bind(a.worldId, a.toQ, a.toR)
+        .first()) as { biome: string | null; elevation: number | null } | null
+
+      if (!destinationHex) return err(`Hex (${a.toQ}, ${a.toR}) not found`)
+
+      // Compute landing zone using same logic as world_map.hexes action
+      const biome = (destinationHex.biome as string) || ''
+      const elevation = (destinationHex.elevation as number) || 0
+
+      // Compute slope: maximum absolute elevation difference to any neighbor
+      let maxSlope = 0
+      const HEX_DIRECTIONS: Array<[number, number]> = [
+        [1, 0],
+        [0, 1],
+        [-1, 1],
+        [-1, 0],
+        [0, -1],
+        [1, -1],
+      ]
+      const neighbors = await Promise.all(
+        HEX_DIRECTIONS.map(
+          (dir) =>
+            db
+              .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+              .bind(a.worldId, a.toQ! + dir[0], a.toR! + dir[1])
+              .first() as Promise<{ elevation: number | null } | null>,
+        ),
+      )
+      for (const neighbor of neighbors) {
+        if (neighbor) {
+          const neighborElevation = (neighbor.elevation as number) || 0
+          const elevationDiff = Math.abs(elevation - neighborElevation)
+          maxSlope = Math.max(maxSlope, elevationDiff)
+        }
+      }
+
+      const landingZone = computeLandingZone(biome, maxSlope)
+
+      // Aircraft class minimum LZ requirements (from #436 issue spec)
+      const aircraftMinLz: Record<string, string[]> = {
+        light_fixed_wing: ['clearing', 'improved_strip', 'runway', 'road'],
+        medium_fixed_wing: ['improved_strip', 'runway'],
+        heavy_fixed_wing: ['runway'],
+        light_rotorcraft: ['clearing', 'rooftop', 'slope'],
+        heavy_rotorcraft: ['clearing', 'rooftop'],
+        floatplane: ['water'],
+        amphibious: ['water', 'clearing', 'improved_strip', 'runway', 'road'],
+      }
+
+      const minLzClasses = aircraftMinLz[a.aircraftClass] || []
+
+      // LZ class check — if this fails, no roll is attempted
+      if (!minLzClasses.includes(landingZone || '')) {
+        return ok({
+          success: true,
+          phase: 'land',
+          outcome: 'rejected',
+          reason: `Aircraft class "${a.aircraftClass}" cannot land on "${landingZone || 'unlandable'}" landing zone`,
+          landingZone: landingZone || 'unlandable',
+          fuelWasted: false,
+        })
+      }
+
+      // Weather gate: fetch current weather via weather-manage handler
+      const weatherResult = await handleWeatherManage(env, {
+        action: 'get_forecast',
+        worldId: a.worldId,
+      })
+      const weatherBody = JSON.parse(weatherResult.content[0].text) as Record<string, unknown>
+
+      const weatherData = weatherBody as Record<string, unknown>
+      let weatherBlocks = false
+      let weatherReason = ''
+
+      if (weatherData.found) {
+        const conditions = (weatherData.conditions as string) || ''
+        const windSpeed = (weatherData.wind_speed as number) || 0
+        const visibility = (weatherData.visibility as string) || 'unlimited'
+        const precipType = (weatherData.precipitation_type as string) || 'none'
+
+        // Weather gate table from #436
+        if (conditions === 'storm') {
+          weatherBlocks = true
+          weatherReason = 'Storm conditions prohibit landing'
+        } else if (precipType === 'snow' || precipType === 'hail' || precipType === 'sleet') {
+          weatherBlocks = true
+          weatherReason = `Heavy ${precipType} prohibits landing`
+        } else if (visibility === 'nil' || visibility === 'poor') {
+          weatherBlocks = true
+          weatherReason = 'Visibility below VFR minimums without IFR equipment'
+        } else {
+          // Crosswind check (simplified: assume wind perpendicular, class-based limits)
+          const crosswindLimits: Record<string, number> = {
+            light_fixed_wing: 15,
+            medium_fixed_wing: 20,
+            heavy_fixed_wing: 25,
+            light_rotorcraft: 30,
+            heavy_rotorcraft: 25,
+            floatplane: 12,
+            amphibious: 18,
+          }
+          const limit = crosswindLimits[a.aircraftClass] || 20
+          if (windSpeed > limit) {
+            weatherBlocks = true
+            weatherReason = `Crosswind (${windSpeed} kph) exceeds limit (${limit} kph) for this class`
+          }
+        }
+      }
+      // If weather.found === false, proceed as clear (no block)
+
+      if (weatherBlocks) {
+        return ok({
+          success: true,
+          phase: 'land',
+          outcome: 'rejected',
+          reason: weatherReason,
+          landingZone,
+          fuelWasted: false,
+        })
+      }
+
+      // Difficulty modifier based on landing zone class
+      const lzDifficultyMod: Record<string, number> = {
+        runway: 0,
+        improved_strip: 0,
+        clearing: -2,
+        road: -2,
+        rooftop: -4,
+        slope: -3,
+        water: -2,
+        unlandable: -5,
+      }
+      const difficultyMod = lzDifficultyMod[landingZone || 'unlandable'] || -5
+
+      // Pilot skill check (using standard 1d20 roll)
+      const roll = executeRoll('1d20')
+      const rollTotal = roll.total + difficultyMod
+
+      // DC 12 placeholder — tune once a broader skill-DC convention exists
+      const DC = 12
+      const margin = rollTotal - DC
+
+      // Landing outcomes from #436
+      let outcome: string
+      let damage = 0
+      const effects: string[] = []
+      let fuelWasted = false
+
+      if ('critical' in roll && roll.critical === 'failure') {
+        // Natural 1: crash
+        outcome = 'crash'
+        damage = executeRoll('2d6').total
+        effects.push('aircraft damaged')
+        effects.push('possible injuries to occupants')
+        fuelWasted = true
+      } else if (margin >= 0) {
+        // Success: clean landing
+        outcome = 'success'
+      } else if (margin >= -5) {
+        // Fail by ≤5: go-around, fuel wasted
+        outcome = 'go_around'
+        fuelWasted = true
+      } else if (margin >= -10) {
+        // Fail by 6-10: hard landing, aircraft damage
+        outcome = 'hard_landing'
+        damage = executeRoll('1d6').total
+        effects.push('landing gear stress')
+        effects.push('airframe shock')
+      } else {
+        // Fail by >10: crash
+        outcome = 'crash'
+        damage = executeRoll('3d6').total
+        effects.push('aircraft damaged')
+        effects.push('possible injuries to occupants')
+        fuelWasted = true
+      }
+
+      return ok({
+        success: true,
+        phase: 'land',
+        outcome,
+        landingZone,
+        aircraftClass: a.aircraftClass,
+        roll: {
+          expr: '1d20',
+          total: roll.total,
+          modifier: difficultyMod,
+          final: rollTotal,
+          dc: DC,
+          margin,
+          critical: roll.critical ?? null,
+        },
+        damage,
+        effects,
+        fuelWasted,
       })
     }
   }
