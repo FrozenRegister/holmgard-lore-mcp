@@ -26,6 +26,7 @@ import { getBiomeRegistry, effectiveMovementCost } from './biome-manage'
 import { getZoneTypeRegistry } from './zone-type-manage'
 import { TRAVEL_MODES, TRAVEL_MODE_BASE_SPEED_KM_PER_DAY, fordingCost } from './travel-manage'
 import { getGeoOrigin } from './waypoint-manage'
+import { fetchMapHexes, fetchMapLandmarks, fetchMapMeta } from '../../lib/map-readback'
 
 // #430 — distance/pathfind. Reuses #429's mode base speeds and #429/#431's
 // per-hex effective cost (biome cost, overridden by an explicit water_depth
@@ -45,6 +46,14 @@ export const ACTIONS = [
   'render_svg',
   'distance',
   'pathfind',
+  // #487 — MCP-discoverable reads (no ADMIN_SECRET) for the full-map bulk
+  // sync path, keyed by mapId rather than the worldId+bounding-box shape
+  // `hexes` uses. Mirrors /internal/map-readback's query/row-shape (shared
+  // via ../../lib/map-readback.ts) so this and the editor's authenticated
+  // sync route return identical data.
+  'get_map_hexes',
+  'get_map_landmarks',
+  'get_map_meta',
 ] as const
 type WorldMapAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, WorldMapAction> = {
@@ -58,6 +67,9 @@ const ALIASES: Record<string, WorldMapAction> = {
   tile_data: 'hexes',
   get_hexes: 'hexes',
   hex_data: 'hexes',
+  map_hexes: 'get_map_hexes',
+  map_landmarks: 'get_map_landmarks',
+  map_meta: 'get_map_meta',
   update: 'patch',
   update_tiles: 'patch',
   update_hexes: 'patch',
@@ -665,6 +677,39 @@ export async function handleWorldMap(
         r: a.r,
         width: a.width,
         height: a.height,
+      })
+    }
+    case 'get_map_hexes': {
+      const { hexes, lastUpdated } = await fetchMapHexes(db, a.mapId)
+      return ok({
+        success: true,
+        actionType: 'get_map_hexes',
+        mapId: a.mapId,
+        hexes,
+        count: hexes.length,
+        lastUpdated,
+      })
+    }
+    case 'get_map_landmarks': {
+      const { landmarks, lastUpdated } = await fetchMapLandmarks(db, a.mapId)
+      return ok({
+        success: true,
+        actionType: 'get_map_landmarks',
+        mapId: a.mapId,
+        landmarks,
+        count: landmarks.length,
+        lastUpdated,
+      })
+    }
+    case 'get_map_meta': {
+      const { hexCount, landmarkCount, lastUpdated } = await fetchMapMeta(db, a.mapId)
+      return ok({
+        success: true,
+        actionType: 'get_map_meta',
+        mapId: a.mapId,
+        hexCount,
+        landmarkCount,
+        lastUpdated,
       })
     }
     case 'patch': {

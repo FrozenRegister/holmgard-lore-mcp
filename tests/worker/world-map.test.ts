@@ -88,6 +88,123 @@ describe('handleWorldMap', () => {
     expect(body.hexes).toBeDefined()
   })
 
+  // ── get_map_hexes / get_map_landmarks / get_map_meta (#487) ─────────────
+
+  it('get_map_hexes returns empty array + null lastUpdated for an empty map', async () => {
+    const r = await handleWorldMap(db(), { action: 'get_map_hexes', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.mapId).toBe('main')
+    expect(body.hexes).toEqual([])
+    expect(body.count).toBe(0)
+    expect(body.lastUpdated).toBeNull()
+  })
+
+  it('get_map_hexes returns hexes for the given mapId, mapped to the client shape', async () => {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO hexes (q, r, map_id, terrain, label, data, world_id, biome, updated_at)
+       VALUES (1, 2, 'main', 'Woods', 'Silverwood', ?, NULL, 'forest', ?)`,
+    )
+      .bind(JSON.stringify({ description: 'Ancient timberland' }), now)
+      .run()
+    await env.RPG_DB.prepare(
+      `INSERT INTO hexes (q, r, map_id, terrain, label, data, world_id, biome, updated_at)
+       VALUES (0, 0, 'other-map', 'Plains', 'Elsewhere', NULL, NULL, NULL, ?)`,
+    )
+      .bind(now)
+      .run()
+
+    const r = await handleWorldMap(db(), { action: 'get_map_hexes', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.count).toBe(1)
+    expect(body.hexes).toEqual([
+      {
+        mapId: 'main',
+        q: 1,
+        r: 2,
+        terrain: 'Woods',
+        name: 'Silverwood',
+        description: 'Ancient timberland',
+        worldId: null,
+        biome: 'forest',
+      },
+    ])
+    expect(body.lastUpdated).toBe(now)
+  })
+
+  it('get_map_landmarks returns empty array + null lastUpdated for an empty map', async () => {
+    const r = await handleWorldMap(db(), { action: 'get_map_landmarks', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.landmarks).toEqual([])
+    expect(body.count).toBe(0)
+    expect(body.lastUpdated).toBeNull()
+  })
+
+  it('get_map_landmarks returns landmarks for the given mapId, mapped to the client shape', async () => {
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO landmarks (id, map_id, q, r, name, category, data, updated_at)
+       VALUES ('landmark-1', 'main', 5, -3, 'Crowkeep', 'settlement', ?, ?)`,
+    )
+      .bind(JSON.stringify({ notes: 'A fortified town', linkedLoreKey: 'location:crowkeep' }), now)
+      .run()
+
+    const r = await handleWorldMap(db(), { action: 'get_map_landmarks', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.count).toBe(1)
+    expect(body.landmarks).toEqual([
+      {
+        mapId: 'main',
+        id: 'landmark-1',
+        q: 5,
+        r: -3,
+        name: 'Crowkeep',
+        type: 'settlement',
+        notes: 'A fortified town',
+        attributes: '{}',
+        linkedMapId: null,
+        visible: true,
+        linkedLoreKey: 'location:crowkeep',
+      },
+    ])
+    expect(body.lastUpdated).toBe(now)
+  })
+
+  it('get_map_meta returns zero counts and null lastUpdated for an empty map', async () => {
+    const r = await handleWorldMap(db(), { action: 'get_map_meta', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hexCount).toBe(0)
+    expect(body.landmarkCount).toBe(0)
+    expect(body.lastUpdated).toBeNull()
+  })
+
+  it('get_map_meta counts hexes and landmarks and reports the latest updated_at', async () => {
+    const earlier = new Date(Date.now() - 60_000).toISOString()
+    const later = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      `INSERT INTO hexes (q, r, map_id, updated_at) VALUES (0, 0, 'main', ?)`,
+    )
+      .bind(earlier)
+      .run()
+    await env.RPG_DB.prepare(
+      `INSERT INTO landmarks (id, map_id, q, r, name, updated_at) VALUES ('l1', 'main', 1, 1, 'Spot', ?)`,
+    )
+      .bind(later)
+      .run()
+
+    const r = await handleWorldMap(db(), { action: 'get_map_meta', mapId: 'main' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.hexCount).toBe(1)
+    expect(body.landmarkCount).toBe(1)
+    expect(body.lastUpdated).toBe(later)
+  })
+
   it('patch requires worldId and hexes array', async () => {
     const r = await handleWorldMap(db(), { action: 'patch', worldId: WORLD, hexes: [] })
     const body = JSON.parse(r.content[0].text)

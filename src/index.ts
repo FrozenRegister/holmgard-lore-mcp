@@ -23,6 +23,7 @@ import {
 } from './rpg/registry'
 import { mathManageSchemaDoc } from './rpg/definitions'
 import { handleBiomeManage } from './rpg/handlers/biome-manage'
+import { handleWorldMap } from './rpg/handlers/world-map'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 import { registerCharacterManageTool } from './rpg/register-character-manage'
@@ -1004,7 +1005,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
   {
     sub: 'world_map',
     description:
-      'Hex world map — hex tiles, landmarks, zones, POIs, SVG export, distance/pathfinding (#430). Actions: overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg, distance, pathfind. Aliases: update/update_tiles/update_hexes/modify→patch, tiles/get_tiles/get_hexes/hex_data→hexes, bulk/bulk_import/import_hexes→batch, search_poi/get_poi→find_poi, render/ascii/view→preview, svg/export_svg/map_svg→render_svg, dist/get_distance→distance, route/find_path/navigate/find_route→pathfind. Coordinates are hex-axial q,r (not square x,y). distance/pathfind report straightLineKm/totalKm/totalDays only when the world is geo-calibrated via waypoint.calibrate — otherwise those fields are null with an explanatory note, though hexDistance/path/terrainBreakdown hex counts are always accurate.',
+      'Hex world map — hex tiles, landmarks, zones, POIs, SVG export, distance/pathfinding (#430). Actions: overview, region, hexes, patch, batch, preview, find_poi, suggest_poi, update_poi, query_zone, list_zones, render_svg, distance, pathfind, get_map_hexes, get_map_landmarks, get_map_meta. Aliases: update/update_tiles/update_hexes/modify→patch, tiles/get_tiles/get_hexes/hex_data→hexes, bulk/bulk_import/import_hexes→batch, search_poi/get_poi→find_poi, render/ascii/view→preview, svg/export_svg/map_svg→render_svg, dist/get_distance→distance, route/find_path/navigate/find_route→pathfind, map_hexes→get_map_hexes, map_landmarks→get_map_landmarks, map_meta→get_map_meta. Coordinates are hex-axial q,r (not square x,y). distance/pathfind report straightLineKm/totalKm/totalDays only when the world is geo-calibrated via waypoint.calibrate — otherwise those fields are null with an explanatory note, though hexDistance/path/terrainBreakdown hex counts are always accurate. get_map_hexes/get_map_landmarks/get_map_meta (#487) are full-map bulk reads keyed by mapId (not worldId+bounding-box like hexes) — also reachable as bare JSON-RPC methods on /mcp with no ADMIN_SECRET required.',
     schema: {
       type: 'object',
       properties: {
@@ -2057,6 +2058,80 @@ app.post('/mcp', async (c) => {
       if (parsed.error)
         return c.json(makeError(id, -32000, parsed.message ?? 'Failed to list biomes', null), 200)
       return c.json(makeResult(id, { worldId, biomes: parsed.biomes, count: parsed.count }), 200)
+    }
+
+    // #487 — MCP-discoverable map reads (no ADMIN_SECRET), mirroring
+    // get_world_biomes: one handler (world_map's get_map_hexes/
+    // get_map_landmarks/get_map_meta actions), two envelopes — content-block
+    // for tools/call via rpg{sub:'world_map', action:...}, clean structured
+    // JSON here for bulk sync callers (matches docs/d1-readback-api-design.md).
+    if (method === 'get_map_hexes') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_hexes', mapId })
+      // world_map's get_map_hexes action has no failure path of its own (no
+      // required params beyond mapId, which always has a default) — unlike
+      // get_world_biomes above, there is no parsed.error branch to handle.
+      const parsed = JSON.parse(result.content[0].text) as {
+        hexes: unknown[]
+        count: number
+        lastUpdated: string | null
+      }
+      return c.json(
+        makeResult(id, {
+          mapId,
+          hexes: parsed.hexes,
+          count: parsed.count,
+          lastUpdated: parsed.lastUpdated,
+        }),
+        200,
+      )
+    }
+
+    if (method === 'get_map_landmarks') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_landmarks', mapId })
+      const parsed = JSON.parse(result.content[0].text) as {
+        landmarks: unknown[]
+        count: number
+        lastUpdated: string | null
+      }
+      return c.json(
+        makeResult(id, {
+          mapId,
+          landmarks: parsed.landmarks,
+          count: parsed.count,
+          lastUpdated: parsed.lastUpdated,
+        }),
+        200,
+      )
+    }
+
+    if (method === 'get_map_meta') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_meta', mapId })
+      const parsed = JSON.parse(result.content[0].text) as {
+        hexCount: number
+        landmarkCount: number
+        lastUpdated: string | null
+      }
+      return c.json(
+        makeResult(id, {
+          mapId,
+          hexCount: parsed.hexCount,
+          landmarkCount: parsed.landmarkCount,
+          lastUpdated: parsed.lastUpdated,
+        }),
+        200,
+      )
     }
 
     if (method === 'get_lore_batch') {

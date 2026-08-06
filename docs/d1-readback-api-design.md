@@ -1,6 +1,9 @@
 # D1 Readback API Design & Implementation Guide
 
-**Status:** SUPERSEDED — the design below (MCP bare-methods `get_map_hexes`/`get_map_landmarks`/`get_map_meta`) was never built. What shipped instead is `POST /internal/map-readback` (`src/internal/routes.ts`), a single combined REST endpoint gated by `ADMIN_SECRET`/`X-Api-Key` — see "What actually shipped" below. The rest of this document is kept as the historical design rationale, not a description of current behavior.
+**Status:** IMPLEMENTED (#487) — `get_map_hexes`/`get_map_landmarks`/`get_map_meta` now exist exactly as designed below: bare JSON-RPC methods on `/mcp` (no `ADMIN_SECRET`), backed by `world_map` actions of the same name (`rpg{sub:"world_map", action:"get_map_hexes", ...}`) so they're also reachable via `tools/call`. `POST /internal/map-readback` (`src/internal/routes.ts`) still exists unchanged, still gated by `ADMIN_SECRET` — it's the editor's own authenticated bulk-sync route and was kept per this doc's original "what actually shipped" note ("keep `/internal/map-readback` only if the editor's internal sync path still needs a separate authenticated route"). Both paths share one row-conversion implementation (`src/lib/map-readback.ts`) so they can't drift.
+
+One deviation from the original spec below: results are keyed by `mapId` (matching `/internal/map-readback`'s existing contract and the `hexes`/`landmarks` tables' actual primary key), not `worldId` — the spec's SQL examples already used `map_id` in their `WHERE` clause despite the prose above them saying "worldId"; this implementation follows the SQL, not the prose typo.
+
 **Scope:** Worker-side read path for hexes & landmarks stored in D1
 **Branches:** Both repos use `claude/holmgard-d1-readback-0p3b5t`
 
@@ -8,9 +11,9 @@
 
 ## What actually shipped (read this first)
 
-`POST /internal/map-readback` takes `{ mapId }` in the body, requires the same secret as `/admin/*` (`checkSecret()` — `X-Admin-Secret` or `X-Api-Key`), and returns `{ ok: true, hexes: [...], landmarks: [...] }` in one call — both tables in a single combined REST response, not two separate bare MCP methods plus a third `get_map_meta` method. There is no `tools/call` registration for map reads; they are not discoverable via `tools/list` or callable by an agent through the MCP surface at all.
+`POST /internal/map-readback` takes `{ mapId }` in the body, requires the same secret as `/admin/*` (`checkSecret()` — `X-Admin-Secret` or `X-Api-Key`), and returns `{ ok: true, hexes: [...], landmarks: [...] }` in one call — both tables in a single combined REST response. This route is unchanged by #487 and remains the editor's authenticated bulk-sync path.
 
-This contradicts the "reads via MCP, privileged writes via REST" convention this doc's own design section argues for (and that `CLAUDE.md`'s "API surface convention" still documents as the intended pattern) — a read endpoint that requires the admin secret. Whether to migrate this to the MCP surface to match convention, or whether REST was the right call here for reasons not captured in the original design, is an open question — filed separately rather than guessed at here.
+As of #487, the MCP-surface methods this doc originally designed are also implemented: `get_map_hexes`, `get_map_landmarks`, `get_map_meta` are registered as bare JSON-RPC methods on `/mcp` (`src/index.ts`, no `ADMIN_SECRET` — only the same `MCP_API_KEY`/`X-Api-Key` check every other `/mcp` method uses) and as `get_map_hexes`/`get_map_landmarks`/`get_map_meta` actions on the `world_map` handler (`src/rpg/handlers/world-map.ts`), reachable via `tools/call` as `rpg{sub:"world_map", action:"get_map_hexes", mapId}` and discoverable through `tools/list` (as part of the `rpg` tool's schema, per this repo's "flat legacy tool became an action under a consolidated tool" pattern — see `CLAUDE.md`'s note on `list_topics`/`get_lore` as bare-method aliases, not separate `tools/call` tool names).
 
 ---
 
@@ -255,16 +258,17 @@ Both tables empty → counts of 0 (not an error).
 
 ## Registration checklist (where the wiring lives)
 
-The worker dispatches `/mcp` methods through `src/lib/rpc.ts` + the tool handlers in `src/tools/*`. To add these:
+As implemented (#487) — actual locations, adjusted from the original plan:
 
-- [ ] New handler module `src/tools/map.ts` (or extend `world.ts`) with `handle_get_map_hexes`, `handle_get_map_landmarks`, `handle_get_map_meta` using `ToolContext` and `makeResult`/`makeError`.
-- [ ] Conversion helpers `hexFromD1` / `landmarkFromD1` (same module, unit-tested).
-- [ ] Register each in the `tools/call` dispatch table **and** the bare-method dispatch (mirror how `get_lore` / `list_topics` are wired in `src/index.ts` / `src/lib/rpc.ts`).
-- [ ] Add tool definitions to `toolDefinitions` (so `tools/list` advertises them with input schemas).
-- [ ] Guard `c.env?.RPG_DB` — return a graceful error when D1 is unbound.
-- [ ] **Update both test suites** (`tests/worker/*` workers + `tests/live/*`), per repo policy.
-- [ ] Add CHANGELOG `[Unreleased]` entry.
-- [ ] Update the **15 MCP tools** list in `CLAUDE.md` (it becomes 18).
+- [x] `get_map_hexes`/`get_map_landmarks`/`get_map_meta` actions added to `world_map` (`src/rpg/handlers/world-map.ts`), not a new standalone module — this repo consolidated the pre-existing per-tool modules the original plan assumed (`src/tools/map.ts`-style) into action-dispatcher handlers before this doc was implemented. Uses the existing `ok`/`err` helpers, not `makeResult`/`makeError` (those are the `/mcp` JSON-RPC envelope helpers in `src/index.ts`, one layer up).
+- [x] Conversion helpers `rowToHex`/`rowToLandmark` — shared module `src/lib/map-readback.ts`, also used by `/internal/map-readback` so both callers stay in sync. Unit-covered via `tests/worker/world-map.test.ts` and `tests/worker/legacy.test.ts`.
+- [x] Bare-method dispatch: `get_map_hexes`/`get_map_landmarks`/`get_map_meta` added to `src/index.ts` next to `get_world_biomes`, calling `handleWorldMap` and unwrapping its content-block JSON into a clean `result` (same pattern `get_world_biomes` already established).
+- [x] `tools/call` dispatch: no separate registration needed — these are actions of the already-registered `world_map` sub of the `rpg` tool (`rpg{sub:"world_map", action:"get_map_hexes", ...}`), same as `hexes`/`patch`/`overview`.
+- [ ] ~~Add tool definitions to `toolDefinitions`~~ — not applicable. `tools/list` advertises `rpg`'s schema (generic `action: string`), the same way `hexes`/`patch`/every other `world_map` action already is; there's no per-action JSON Schema entry to add, matching this repo's `list_topics`/`get_lore`-as-bare-alias convention (`CLAUDE.md`), not the original plan's "18 tools in `tools/list`" assumption.
+- [x] Guard `c.env?.RPG_DB` — `get_map_hexes`/`get_map_landmarks`/`get_map_meta` bare methods return a `-32603` error when `RPG_DB` is unbound, same as `get_world_biomes`.
+- [x] **Both test suites updated** — `tests/worker/world-map.test.ts` (action-level), `tests/worker/legacy.test.ts` (bare-method + tools/call parity), `tests/live/protocol.test.ts` (smoke).
+- [x] Changelog fragment (`.changelog/fragments/487-map-readback-mcp-methods.md`).
+- [ ] ~~Update the 15 MCP tools list in `CLAUDE.md` (it becomes 18)~~ — not applicable, per the `toolDefinitions` note above: no new top-level tool was added, so the 10-tool count in `CLAUDE.md` is unaffected.
 
 ---
 
@@ -311,8 +315,7 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 - Seed `hexes`/`landmarks`, call each method via `/mcp` (bare **and** `tools/call`), assert `result` shape.
 - Empty map → empty arrays, count 0.
 - D1 unbound → graceful error.
-- `tools/list` advertises the three new tools.
-- Large payload (1000+ rows) returns in one read.
+- Large payload (1000+ rows) returns in one read (not separately tested — no repo precedent for large-fixture D1 tests; flagged here rather than silently skipped).
 
 ### Live smoke (`tests/live/*`)
 
@@ -322,12 +325,12 @@ Future optimizations if maps grow large: `LIMIT/OFFSET` paging params, `WHERE up
 
 ## Success Criteria
 
-- ✅ Three read methods on `/mcp` (bare + `tools/call`), structured JSON in `result`
+- ✅ Three read methods on `/mcp` (bare + `tools/call` via `rpg{sub:"world_map"}`), structured JSON in `result`
 - ✅ Pushes remain REST `/admin/*` (unchanged)
-- ✅ Field mappings handle D1 nulls gracefully
-- ✅ Both test suites updated; 100% patch coverage in CI
-- ✅ `CLAUDE.md` tool count + convention reflect the change
-- ✅ Ready for client integration (editor Phase 3)
+- ✅ Field mappings handle D1 nulls gracefully (reuses `/internal/map-readback`'s existing null-handling, unchanged)
+- ✅ Both test suites updated (worker + live smoke); CI's patch-coverage gate covers this PR
+- ✅ `CLAUDE.md` convention's "worked example" reference now matches shipped behavior; tool *count* is unaffected (no new top-level tool — see registration checklist above)
+- ✅ Ready for client integration (editor Phase 3) — editor can call `get_map_hexes`/`get_map_landmarks`/`get_map_meta` via `/mcp` with only `MCP_API_KEY`, no `ADMIN_SECRET`
 
 ---
 
