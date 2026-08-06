@@ -36,6 +36,7 @@ import { ok, err, type McpResponse } from '../utils/response'
 import type { AppBindings } from '../../types'
 import { resolveZonesAt, type ResolvedZone } from './world-map'
 import { getBiomeRegistry } from './biome-manage'
+import { resolveBiomeForHex } from '../../lib/resolve-biome'
 import {
   predatorPerceptionModifier,
   yieldStealthModifier,
@@ -487,11 +488,12 @@ export async function resolveEncounterCore(
   const registry = await getBiomeRegistry(db, worldId)
   // #320 — the RPG engine's terrain grid is now the hex-axial `hexes` table
   // (unified with the map editor, #308/#319).
-  const hex = (await db
-    .prepare('SELECT biome FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
-    .bind(worldId, q, r)
-    .first()) as { biome: string } | null
-  const biomeBase = hex ? (registry.get(hex.biome)?.baseThreat ?? 0) : 0
+  // #433 — a hex may have `terrain` set (editor paint) with `biome` NULL
+  // (never assigned via world_map.patch); resolveBiomeForHex bridges that
+  // gap by borrowing the biome already assigned elsewhere to the same
+  // terrain string, instead of silently treating the hex as unclassified.
+  const { biome: resolvedBiome } = await resolveBiomeForHex(db, worldId, q, r)
+  const biomeBase = resolvedBiome ? (registry.get(resolvedBiome)?.baseThreat ?? 0) : 0
 
   const { total: modifierTotal, breakdown } = computeModifiers({
     timeOfDay: input.timeOfDay,

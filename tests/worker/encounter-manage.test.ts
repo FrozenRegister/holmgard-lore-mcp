@@ -69,6 +69,38 @@ describe('handleEncounterManage', () => {
     expect(body.threshold).toBe(100)
   })
 
+  it('resolve bridges terrain->biome (#433) when a hex has editor terrain but no biome assigned', async () => {
+    await createWorld()
+    await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'deadly_ground',
+      baseThreat: 100,
+    })
+    // A hex already carrying `deadly_ground` bridges the "Woods" terrain string.
+    await handleWorldMap(db(), {
+      action: 'patch',
+      worldId: WORLD,
+      hexes: [{ q: 1, r: 1, biome: 'deadly_ground' }],
+    })
+    await env.RPG_DB.prepare('UPDATE hexes SET terrain = ? WHERE world_id = ? AND q = 1 AND r = 1')
+      .bind('Woods', WORLD)
+      .run()
+    // Target hex only has editor terrain, no biome — simulates an
+    // editor-pushed hex that was never manually biome-assigned.
+    await env.RPG_DB.prepare(
+      `INSERT INTO hexes (q, r, map_id, terrain, label, data, world_id, biome, updated_at)
+       VALUES (5, 5, 'main', 'Woods', NULL, NULL, ?, NULL, ?)`,
+    )
+      .bind(WORLD, new Date().toISOString())
+      .run()
+
+    const r = await handleEncounterManage(db(), { action: 'resolve', worldId: WORLD, q: 5, r: 5 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.threshold).toBe(100)
+  })
+
   it('resolve returns a message and null encounterType when no encounter_types are registered', async () => {
     await createWorld()
     await handleBiomeManage(db(), {
