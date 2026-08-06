@@ -409,7 +409,9 @@ export async function handleTravelManage(
       // Query weather forecast for this world/day
       // If not found, no modifier applied (consistent with #436 slice 2 treatment)
       const weatherRow = (await db
-        .prepare('SELECT wind_speed, precipitation_type, conditions FROM weather_log WHERE world_id = ? AND day = ?')
+        .prepare(
+          'SELECT wind_speed, precipitation_type, conditions FROM weather_log WHERE world_id = ? AND day = ?',
+        )
         .bind(a.worldId, currentDay)
         .first()) as {
         wind_speed: number | null

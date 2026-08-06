@@ -1808,32 +1808,18 @@ describe('handleTravelManage', () => {
     // Set up world_state and weather_log with storm
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with storm condition
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-      .bind(
-        WORLD,
-        currentDay,
-        'summer',
-        'storm',
-        25,
-        15,
-        50,
-        'NW',
-        'rain',
-        0.9,
-        'poor',
-        0,
-        'test',
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
+      .bind(WORLD, currentDay, 'summer', 'storm', 25, 15, 50, 'NW', 'rain', 0.9, 'poor', 0, 'test')
       .run()
 
     const r = await handleTravelManage(db(), {
@@ -1852,17 +1838,17 @@ describe('handleTravelManage', () => {
   it('rappel with high wind (>25 knots) applies -4 penalty', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with high wind but clear skies
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -1898,17 +1884,17 @@ describe('handleTravelManage', () => {
   it('rappel with rain applies -2 penalty (wet rope)', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with rain
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -1944,17 +1930,17 @@ describe('handleTravelManage', () => {
   it('rappel with combined modifiers: high wind + rain', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with both wind and rain
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -1991,17 +1977,17 @@ describe('handleTravelManage', () => {
   it('rappel with pilot present in standard weather auto-passes (no roll)', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert clear weather (no adverse conditions)
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -2037,17 +2023,17 @@ describe('handleTravelManage', () => {
   it('rappel with pilot failure in adverse weather applies -2 penalty to rappeller', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with rain (adverse condition triggering pilot check)
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -2092,17 +2078,17 @@ describe('handleTravelManage', () => {
   it('rappel with pilot critical failure (nat 1) triggers rappeller DEX save', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with rain to trigger pilot check
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
@@ -2147,17 +2133,17 @@ describe('handleTravelManage', () => {
   it('rappel with pilot critical failure and rappeller DEX save success is rescued (no fall)', async () => {
     const env = db()
     await createWorld()
-    const worldRow = (await env.RPG_DB!.prepare(
-      'SELECT world_day FROM world_state WHERE world_id = ?',
-    )
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
       .bind(WORLD)
       .first()) as { world_day: number } | null
     const currentDay = worldRow?.world_day ?? 0
 
     // Insert weather with rain to trigger pilot check
-    await env.RPG_DB!.prepare(
-      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
       .bind(
         WORLD,
         currentDay,
