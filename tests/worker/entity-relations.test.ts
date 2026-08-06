@@ -6,6 +6,36 @@ import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
 
+// Response types
+type RelationRow = {
+  id?: string
+  from_type?: string
+  from_id?: string
+  to_type?: string
+  to_id?: string
+  relation_type?: string
+  attitude?: number
+  pinned?: boolean
+  [key: string]: unknown
+}
+
+type RelationsResponse = {
+  relations: RelationRow[]
+  total: number
+}
+
+type RelationCreateResponse = {
+  id: string
+  ok?: boolean
+}
+
+type SuccessResponse = {
+  ok: boolean
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ApiResponse = Record<string, any>
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function adminFetch(
@@ -50,7 +80,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
   it('returns empty array when no relations exist', async () => {
     const res = await getRelations('characters', 'char-nobody')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.relations).toEqual([])
     expect(body.total).toBe(0)
   })
@@ -58,7 +88,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
   it('returns relations where entity is the from side', async () => {
     await createRelation({ from_id: 'char-001', to_id: 'nation-001', relation_type: 'serves' })
     const res = await getRelations('characters', 'char-001')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.total).toBe(1)
     expect(body.relations[0].from_id).toBe('char-001')
     expect(body.relations[0].relation_type).toBe('serves')
@@ -72,7 +102,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
       relation_type: 'friend',
     })
     const res = await getRelations('characters', 'char-001')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.total).toBe(1)
     expect(body.relations[0].from_id).toBe('char-002')
     expect(body.relations[0].to_id).toBe('char-001')
@@ -93,7 +123,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
       relation_type: 'involves',
     })
     const res = await getRelations('characters', 'char-001')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.total).toBe(2)
   })
 
@@ -113,7 +143,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
       is_pinned: true,
     })
     const res = await getRelations('characters', 'char-001')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.relations[0].to_id).toBe('n2')
     expect(body.relations[0].is_pinned).toBe(true)
     expect(body.relations[1].to_id).toBe('n1')
@@ -129,7 +159,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
       // no attitude
     })
     const res = await getRelations('characters', 'c1')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.relations[0].attitude).toBeNull()
   })
 
@@ -142,7 +172,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
       relation_type: 'participates',
     })
     const res = await getRelations('characters', 'cx')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     const rel = body.relations[0]
     expect(typeof rel.id).toBe('string')
     expect(rel.color).toBeNull()
@@ -155,7 +185,7 @@ describe('GET /api/entities/:type/:id/relations', () => {
   it('returns 400 for unknown entity type slug', async () => {
     const res = await getRelations('dragons', 'drgn-001')
     expect(res.status).toBe(400)
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.error).toContain('Unknown entity type')
   })
 })
@@ -170,7 +200,7 @@ describe('POST /admin/relations', () => {
   it('creates a relation and returns ok:true with an id', async () => {
     const res = await createRelation()
     expect(res.status).toBe(201)
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.ok).toBe(true)
     expect(typeof body.id).toBe('string')
     expect(body.id.length).toBeGreaterThan(0)
@@ -185,7 +215,7 @@ describe('POST /admin/relations', () => {
       attitude: 50,
     })
     const res = await getRelations('characters', 'char-findme')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     expect(body.total).toBe(1)
     expect(body.relations[0].relation_type).toBe('owns')
     expect(body.relations[0].attitude).toBe(50)
@@ -207,7 +237,7 @@ describe('POST /admin/relations', () => {
       'wrong-secret',
     )
     expect(res2.status).toBe(401)
-    const body = (await res2.json()) as Record<string, any>
+    const body = (await res2.json()) as ApiResponse
     expect(body.ok).toBe(false)
   })
 
@@ -299,7 +329,7 @@ describe('POST /admin/relations', () => {
       is_private: true,
     })
     const res = await getRelations('characters', 'c-opt')
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     const rel = body.relations[0]
     expect(rel.notes).toBe('Seen here at night')
     expect(rel.color).toBe('#ff0000')
@@ -323,10 +353,10 @@ describe('PATCH /admin/relations/:id', () => {
       relation_type: 'enemy',
     })
     expect(patchRes.status).toBe(200)
-    const body = (await patchRes.json()) as Record<string, any>
+    const body = (await patchRes.json()) as ApiResponse
     expect(body.ok).toBe(true)
 
-    const get = (await (await getRelations('characters', 'c-patch')).json()) as Record<string, any>
+    const get = (await (await getRelations('characters', 'c-patch')).json()) as ApiResponse
     expect(get.relations[0].relation_type).toBe('enemy')
   })
 
@@ -336,7 +366,7 @@ describe('PATCH /admin/relations/:id', () => {
       any
     >
     await adminFetch('PATCH', `/admin/relations/${created.id}`, { attitude: -80 })
-    const get = (await (await getRelations('characters', 'c-att')).json()) as Record<string, any>
+    const get = (await (await getRelations('characters', 'c-att')).json()) as ApiResponse
     expect(get.relations[0].attitude).toBe(-80)
   })
 
@@ -346,7 +376,7 @@ describe('PATCH /admin/relations/:id', () => {
       any
     >
     await adminFetch('PATCH', `/admin/relations/${created.id}`, { is_pinned: 1 })
-    const get = (await (await getRelations('characters', 'c-pin')).json()) as Record<string, any>
+    const get = (await (await getRelations('characters', 'c-pin')).json()) as ApiResponse
     expect(get.relations[0].is_pinned).toBe(true)
   })
 
@@ -409,10 +439,10 @@ describe('DELETE /admin/relations/:id', () => {
       headers: { 'X-Admin-Secret': ADMIN_SECRET },
     })
     expect(delRes.status).toBe(200)
-    const body = (await delRes.json()) as Record<string, any>
+    const body = (await delRes.json()) as ApiResponse
     expect(body.ok).toBe(true)
 
-    const get = (await (await getRelations('characters', 'c-del')).json()) as Record<string, any>
+    const get = (await (await getRelations('characters', 'c-del')).json()) as ApiResponse
     expect(get.total).toBe(0)
   })
 
@@ -473,7 +503,7 @@ describe('POST /admin/relations — edge cases', () => {
       color: '   ',
     })
     expect(res.status).toBe(201)
-    const body = (await res.json()) as Record<string, any>
+    const body = (await res.json()) as ApiResponse
     const relations = (await (await getRelations('characters', 'c-trim-color')).json()) as Record<
       string,
       any
