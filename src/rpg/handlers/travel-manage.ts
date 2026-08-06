@@ -47,7 +47,7 @@ export function fordingCost(waterDepth: number | null, mode: TravelMode): Fordin
   return { cost: 2.0, swimRisk: waterDepth > 0.6 }
 }
 
-export const ACTIONS = ['travel', 'loot', 'rest', 'move_hex'] as const
+export const ACTIONS = ['travel', 'loot', 'rest', 'move_hex', 'rappel'] as const
 type TravelAction = (typeof ACTIONS)[number]
 const ALIASES: Record<string, TravelAction> = {
   move: 'travel',
@@ -67,6 +67,9 @@ const ALIASES: Record<string, TravelAction> = {
   hex_move: 'move_hex',
   hex_travel: 'move_hex',
   move_to_hex: 'move_hex',
+  rappel: 'rappel',
+  fast_rope: 'rappel',
+  insert: 'rappel',
 }
 
 const InputSchema = z.object({
@@ -102,6 +105,10 @@ const InputSchema = z.object({
   // #429 — transport mode for move_hex. Defaults to foot, matching every
   // existing caller's implicit assumption before this field existed.
   mode: z.enum(TRAVEL_MODES).optional().default('foot'),
+  // #437 — rappel action parameters
+  characterId: z.string().optional(),
+  height: z.enum(['low', 'high', 'extreme']).optional(),
+  proficient: z.boolean().optional().default(false),
 })
 
 const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
@@ -364,6 +371,105 @@ export async function handleTravelManage(
         mode: a.mode,
         effectiveSpeedKmPerDay,
         ...(swimRisk ? { swimRisk: true } : {}),
+      })
+    }
+    case 'rappel': {
+      // #437 — rappel action for rotorcraft personnel insertion
+      if (!a.characterId) return err('"characterId" is required')
+      if (!a.height) return err('"height" is required')
+      if (!a.worldId) return err('"worldId" is required')
+
+      // Height-tier DEX modifier from #437's issue spec
+      const heightTierModifier: Record<string, number> = {
+        low: 0,
+        high: -2,
+        extreme: -5,
+      }
+      const dexModifier = heightTierModifier[a.height]
+
+      // Untrained + extreme height → automatic failure, no roll attempted
+      if (!a.proficient && a.height === 'extreme') {
+        return ok({
+          success: true,
+          outcome: 'not_attempted',
+          reason: 'Untrained personnel cannot attempt extreme height rappel',
+          damage: 0,
+          effects: [],
+        })
+      }
+
+      // Determine dice notation based on proficiency
+      // Untrained (non-extreme): disadvantage (2d20kl1 = keep lowest 1 of 2d20)
+      // Proficient: standard single roll (1d20)
+      const diceExpr = a.proficient ? '1d20' : '2d20kl1'
+      const roll = executeRoll(diceExpr)
+      const rollTotal = roll.total + dexModifier
+
+      // DC 12 placeholder — tune once a broader skill-DC convention exists
+      const DC = 12
+      const margin = rollTotal - DC
+
+      // Determine outcome via injury table from #437
+      let outcome: string
+      let damage = 0
+      const effects: string[] = []
+
+      if ('critical' in roll && roll.critical === 'failure') {
+        // Natural 1: equipment failure, fall from full height, damage ×1.5
+        outcome = 'critical_fail'
+        const baseDamage4d6 = executeRoll('4d6').total
+        const extraDamageByHeight: Record<string, number> = {
+          low: 0,
+          high: executeRoll('1d6').total,
+          extreme: executeRoll('2d6').total,
+        }
+        damage = Math.floor((baseDamage4d6 + extraDamageByHeight[a.height]) * 1.5)
+        effects.push('equipment failure')
+        effects.push('fall from full height')
+      } else if (margin >= 0) {
+        // Success: clean landing
+        outcome = 'success'
+      } else if (margin >= -5) {
+        // Fail by ≤5: rough landing, 1d4 damage, half speed for 1 hour
+        outcome = 'rough_landing'
+        damage = executeRoll('1d4').total
+        effects.push('twisted ankle')
+        effects.push('half speed for 1 hour')
+      } else if (margin >= -10) {
+        // Fail by 6–10: hard landing, 2d6 damage, half speed 24h + disadvantage on DEX
+        outcome = 'hard_landing'
+        damage = executeRoll('2d6').total
+        effects.push('sprain or minor fracture')
+        effects.push('half speed for 24 hours')
+        effects.push('disadvantage on DEX')
+      } else {
+        // Fail by >10: fall, 4d6 + 1d6 per height tier above low
+        outcome = 'fall'
+        const baseDamage4d6 = executeRoll('4d6').total
+        const extraDamageByHeight: Record<string, number> = {
+          low: 0,
+          high: executeRoll('1d6').total,
+          extreme: executeRoll('2d6').total,
+        }
+        damage = baseDamage4d6 + extraDamageByHeight[a.height]
+        effects.push('possible fracture')
+        effects.push('possible unconsciousness')
+      }
+
+      return ok({
+        success: true,
+        outcome,
+        roll: {
+          expr: diceExpr,
+          total: roll.total,
+          modifier: dexModifier,
+          final: rollTotal,
+          dc: DC,
+          margin,
+          critical: roll.critical ?? null,
+        },
+        damage,
+        effects,
       })
     }
   }
