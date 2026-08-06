@@ -3,6 +3,23 @@ import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach, describe as innerDescribe } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
 
+type CountResponse = { ok: boolean; count?: number }
+type HexData = { mapId: string; q: number; r: number; terrain: string; name: string; description: string }
+type LandmarkData = {
+  mapId: string
+  id: string
+  q: number
+  r: number
+  name: string
+  type: string
+  notes: string
+  attributes: string
+  linkedMapId: string | null
+  visible: boolean
+  linkedLoreKey: string | null
+}
+type MapReadbackResponse = { ok: boolean; hexes: HexData[]; landmarks: LandmarkData[]; error?: string }
+
 describe('admin map routes', () => {
   beforeEach(async () => {
     // hexes/landmarks are created by the migrations themselves (#319) — no
@@ -137,7 +154,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as CountResponse
       expect(body.ok).toBe(true)
       expect(body.count).toBe(2)
     })
@@ -155,7 +172,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as CountResponse
       expect(body.ok).toBe(true)
       expect(body.count).toBe(1)
 
@@ -249,7 +266,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as CountResponse
       expect(body.ok).toBe(true)
       expect(body.count).toBe(0)
     })
@@ -294,7 +311,7 @@ describe('admin map routes', () => {
         'wrong-secret',
       )
       expect(res.status).toBe(401)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
     })
 
@@ -342,7 +359,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as CountResponse
       expect(body.ok).toBe(true)
       expect(body.count).toBe(2)
     })
@@ -468,7 +485,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as CountResponse
       expect(body.ok).toBe(true)
       expect(body.count).toBe(0)
     })
@@ -513,7 +530,7 @@ describe('admin map routes', () => {
         'wrong',
       )
       expect(res.status).toBe(401)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
     })
 
@@ -563,7 +580,7 @@ describe('admin map routes', () => {
       // Readback
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
 
       // Check hexes
@@ -595,7 +612,7 @@ describe('admin map routes', () => {
     it('returns empty arrays for non-existent map', async () => {
       const res = await mapPost('/internal/map-readback', { mapId: 'nonexistent' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
       expect(body.hexes).toEqual([])
       expect(body.landmarks).toEqual([])
@@ -621,7 +638,7 @@ describe('admin map routes', () => {
       // Readback main (implicit, default)
       const res = await mapPost('/internal/map-readback', { mapId: 'main' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(1)
       expect(body.hexes[0].name).toBe('Mainfield')
     })
@@ -643,7 +660,7 @@ describe('admin map routes', () => {
     it('returns 400 when mapId is missing', async () => {
       const res = await mapPost('/internal/map-readback', {}, ADMIN_SECRET)
       expect(res.status).toBe(400)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
     })
 
@@ -662,7 +679,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.q).toBe(2)
@@ -682,7 +699,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(1)
       const landmark = body.landmarks[0]
       expect(landmark.id).toBe('lm-minimal')
@@ -721,7 +738,7 @@ describe('admin map routes', () => {
 
       const readRes = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(readRes.status).toBe(200)
-      const body = (await readRes.json()) as Record<string, any>
+      const body = (await readRes.json()) as MapReadbackResponse
       expect(body.landmarks[0].visible).toBe(false)
     })
 
@@ -736,9 +753,9 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(4)
-      expect(body.hexes.map((h: any) => h.terrain).sort()).toEqual([
+      expect(body.hexes.map((h: HexData) => h.terrain).sort()).toEqual([
         'forest',
         'mountain',
         'plains',
@@ -777,11 +794,11 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(2)
 
-      const capital = body.landmarks.find((l: any) => l.id === 'city1')
-      const crypt = body.landmarks.find((l: any) => l.id === 'dungeon1')
+      const capital = body.landmarks.find((l: LandmarkData) => l.id === 'city1')!
+      const crypt = body.landmarks.find((l: LandmarkData) => l.id === 'dungeon1')!
 
       expect(capital.linkedLoreKey).toBe('location:capital')
       expect(capital.linkedMapId).toBeNull()
@@ -821,7 +838,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks[0].attributes).toEqual(JSON.stringify(complexAttributes))
       expect(JSON.parse(body.landmarks[0].attributes)).toEqual(complexAttributes)
     })
@@ -835,7 +852,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes[0].description).toBe('Has a description')
       expect(body.hexes[1].description).toBe('')
     })
@@ -865,7 +882,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks[0].linkedLoreKey).toBe('location:somewhere')
       expect(body.landmarks[0].linkedMapId).toBeNull()
     })
@@ -919,12 +936,12 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
 
       // Hexes should be ordered by q, r
-      expect(body.hexes.map((h: any) => `${h.q},${h.r}`)).toEqual(['0,0', '0,1', '1,0'])
+      expect(body.hexes.map((h: HexData) => `${h.q},${h.r}`)).toEqual(['0,0', '0,1', '1,0'])
       // Landmarks should be ordered by name
-      expect(body.landmarks.map((l: any) => l.name)).toEqual(['Apple', 'Middle', 'Zebra'])
+      expect(body.landmarks.map((l: LandmarkData) => l.name)).toEqual(['Apple', 'Middle', 'Zebra'])
     })
 
     it('handles hexes with all optional fields present and populated', async () => {
@@ -947,7 +964,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       const hex = body.hexes[0]
       expect(hex.q).toBe(10)
       expect(hex.r).toBe(20)
@@ -980,7 +997,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(1)
       const landmark = body.landmarks[0]
       expect(landmark.id).toBe('lm-sparse')
@@ -1014,8 +1031,8 @@ describe('admin map routes', () => {
       const resA = await mapPost('/internal/map-readback', { mapId: 'map-a' }, ADMIN_SECRET)
       const resB = await mapPost('/internal/map-readback', { mapId: 'map-b' }, ADMIN_SECRET)
 
-      const bodyA = (await resA.json()) as Record<string, any>
-      const bodyB = (await resB.json()) as Record<string, any>
+      const bodyA = (await resA.json()) as MapReadbackResponse
+      const bodyB = (await resB.json()) as MapReadbackResponse
 
       expect(bodyA.hexes).toHaveLength(1)
       expect(bodyA.hexes[0].name).toBe('Forest A')
@@ -1040,14 +1057,14 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
 
       expect(body.hexes).toHaveLength(3)
-      expect(body.hexes.map((h: any) => [h.terrain, h.description])).toContainEqual([
+      expect(body.hexes.map((h: HexData) => [h.terrain, h.description])).toContainEqual([
         'lava',
         'Burning hot',
       ])
-      expect(body.hexes.map((h: any) => [h.terrain, h.description])).toContainEqual(['ice', ''])
+      expect(body.hexes.map((h: HexData) => [h.terrain, h.description])).toContainEqual(['ice', ''])
     })
 
     it('correctly converts all landmark field combinations with attributes', async () => {
@@ -1090,11 +1107,11 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
 
       expect(body.landmarks).toHaveLength(2)
-      const lm1 = body.landmarks.find((l: any) => l.id === 'lm1')
-      const lm2 = body.landmarks.find((l: any) => l.id === 'lm2')
+      const lm1 = body.landmarks.find((l: LandmarkData) => l.id === 'lm1')!
+      const lm2 = body.landmarks.find((l: LandmarkData) => l.id === 'lm2')!
 
       expect(JSON.parse(lm1.attributes)).toEqual(attrs1)
       expect(JSON.parse(lm2.attributes)).toEqual(attrs2)
@@ -1114,12 +1131,12 @@ describe('admin map routes', () => {
       await mapPost('/admin/map/push-hexes', { mapId: 'test-map', hexes }, ADMIN_SECRET)
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
 
       expect(body.hexes).toHaveLength(3)
-      const nw = body.hexes.find((h: any) => h.q === -5 && h.r === 3)
-      const se = body.hexes.find((h: any) => h.q === 5 && h.r === -2)
-      const center = body.hexes.find((h: any) => h.q === 0 && h.r === 0)
+      const nw = body.hexes.find((h: HexData) => h.q === -5 && h.r === 3)
+      const se = body.hexes.find((h: HexData) => h.q === 5 && h.r === -2)
+      const center = body.hexes.find((h: HexData) => h.q === 0 && h.r === 0)
 
       expect(nw?.terrain).toBe('swamp')
       expect(se?.terrain).toBe('desert')
@@ -1155,10 +1172,10 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'special-map' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
 
-      expect(body.hexes.every((h: any) => h.mapId === 'special-map')).toBe(true)
-      expect(body.landmarks.every((l: any) => l.mapId === 'special-map')).toBe(true)
+      expect(body.hexes.every((h: HexData) => h.mapId === 'special-map')).toBe(true)
+      expect(body.landmarks.every((l: LandmarkData) => l.mapId === 'special-map')).toBe(true)
     })
 
     it('handles null and undefined fields in hex data column', async () => {
@@ -1171,7 +1188,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(1)
       expect(body.hexes[0].q).toBe(10)
       expect(body.hexes[0].r).toBe(20)
@@ -1188,7 +1205,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.notes).toBe('')
@@ -1222,7 +1239,7 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks[0].attributes).toBe('{}')
       expect(JSON.parse(body.landmarks[0].attributes)).toEqual({})
     })
@@ -1238,7 +1255,7 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       const hex = body.hexes[0]
       expect(hex.q).toBe(0)
       expect(hex.r).toBe(0)
@@ -1270,7 +1287,7 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       const lm = body.landmarks[0]
       expect(lm.linkedMapId).toBeNull()
       expect(lm.visible).toBe(false)
@@ -1287,14 +1304,14 @@ describe('admin map routes', () => {
         body: 'not valid json {',
       })
       expect(res.status).toBe(400)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
     })
 
     it('returns error when mapId is whitespace only', async () => {
       const res = await mapPost('/internal/map-readback', { mapId: '   ' }, ADMIN_SECRET)
       expect(res.status).toBe(400)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
     })
 
@@ -1323,7 +1340,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'landmarks-only' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
       expect(body.hexes).toEqual([])
       expect(body.landmarks).toHaveLength(1)
@@ -1341,7 +1358,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'hexes-only' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
       expect(body.landmarks).toEqual([])
@@ -1357,7 +1374,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.id).toBe('minimal-lm')
@@ -1381,7 +1398,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.q).toBe(1)
@@ -1411,7 +1428,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'full-hex-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(1)
       const hex = body.hexes[0]
       expect(hex.mapId).toBe('full-hex-test')
@@ -1447,7 +1464,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'full-lm-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(1)
       const lm = body.landmarks[0]
       expect(lm.mapId).toBe('full-lm-test')
@@ -1480,7 +1497,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'error-test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
     })
@@ -1504,10 +1521,10 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(2)
-      const deep = body.hexes.find((h: any) => h.q === -10)
-      const twilight = body.hexes.find((h: any) => h.q === -5)
+      const deep = body.hexes.find((h: HexData) => h.q === -10)
+      const twilight = body.hexes.find((h: HexData) => h.q === -5)
       expect(deep?.r).toBe(-20)
       expect(deep?.terrain).toBe('abyss')
       expect(twilight?.r).toBe(0)
@@ -1532,8 +1549,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const lm = body.landmarks.find((l: any) => l.id === 'null-visible')
+      const body = (await res.json()) as MapReadbackResponse
+      const lm = body.landmarks.find((l: LandmarkData) => l.id === 'null-visible')
       expect(lm?.visible).toBe(true)
     })
 
@@ -1553,9 +1570,9 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'numeric-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(3)
-      expect(body.hexes.every((h: any) => typeof h.q === 'number' && typeof h.r === 'number')).toBe(
+      expect(body.hexes.every((h: HexData) => typeof h.q === 'number' && typeof h.r === 'number')).toBe(
         true,
       )
     })
@@ -1586,7 +1603,7 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'complex-test' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       const lm = body.landmarks[0]
       expect(lm.visible).toBe(false)
       expect(JSON.parse(lm.attributes)).toEqual(complexAttrs)
@@ -1604,7 +1621,7 @@ describe('admin map routes', () => {
       const res = await mapPost('/internal/map-readback', { mapId: 'bad-json-map' }, ADMIN_SECRET)
       // Should return error due to JSON parse failure in rowToHex
       expect(res.status).toBe(500)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
       expect(body.error).toBeDefined()
     })
@@ -1624,7 +1641,7 @@ describe('admin map routes', () => {
       )
       // Should return error due to JSON parse failure in rowToLandmark
       expect(res.status).toBe(500)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(false)
       expect(body.error).toBeDefined()
     })
@@ -1639,8 +1656,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const hex = body.hexes.find((h: any) => h.q === 3)
+      const body = (await res.json()) as MapReadbackResponse
+      const hex = body.hexes.find((h: HexData) => h.q === 3)
       expect(hex).toBeDefined()
       expect(hex?.description).toBe('')
     })
@@ -1655,8 +1672,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const lm = body.landmarks.find((l: any) => l.id === 'empty-data-lm')
+      const body = (await res.json()) as MapReadbackResponse
+      const lm = body.landmarks.find((l: LandmarkData) => l.id === 'empty-data-lm')
       expect(lm).toBeDefined()
       expect(lm?.notes).toBe('')
       expect(lm?.attributes).toBe('{}')
@@ -1672,8 +1689,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const hex = body.hexes.find((h: any) => h.q === 7)
+      const body = (await res.json()) as MapReadbackResponse
+      const hex = body.hexes.find((h: HexData) => h.q === 7)
       expect(hex?.description).toBe('Detailed description')
     })
 
@@ -1693,8 +1710,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const lm = body.landmarks.find((l: any) => l.id === 'detailed-lm')
+      const body = (await res.json()) as MapReadbackResponse
+      const lm = body.landmarks.find((l: LandmarkData) => l.id === 'detailed-lm')
       expect(lm?.notes).toBe('Detailed notes')
       expect(lm?.visible).toBe(false)
       expect(lm?.linkedMapId).toBe('link-map')
@@ -1721,8 +1738,8 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      body.hexes.forEach((h: any) => {
+      const body = (await res.json()) as MapReadbackResponse
+      body.hexes.forEach((h: HexData) => {
         expect(typeof h.q).toBe('number')
         expect(typeof h.r).toBe('number')
         expect(Number.isNaN(h.q)).toBe(false)
@@ -1740,8 +1757,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const lm = body.landmarks.find((l: any) => l.id === 'explicit-visible')
+      const body = (await res.json()) as MapReadbackResponse
+      const lm = body.landmarks.find((l: LandmarkData) => l.id === 'explicit-visible')
       expect(lm?.visible).toBe(true)
     })
 
@@ -1761,8 +1778,8 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'test-map' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
-      const lm = body.landmarks.find((l: any) => l.id === 'complete')
+      const body = (await res.json()) as MapReadbackResponse
+      const lm = body.landmarks.find((l: LandmarkData) => l.id === 'complete')
       expect(lm?.notes).toBe('Complete landmark')
       expect(lm?.attributes).toBe('{"size":"large"}')
       expect(lm?.linkedMapId).toBe('link-destination')
@@ -1787,7 +1804,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.ok).toBe(true)
       expect(body.hexes).toHaveLength(1)
     })
@@ -1799,7 +1816,7 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(Array.isArray(body.hexes)).toBe(true)
       expect(Array.isArray(body.landmarks)).toBe(true)
       expect(body.hexes).toEqual([])
@@ -1847,10 +1864,10 @@ describe('admin map routes', () => {
 
       const res = await mapPost('/internal/map-readback', { mapId: 'large-batch' }, ADMIN_SECRET)
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(50)
-      expect(body.hexes.every((h: any) => typeof h.q === 'number')).toBe(true)
-      expect(body.hexes.every((h: any) => typeof h.terrain === 'string')).toBe(true)
+      expect(body.hexes.every((h: HexData) => typeof h.q === 'number')).toBe(true)
+      expect(body.hexes.every((h: HexData) => typeof h.terrain === 'string')).toBe(true)
     })
 
     it('large batch of landmarks all converted correctly', async () => {
@@ -1878,10 +1895,10 @@ describe('admin map routes', () => {
         ADMIN_SECRET,
       )
       expect(res.status).toBe(200)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body.landmarks).toHaveLength(30)
-      expect(body.landmarks.every((l: any) => typeof l.id === 'string')).toBe(true)
-      expect(body.landmarks.every((l: any) => typeof l.visible === 'boolean')).toBe(true)
+      expect(body.landmarks.every((l: LandmarkData) => typeof l.id === 'string')).toBe(true)
+      expect(body.landmarks.every((l: LandmarkData) => typeof l.visible === 'boolean')).toBe(true)
     })
 
     it('mixed maps do not interfere with each other', async () => {
@@ -1901,8 +1918,8 @@ describe('admin map routes', () => {
       const res1 = await mapPost('/internal/map-readback', { mapId: 'map1' }, ADMIN_SECRET)
       const res2 = await mapPost('/internal/map-readback', { mapId: 'map2' }, ADMIN_SECRET)
 
-      const body1 = (await res1.json()) as Record<string, any>
-      const body2 = (await res2.json()) as Record<string, any>
+      const body1 = (await res1.json()) as MapReadbackResponse
+      const body2 = (await res2.json()) as MapReadbackResponse
 
       expect(body1.hexes[0].name).toBe('H1')
       expect(body2.hexes[0].name).toBe('H2')
@@ -1918,7 +1935,7 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'ok-test' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       expect(body).toHaveProperty('ok')
       expect(body.ok).toBe(true)
       expect(body).toHaveProperty('hexes')
@@ -1949,7 +1966,7 @@ describe('admin map routes', () => {
       )
 
       const res = await mapPost('/internal/map-readback', { mapId: 'structure-test' }, ADMIN_SECRET)
-      const body = (await res.json()) as Record<string, any>
+      const body = (await res.json()) as MapReadbackResponse
       const lm = body.landmarks[0]
 
       expect(lm).toHaveProperty('mapId')
