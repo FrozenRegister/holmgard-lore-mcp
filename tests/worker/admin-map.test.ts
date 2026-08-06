@@ -4,7 +4,14 @@ import { expect, it, beforeEach, describe as innerDescribe } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
 
 type CountResponse = { ok: boolean; count?: number }
-type HexData = { mapId: string; q: number; r: number; terrain: string; name: string; description: string }
+type HexData = {
+  mapId: string
+  q: number
+  r: number
+  terrain: string
+  name: string
+  description: string
+}
 type LandmarkData = {
   mapId: string
   id: string
@@ -18,7 +25,12 @@ type LandmarkData = {
   visible: boolean
   linkedLoreKey: string | null
 }
-type MapReadbackResponse = { ok: boolean; hexes: HexData[]; landmarks: LandmarkData[]; error?: string }
+type MapReadbackResponse = {
+  ok: boolean
+  hexes: HexData[]
+  landmarks: LandmarkData[]
+  error?: string
+}
 
 describe('admin map routes', () => {
   beforeEach(async () => {
@@ -1572,9 +1584,9 @@ describe('admin map routes', () => {
       expect(res.status).toBe(200)
       const body = (await res.json()) as MapReadbackResponse
       expect(body.hexes).toHaveLength(3)
-      expect(body.hexes.every((h: HexData) => typeof h.q === 'number' && typeof h.r === 'number')).toBe(
-        true,
-      )
+      expect(
+        body.hexes.every((h: HexData) => typeof h.q === 'number' && typeof h.r === 'number'),
+      ).toBe(true)
     })
 
     it('landmark visible:false through complex attributes', async () => {

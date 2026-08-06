@@ -52,7 +52,13 @@ type ErrorResponse = {
   [key: string]: unknown
 }
 
-type ParsedResponse = CreateResponse | GetResponse | ActivateResponse | ListPassengersResponse | ErrorResponse | Record<string, unknown>
+type ParsedResponse =
+  | CreateResponse
+  | GetResponse
+  | ActivateResponse
+  | ListPassengersResponse
+  | ErrorResponse
+  | Record<string, unknown>
 
 // Helper to parse McpResponse
 function parseResponse(mcpResponse: unknown): ParsedResponse {
@@ -381,7 +387,9 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     expect(listRes).toHaveProperty('success', true)
     expect((listRes as ListPassengersResponse).activeCharacterId).toBe(activeId)
     expect((listRes as ListPassengersResponse).count).toBe(1)
-    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([passengerId])
+    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([
+      passengerId,
+    ])
   })
 
   it('list_passengers reports a null active consciousness when nobody in the group is active', async () => {
@@ -410,7 +418,9 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     )
     expect((listRes as ListPassengersResponse).activeCharacterId).toBeNull()
     expect((listRes as ListPassengersResponse).active).toBeNull()
-    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([oneId])
+    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([
+      oneId,
+    ])
   })
 
   it('list_passengers resolves hostBodyId from a character id when not passed directly', async () => {

@@ -42,30 +42,74 @@ type SuccessResponse = {
 
 // List response types for different entity endpoints
 type LocationListResponse = {
-  locations: Array<{ id: string; name?: string; biome_context?: string | null; visited_count?: number; [k: string]: unknown }>
+  locations: Array<{
+    id: string
+    name?: string
+    biome_context?: string | null
+    visited_count?: number
+    [k: string]: unknown
+  }>
   total: number
 }
 
 type LocationResponse = {
-  location: { id: string; name?: string; biome_context?: string | null; visited_count?: number; [k: string]: unknown }
+  location: {
+    id: string
+    name?: string
+    biome_context?: string | null
+    visited_count?: number
+    [k: string]: unknown
+  }
 }
 
 type NationListResponse = {
-  nations: Array<{ id: string; name?: string; leader?: string; ideology?: string; aggression?: number; trust?: number; paranoia?: number; gdp?: number; [k: string]: unknown }>
+  nations: Array<{
+    id: string
+    name?: string
+    leader?: string
+    ideology?: string
+    aggression?: number
+    trust?: number
+    paranoia?: number
+    gdp?: number
+    [k: string]: unknown
+  }>
   total: number
 }
 
 type NationResponse = {
-  nation: { id: string; name?: string; leader?: string; ideology?: string; aggression?: number; trust?: number; paranoia?: number; gdp?: number; [k: string]: unknown }
+  nation: {
+    id: string
+    name?: string
+    leader?: string
+    ideology?: string
+    aggression?: number
+    trust?: number
+    paranoia?: number
+    gdp?: number
+    [k: string]: unknown
+  }
 }
 
 type RegionListResponse = {
-  regions: Array<{ id: string; name?: string; type?: string; owner_nation_id?: string | null; [k: string]: unknown }>
+  regions: Array<{
+    id: string
+    name?: string
+    type?: string
+    owner_nation_id?: string | null
+    [k: string]: unknown
+  }>
   total?: number
 }
 
 type RegionResponse = {
-  region: { id: string; name?: string; type?: string; owner_nation_id?: string | null; [k: string]: unknown }
+  region: {
+    id: string
+    name?: string
+    type?: string
+    owner_nation_id?: string | null
+    [k: string]: unknown
+  }
 }
 
 type ItemListResponse = {
