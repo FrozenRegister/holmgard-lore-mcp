@@ -497,4 +497,52 @@ describe('KV error handling', () => {
     expect(result).toContain('map:world')
     expect(result).not.toContain('character:alice')
   })
+
+  it('kvList follows the cursor across multiple pages', async () => {
+    const calls: Array<{ cursor?: string } | undefined> = []
+    const c = {
+      env: {
+        LORE_DB: {
+          list: async (opts?: { cursor?: string }) => {
+            calls.push(opts)
+            if (!opts?.cursor) {
+              return { keys: [{ name: 'character:page1' }], list_complete: false, cursor: 'page2' }
+            }
+            return { keys: [{ name: 'character:page2' }], list_complete: true }
+          },
+        },
+      } as unknown as AppBindings,
+    }
+
+    const result = await kvList(c)
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toEqual({ cursor: 'page2' })
+    expect(result).toContain('character:page1')
+    expect(result).toContain('character:page2')
+  })
+
+  it('kvListMaps follows the cursor across multiple pages', async () => {
+    const calls: Array<{ cursor?: string } | undefined> = []
+    const c = {
+      env: {
+        LORE_DB: {
+          list: async (opts?: { cursor?: string }) => {
+            calls.push(opts)
+            if (!opts?.cursor) {
+              return { keys: [{ name: 'map:page1' }], list_complete: false, cursor: 'page2' }
+            }
+            return { keys: [{ name: 'map:page2' }], list_complete: true }
+          },
+        },
+      } as unknown as AppBindings,
+    }
+
+    const result = await kvListMaps(c)
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toEqual({ cursor: 'page2' })
+    expect(result).toContain('map:page1')
+    expect(result).toContain('map:page2')
+  })
 })
