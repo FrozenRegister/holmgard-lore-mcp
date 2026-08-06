@@ -713,4 +713,236 @@ describe('handleTravelManage', () => {
     expect(body.effectiveSpeedKmPerDay).toBe(600)
     expect(body.swimRisk).toBeUndefined()
   })
+
+  // ── rappel action (#437) ───────────────────────────────────────────────────
+
+  it('rappel requires characterId', async () => {
+    const r = await handleTravelManage(db(), { action: 'rappel', worldId: WORLD, height: 'low' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('characterId')
+  })
+
+  it('rappel requires height', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-1',
+      worldId: WORLD,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('height')
+  })
+
+  it('rappel requires worldId', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-1',
+      height: 'low',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toBe(true)
+    expect(body.message).toContain('worldId')
+  })
+
+  it('rappel untrained + extreme height auto-fails without roll', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-1',
+      height: 'extreme',
+      worldId: WORLD,
+      proficient: false,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.outcome).toBe('not_attempted')
+    expect(body.damage).toBe(0)
+    expect(body.roll).toBeUndefined()
+  })
+
+  it('rappel proficient low height can succeed', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-2',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(['success', 'rough_landing', 'hard_landing', 'fall', 'critical_fail']).toContain(
+      body.outcome,
+    )
+    expect(body.roll).toBeDefined()
+    expect(body.roll.expr).toBe('1d20')
+    expect(body.roll.modifier).toBe(0)
+    expect(typeof body.damage).toBe('number')
+    expect(Array.isArray(body.effects)).toBe(true)
+  })
+
+  it('rappel untrained non-extreme uses disadvantage (2d20kl1)', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-3',
+      height: 'low',
+      worldId: WORLD,
+      proficient: false,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    expect(body.roll.expr).toBe('2d20kl1')
+  })
+
+  it('rappel high height applies -2 DEX modifier', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-4',
+      height: 'high',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    expect(body.roll.modifier).toBe(-2)
+  })
+
+  it('rappel extreme height applies -5 DEX modifier', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-5',
+      height: 'extreme',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    expect(body.roll.modifier).toBe(-5)
+  })
+
+  it('rappel success outcome when margin >= 0', async () => {
+    // This is probabilistic, so we just verify the structure is correct.
+    // A sufficiently high roll will succeed. Multiple attempts increase chance.
+    let foundSuccess = false
+    for (let i = 0; i < 30; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-success-${i}`,
+        height: 'low',
+        worldId: WORLD,
+        proficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'success') {
+        foundSuccess = true
+        expect(body.damage).toBe(0)
+        expect(body.effects.length).toBe(0)
+        break
+      }
+    }
+    expect(foundSuccess).toBe(true)
+  })
+
+  it('rappel rough_landing outcome on fail by 1-5', async () => {
+    // We test this multiple times to increase chance of hitting the range.
+    let foundOutcome = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-rough-${i}`,
+        height: 'low',
+        worldId: WORLD,
+        proficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'rough_landing') {
+        foundOutcome = true
+        expect(body.damage).toBeGreaterThanOrEqual(1)
+        expect(body.damage).toBeLessThanOrEqual(4)
+        expect(body.effects).toContain('twisted ankle')
+        expect(body.effects).toContain('half speed for 1 hour')
+        break
+      }
+    }
+    expect(foundOutcome).toBe(true)
+  })
+
+  it('rappel hard_landing outcome on fail by 6-10', async () => {
+    let foundOutcome = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-hard-${i}`,
+        height: 'low',
+        worldId: WORLD,
+        proficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'hard_landing') {
+        foundOutcome = true
+        expect(body.damage).toBeGreaterThanOrEqual(2)
+        expect(body.damage).toBeLessThanOrEqual(12)
+        expect(body.effects).toContain('sprain or minor fracture')
+        expect(body.effects).toContain('half speed for 24 hours')
+        expect(body.effects).toContain('disadvantage on DEX')
+        break
+      }
+    }
+    expect(foundOutcome).toBe(true)
+  })
+
+  it('rappel fall outcome on fail by >10', async () => {
+    // height: 'low' carries a 0 DEX modifier, so with DC 12 the only roll that
+    // yields margin < -10 is a natural 1 — which the handler always resolves
+    // as critical_fail (checked before the margin bands), making the plain
+    // "fall" outcome structurally unreachable at this height. 'extreme' (-5
+    // modifier) opens up rolls 2-6 as non-nat-1 routes into "fall".
+    let foundOutcome = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-fall-${i}`,
+        height: 'extreme',
+        worldId: WORLD,
+        proficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'fall') {
+        foundOutcome = true
+        expect(body.damage).toBeGreaterThanOrEqual(4)
+        expect(body.effects).toContain('possible fracture')
+        expect(body.effects).toContain('possible unconsciousness')
+        break
+      }
+    }
+    expect(foundOutcome).toBe(true)
+  })
+
+  it('rappel critical_fail outcome on natural 1', async () => {
+    // Natural 1 on d20 is guaranteed to be critical_fail for proficient roll.
+    // For untrained (2d20kl1), a natural 1 kept means critical_fail.
+    // We test multiple times to catch a critical fail.
+    let foundCritical = false
+    for (let i = 0; i < 100; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-crit-${i}`,
+        height: 'low',
+        worldId: WORLD,
+        proficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'critical_fail') {
+        foundCritical = true
+        expect(body.roll.critical).toBe('failure')
+        expect(body.damage).toBeGreaterThan(0)
+        expect(body.effects).toContain('equipment failure')
+        expect(body.effects).toContain('fall from full height')
+        break
+      }
+    }
+    expect(foundCritical).toBe(true)
+  })
 })
