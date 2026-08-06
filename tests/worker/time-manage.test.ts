@@ -455,6 +455,102 @@ describe('handleTimeManage', () => {
     expect(body.new_date).toBe('2186-07-15')
   })
 
+  // ── advance by hours (#534 sub-day clock) ────────────────────────────────
+
+  it('advance by hours within the same day', async () => {
+    await seedWorld('w-hours', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-hours', by: '3 hours' }))
+        .content[0].text,
+    )
+    expect(body.success).toBe(true)
+    expect(body.old_hour).toBe(12) // migration default (noon)
+    expect(body.hour).toBe(15)
+    expect(body.new_date).toBe('2184-07-15') // no day rollover
+    expect(body.world_day).toBe(0)
+  })
+
+  it('advance by hours rolls over into the next day', async () => {
+    await seedWorld('w-hour-rollover', '2184-07-15')
+    // 12:00 + 14 hours = 02:00 the next day.
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hour-rollover',
+          by: '14 hours',
+        })
+      ).content[0].text,
+    )
+    expect(body.hour).toBe(2)
+    expect(body.new_date).toBe('2184-07-16')
+    expect(body.world_day).toBe(1)
+
+    const row = await env.RPG_DB.prepare(
+      'SELECT hour, "current_date" FROM world_state WHERE world_id = ?',
+    )
+      .bind('w-hour-rollover')
+      .first()
+    expect(row?.hour).toBe(2)
+    expect(row?.current_date).toBe('2184-07-16')
+  })
+
+  it('advancing by hours accumulates across successive calls', async () => {
+    await seedWorld('w-hour-accum', '2184-07-15')
+    const first = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hour-accum',
+          by: '10 hours',
+        })
+      ).content[0].text,
+    )
+    expect(first.hour).toBe(22)
+    expect(first.new_date).toBe('2184-07-15')
+
+    const second = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-hour-accum', by: '5 hours' }))
+        .content[0].text,
+    )
+    expect(second.old_hour).toBe(22)
+    expect(second.hour).toBe(3)
+    expect(second.new_date).toBe('2184-07-16')
+  })
+
+  it('advancing by days/months/years leaves hour untouched', async () => {
+    await seedWorld('w-hour-unaffected', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hour-unaffected',
+          by: '5 days',
+        })
+      ).content[0].text,
+    )
+    expect(body.old_hour).toBe(12)
+    expect(body.hour).toBe(12)
+  })
+
+  it('advance rejects a malformed hour unit', async () => {
+    await seedWorld('w-bad-hour', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-bad-hour', by: '3 hourz' }))
+        .content[0].text,
+    )
+    expect(body.error).toBe(true)
+  })
+
+  it('get_date reports the current hour (default 12 when unset)', async () => {
+    await seedWorld('w-get-hour', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'get_date', world_id: 'w-get-hour' })).content[0]
+        .text,
+    )
+    expect(body.hour).toBe(12)
+  })
+
   it('advance triggers birthday for character born in range', async () => {
     await seedWorld('w-bday-adv', '2184-07-01')
     await seedChar('c-bday-adv', '2166-07-10') // birthday July 10

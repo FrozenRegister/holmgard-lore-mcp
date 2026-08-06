@@ -48,6 +48,35 @@ describe.skipIf(!MCP_API_KEY)('rpg time get_age year-only born (#303)', () => {
   })
 })
 
+describe.skipIf(!MCP_API_KEY)('rpg time advance by hours — sub-day clock (#534)', () => {
+  it('advances the hour, rolls over into the next day, and get_date reports it', async () => {
+    const worldRes = parseResult(
+      await tool('rpg', { sub: 'world', action: 'create', name: `Hour Clock World ${uid()}` }),
+    )
+    expect(worldRes.success).toBe(true)
+    const worldId = worldRes.worldId
+    await tool('rpg', { sub: 'time', action: 'set_date', world_id: worldId, date: '2184-07-15' })
+
+    const initialDate = parseResult(
+      await tool('rpg', { sub: 'time', action: 'get_date', world_id: worldId }),
+    )
+    expect(initialDate.hour).toBe(12) // migration default (noon)
+
+    const rollover = parseResult(
+      await tool('rpg', { sub: 'time', action: 'advance', world_id: worldId, by: '14 hours' }),
+    )
+    expect(rollover.success).toBe(true)
+    expect(rollover.hour).toBe(2)
+    expect(rollover.new_date).toBe('2184-07-16')
+
+    const afterDate = parseResult(
+      await tool('rpg', { sub: 'time', action: 'get_date', world_id: worldId }),
+    )
+    expect(afterDate.hour).toBe(2)
+    expect(afterDate.current_date).toBe('2184-07-16')
+  })
+})
+
 describe.skipIf(!MCP_API_KEY)(
   'rpg time set_owner / get_owner / advance ownership guard (#312)',
   () => {

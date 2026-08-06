@@ -219,17 +219,37 @@ function computeAge(
   return { years, months, days }
 }
 
-function parseByString(by: string): { amount: number; unit: 'days' | 'months' | 'years' } | null {
-  const m = by.trim().match(/^(\d+)\s*(day|days|month|months|year|years)$/i)
+function parseByString(
+  by: string,
+): { amount: number; unit: 'hours' | 'days' | 'months' | 'years' } | null {
+  const m = by.trim().match(/^(\d+)\s*(hour|hours|day|days|month|months|year|years)$/i)
   if (!m) return null
   const amount = parseInt(m[1], 10)
   const raw = m[2].toLowerCase()
-  const unit: 'days' | 'months' | 'years' = raw.startsWith('y')
-    ? 'years'
-    : raw.startsWith('mo')
-      ? 'months'
-      : 'days'
+  const unit: 'hours' | 'days' | 'months' | 'years' = raw.startsWith('h')
+    ? 'hours'
+    : raw.startsWith('y')
+      ? 'years'
+      : raw.startsWith('mo')
+        ? 'months'
+        : 'days'
   return { amount, unit }
+}
+
+// #534 — sub-day clock. `hour` is a plain 0-23 int; advancing by hours rolls
+// over into whole days using the same addToDate('days') arithmetic every
+// other unit already uses, so month/year-length edge cases aren't duplicated
+// here. Advancing by days/months/years leaves `hour` untouched — those units
+// never had sub-day precision and nothing should change that by accident.
+function advanceByHours(
+  date: string,
+  hour: number,
+  amount: number,
+): { date: string; hour: number } {
+  const totalHours = hour + amount
+  const daysCarried = Math.floor(totalHours / 24)
+  const newHour = ((totalHours % 24) + 24) % 24
+  return { date: daysCarried === 0 ? date : addToDate(date, daysCarried, 'days'), hour: newHour }
 }
 
 // ── World state seeding (#330) ───────────────────────────────────────────────
@@ -303,9 +323,9 @@ export async function handleTimeManage(
     case 'get_date': {
       if (!a.world_id) return err('"world_id" is required')
       const row = (await db
-        .prepare('SELECT "current_date", era FROM world_state WHERE world_id = ?')
+        .prepare('SELECT "current_date", era, hour FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first()) as { current_date: string; era: string | null } | null
+        .first()) as { current_date: string; era: string | null; hour: number | null } | null
       if (!row) return err(`No world_state found for world_id: ${a.world_id}`)
       const [, month] = parseDateParts(row.current_date)
       const [year] = parseDateParts(row.current_date)
@@ -317,6 +337,7 @@ export async function handleTimeManage(
         era: row.era ?? null,
         season: season(month),
         days_in_month: daysInMonth(year, month),
+        hour: row.hour ?? 12,
       })
     }
 
@@ -365,18 +386,23 @@ export async function handleTimeManage(
 
     case 'advance': {
       if (!a.world_id) return err('"world_id" is required')
-      if (!a.by) return err('"by" is required (e.g. "3 months", "1 year", "7 days")')
+      if (!a.by) return err('"by" is required (e.g. "3 months", "1 year", "7 days", "6 hours")')
       const parsed_by = parseByString(a.by)
       if (!parsed_by)
-        return err('"by" must be a whole number followed by days/months/years (e.g. "3 months")')
+        return err(
+          '"by" must be a whole number followed by hours/days/months/years (e.g. "3 months")',
+        )
 
       const ws = (await db
-        .prepare('SELECT "current_date", time_owner, world_day FROM world_state WHERE world_id = ?')
+        .prepare(
+          'SELECT "current_date", time_owner, world_day, hour FROM world_state WHERE world_id = ?',
+        )
         .bind(a.world_id)
         .first()) as {
         current_date: string
         time_owner: string | null
         world_day: number | null
+        hour: number | null
       } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
 
@@ -395,7 +421,11 @@ export async function handleTimeManage(
       const willClaim = identifiedOwner !== null && ws.time_owner === null
 
       const oldDate = ws.current_date
-      const newDate = addToDate(oldDate, parsed_by.amount, parsed_by.unit)
+      const oldHour = ws.hour ?? 12
+      const { date: newDate, hour: newHour } =
+        parsed_by.unit === 'hours'
+          ? advanceByHours(oldDate, oldHour, parsed_by.amount)
+          : { date: addToDate(oldDate, parsed_by.amount, parsed_by.unit), hour: oldHour }
       const now = new Date().toISOString()
       // #629 — general-purpose day-counter for tick-hooks.ts's day-based
       // sub-hooks (resource_consume, weather_update), independent of
@@ -406,16 +436,16 @@ export async function handleTimeManage(
       if (willClaim) {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ?, world_day = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ?, world_day = ?, hour = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, identifiedOwner, now, newWorldDay, a.world_id)
+          .bind(newDate, now, identifiedOwner, now, newWorldDay, newHour, a.world_id)
           .run()
       } else {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, world_day = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, world_day = ?, hour = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, newWorldDay, a.world_id)
+          .bind(newDate, now, newWorldDay, newHour, a.world_id)
           .run()
       }
 
@@ -452,6 +482,8 @@ export async function handleTimeManage(
         by: a.by,
         days_elapsed: dateDiff(oldDate, newDate),
         world_day: newWorldDay,
+        old_hour: oldHour,
+        hour: newHour,
         birthdays_triggered: birthdaysTriggered,
         time_owner: willClaim ? identifiedOwner : ws.time_owner,
       }

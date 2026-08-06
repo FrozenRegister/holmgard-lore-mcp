@@ -480,8 +480,15 @@ tick hook, **off by default** — a world only runs it if `creature_ai_tick` is 
   `resolveTickConflicts` returns one verdict per lock, not per event.
 - **Prey detection is deterministic by range, not a random roll.** §3.6's `random(0..1) < perception`
   is implemented as a range check (`round(territory_radius × perception)` hexes; doubled when
-  `hunger > 90`) so a tick is reproducible. There is no sub-day clock yet, so activity-pattern gating
-  treats every tick as daytime and `crepuscular` as always-active.
+  `hunger > 90`) so a tick is reproducible.
+- **Activity-pattern gating now uses a real sub-day clock (#534).** `world_state.hour` (0-23, default
+  12/noon) advances when `time.advance`'s `by` string names an hour unit (e.g. `"6 hours"`), rolling
+  over into the calendar day exactly like day/month/year advances already do. `creature_ai_tick`
+  derives a coarse phase — `dawn` (05-06), `day` (07-17), `dusk` (18-19), `night` (20-04) — from the
+  hour: `nocturnal` creatures act everywhere but `day`, `diurnal` only during `day`, `crepuscular`
+  only at `dawn`/`dusk`, `always` (and unset) act regardless. Advancing by days/months/years alone
+  leaves `hour` unchanged. Worlds that never advance by hours stay at the default `day` phase, so
+  existing behavior for those worlds is unaffected by this change.
 - **Shaper claims and death-clearing use the `creature:` key namespace.** A Shaper claims prey via
   `setClaim` with its own `creature_key`. `clearDeadPredatorClaims` (run at tick start) only releases
   claims whose `claimed_by` is `creature:`-prefixed **and** no longer matches a live

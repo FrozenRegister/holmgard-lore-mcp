@@ -1485,7 +1485,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
         date: { type: 'string' },
         era: { type: 'string' },
         character_id: { type: 'string' },
-        by: { type: 'string', description: 'e.g. "3 months", "1 year", "7 days"' },
+        by: { type: 'string', description: 'e.g. "3 months", "1 year", "7 days", "6 hours"' },
         from: { type: 'string' },
         to: { type: 'string' },
         thread: { type: 'string' },
