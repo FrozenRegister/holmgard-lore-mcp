@@ -4,12 +4,64 @@ import { setupRpgDb } from './support/setup-d1'
 import { handleCharacterManage } from '@/rpg/handlers/character-manage'
 import type { AppBindings } from '@/types'
 
+// Response type definitions
+type Character = {
+  host_body_id: string | null
+  active: 0 | 1
+  [key: string]: unknown
+}
+
+type CreateResponse = {
+  characterId: string
+  success?: boolean
+  [key: string]: unknown
+}
+
+type GetResponse = {
+  character: Character
+  [key: string]: unknown
+}
+
+type ActivateResponse = {
+  success: boolean
+  actionType: string
+  hostBodyId: string | null
+  deactivated: string[]
+  [key: string]: unknown
+}
+
+type PassengerData = {
+  id: string
+  [key: string]: unknown
+}
+
+type ListPassengersResponse = {
+  success: boolean
+  activeCharacterId: string | null
+  count: number
+  passengers: PassengerData[]
+  hostBodyId: string | null
+  actionType?: string
+  active?: unknown
+  [key: string]: unknown
+}
+
+type ErrorResponse = {
+  error: boolean
+  message: string
+  [key: string]: unknown
+}
+
+type ParsedResponse = CreateResponse | GetResponse | ActivateResponse | ListPassengersResponse | ErrorResponse | Record<string, unknown>
+
 // Helper to parse McpResponse
-function parseResponse(mcpResponse: any) {
-  const text = mcpResponse.content?.[0]?.text
+function parseResponse(mcpResponse: unknown): ParsedResponse {
+  const mcpObj = mcpResponse as Record<string, unknown>
+  const contentArray = mcpObj.content as Array<Record<string, unknown>> | undefined
+  const text = contentArray?.[0]?.text as string | undefined
   if (!text) return { error: true, message: 'No text in response' }
   try {
-    return JSON.parse(text)
+    return JSON.parse(text) as ParsedResponse
   } catch {
     return { error: true, message: `Failed to parse: ${text}` }
   }
@@ -33,7 +85,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
 
     const passengerRes = parseResponse(
       await handleCharacterManage(testEnv, {
@@ -44,13 +96,13 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
       }),
     )
     expect(passengerRes).toHaveProperty('success', true)
-    const passengerId = (passengerRes as any).characterId
+    const passengerId = (passengerRes as CreateResponse).characterId
 
     const getRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'get', characterId: passengerId }),
     )
-    expect((getRes as any).character.host_body_id).toBe(hostId)
-    expect((getRes as any).character.active).toBe(0)
+    expect((getRes as GetResponse).character.host_body_id).toBe(hostId)
+    expect((getRes as GetResponse).character.active).toBe(0)
   })
 
   it('update sets hostBodyId/active as a raw single-row PATCH that does not cascade', async () => {
@@ -59,7 +111,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Host Body' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
 
     const aRes = parseResponse(
       await handleCharacterManage(testEnv, {
@@ -68,7 +120,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         hostBodyId: hostId,
       }),
     )
-    const aId = (aRes as any).characterId
+    const aId = (aRes as CreateResponse).characterId
     const bRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -76,7 +128,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         hostBodyId: hostId,
       }),
     )
-    const bId = (bRes as any).characterId
+    const bId = (bRes as CreateResponse).characterId
 
     // Directly PATCH B's active flag off via `update`, not `activate` — should NOT
     // touch A's active state, since only `activate` performs the atomic swap.
@@ -88,8 +140,8 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const bAfter = parseResponse(
       await handleCharacterManage(testEnv, { action: 'get', characterId: bId }),
     )
-    expect((aAfter as any).character.active).toBe(1)
-    expect((bAfter as any).character.active).toBe(0)
+    expect((aAfter as GetResponse).character.active).toBe(1)
+    expect((bAfter as GetResponse).character.active).toBe(0)
   })
 
   // ── activate ─────────────────────────────────────────────────────────────
@@ -100,7 +152,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 2' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
 
     const cordeliaRes = parseResponse(
       await handleCharacterManage(testEnv, {
@@ -110,7 +162,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const cordeliaId = (cordeliaRes as any).characterId
+    const cordeliaId = (cordeliaRes as CreateResponse).characterId
     const bellonaRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -119,15 +171,15 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: false,
       }),
     )
-    const bellonaId = (bellonaRes as any).characterId
+    const bellonaId = (bellonaRes as CreateResponse).characterId
 
     const activateRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'activate', characterId: bellonaId }),
     )
     expect(activateRes).toHaveProperty('success', true)
-    expect((activateRes as any).actionType).toBe('activate')
-    expect((activateRes as any).hostBodyId).toBe(hostId)
-    expect((activateRes as any).deactivated).toEqual([cordeliaId])
+    expect((activateRes as ActivateResponse).actionType).toBe('activate')
+    expect((activateRes as ActivateResponse).hostBodyId).toBe(hostId)
+    expect((activateRes as ActivateResponse).deactivated).toEqual([cordeliaId])
 
     const cordeliaAfter = parseResponse(
       await handleCharacterManage(testEnv, { action: 'get', characterId: cordeliaId }),
@@ -135,8 +187,8 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const bellonaAfter = parseResponse(
       await handleCharacterManage(testEnv, { action: 'get', characterId: bellonaId }),
     )
-    expect((cordeliaAfter as any).character.active).toBe(0)
-    expect((bellonaAfter as any).character.active).toBe(1)
+    expect((cordeliaAfter as GetResponse).character.active).toBe(0)
+    expect((bellonaAfter as GetResponse).character.active).toBe(1)
   })
 
   it('activate syncs KV projections for the activated character and every deactivated sibling', async () => {
@@ -145,7 +197,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 3' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
     const cordeliaRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -154,7 +206,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const cordeliaId = (cordeliaRes as any).characterId
+    const cordeliaId = (cordeliaRes as CreateResponse).characterId
     await handleCharacterManage(testEnv, {
       action: 'create',
       name: 'Bellona Keel 3',
@@ -178,14 +230,14 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const soloRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Solo Character' }),
     )
-    const soloId = (soloRes as any).characterId
+    const soloId = (soloRes as CreateResponse).characterId
 
     const activateRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'activate', characterId: soloId }),
     )
     expect(activateRes).toHaveProperty('success', true)
-    expect((activateRes as any).hostBodyId).toBeNull()
-    expect((activateRes as any).deactivated).toEqual([])
+    expect((activateRes as ActivateResponse).hostBodyId).toBeNull()
+    expect((activateRes as ActivateResponse).deactivated).toEqual([])
   })
 
   it('activate accepts an explicit hostBodyId to assign-and-activate in one call', async () => {
@@ -194,12 +246,12 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 4' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
     // Created with no host_body_id at all
     const freshRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Fresh Consciousness' }),
     )
-    const freshId = (freshRes as any).characterId
+    const freshId = (freshRes as CreateResponse).characterId
 
     const activateRes = parseResponse(
       await handleCharacterManage(testEnv, {
@@ -208,13 +260,13 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         hostBodyId: hostId,
       }),
     )
-    expect((activateRes as any).hostBodyId).toBe(hostId)
+    expect((activateRes as ActivateResponse).hostBodyId).toBe(hostId)
 
     const freshAfter = parseResponse(
       await handleCharacterManage(testEnv, { action: 'get', characterId: freshId }),
     )
-    expect((freshAfter as any).character.host_body_id).toBe(hostId)
-    expect((freshAfter as any).character.active).toBe(1)
+    expect((freshAfter as GetResponse).character.host_body_id).toBe(hostId)
+    expect((freshAfter as GetResponse).character.active).toBe(1)
   })
 
   it('activate reassigning to a different host group leaves the old group untouched', async () => {
@@ -223,11 +275,11 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostARes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Host A' }),
     )
-    const hostAId = (hostARes as any).characterId
+    const hostAId = (hostARes as CreateResponse).characterId
     const hostBRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Host B' }),
     )
-    const hostBId = (hostBRes as any).characterId
+    const hostBId = (hostBRes as CreateResponse).characterId
 
     const siblingRes = parseResponse(
       await handleCharacterManage(testEnv, {
@@ -237,7 +289,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const siblingId = (siblingRes as any).characterId
+    const siblingId = (siblingRes as CreateResponse).characterId
     const movingRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -246,7 +298,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: false,
       }),
     )
-    const movingId = (movingRes as any).characterId
+    const movingId = (movingRes as CreateResponse).characterId
 
     // Reassign "Moving Consciousness" to Host B instead
     await handleCharacterManage(testEnv, {
@@ -259,8 +311,8 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
       await handleCharacterManage(testEnv, { action: 'get', characterId: siblingId }),
     )
     // Old group A's sibling is untouched — still active, still on hostA
-    expect((siblingAfter as any).character.active).toBe(1)
-    expect((siblingAfter as any).character.host_body_id).toBe(hostAId)
+    expect((siblingAfter as GetResponse).character.active).toBe(1)
+    expect((siblingAfter as GetResponse).character.host_body_id).toBe(hostAId)
   })
 
   it('activate returns an error for a non-existent character', async () => {
@@ -269,7 +321,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
       await handleCharacterManage(testEnv, { action: 'activate', characterId: 'non-existent-id' }),
     )
     expect(res).toHaveProperty('error', true)
-    expect((res as any).message).toContain('not found')
+    expect((res as ErrorResponse).message).toContain('not found')
   })
 
   it('activate requires id or characterId', async () => {
@@ -283,16 +335,16 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const soloRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Alias Test Char' }),
     )
-    const soloId = (soloRes as any).characterId
+    const soloId = (soloRes as CreateResponse).characterId
 
     const switchRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'switch', characterId: soloId }),
     )
-    expect((switchRes as any).actionType).toBe('activate')
+    expect((switchRes as ActivateResponse).actionType).toBe('activate')
     const possessRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'possess', characterId: soloId }),
     )
-    expect((possessRes as any).actionType).toBe('activate')
+    expect((possessRes as ActivateResponse).actionType).toBe('activate')
   })
 
   // ── list_passengers ──────────────────────────────────────────────────────
@@ -303,7 +355,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 5' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
     const activeRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -312,7 +364,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const activeId = (activeRes as any).characterId
+    const activeId = (activeRes as CreateResponse).characterId
     const passengerRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -321,15 +373,15 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: false,
       }),
     )
-    const passengerId = (passengerRes as any).characterId
+    const passengerId = (passengerRes as CreateResponse).characterId
 
     const listRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'list_passengers', hostBodyId: hostId }),
     )
     expect(listRes).toHaveProperty('success', true)
-    expect((listRes as any).activeCharacterId).toBe(activeId)
-    expect((listRes as any).count).toBe(1)
-    expect((listRes as any).passengers.map((p: any) => p.id)).toEqual([passengerId])
+    expect((listRes as ListPassengersResponse).activeCharacterId).toBe(activeId)
+    expect((listRes as ListPassengersResponse).count).toBe(1)
+    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([passengerId])
   })
 
   it('list_passengers reports a null active consciousness when nobody in the group is active', async () => {
@@ -341,7 +393,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 5b' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
     const oneRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -350,15 +402,15 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const oneId = (oneRes as any).characterId
+    const oneId = (oneRes as CreateResponse).characterId
     await handleCharacterManage(testEnv, { action: 'update', characterId: oneId, active: false })
 
     const listRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'list_passengers', hostBodyId: hostId }),
     )
-    expect((listRes as any).activeCharacterId).toBeNull()
-    expect((listRes as any).active).toBeNull()
-    expect((listRes as any).passengers.map((p: any) => p.id)).toEqual([oneId])
+    expect((listRes as ListPassengersResponse).activeCharacterId).toBeNull()
+    expect((listRes as ListPassengersResponse).active).toBeNull()
+    expect((listRes as ListPassengersResponse).passengers.map((p: PassengerData) => p.id)).toEqual([oneId])
   })
 
   it('list_passengers resolves hostBodyId from a character id when not passed directly', async () => {
@@ -367,7 +419,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const hostRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Katerina Sloane 6' }),
     )
-    const hostId = (hostRes as any).characterId
+    const hostId = (hostRes as CreateResponse).characterId
     const activeRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -376,7 +428,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: true,
       }),
     )
-    const activeId = (activeRes as any).characterId
+    const activeId = (activeRes as CreateResponse).characterId
     const passengerRes = parseResponse(
       await handleCharacterManage(testEnv, {
         action: 'create',
@@ -385,14 +437,14 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
         active: false,
       }),
     )
-    const passengerId = (passengerRes as any).characterId
+    const passengerId = (passengerRes as CreateResponse).characterId
 
     const listRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'list_passengers', characterId: passengerId }),
     )
-    expect((listRes as any).hostBodyId).toBe(hostId)
-    expect((listRes as any).activeCharacterId).toBe(activeId)
-    expect((listRes as any).count).toBe(1)
+    expect((listRes as ListPassengersResponse).hostBodyId).toBe(hostId)
+    expect((listRes as ListPassengersResponse).activeCharacterId).toBe(activeId)
+    expect((listRes as ListPassengersResponse).count).toBe(1)
   })
 
   it('list_passengers returns an empty result for a character with no host_body_id', async () => {
@@ -400,15 +452,15 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const soloRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'No Group Character' }),
     )
-    const soloId = (soloRes as any).characterId
+    const soloId = (soloRes as CreateResponse).characterId
 
     const listRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'list_passengers', characterId: soloId }),
     )
     expect(listRes).toHaveProperty('success', true)
-    expect((listRes as any).hostBodyId).toBeNull()
-    expect((listRes as any).passengers).toEqual([])
-    expect((listRes as any).count).toBe(0)
+    expect((listRes as ListPassengersResponse).hostBodyId).toBeNull()
+    expect((listRes as ListPassengersResponse).passengers).toEqual([])
+    expect((listRes as ListPassengersResponse).count).toBe(0)
   })
 
   it('list_passengers returns an error for a non-existent character', async () => {
@@ -420,7 +472,7 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
       }),
     )
     expect(res).toHaveProperty('error', true)
-    expect((res as any).message).toContain('not found')
+    expect((res as ErrorResponse).message).toContain('not found')
   })
 
   it('list_passengers requires hostBodyId or id/characterId', async () => {
@@ -434,16 +486,16 @@ describe('Character Co-Habitation (#226 Phase 2)', () => {
     const soloRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'create', name: 'Alias Passenger Char' }),
     )
-    const soloId = (soloRes as any).characterId
+    const soloId = (soloRes as CreateResponse).characterId
 
     const passengersRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'passengers', characterId: soloId }),
     )
-    expect((passengersRes as any).actionType).toBe('list_passengers')
+    expect((passengersRes as ListPassengersResponse).actionType).toBe('list_passengers')
     const dormantRes = parseResponse(
       await handleCharacterManage(testEnv, { action: 'list_dormant', characterId: soloId }),
     )
-    expect((dormantRes as any).actionType).toBe('list_passengers')
+    expect((dormantRes as ListPassengersResponse).actionType).toBe('list_passengers')
   })
 
   it('an ordinary non-co-habitating character has no Host-Body/Active lines in its KV projection', async () => {
