@@ -578,3 +578,4 @@ Tests run inside the actual Cloudflare Workers runtime via `@cloudflare/vitest-p
 - **Issue resolution protocol:** See [ISSUE_RESOLUTION_PROTOCOL.md](ISSUE_RESOLUTION_PROTOCOL.md)
 - **Patch pipeline (remote agents):** See [docs/patch-pipeline-agent-guide.md](docs/patch-pipeline-agent-guide.md)
 - **User guide:** See [docs/holmgard-user-guide.md](docs/holmgard-user-guide.md)
+- **Tod automation workflow:** See [docs/tod-workflow-guide.md](docs/tod-workflow-guide.md)
