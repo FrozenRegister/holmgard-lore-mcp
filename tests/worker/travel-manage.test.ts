@@ -724,14 +724,22 @@ describe('handleTravelManage', () => {
   })
 
   it('rappel requires height', async () => {
-    const r = await handleTravelManage(db(), { action: 'rappel', characterId: 'char-1', worldId: WORLD })
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-1',
+      worldId: WORLD,
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('height')
   })
 
   it('rappel requires worldId', async () => {
-    const r = await handleTravelManage(db(), { action: 'rappel', characterId: 'char-1', height: 'low' })
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-1',
+      height: 'low',
+    })
     const body = JSON.parse(r.content[0].text)
     expect(body.error).toBe(true)
     expect(body.message).toContain('worldId')
@@ -762,7 +770,9 @@ describe('handleTravelManage', () => {
     })
     const body = JSON.parse(r.content[0].text)
     expect(body.success).toBe(true)
-    expect(['success', 'rough_landing', 'hard_landing', 'fall', 'critical_fail']).toContain(body.outcome)
+    expect(['success', 'rough_landing', 'hard_landing', 'fall', 'critical_fail']).toContain(
+      body.outcome,
+    )
     expect(body.roll).toBeDefined()
     expect(body.roll.expr).toBe('1d20')
     expect(body.roll.modifier).toBe(0)
