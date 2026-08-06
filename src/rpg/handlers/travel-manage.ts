@@ -117,6 +117,9 @@ const InputSchema = z.object({
   proficient: z.boolean().optional().default(false),
   // #436 — takeoff/land action parameters (slice 2)
   aircraftClass: z.string().optional(),
+  // #437 slice 2 — pilot hover-stability check
+  pilotCharacterId: z.string().optional(),
+  pilotProficient: z.boolean().optional().default(false),
 })
 
 const LOOT_POOL: Array<{ name: string; rarity: string; weight: number }> = [
@@ -395,6 +398,61 @@ export async function handleTravelManage(
       }
       const dexModifier = heightTierModifier[a.height]
 
+      // #437 slice 2 — weather modifiers and pilot hover-stability check
+      // Get current world day to query weather forecast
+      const worldStateRow = (await db
+        .prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+        .bind(a.worldId)
+        .first()) as { world_day: number | null } | null
+      const currentDay = worldStateRow?.world_day ?? 0
+
+      // Query weather forecast for this world/day
+      // If not found, no modifier applied (consistent with #436 slice 2 treatment)
+      const weatherRow = (await db
+        .prepare('SELECT wind_speed, precipitation_type, conditions FROM weather_log WHERE world_id = ? AND day = ?')
+        .bind(a.worldId, currentDay)
+        .first()) as {
+        wind_speed: number | null
+        precipitation_type: string | null
+        conditions: string | null
+      } | null
+
+      // Determine weather modifier from issue #437 spec table
+      let weatherModifier = 0
+      let canRappel = true
+      const weatherEffects: string[] = []
+
+      if (weatherRow) {
+        // Wind > 25 knots → -4 penalty
+        if (weatherRow.wind_speed !== null && weatherRow.wind_speed > 25) {
+          weatherModifier -= 4
+          weatherEffects.push('high wind')
+        }
+        // Rain/light precipitation → -2 penalty (wet rope)
+        if (
+          weatherRow.precipitation_type &&
+          ['rain', 'sleet'].includes(weatherRow.precipitation_type)
+        ) {
+          weatherModifier -= 2
+          weatherEffects.push('wet rope')
+        }
+        // Storm → cannot rappel at all
+        if (weatherRow.conditions === 'storm') {
+          canRappel = false
+        }
+      }
+
+      // Storm blocks rappel entirely, no roll attempted
+      if (!canRappel) {
+        return ok({
+          success: true,
+          outcome: 'not_attempted',
+          reason: 'Storm conditions prevent rappelling',
+          damage: 0,
+          effects: [],
+        })
+      }
+
       // Untrained + extreme height → automatic failure, no roll attempted
       if (!a.proficient && a.height === 'extreme') {
         return ok({
@@ -406,12 +464,42 @@ export async function handleTravelManage(
         })
       }
 
+      // #437 slice 2 — pilot hover-stability check
+      // If no pilot, standard conditions assumed (no additional penalty)
+      // If pilot present with adverse weather, resolve pilot check
+      let pilotFailureAdditionalPenalty = 0
+      let pilotCriticalFailure = false
+
+      if (a.pilotCharacterId && weatherModifier < 0) {
+        // Adverse weather: pilot must make skill check
+        const pilotDiceExpr = a.pilotProficient ? '1d20' : '2d20kl1'
+        const pilotRoll = executeRoll(pilotDiceExpr)
+        const pilotRollTotal = pilotRoll.total + weatherModifier
+
+        // Use same DC as rappeller
+        const DC = 12
+        const pilotMargin = pilotRollTotal - DC
+
+        // Check pilot results
+        if ('critical' in pilotRoll && pilotRoll.critical === 'failure') {
+          // Critical failure (nat 1): pilot loses control
+          pilotCriticalFailure = true
+        } else if (pilotMargin < 0) {
+          // Failure: hover unstable, rappeller gets additional -2 penalty
+          pilotFailureAdditionalPenalty = -2
+        }
+        // Success: no penalty (pilot holds stable hover)
+      }
+
+      // Combine modifiers for rappeller: height modifier + weather modifier + pilot failure penalty
+      const totalModifier = dexModifier + weatherModifier + pilotFailureAdditionalPenalty
+
       // Determine dice notation based on proficiency
       // Untrained (non-extreme): disadvantage (2d20kl1 = keep lowest 1 of 2d20)
       // Proficient: standard single roll (1d20)
       const diceExpr = a.proficient ? '1d20' : '2d20kl1'
       const roll = executeRoll(diceExpr)
-      const rollTotal = roll.total + dexModifier
+      const rollTotal = roll.total + totalModifier
 
       // DC 12 placeholder — tune once a broader skill-DC convention exists
       const DC = 12
@@ -420,7 +508,50 @@ export async function handleTravelManage(
       // Determine outcome via injury table from #437
       let outcome: string
       let damage = 0
-      const effects: string[] = []
+      const effects: string[] = [...weatherEffects]
+
+      // If pilot critical failure, rappeller must make DEX save or take fall damage
+      if (pilotCriticalFailure) {
+        // DEX save: 1d20 vs DC 12
+        const dexSave = executeRoll('1d20')
+        if (dexSave.total < DC) {
+          // Failed DEX save: take fall damage (reuse 4d6 + height bonus)
+          outcome = 'fall'
+          const baseDamage4d6 = executeRoll('4d6').total
+          const extraDamageByHeight: Record<string, number> = {
+            low: 0,
+            high: executeRoll('1d6').total,
+            extreme: executeRoll('2d6').total,
+          }
+          damage = baseDamage4d6 + extraDamageByHeight[a.height]
+          effects.push('pilot lost control')
+          effects.push('possible fracture')
+          effects.push('possible unconsciousness')
+          return ok({
+            success: true,
+            outcome,
+            roll: {
+              expr: diceExpr,
+              total: roll.total,
+              modifier: totalModifier,
+              final: rollTotal,
+              dc: DC,
+              margin,
+              critical: roll.critical ?? null,
+            },
+            dexSave: {
+              total: dexSave.total,
+              dc: DC,
+              success: false,
+            },
+            damage,
+            effects,
+          })
+        } else {
+          // Passed DEX save: avoided the fall, proceed to normal outcome evaluation
+          effects.push('pilot lost control but rescued')
+        }
+      }
 
       if ('critical' in roll && roll.critical === 'failure') {
         // Natural 1: equipment failure, fall from full height, damage ×1.5
@@ -470,7 +601,7 @@ export async function handleTravelManage(
         roll: {
           expr: diceExpr,
           total: roll.total,
-          modifier: dexModifier,
+          modifier: totalModifier,
           final: rollTotal,
           dc: DC,
           margin,
