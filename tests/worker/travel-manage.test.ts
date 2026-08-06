@@ -957,7 +957,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/characterId.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/characterId.*required/i)
   })
 
   it('takeoff requires worldId', async () => {
@@ -969,7 +970,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/worldId.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/worldId.*required/i)
   })
 
   it('takeoff requires q and r', async () => {
@@ -980,7 +982,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/required/i)
   })
 
   it('takeoff requires aircraftClass', async () => {
@@ -992,7 +995,8 @@ describe('handleTravelManage', () => {
       r: 0,
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/aircraftClass.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/aircraftClass.*required/i)
   })
 
   it('takeoff returns error for unknown hex', async () => {
@@ -1005,10 +1009,12 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/not found/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/not found/i)
   })
 
   it('takeoff rejects aircraft class when LZ does not meet minimum', async () => {
+    await createWorld()
     // Set up hex with forest biome (unlandable)
     await env
       .RPG_DB!.prepare(
@@ -1032,12 +1038,10 @@ describe('handleTravelManage', () => {
   })
 
   it('takeoff allows aircraft class when LZ meets minimum', async () => {
+    await createWorld()
     // Set up hex with clearing biome (suitable for light aircraft)
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 11, 11, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 11, 11, 'glade', 100)
       .run()
 
     const r = await handleTravelManage(db(), {
@@ -1054,6 +1058,7 @@ describe('handleTravelManage', () => {
   })
 
   it('takeoff can produce success outcome', async () => {
+    await createWorld()
     // Set up hex with runway (ideal)
     await env
       .RPG_DB!.prepare(
@@ -1084,12 +1089,10 @@ describe('handleTravelManage', () => {
   })
 
   it('takeoff can produce aborted outcome', async () => {
+    await createWorld()
     // Set up hex with clearing (more difficult)
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 13, 13, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 13, 13, 'glade', 100)
       .run()
 
     let foundAborted = false
@@ -1113,12 +1116,10 @@ describe('handleTravelManage', () => {
   })
 
   it('takeoff can produce crash outcome', async () => {
+    await createWorld()
     // Set up hex with clearing
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 14, 14, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 14, 14, 'glade', 100)
       .run()
 
     let foundCrash = false
@@ -1154,7 +1155,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/characterId.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/characterId.*required/i)
   })
 
   it('land requires worldId', async () => {
@@ -1166,7 +1168,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/worldId.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/worldId.*required/i)
   })
 
   it('land requires toQ and toR', async () => {
@@ -1177,7 +1180,8 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/required/i)
   })
 
   it('land requires aircraftClass', async () => {
@@ -1189,7 +1193,8 @@ describe('handleTravelManage', () => {
       toR: 0,
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/aircraftClass.*required/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/aircraftClass.*required/i)
   })
 
   it('land returns error for unknown hex', async () => {
@@ -1202,10 +1207,12 @@ describe('handleTravelManage', () => {
       aircraftClass: 'light_fixed_wing',
     })
     const body = JSON.parse(r.content[0].text)
-    expect(body.error).toMatch(/not found/i)
+    expect(body.error).toBe(true)
+    expect(body.message).toMatch(/not found/i)
   })
 
   it('land rejects aircraft class when LZ does not meet minimum', async () => {
+    await createWorld()
     // Set up hex with forest biome (unlandable)
     await env
       .RPG_DB!.prepare(
@@ -1229,12 +1236,10 @@ describe('handleTravelManage', () => {
   })
 
   it('land allows aircraft class when LZ meets minimum', async () => {
+    await createWorld()
     // Set up hex with clearing biome (suitable for light aircraft)
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 21, 21, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 21, 21, 'glade', 100)
       .run()
 
     const r = await handleTravelManage(db(), {
@@ -1251,6 +1256,7 @@ describe('handleTravelManage', () => {
   })
 
   it('land can produce success outcome', async () => {
+    await createWorld()
     // Set up hex with road biome
     await env
       .RPG_DB!.prepare(
@@ -1281,12 +1287,10 @@ describe('handleTravelManage', () => {
   })
 
   it('land can produce go_around outcome', async () => {
+    await createWorld()
     // Set up hex with clearing
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 23, 23, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 23, 23, 'glade', 100)
       .run()
 
     let foundGoAround = false
@@ -1310,12 +1314,10 @@ describe('handleTravelManage', () => {
   })
 
   it('land can produce hard_landing outcome', async () => {
+    await createWorld()
     // Set up hex with clearing (more difficult than road)
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 24, 24, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 24, 24, 'glade', 100)
       .run()
 
     let foundHardLanding = false
@@ -1341,12 +1343,10 @@ describe('handleTravelManage', () => {
   })
 
   it('land can produce crash outcome', async () => {
+    await createWorld()
     // Set up hex with clearing
-    await env
-      .RPG_DB!.prepare(
-        'INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)',
-      )
-      .bind(WORLD, 25, 25, 'clearing', 100)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 25, 25, 'glade', 100)
       .run()
 
     let foundCrash = false
