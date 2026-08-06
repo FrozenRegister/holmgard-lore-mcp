@@ -197,7 +197,13 @@ export function computeLandingZone(biome: string, slope: number): string | null 
   if (biome === 'lake' || biome === 'calm_sea') return 'water'
 
   // Unlandable biomes (no slope check)
-  const unlandableBiomes = new Set(['forest', 'marsh', 'ravine', 'dense_urban', 'rock_face'])
+  const unlandableBiomes = new Set([
+    'forest',
+    'marsh',
+    'ravine',
+    'dense_urban',
+    'rock_face',
+  ])
   if (unlandableBiomes.has(biome)) return 'unlandable'
 
   // Slope > 10 is always unlandable regardless of biome
@@ -711,12 +717,12 @@ export async function handleWorldMap(
     case 'hexes': {
       if (!a.worldId || a.q === undefined || a.r === undefined)
         return err('"worldId", "q", and "r" are required')
-      const { results } = (await db
+      const { results } = await db
         .prepare(
           'SELECT * FROM hexes WHERE world_id = ? AND q >= ? AND q < ? AND r >= ? AND r < ? ORDER BY r, q',
         )
         .bind(a.worldId, a.q, a.q + a.width, a.r, a.r + a.height)
-        .all()) as { results: Array<Record<string, unknown>> }
+        .all() as { results: Array<Record<string, unknown>> }
 
       // #436 — Compute landing zones from biome and slope (derived from neighbor elevations)
       // Build a hex map by (q, r) for O(1) neighbor lookups
