@@ -23,6 +23,7 @@ import {
 } from './rpg/registry'
 import { mathManageSchemaDoc } from './rpg/definitions'
 import { handleBiomeManage } from './rpg/handlers/biome-manage'
+import { handleWorldMap } from './rpg/handlers/world-map'
 import internalRoutes from './internal/routes'
 import entityReadsRouter from './api/entity-reads'
 import { registerCharacterManageTool } from './rpg/register-character-manage'
@@ -2057,6 +2058,92 @@ app.post('/mcp', async (c) => {
       if (parsed.error)
         return c.json(makeError(id, -32000, parsed.message ?? 'Failed to list biomes', null), 200)
       return c.json(makeResult(id, { worldId, biomes: parsed.biomes, count: parsed.count }), 200)
+    }
+
+    // #487 — MCP-discoverable map reads (no ADMIN_SECRET), mirroring
+    // get_world_biomes: one handler (world_map's get_map_hexes/
+    // get_map_landmarks/get_map_meta actions), two envelopes — content-block
+    // for tools/call via rpg{sub:'world_map', action:...}, clean structured
+    // JSON here for bulk sync callers (matches docs/d1-readback-api-design.md).
+    if (method === 'get_map_hexes') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_hexes', mapId })
+      const parsed = JSON.parse(result.content[0].text) as {
+        error?: boolean
+        message?: string
+        hexes?: unknown[]
+        count?: number
+        lastUpdated?: string | null
+      }
+      if (parsed.error)
+        return c.json(makeError(id, -32000, parsed.message ?? 'Failed to fetch map hexes', null), 200)
+      return c.json(
+        makeResult(id, {
+          mapId,
+          hexes: parsed.hexes,
+          count: parsed.count,
+          lastUpdated: parsed.lastUpdated ?? null,
+        }),
+        200,
+      )
+    }
+
+    if (method === 'get_map_landmarks') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_landmarks', mapId })
+      const parsed = JSON.parse(result.content[0].text) as {
+        error?: boolean
+        message?: string
+        landmarks?: unknown[]
+        count?: number
+        lastUpdated?: string | null
+      }
+      if (parsed.error)
+        return c.json(
+          makeError(id, -32000, parsed.message ?? 'Failed to fetch map landmarks', null),
+          200,
+        )
+      return c.json(
+        makeResult(id, {
+          mapId,
+          landmarks: parsed.landmarks,
+          count: parsed.count,
+          lastUpdated: parsed.lastUpdated ?? null,
+        }),
+        200,
+      )
+    }
+
+    if (method === 'get_map_meta') {
+      const unauth = unauthorizedIfNeeded(c, id)
+      if (unauth) return unauth
+      if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
+      const mapId = (params?.mapId ?? 'main').toString()
+      const result = await handleWorldMap(c.env, { action: 'get_map_meta', mapId })
+      const parsed = JSON.parse(result.content[0].text) as {
+        error?: boolean
+        message?: string
+        hexCount?: number
+        landmarkCount?: number
+        lastUpdated?: string | null
+      }
+      if (parsed.error)
+        return c.json(makeError(id, -32000, parsed.message ?? 'Failed to fetch map meta', null), 200)
+      return c.json(
+        makeResult(id, {
+          mapId,
+          hexCount: parsed.hexCount,
+          landmarkCount: parsed.landmarkCount,
+          lastUpdated: parsed.lastUpdated ?? null,
+        }),
+        200,
+      )
     }
 
     if (method === 'get_lore_batch') {

@@ -4,6 +4,7 @@
 
 import { Hono } from 'hono'
 import type { AppBindings } from '../types'
+import { rowToHex, rowToLandmark } from '../lib/map-readback'
 
 const internal = new Hono<{ Bindings: AppBindings }>()
 
@@ -26,72 +27,11 @@ async function safeJson(c: any): Promise<Record<string, unknown> | null> {
 }
 
 // ── Map readback ─────────────────────────────────────────────────────────────
-
-interface HexRecord {
-  mapId: string
-  q: number
-  r: number
-  terrain: string
-  name: string
-  description: string
-  // #321 — RPG-owned fields, additive so the editor's biome-assignment panel
-  // can show a hex's current biome without a separate round-trip. Absent on
-  // hexes with no world_id set yet (null, not omitted, so older/typed
-  // clients see a stable shape).
-  worldId: string | null
-  biome: string | null
-}
-
-interface LandmarkRecord {
-  mapId: string
-  id: string
-  q: number
-  r: number
-  name: string
-  type: string
-  notes: string
-  attributes: string
-  linkedMapId: string | null
-  visible: boolean
-  linkedLoreKey: string | null
-}
-
-/** Convert D1 hex row to client HexRecord. */
-function rowToHex(row: Record<string, unknown>): HexRecord {
-  const data = row.data ? JSON.parse(String(row.data)) : {}
-  return {
-    mapId: String(row.map_id ?? 'main'),
-    q: Number(row.q ?? 0),
-    r: Number(row.r ?? 0),
-    terrain: String(row.terrain ?? ''),
-    name: String(row.label ?? ''),
-    description: String(data.description ?? ''),
-    worldId: (row.world_id as string | null) ?? null,
-    biome: (row.biome as string | null) ?? null,
-  }
-}
-
-/** Convert D1 landmark row to client LandmarkRecord. */
-function rowToLandmark(row: Record<string, unknown>): LandmarkRecord {
-  const data = row.data ? JSON.parse(String(row.data)) : {}
-  // data.attributes is already a string from push-landmarks; ensure it's JSON stringified
-  const attributesValue = data.attributes ?? '{}'
-  const attributes =
-    typeof attributesValue === 'string' ? attributesValue : JSON.stringify(attributesValue)
-  return {
-    mapId: String(row.map_id ?? 'main'),
-    id: String(row.id ?? ''),
-    q: Number(row.q ?? 0),
-    r: Number(row.r ?? 0),
-    name: String(row.name ?? ''),
-    type: String(row.category ?? ''),
-    notes: String(data.notes ?? ''),
-    attributes,
-    linkedMapId: data.linkedMapId ?? null,
-    visible: Boolean(data.visible ?? true),
-    linkedLoreKey: data.linkedLoreKey ?? null,
-  }
-}
+// #487 — row-shape conversion (rowToHex/rowToLandmark) now lives in
+// ../lib/map-readback.ts, shared with the MCP-surface
+// world_map.get_map_hexes/get_map_landmarks/get_map_meta actions so both
+// callers (this admin-secret-gated REST route, and the unauthenticated MCP
+// read path) stay byte-for-byte consistent.
 
 internal.post('/map-readback', async (c) => {
   try {

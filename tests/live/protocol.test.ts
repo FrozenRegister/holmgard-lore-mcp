@@ -54,6 +54,29 @@ describe.skipIf(!MCP_API_KEY)('Core MCP Methods', () => {
     expect(res.result.count).toBe(0)
   })
 
+  it('get_map_hexes (direct method, #487) defaults mapId to "main" and returns structured JSON', async () => {
+    const res = await rpc('get_map_hexes', {})
+    expect(res.error).toBeUndefined()
+    expect(res.result.mapId).toBe('main')
+    expect(Array.isArray(res.result.hexes)).toBe(true)
+    expect(typeof res.result.count).toBe('number')
+  })
+
+  it('get_map_landmarks (direct method, #487) returns structured JSON for an unknown mapId', async () => {
+    const res = await rpc('get_map_landmarks', { mapId: `nonexistent-${uid()}` })
+    expect(res.error).toBeUndefined()
+    expect(res.result.landmarks).toEqual([])
+    expect(res.result.count).toBe(0)
+  })
+
+  it('get_map_meta (direct method, #487) returns zero counts for an unknown mapId', async () => {
+    const res = await rpc('get_map_meta', { mapId: `nonexistent-${uid()}` })
+    expect(res.error).toBeUndefined()
+    expect(res.result.hexCount).toBe(0)
+    expect(res.result.landmarkCount).toBe(0)
+    expect(res.result.lastUpdated).toBeNull()
+  })
+
   it('tools/list advertises tier on get_event_log and the taxonomy_* actions (#311)', async () => {
     const res = await rpc('tools/list')
     const continuityManage = res.result.tools.find(
