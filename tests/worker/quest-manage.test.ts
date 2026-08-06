@@ -415,6 +415,16 @@ describe('quest_manage tool', () => {
       expect(r.quests).toEqual([])
     })
 
+    it('defaults worldId to an empty string when omitted', async () => {
+      const r = await callTool('rpg', {
+        sub: 'quest',
+        action: 'list',
+      })
+      expect(r.success).toBe(true)
+      expect(r.count).toBe(0)
+      expect(r.quests).toEqual([])
+    })
+
     it('lists quests ordered by created_at desc', async () => {
       const world = await seedWorld()
       const quest1 = await callTool('rpg', {
@@ -630,7 +640,15 @@ describe('quest_manage tool', () => {
       expect(get.quest.giver).toBe('npc:new-giver')
     })
 
-    it('updates with dynamic fields passthrough', async () => {
+    it('silently ignores a fields entry already claimed by an explicit param', async () => {
+      // Every real quests column (name, description, status, objectives,
+      // rewards, prerequisites, giver) already has its own explicit update
+      // param, and the rest (id/created_at/updated_at/world_id) are
+      // blacklisted — so there is no spare, unclaimed, non-blacklisted column
+      // on this table to demonstrate a genuine fields_applied passthrough
+      // against. applyDynamicFields's "already claimed" branch (it silently
+      // drops fields.name here because the explicit `name` param above wins)
+      // is the one real, reachable branch this update case can exercise.
       const world = await seedWorld()
       const quest = await callTool('rpg', {
         sub: 'quest',
@@ -643,10 +661,15 @@ describe('quest_manage tool', () => {
         sub: 'quest',
         action: 'update',
         id: quest.questId,
-        fields: { custom_field: 'custom_value' },
+        name: 'Explicit Name',
+        fields: { name: 'Ignored Name' },
       })
       expect(r.success).toBe(true)
-      expect(r.fields_applied).toContain('custom_field')
+      expect(r.fields_applied).not.toContain('name')
+      expect(r.fields_rejected).toEqual([])
+
+      const get = await callTool('rpg', { sub: 'quest', action: 'get', id: quest.questId })
+      expect(get.quest.name).toBe('Explicit Name')
     })
 
     it('rejects blacklisted fields on update', async () => {
@@ -665,7 +688,7 @@ describe('quest_manage tool', () => {
         fields: { world_id: 'different-world' },
       })
       expect(r.success).toBe(true)
-      expect(r.fields_rejected).toContain('world_id')
+      expect(r.fields_rejected).toContainEqual({ field: 'world_id', reason: 'blacklisted' })
     })
 
     it('update without id or questId returns error', async () => {
@@ -1191,9 +1214,13 @@ describe('quest_manage tool', () => {
         id: quest.questId,
         objective: 'Just a string',
       })
+      // The handler has its own custom "must be an object, not a string" message
+      // (see quest-manage.ts's typeof check in the add_objective case), but the
+      // zod InputSchema already types `objective` as ObjectiveSchema.optional(),
+      // so a string value is rejected by schema validation before the handler's
+      // own typeof check ever runs — the actual error is zod's generic message.
       expect(r.error).toBe(true)
-      expect(r.message).toContain('must be an object')
-      expect(r.message).toContain('not a string')
+      expect(r.message).toContain('Expected object, received string')
     })
 
     it('add_objective to non-existent quest returns error', async () => {
@@ -1530,7 +1557,12 @@ describe('quest_manage tool', () => {
         sub: 'quest',
         action: 'invalid_action_xyz',
       })
-      expect(r.error).toBe(true)
+      // Unrecognized actions go through the fuzzy-match "guiding error" path
+      // (matchAction/isGuidingError/formatGuidingError in fuzzy-enum.ts), whose
+      // `error` field is a category string, not the plain err()-helper's
+      // `error: true` boolean — see GuidingError['error'] in fuzzy-enum.ts.
+      expect(r.error).toBe('invalid_action')
+      expect(r.suggestions).toBeDefined()
     })
 
     it('rejects invalid status value on create', async () => {
