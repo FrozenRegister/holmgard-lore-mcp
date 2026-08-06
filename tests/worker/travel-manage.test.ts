@@ -1807,6 +1807,7 @@ describe('handleTravelManage', () => {
   it('rappel with storm weather blocks rappel entirely', async () => {
     // Set up world_state and weather_log with storm
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -1850,6 +1851,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with high wind (>25 knots) applies -4 penalty', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -1895,6 +1897,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with rain applies -2 penalty (wet rope)', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -1940,6 +1943,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with combined modifiers: high wind + rain', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -1986,6 +1990,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with pilot present in standard weather auto-passes (no roll)', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -2031,6 +2036,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with pilot failure in adverse weather applies -2 penalty to rappeller', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -2085,6 +2091,7 @@ describe('handleTravelManage', () => {
 
   it('rappel with pilot critical failure (nat 1) triggers rappeller DEX save', async () => {
     const env = db()
+    await createWorld()
     const worldRow = (await env.RPG_DB!.prepare(
       'SELECT world_day FROM world_state WHERE world_id = ?',
     )
@@ -2134,9 +2141,62 @@ describe('handleTravelManage', () => {
         break
       }
     }
-    // Note: this is probabilistic; if not found after 200 attempts, skip assertion
-    if (foundCritical) {
-      expect(foundCritical).toBe(true)
+    expect(foundCritical).toBe(true)
+  })
+
+  it('rappel with pilot critical failure and rappeller DEX save success is rescued (no fall)', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env.RPG_DB!.prepare(
+      'SELECT world_day FROM world_state WHERE world_id = ?',
+    )
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with rain to trigger pilot check
+    await env.RPG_DB!.prepare(
+      'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        15,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    // Test multiple times to catch a pilot critical failure followed by a
+    // passed rappeller DEX save — the "rescued" fall-through path, which
+    // has no dedicated response field (unlike the failed-save "fall" path)
+    // so it must be detected via the effects text.
+    let foundRescued = false
+    for (let i = 0; i < 500; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-pilot-rescue-${i}`,
+        height: 'extreme',
+        worldId: WORLD,
+        proficient: true,
+        pilotCharacterId: `pilot-rescue-${i}`,
+        pilotProficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.effects?.includes('pilot lost control but rescued')) {
+        foundRescued = true
+        expect(body.dexSave).toBeUndefined()
+        break
+      }
     }
+    expect(foundRescued).toBe(true)
   })
 })
