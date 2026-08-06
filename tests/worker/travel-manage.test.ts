@@ -894,12 +894,17 @@ describe('handleTravelManage', () => {
   })
 
   it('rappel fall outcome on fail by >10', async () => {
+    // height: 'low' carries a 0 DEX modifier, so with DC 12 the only roll that
+    // yields margin < -10 is a natural 1 — which the handler always resolves
+    // as critical_fail (checked before the margin bands), making the plain
+    // "fall" outcome structurally unreachable at this height. 'extreme' (-5
+    // modifier) opens up rolls 2-6 as non-nat-1 routes into "fall".
     let foundOutcome = false
     for (let i = 0; i < 50; i++) {
       const r = await handleTravelManage(db(), {
         action: 'rappel',
         characterId: `char-fall-${i}`,
-        height: 'low',
+        height: 'extreme',
         worldId: WORLD,
         proficient: true,
       })
