@@ -1784,4 +1784,405 @@ describe('handleTravelManage', () => {
     const body = JSON.parse(r.content[0].text)
     expect(body.outcome).toMatch(/success|go_around|hard_landing|crash/)
   })
+
+  // ── rappel slice 2 — weather modifiers & pilot hover-stability check ────
+
+  it('rappel with no weather forecast uses no weather modifier (found: false)', async () => {
+    // When weather is not found, no modifier applied. Should behave identically to slice 1.
+    // This tests the regression: "no regression" requirement.
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-noweather',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    // Height modifier low = 0, no weather modifier, no pilot failure = total 0
+    expect(body.roll.modifier).toBe(0)
+  })
+
+  it('rappel with storm weather blocks rappel entirely', async () => {
+    // Set up world_state and weather_log with storm
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with storm condition
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(WORLD, currentDay, 'summer', 'storm', 25, 15, 50, 'NW', 'rain', 0.9, 'poor', 0, 'test')
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-storm',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.outcome).toBe('not_attempted')
+    expect(body.reason).toContain('Storm')
+  })
+
+  it('rappel with high wind (>25 knots) applies -4 penalty', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with high wind but clear skies
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'clear',
+        25,
+        15,
+        30,
+        'NW',
+        'none',
+        0.5,
+        'unlimited',
+        0,
+        'test',
+      )
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-wind',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    // Height modifier 0 + weather modifier -4 = -4
+    expect(body.roll.modifier).toBe(-4)
+    expect(body.effects).toContain('high wind')
+  })
+
+  it('rappel with rain applies -2 penalty (wet rope)', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with rain
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        15,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-rain',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    // Height modifier 0 + weather modifier -2 = -2
+    expect(body.roll.modifier).toBe(-2)
+    expect(body.effects).toContain('wet rope')
+  })
+
+  it('rappel with combined modifiers: high wind + rain', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with both wind and rain
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        30,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-windrain',
+      height: 'high',
+      worldId: WORLD,
+      proficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.roll).toBeDefined()
+    // Height modifier -2 + wind -4 + rain -2 = -8
+    expect(body.roll.modifier).toBe(-8)
+    expect(body.effects).toContain('high wind')
+    expect(body.effects).toContain('wet rope')
+  })
+
+  it('rappel with pilot present in standard weather auto-passes (no roll)', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert clear weather (no adverse conditions)
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'clear',
+        25,
+        15,
+        10,
+        'NW',
+        'none',
+        0.5,
+        'unlimited',
+        0,
+        'test',
+      )
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'rappel',
+      characterId: 'char-pilotpresent',
+      height: 'low',
+      worldId: WORLD,
+      proficient: true,
+      pilotCharacterId: 'pilot-1',
+      pilotProficient: true,
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    // Pilot auto-passes in standard conditions, no additional penalty
+    expect(body.roll.modifier).toBe(0)
+  })
+
+  it('rappel with pilot failure in adverse weather applies -2 penalty to rappeller', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with rain (adverse condition triggering pilot check)
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        15,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    // Test multiple times to increase chance of pilot failure
+    // With untrained pilot (-2 weather modifier on their check), failure more likely
+    let foundPilotFailure = false
+    for (let i = 0; i < 100; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-pilot-fail-${i}`,
+        height: 'low',
+        worldId: WORLD,
+        proficient: true,
+        pilotCharacterId: `pilot-untrained-${i}`,
+        pilotProficient: false,
+      })
+      const body = JSON.parse(r.content[0].text)
+      // When pilot fails, rappeller gets -2 additional penalty (rain -2 + pilot failure -2 = -4 total)
+      if (body.roll.modifier === -4) {
+        foundPilotFailure = true
+        expect(body.success).toBe(true)
+        break
+      }
+    }
+    expect(foundPilotFailure).toBe(true)
+  })
+
+  it('rappel with pilot critical failure (nat 1) triggers rappeller DEX save', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with rain to trigger pilot check
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        15,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    // Test multiple times to catch a pilot critical failure (nat 1)
+    let foundCritical = false
+    for (let i = 0; i < 200; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-pilot-crit-${i}`,
+        height: 'extreme',
+        worldId: WORLD,
+        proficient: true,
+        pilotCharacterId: `pilot-crit-${i}`,
+        pilotProficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      // Critical failure results in DEX save check
+      if (body.dexSave) {
+        foundCritical = true
+        expect(body.outcome).toBe('fall')
+        expect(body.effects).toContain('pilot lost control')
+        break
+      }
+    }
+    expect(foundCritical).toBe(true)
+  })
+
+  it('rappel with pilot critical failure and rappeller DEX save success is rescued (no fall)', async () => {
+    const env = db()
+    await createWorld()
+    const worldRow = (await env
+      .RPG_DB!.prepare('SELECT world_day FROM world_state WHERE world_id = ?')
+      .bind(WORLD)
+      .first()) as { world_day: number } | null
+    const currentDay = worldRow?.world_day ?? 0
+
+    // Insert weather with rain to trigger pilot check
+    await env
+      .RPG_DB!.prepare(
+        'INSERT INTO weather_log (world_id, day, season, conditions, temperature_high, temperature_low, wind_speed, wind_direction, precipitation_type, humidity, visibility, fog, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        WORLD,
+        currentDay,
+        'summer',
+        'rain',
+        20,
+        15,
+        15,
+        'W',
+        'rain',
+        0.8,
+        'moderate',
+        0,
+        'test',
+      )
+      .run()
+
+    // Test multiple times to catch a pilot critical failure followed by a
+    // passed rappeller DEX save — the "rescued" fall-through path, which
+    // has no dedicated response field (unlike the failed-save "fall" path)
+    // so it must be detected via the effects text.
+    let foundRescued = false
+    for (let i = 0; i < 500; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'rappel',
+        characterId: `char-pilot-rescue-${i}`,
+        height: 'extreme',
+        worldId: WORLD,
+        proficient: true,
+        pilotCharacterId: `pilot-rescue-${i}`,
+        pilotProficient: true,
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.effects?.includes('pilot lost control but rescued')) {
+        foundRescued = true
+        expect(body.dexSave).toBeUndefined()
+        break
+      }
+    }
+    expect(foundRescued).toBe(true)
+  })
 })
