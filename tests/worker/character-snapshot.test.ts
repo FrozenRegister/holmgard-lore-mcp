@@ -7,7 +7,12 @@ import type { AppBindings } from '@/types'
 type McpResponse = { content?: Array<{ text?: string }> }
 type ParsedResponse = Record<string, unknown>
 type CreateCharacterResult = ParsedResponse & { success: boolean; characterId: string }
-type SnapshotResult = ParsedResponse & { success: boolean; snapshotId: string; characterId: string; actionType: string }
+type SnapshotResult = ParsedResponse & {
+  success: boolean
+  snapshotId: string
+  characterId: string
+  actionType: string
+}
 type ErrorResult = ParsedResponse & { error: boolean; message: string }
 type DatabaseRow = Record<string, unknown> & { stats_json?: string; state_json?: string }
 
