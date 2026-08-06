@@ -274,7 +274,9 @@ describe('get_map_hexes / get_map_landmarks / get_map_meta direct methods (#487)
 
   it('get_map_meta counts hexes and landmarks for the given mapId', async () => {
     const now = new Date().toISOString()
-    await env.RPG_DB.prepare(`INSERT INTO hexes (q, r, map_id, updated_at) VALUES (0, 0, 'main', ?)`)
+    await env.RPG_DB.prepare(
+      `INSERT INTO hexes (q, r, map_id, updated_at) VALUES (0, 0, 'main', ?)`,
+    )
       .bind(now)
       .run()
     const res = await post({

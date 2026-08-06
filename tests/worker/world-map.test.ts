@@ -149,10 +149,7 @@ describe('handleWorldMap', () => {
       `INSERT INTO landmarks (id, map_id, q, r, name, category, data, updated_at)
        VALUES ('landmark-1', 'main', 5, -3, 'Crowkeep', 'settlement', ?, ?)`,
     )
-      .bind(
-        JSON.stringify({ notes: 'A fortified town', linkedLoreKey: 'location:crowkeep' }),
-        now,
-      )
+      .bind(JSON.stringify({ notes: 'A fortified town', linkedLoreKey: 'location:crowkeep' }), now)
       .run()
 
     const r = await handleWorldMap(db(), { action: 'get_map_landmarks', mapId: 'main' })

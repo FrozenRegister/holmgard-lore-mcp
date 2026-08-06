@@ -2079,7 +2079,10 @@ app.post('/mcp', async (c) => {
         lastUpdated?: string | null
       }
       if (parsed.error)
-        return c.json(makeError(id, -32000, parsed.message ?? 'Failed to fetch map hexes', null), 200)
+        return c.json(
+          makeError(id, -32000, parsed.message ?? 'Failed to fetch map hexes', null),
+          200,
+        )
       return c.json(
         makeResult(id, {
           mapId,
@@ -2134,7 +2137,10 @@ app.post('/mcp', async (c) => {
         lastUpdated?: string | null
       }
       if (parsed.error)
-        return c.json(makeError(id, -32000, parsed.message ?? 'Failed to fetch map meta', null), 200)
+        return c.json(
+          makeError(id, -32000, parsed.message ?? 'Failed to fetch map meta', null),
+          200,
+        )
       return c.json(
         makeResult(id, {
           mapId,
