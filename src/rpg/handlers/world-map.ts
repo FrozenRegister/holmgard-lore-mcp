@@ -168,6 +168,61 @@ const HEX_DIRECTIONS: ReadonlyArray<[number, number]> = [
   [0, 1],
 ]
 
+/**
+ * #436 — Compute landing zone classification from biome and slope.
+ *
+ * Slope is estimated from elevation differences to axial neighbors.
+ * Elevation units are used directly as a proxy for degrees (a simplification
+ * documented here: an elevation delta of 2 units ≈ 2° grade, suitable for
+ * narrative aircraft operations at hex scale).
+ *
+ * Classification rules (evaluated in order):
+ * - `water`: biome in [lake, calm_sea] (ignores slope)
+ * - `unlandable`: biome in [forest, marsh, ravine, dense_urban, rock_face] (ignores slope)
+ * - `unlandable`: slope > 10 (any biome)
+ * - `clearing`: biome in [glade, heath, grassland, beach] AND slope ≤ 2
+ * - `road`: biome === road AND slope ≤ 2
+ * - `slope`: slope in [5, 10] (inclusive) for any remaining biome
+ * - null: biome not matched or edge case (e.g., clearing-eligible biome but slope > 2)
+ *
+ * Excluded from auto-computation (deferred):
+ * - `runway`, `improved_strip`, `rooftop` require manual designation
+ *
+ * @param biome - hex biome string
+ * @param slope - max elevation delta to any present neighbor
+ * @returns landing zone class or null
+ */
+export function computeLandingZone(biome: string, slope: number): string | null {
+  // Water zones (no slope check)
+  if (biome === 'lake' || biome === 'calm_sea') return 'water'
+
+  // Unlandable biomes (no slope check)
+  const unlandableBiomes = new Set([
+    'forest',
+    'marsh',
+    'ravine',
+    'dense_urban',
+    'rock_face',
+  ])
+  if (unlandableBiomes.has(biome)) return 'unlandable'
+
+  // Slope > 10 is always unlandable regardless of biome
+  if (slope > 10) return 'unlandable'
+
+  // Road: exact biome match with low slope (before generic slope classification)
+  if (biome === 'road' && slope <= 2) return 'road'
+
+  // Clearing: specific biomes with low slope
+  const clearingBiomes = new Set(['glade', 'heath', 'grassland', 'beach'])
+  if (clearingBiomes.has(biome) && slope <= 2) return 'clearing'
+
+  // Slope-based classification (5–10°) for any biome not already classified
+  if (slope >= 5 && slope <= 10) return 'slope'
+
+  // No clear classification
+  return null
+}
+
 // Polygon zone shapes are defined by (q, r) vertices and tested with
 // standard ray-casting over that plane — this is unchanged from the square
 // grid (there's no natural "hex polygon" test; treating q,r as plain 2D
@@ -667,12 +722,46 @@ export async function handleWorldMap(
           'SELECT * FROM hexes WHERE world_id = ? AND q >= ? AND q < ? AND r >= ? AND r < ? ORDER BY r, q',
         )
         .bind(a.worldId, a.q, a.q + a.width, a.r, a.r + a.height)
-        .all()
+        .all() as { results: Array<Record<string, unknown>> }
+
+      // #436 — Compute landing zones from biome and slope (derived from neighbor elevations)
+      // Build a hex map by (q, r) for O(1) neighbor lookups
+      const hexMap = new Map<string, Record<string, unknown>>()
+      for (const hex of results) {
+        const key = `${hex.q},${hex.r}`
+        hexMap.set(key, hex)
+      }
+
+      // Compute landing zone for each hex
+      const hexesWithLandingZone = results.map((hex) => {
+        const q = hex.q as number
+        const r = hex.r as number
+        const biome = (hex.biome as string) || ''
+        const elevation = (hex.elevation as number) || 0
+
+        // Compute slope: maximum absolute elevation difference to any present neighbor
+        let maxSlope = 0
+        for (const [dq, dr] of HEX_DIRECTIONS) {
+          const neighborKey = `${q + dq},${r + dr}`
+          const neighbor = hexMap.get(neighborKey)
+          if (neighbor) {
+            const neighborElevation = (neighbor.elevation as number) || 0
+            const elevationDiff = Math.abs(elevation - neighborElevation)
+            maxSlope = Math.max(maxSlope, elevationDiff)
+          }
+        }
+
+        return {
+          ...hex,
+          landing_zone: computeLandingZone(biome, maxSlope),
+        }
+      })
+
       return ok({
         success: true,
         actionType: 'hexes',
         worldId: a.worldId,
-        hexes: results,
+        hexes: hexesWithLandingZone,
         q: a.q,
         r: a.r,
         width: a.width,
