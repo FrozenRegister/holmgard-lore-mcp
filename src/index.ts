@@ -1209,7 +1209,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
         aircraftClass: {
           type: 'string',
           description:
-            "Aircraft class for takeoff/land actions (#436 slice 2). Examples: light_fixed_wing, medium_fixed_wing, heavy_fixed_wing, light_rotorcraft, heavy_rotorcraft, floatplane, amphibious. Determines minimum landing-zone requirement (caller-supplied string, not a registry).",
+            'Aircraft class for takeoff/land actions (#436 slice 2). Examples: light_fixed_wing, medium_fixed_wing, heavy_fixed_wing, light_rotorcraft, heavy_rotorcraft, floatplane, amphibious. Determines minimum landing-zone requirement (caller-supplied string, not a registry).',
         },
       },
       required: ['action'],

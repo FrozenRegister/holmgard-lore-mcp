@@ -511,11 +511,12 @@ export async function handleTravelManage(
         [1, -1],
       ]
       const neighbors = await Promise.all(
-        HEX_DIRECTIONS.map((dir) =>
-          db
-            .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
-            .bind(a.worldId, a.q! + dir[0], a.r! + dir[1])
-            .first() as Promise<{ elevation: number | null } | null>,
+        HEX_DIRECTIONS.map(
+          (dir) =>
+            db
+              .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+              .bind(a.worldId, a.q! + dir[0], a.r! + dir[1])
+              .first() as Promise<{ elevation: number | null } | null>,
         ),
       )
       for (const neighbor of neighbors) {
@@ -711,11 +712,12 @@ export async function handleTravelManage(
         [1, -1],
       ]
       const neighbors = await Promise.all(
-        HEX_DIRECTIONS.map((dir) =>
-          db
-            .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
-            .bind(a.worldId, a.toQ! + dir[0], a.toR! + dir[1])
-            .first() as Promise<{ elevation: number | null } | null>,
+        HEX_DIRECTIONS.map(
+          (dir) =>
+            db
+              .prepare('SELECT elevation FROM hexes WHERE world_id = ? AND q = ? AND r = ?')
+              .bind(a.worldId, a.toQ! + dir[0], a.toR! + dir[1])
+              .first() as Promise<{ elevation: number | null } | null>,
         ),
       )
       for (const neighbor of neighbors) {
