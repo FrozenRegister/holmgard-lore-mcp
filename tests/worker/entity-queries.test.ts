@@ -685,7 +685,7 @@ describe('get_reachable_locations', () => {
     expect(keys.every((k: string) => k.toLowerCase().endsWith('room'))).toBe(true)
   })
 
-  it('ignores Connections alias for Exits field', async () => {
+  it('supports Connections as an alias for Exits', async () => {
     await seedKV(
       'location:alt-exits',
       '**Connections:** location:dest-1, location:dest-2',
