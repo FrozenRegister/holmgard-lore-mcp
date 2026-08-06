@@ -382,6 +382,53 @@ jobs:
               body: `The latest CI run failed on \`${context.ref.replace('refs/heads/', '')}\`.\n\nView logs: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             })
 
+  notify-all-green:
+    name: Notify All Green
+    needs: [test-layout, tool-registry-sync, unit-tests, test, type-check, lint, build, coverage]
+    # success() with this job's `needs` list is true only once every listed
+    # job has succeeded — including all 4 matrix instances of `test`, since a
+    # matrix job counts as one `needs` entry — so this fires once per commit,
+    # not once per shard, and never fires on any failure (#657). Note this
+    # only sees ci.yml's own jobs: pr-quality.yml (Issue Link, Naming
+    # Conventions, Changelog Fragment, Documentation) is a separate workflow
+    # and is NOT reflected here — see #657's "Known limitation" for why that
+    # gap is accepted rather than closed with a check_suite-based rewrite.
+    if: success() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = '<!-- ci-all-green-status -->'
+            const sha = context.payload.pull_request.head.sha.substring(0, 7)
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const body = `${marker}\n✅ **All CI checks passed** for \`${sha}\`.\n\n[View run](${runUrl})`
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            })
+            const existing = comments.find((c) => c.body && c.body.includes(marker))
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              })
+            }
+
   trigger-auto-merge:
     name: Trigger Auto-Merge Check
     needs: [test-layout, tool-registry-sync, unit-tests, test, type-check, lint, build, coverage]
