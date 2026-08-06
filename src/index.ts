@@ -1178,7 +1178,7 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
   {
     sub: 'travel',
     description:
-      'Party/character travel. Actions: travel (room-graph movement via toRoomId or fromRoomId+direction), loot (search a room), rest (short/long, restores HP), move_hex (hex-grid party movement, mode-aware passability — #429), rappel (rotorcraft personnel insertion without landing — DEX check with height-tier modifier and injury table; slice 1 of #437, no equipment/weather/proficiency-schema yet). Aliases: move/go/journey/traverse→travel, search/forage/find/gather→loot, camp/sleep/recover/short_rest/long_rest→rest, hex_move/hex_travel/move_to_hex→move_hex, fast_rope/insert→rappel.',
+      'Party/character travel. Actions: travel (room-graph movement via toRoomId or fromRoomId+direction), loot (search a room), rest (short/long, restores HP), move_hex (hex-grid party movement, mode-aware passability — #429), rappel (rotorcraft personnel insertion without landing — DEX check with height-tier modifier and injury table; #437 slice 1), takeoff (aircraft departure from hex with LZ-class requirement, weather gate, pilot skill check; slice 2 of #436), land (aircraft arrival at hex with LZ-class requirement, weather gate, pilot skill check; slice 2 of #436). Aliases: move/go/journey/traverse→travel, search/forage/find/gather→loot, camp/sleep/recover/short_rest/long_rest→rest, hex_move/hex_travel/move_to_hex→move_hex, fast_rope/insert→rappel, launch→takeoff, touchdown→land.',
     schema: {
       type: 'object',
       properties: {
@@ -1206,6 +1206,11 @@ const SUB_SCHEMAS: SubSchemaEntry[] = [
         timeOfDay: { type: 'string', enum: ['dawn', 'dusk', 'night', 'midday', 'day'] },
         noiseLevel: { type: 'string', enum: ['loud', 'moderate', 'silent'] },
         weather: { type: 'string', enum: ['clear', 'rain', 'snow', 'fog'] },
+        aircraftClass: {
+          type: 'string',
+          description:
+            "Aircraft class for takeoff/land actions (#436 slice 2). Examples: light_fixed_wing, medium_fixed_wing, heavy_fixed_wing, light_rotorcraft, heavy_rotorcraft, floatplane, amphibious. Determines minimum landing-zone requirement (caller-supplied string, not a registry).",
+        },
       },
       required: ['action'],
     },

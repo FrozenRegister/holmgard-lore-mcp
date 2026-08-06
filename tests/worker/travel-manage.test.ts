@@ -945,4 +945,350 @@ describe('handleTravelManage', () => {
     }
     expect(foundCritical).toBe(true)
   })
+
+  // ── takeoff action (#436 slice 2) ───────────────────────────────────────
+
+  it('takeoff requires characterId', async () => {
+    const r = await handleTravelManage(db(), { action: 'takeoff', worldId: WORLD, q: 0, r: 0, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/characterId.*required/i)
+  })
+
+  it('takeoff requires worldId', async () => {
+    const r = await handleTravelManage(db(), { action: 'takeoff', characterId: 'char-1', q: 0, r: 0, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/worldId.*required/i)
+  })
+
+  it('takeoff requires q and r', async () => {
+    const r = await handleTravelManage(db(), { action: 'takeoff', characterId: 'char-1', worldId: WORLD, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/required/i)
+  })
+
+  it('takeoff requires aircraftClass', async () => {
+    const r = await handleTravelManage(db(), { action: 'takeoff', characterId: 'char-1', worldId: WORLD, q: 0, r: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/aircraftClass.*required/i)
+  })
+
+  it('takeoff returns error for unknown hex', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'takeoff',
+      characterId: 'char-1',
+      worldId: WORLD,
+      q: 999,
+      r: 999,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/not found/i)
+  })
+
+  it('takeoff rejects aircraft class when LZ does not meet minimum', async () => {
+    // Set up hex with forest biome (unlandable)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 10, 10, 'forest', 100)
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'takeoff',
+      characterId: 'char-1',
+      worldId: WORLD,
+      q: 10,
+      r: 10,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.outcome).toBe('rejected')
+    expect(body.reason).toMatch(/cannot take off/i)
+    expect(body.landingZone).toBe('unlandable')
+  })
+
+  it('takeoff allows aircraft class when LZ meets minimum', async () => {
+    // Set up hex with clearing biome (suitable for light aircraft)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 11, 11, 'clearing', 100)
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'takeoff',
+      characterId: 'char-1',
+      worldId: WORLD,
+      q: 11,
+      r: 11,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.outcome).toMatch(/success|aborted|crash/)
+    expect(body.landingZone).toBe('clearing')
+  })
+
+  it('takeoff can produce success outcome', async () => {
+    // Set up hex with runway (ideal)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 12, 12, 'road', 100)
+      .run()
+
+    let foundSuccess = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'takeoff',
+        characterId: `char-success-${i}`,
+        worldId: WORLD,
+        q: 12,
+        r: 12,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'success') {
+        foundSuccess = true
+        expect(body.fuelWasted).toBe(false)
+        expect(body.damage).toBe(0)
+        break
+      }
+    }
+    expect(foundSuccess).toBe(true)
+  })
+
+  it('takeoff can produce aborted outcome', async () => {
+    // Set up hex with clearing (more difficult)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 13, 13, 'clearing', 100)
+      .run()
+
+    let foundAborted = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'takeoff',
+        characterId: `char-aborted-${i}`,
+        worldId: WORLD,
+        q: 13,
+        r: 13,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'aborted') {
+        foundAborted = true
+        expect(body.fuelWasted).toBe(true)
+        break
+      }
+    }
+    expect(foundAborted).toBe(true)
+  })
+
+  it('takeoff can produce crash outcome', async () => {
+    // Set up hex with clearing
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 14, 14, 'clearing', 100)
+      .run()
+
+    let foundCrash = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'takeoff',
+        characterId: `char-crash-${i}`,
+        worldId: WORLD,
+        q: 14,
+        r: 14,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'crash') {
+        foundCrash = true
+        expect(body.fuelWasted).toBe(true)
+        expect(body.damage).toBeGreaterThan(0)
+        expect(body.effects).toContain('runway overrun')
+        break
+      }
+    }
+    expect(foundCrash).toBe(true)
+  })
+
+  // ── land action (#436 slice 2) ────────────────────────────────────────────
+
+  it('land requires characterId', async () => {
+    const r = await handleTravelManage(db(), { action: 'land', worldId: WORLD, toQ: 0, toR: 0, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/characterId.*required/i)
+  })
+
+  it('land requires worldId', async () => {
+    const r = await handleTravelManage(db(), { action: 'land', characterId: 'char-1', toQ: 0, toR: 0, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/worldId.*required/i)
+  })
+
+  it('land requires toQ and toR', async () => {
+    const r = await handleTravelManage(db(), { action: 'land', characterId: 'char-1', worldId: WORLD, aircraftClass: 'light_fixed_wing' })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/required/i)
+  })
+
+  it('land requires aircraftClass', async () => {
+    const r = await handleTravelManage(db(), { action: 'land', characterId: 'char-1', worldId: WORLD, toQ: 0, toR: 0 })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/aircraftClass.*required/i)
+  })
+
+  it('land returns error for unknown hex', async () => {
+    const r = await handleTravelManage(db(), {
+      action: 'land',
+      characterId: 'char-1',
+      worldId: WORLD,
+      toQ: 999,
+      toR: 999,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.error).toMatch(/not found/i)
+  })
+
+  it('land rejects aircraft class when LZ does not meet minimum', async () => {
+    // Set up hex with forest biome (unlandable)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 20, 20, 'forest', 100)
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'land',
+      characterId: 'char-1',
+      worldId: WORLD,
+      toQ: 20,
+      toR: 20,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.outcome).toBe('rejected')
+    expect(body.reason).toMatch(/cannot land/i)
+    expect(body.landingZone).toBe('unlandable')
+  })
+
+  it('land allows aircraft class when LZ meets minimum', async () => {
+    // Set up hex with clearing biome (suitable for light aircraft)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 21, 21, 'clearing', 100)
+      .run()
+
+    const r = await handleTravelManage(db(), {
+      action: 'land',
+      characterId: 'char-1',
+      worldId: WORLD,
+      toQ: 21,
+      toR: 21,
+      aircraftClass: 'light_fixed_wing',
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.outcome).toMatch(/success|go_around|hard_landing|crash/)
+    expect(body.landingZone).toBe('clearing')
+  })
+
+  it('land can produce success outcome', async () => {
+    // Set up hex with road biome
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 22, 22, 'road', 100)
+      .run()
+
+    let foundSuccess = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'land',
+        characterId: `char-land-success-${i}`,
+        worldId: WORLD,
+        toQ: 22,
+        toR: 22,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'success') {
+        foundSuccess = true
+        expect(body.fuelWasted).toBe(false)
+        expect(body.damage).toBe(0)
+        break
+      }
+    }
+    expect(foundSuccess).toBe(true)
+  })
+
+  it('land can produce go_around outcome', async () => {
+    // Set up hex with clearing
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 23, 23, 'clearing', 100)
+      .run()
+
+    let foundGoAround = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'land',
+        characterId: `char-go-around-${i}`,
+        worldId: WORLD,
+        toQ: 23,
+        toR: 23,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'go_around') {
+        foundGoAround = true
+        expect(body.fuelWasted).toBe(true)
+        break
+      }
+    }
+    expect(foundGoAround).toBe(true)
+  })
+
+  it('land can produce hard_landing outcome', async () => {
+    // Set up hex with clearing (more difficult than road)
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 24, 24, 'clearing', 100)
+      .run()
+
+    let foundHardLanding = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'land',
+        characterId: `char-hard-land-${i}`,
+        worldId: WORLD,
+        toQ: 24,
+        toR: 24,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'hard_landing') {
+        foundHardLanding = true
+        expect(body.damage).toBeGreaterThanOrEqual(1)
+        expect(body.damage).toBeLessThanOrEqual(6)
+        expect(body.effects).toContain('landing gear stress')
+        break
+      }
+    }
+    expect(foundHardLanding).toBe(true)
+  })
+
+  it('land can produce crash outcome', async () => {
+    // Set up hex with clearing
+    await env.RPG_DB!.prepare('INSERT INTO hexes (world_id, q, r, biome, elevation) VALUES (?, ?, ?, ?, ?)')
+      .bind(WORLD, 25, 25, 'clearing', 100)
+      .run()
+
+    let foundCrash = false
+    for (let i = 0; i < 50; i++) {
+      const r = await handleTravelManage(db(), {
+        action: 'land',
+        characterId: `char-land-crash-${i}`,
+        worldId: WORLD,
+        toQ: 25,
+        toR: 25,
+        aircraftClass: 'light_fixed_wing',
+      })
+      const body = JSON.parse(r.content[0].text)
+      if (body.outcome === 'crash') {
+        foundCrash = true
+        expect(body.fuelWasted).toBe(true)
+        expect(body.damage).toBeGreaterThan(0)
+        expect(body.effects).toContain('aircraft damaged')
+        break
+      }
+    }
+    expect(foundCrash).toBe(true)
+  })
 })
