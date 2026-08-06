@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { AppBindings } from '../../src/types'
-import { kvPut, kvDelete, kvGet, kvList, kvListMaps, getKV, loreDB, clearRequestCache } from '../../src/lib/kv'
+import {
+  kvPut,
+  kvDelete,
+  kvGet,
+  kvList,
+  kvListMaps,
+  getKV,
+  loreDB,
+  clearRequestCache,
+} from '../../src/lib/kv'
 import { parseKvEntry } from '../../src/lib/lore'
 import { env as testEnv } from 'cloudflare:test'
 
