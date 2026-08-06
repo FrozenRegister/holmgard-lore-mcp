@@ -1219,6 +1219,161 @@ describe('learn_from_event', () => {
   })
 })
 
+describe('migrate_knowledge', () => {
+  it('migrates character Knows field to D1 entity_knowledge', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    // Create a character in D1 with matching KV name
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('migrant-char', 'Migrant Character', '{}', 10, 10, 15, 1, now, now)
+      .run()
+
+    // Create a KV character with Knows field - ID matches the D1 character
+    await seedKV('character:migrant-char', '**Knows:** the-dragon, the-prophecy, the-artifact')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.migrated_entities).toBe(1)
+    expect(res.result.metadata.total_facts).toBe(3)
+  })
+
+  it('uses Knowledge field as fallback when Knows is absent', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('migrant-char-2', 'Migrant 2', '{}', 10, 10, 15, 1, now, now)
+      .run()
+
+    await seedKV('character:migrant-char-2', '**Knowledge:** ancient-lore, forgotten-secrets')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.migrated_entities).toBe(1)
+    expect(res.result.metadata.total_facts).toBe(2)
+  })
+
+  it('returns zero facts when no characters have Knows/Knowledge fields', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('bare-char', 'Bare Character', '{}', 10, 10, 15, 1, now, now)
+      .run()
+    await seedKV('character:bare-char', 'No knowledge fields here')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.migrated_entities).toBe(0)
+    expect(res.result.metadata.total_facts).toBe(0)
+  })
+
+  it('skips character:* keys without D1 matches', async () => {
+    await setupRpgDb(env.RPG_DB)
+    // Create a KV character but don't create matching D1 character
+    await seedKV('character:orphan-char', '**Knows:** something')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.migrated_entities).toBe(0)
+  })
+
+  it('handles multiple topics separated by commas', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('multi-knows', 'Multi-Knowledge', '{}', 10, 10, 15, 1, now, now)
+      .run()
+
+    // Character with many knowledge topics
+    await seedKV(
+      'character:multi-knows',
+      '**Knows:** fact-one, fact-two, fact-three, fact-four, fact-five',
+    )
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.total_facts).toBe(5)
+  })
+
+  it('trims whitespace from knowledge topics', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('spaced-knows', 'Whitespace Test', '{}', 10, 10, 15, 1, now, now)
+      .run()
+
+    // Topics with extra spaces
+    await seedKV('character:spaced-knows', '**Knows:**  topic-one  ,  topic-two  ,  topic-three')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    expect(res.result.metadata.total_facts).toBe(3)
+  })
+
+  it('filters empty topics after splitting', async () => {
+    await setupRpgDb(env.RPG_DB)
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT INTO characters (id, name, stats, hp, max_hp, ac, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('empty-topics', 'Empty Topics Test', '{}', 10, 10, 15, 1, now, now)
+      .run()
+
+    // Topics list with trailing commas/blanks
+    await seedKV('character:empty-topics', '**Knows:** topic-one, , , topic-two,')
+
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+      world_id: 'world-test',
+    })
+
+    expect(res.error).toBeUndefined()
+    // Should only count topic-one and topic-two, not empty strings
+    expect(res.result.metadata.total_facts).toBe(2)
+  })
+
+  it('rejects missing world_id param', async () => {
+    const res = await callTool('world_manage', {
+      action: 'migrate_knowledge',
+    })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32602)
+  })
+})
+
 describe('check_continuity', () => {
   it('detects dangling references', async () => {
     await seedKV('character:hero', 'A hero\n**Location:** location:castle')
