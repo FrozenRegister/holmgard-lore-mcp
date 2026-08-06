@@ -11,6 +11,7 @@ import { SELF, env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
 import { handleBiomeManage } from '@/rpg/handlers/biome-manage'
+import app from '@/index'
 
 describe('legacy bare methods (pre-tools/call)', () => {
   it('list_topics direct method returns keys array', async () => {
@@ -287,5 +288,37 @@ describe('get_map_hexes / get_map_landmarks / get_map_meta direct methods (#487)
     })
     expect(res.result.hexCount).toBe(1)
     expect(res.result.landmarkCount).toBe(0)
+  })
+
+  // These three call the exported Hono app directly with RPG_DB stripped
+  // from env, since SELF.fetch always uses the pool's fixed bindings and
+  // can't unbind RPG_DB per-request.
+  async function postNoDb(body: Record<string, unknown>) {
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'test-api-key-xyz' },
+      body: JSON.stringify(body),
+    })
+    const noDbEnv = { ...env, RPG_DB: undefined }
+    const res = await app.fetch(request, noDbEnv as unknown as typeof env)
+    return res.json() as Promise<Record<string, any>>
+  }
+
+  it('get_map_hexes errors when RPG_DB is unavailable', async () => {
+    const res = await postNoDb({ jsonrpc: '2.0', id: 1, method: 'get_map_hexes', params: {} })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+  })
+
+  it('get_map_landmarks errors when RPG_DB is unavailable', async () => {
+    const res = await postNoDb({ jsonrpc: '2.0', id: 1, method: 'get_map_landmarks', params: {} })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
+  })
+
+  it('get_map_meta errors when RPG_DB is unavailable', async () => {
+    const res = await postNoDb({ jsonrpc: '2.0', id: 1, method: 'get_map_meta', params: {} })
+    expect(res.error).toBeDefined()
+    expect(res.error.code).toBe(-32603)
   })
 })

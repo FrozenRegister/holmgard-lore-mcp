@@ -2071,24 +2071,20 @@ app.post('/mcp', async (c) => {
       if (!c.env.RPG_DB) return c.json(makeError(id, -32603, 'RPG_DB not available', null), 200)
       const mapId = (params?.mapId ?? 'main').toString()
       const result = await handleWorldMap(c.env, { action: 'get_map_hexes', mapId })
+      // world_map's get_map_hexes action has no failure path of its own (no
+      // required params beyond mapId, which always has a default) — unlike
+      // get_world_biomes above, there is no parsed.error branch to handle.
       const parsed = JSON.parse(result.content[0].text) as {
-        error?: boolean
-        message?: string
-        hexes?: unknown[]
-        count?: number
-        lastUpdated?: string | null
+        hexes: unknown[]
+        count: number
+        lastUpdated: string | null
       }
-      if (parsed.error)
-        return c.json(
-          makeError(id, -32000, parsed.message ?? 'Failed to fetch map hexes', null),
-          200,
-        )
       return c.json(
         makeResult(id, {
           mapId,
           hexes: parsed.hexes,
           count: parsed.count,
-          lastUpdated: parsed.lastUpdated ?? null,
+          lastUpdated: parsed.lastUpdated,
         }),
         200,
       )
@@ -2101,23 +2097,16 @@ app.post('/mcp', async (c) => {
       const mapId = (params?.mapId ?? 'main').toString()
       const result = await handleWorldMap(c.env, { action: 'get_map_landmarks', mapId })
       const parsed = JSON.parse(result.content[0].text) as {
-        error?: boolean
-        message?: string
-        landmarks?: unknown[]
-        count?: number
-        lastUpdated?: string | null
+        landmarks: unknown[]
+        count: number
+        lastUpdated: string | null
       }
-      if (parsed.error)
-        return c.json(
-          makeError(id, -32000, parsed.message ?? 'Failed to fetch map landmarks', null),
-          200,
-        )
       return c.json(
         makeResult(id, {
           mapId,
           landmarks: parsed.landmarks,
           count: parsed.count,
-          lastUpdated: parsed.lastUpdated ?? null,
+          lastUpdated: parsed.lastUpdated,
         }),
         200,
       )
@@ -2130,23 +2119,16 @@ app.post('/mcp', async (c) => {
       const mapId = (params?.mapId ?? 'main').toString()
       const result = await handleWorldMap(c.env, { action: 'get_map_meta', mapId })
       const parsed = JSON.parse(result.content[0].text) as {
-        error?: boolean
-        message?: string
-        hexCount?: number
-        landmarkCount?: number
-        lastUpdated?: string | null
+        hexCount: number
+        landmarkCount: number
+        lastUpdated: string | null
       }
-      if (parsed.error)
-        return c.json(
-          makeError(id, -32000, parsed.message ?? 'Failed to fetch map meta', null),
-          200,
-        )
       return c.json(
         makeResult(id, {
           mapId,
           hexCount: parsed.hexCount,
           landmarkCount: parsed.landmarkCount,
-          lastUpdated: parsed.lastUpdated ?? null,
+          lastUpdated: parsed.lastUpdated,
         }),
         200,
       )
