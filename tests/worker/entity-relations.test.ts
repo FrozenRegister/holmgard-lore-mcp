@@ -345,10 +345,7 @@ describe('PATCH /admin/relations/:id', () => {
   })
 
   it('updates relation_type', async () => {
-    const created = (await (await createRelation({ from_id: 'c-patch' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-patch' })).json()) as ApiResponse
     const patchRes = await adminFetch('PATCH', `/admin/relations/${created.id}`, {
       relation_type: 'enemy',
     })
@@ -361,20 +358,14 @@ describe('PATCH /admin/relations/:id', () => {
   })
 
   it('updates attitude', async () => {
-    const created = (await (await createRelation({ from_id: 'c-att' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-att' })).json()) as ApiResponse
     await adminFetch('PATCH', `/admin/relations/${created.id}`, { attitude: -80 })
     const get = (await (await getRelations('characters', 'c-att')).json()) as ApiResponse
     expect(get.relations[0].attitude).toBe(-80)
   })
 
   it('updates is_pinned', async () => {
-    const created = (await (await createRelation({ from_id: 'c-pin' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-pin' })).json()) as ApiResponse
     await adminFetch('PATCH', `/admin/relations/${created.id}`, { is_pinned: 1 })
     const get = (await (await getRelations('characters', 'c-pin')).json()) as ApiResponse
     expect(get.relations[0].is_pinned).toBe(true)
@@ -386,19 +377,13 @@ describe('PATCH /admin/relations/:id', () => {
   })
 
   it('returns 400 when no patchable fields are provided', async () => {
-    const created = (await (await createRelation({ from_id: 'c-noop' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-noop' })).json()) as ApiResponse
     const res = await adminFetch('PATCH', `/admin/relations/${created.id}`, { unknown_field: 'x' })
     expect(res.status).toBe(400)
   })
 
   it('returns 401 with wrong secret', async () => {
-    const created = (await (await createRelation({ from_id: 'c-auth' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-auth' })).json()) as ApiResponse
     const res = await adminFetch(
       'PATCH',
       `/admin/relations/${created.id}`,
@@ -409,10 +394,7 @@ describe('PATCH /admin/relations/:id', () => {
   })
 
   it('returns 400 when body is not valid JSON', async () => {
-    const created = (await (await createRelation({ from_id: 'c-json' })).json()) as Record<
-      string,
-      any
-    >
+    const created = (await (await createRelation({ from_id: 'c-json' })).json()) as ApiResponse
     const res = await SELF.fetch(`http://example.com/admin/relations/${created.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': ADMIN_SECRET },
