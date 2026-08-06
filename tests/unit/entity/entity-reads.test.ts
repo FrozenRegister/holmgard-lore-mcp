@@ -40,9 +40,74 @@ type SuccessResponse = {
   [key: string]: unknown
 }
 
-// Test responses have flexible typing since tests need to access dynamic properties
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ApiResponse = Record<string, any>
+// List response types for different entity endpoints
+type LocationListResponse = {
+  locations: Array<{ id: string; name?: string; biome_context?: string | null; visited_count?: number; [k: string]: unknown }>
+  total: number
+}
+
+type LocationResponse = {
+  location: { id: string; name?: string; biome_context?: string | null; visited_count?: number; [k: string]: unknown }
+}
+
+type NationListResponse = {
+  nations: Array<{ id: string; name?: string; leader?: string; ideology?: string; aggression?: number; trust?: number; paranoia?: number; gdp?: number; [k: string]: unknown }>
+  total: number
+}
+
+type NationResponse = {
+  nation: { id: string; name?: string; leader?: string; ideology?: string; aggression?: number; trust?: number; paranoia?: number; gdp?: number; [k: string]: unknown }
+}
+
+type RegionListResponse = {
+  regions: Array<{ id: string; name?: string; type?: string; owner_nation_id?: string | null; [k: string]: unknown }>
+  total?: number
+}
+
+type RegionResponse = {
+  region: { id: string; name?: string; type?: string; owner_nation_id?: string | null; [k: string]: unknown }
+}
+
+type ItemListResponse = {
+  items: Array<{ id: string; name?: string; rarity?: string; [k: string]: unknown }>
+  total: number
+}
+
+type ItemResponse = {
+  item: { id: string; name?: string; rarity?: string; [k: string]: unknown }
+}
+
+type QuestListResponse = {
+  quests: Array<{ id: string; title?: string; status?: string; [k: string]: unknown }>
+  total: number
+}
+
+type QuestResponse = {
+  quest: { id: string; title?: string; status?: string; [k: string]: unknown }
+}
+
+type OccupantsResponse = {
+  occupants: Array<{ id: string; name?: string; [k: string]: unknown }>
+  total: number
+}
+
+type NPCRelationshipsResponse = {
+  npc_relationships: Array<{ [k: string]: unknown }>
+}
+
+type PartyMembersResponse = {
+  party_members: Array<{ id: string; name?: string; [k: string]: unknown }>
+}
+
+type CharacterRelationshipsResponse = {
+  npc_relationships: Array<{ [k: string]: unknown }>
+  party_members: Array<{ [k: string]: unknown }>
+}
+
+type EntriesResponse = {
+  entries: Array<{ [k: string]: unknown }>
+  total?: number
+}
 
 // D1 statement type
 type D1Statement = {
@@ -126,7 +191,7 @@ describe('GET /characters', () => {
     })
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterListResponse
     expect(body.characters).toHaveLength(1)
     expect(body.characters[0].name).toBe('Aldric')
     expect(body.total).toBe(1)
@@ -136,7 +201,7 @@ describe('GET /characters', () => {
     const db = createMockD1({ characters: [] })
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterListResponse
     expect(body.characters).toHaveLength(0)
     expect(body.total).toBe(0)
   })
@@ -147,7 +212,7 @@ describe('GET /characters', () => {
     })
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterListResponse
     const char = body.characters[0]
     expect(char.name).toBe('Unknown')
     expect(char.character_type).toBe('npc')
@@ -165,7 +230,7 @@ describe('GET /characters', () => {
     }
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 boom')
   })
 })
@@ -199,7 +264,7 @@ describe('GET /characters/:id', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterResponse
     expect(body.character.name).toBe('Aldric')
     expect(body.character.ac).toBe(16)
     expect(body.character.alignment).toBe('Neutral Good')
@@ -214,7 +279,7 @@ describe('GET /characters/:id', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(404)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toBe('Not found')
   })
 
@@ -222,7 +287,7 @@ describe('GET /characters/:id', () => {
     const db = createMockD1({ characters: [{ id: 'x1', name: 'Unknown' }] })
     const res = await entityReads.request(makeRequest('/characters/x1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterResponse
     expect(body.character.ac).toBe(10)
     expect(body.character.alignment).toBeNull()
     expect(body.character.background).toBeNull()
@@ -234,7 +299,7 @@ describe('GET /characters/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/characters/p1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterResponse
     expect(body.character.level).toBe(7) // present — preserved
     expect(body.character.hp).toBe(0) // null → default 0
     expect(body.character.max_hp).toBe(0)
@@ -285,7 +350,7 @@ describe('PATCH /characters/:id', () => {
       makeAdminEnv(),
     )
     expect(res.status).toBe(400)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('No patchable fields')
   })
 
@@ -300,7 +365,7 @@ describe('PATCH /characters/:id', () => {
       makeAdminEnv(),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as SuccessResponse
     expect(body.ok).toBe(true)
   })
 
@@ -328,7 +393,7 @@ describe('PATCH /characters/:id', () => {
       makeAdminEnv(),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as SuccessResponse
     expect(body.ok).toBe(true)
   })
 
@@ -357,7 +422,7 @@ describe('PATCH /characters/:id', () => {
       makeAdminEnv(),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as SuccessResponse
     expect(body.ok).toBe(true)
   })
 
@@ -409,7 +474,7 @@ describe('PATCH /characters/:id', () => {
       makeEnv(throwingDb),
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 update fail')
   })
 })
@@ -435,7 +500,7 @@ describe('GET /characters/:id — error paths', () => {
     }
     const res = await entityReads.request(makeRequest('/characters/x'), undefined, makeEnv(db))
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 fail')
   })
 })
@@ -457,7 +522,7 @@ describe('GET /locations', () => {
     })
     const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as LocationListResponse
     expect(body.locations[0].name).toBe('Eastgate')
     expect(body.total).toBe(1)
   })
@@ -466,14 +531,14 @@ describe('GET /locations', () => {
     const db = createMockD1({ room_nodes: [] })
     const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as LocationListResponse
     expect(body.locations).toHaveLength(0)
   })
 
   it('normalises null biome_context and zero visited_count', async () => {
     const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] })
     const res = await entityReads.request(makeRequest('/locations'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as LocationListResponse
     expect(body.locations[0].biome_context).toBeNull()
     expect(body.locations[0].visited_count).toBe(0)
   })
@@ -499,7 +564,7 @@ describe('GET /nations', () => {
     })
     const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NationListResponse
     expect(body.nations[0].leader).toBe('King Ulf')
     expect(body.total).toBe(1)
   })
@@ -508,14 +573,14 @@ describe('GET /nations', () => {
     const db = createMockD1({ nations: [] })
     const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NationListResponse
     expect(body.nations).toHaveLength(0)
   })
 
   it('normalises missing numeric fields to defaults', async () => {
     const db = createMockD1({ nations: [{ id: 'n2', name: 'Anon' }] })
     const res = await entityReads.request(makeRequest('/nations'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NationListResponse
     expect(body.nations[0].aggression).toBe(50)
     expect(body.nations[0].gdp).toBe(0)
   })
@@ -532,7 +597,7 @@ describe('GET /regions', () => {
     })
     const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as RegionListResponse
     expect(body.regions[0].name).toBe('Northern Reaches')
   })
 
@@ -540,14 +605,14 @@ describe('GET /regions', () => {
     const db = createMockD1({ regions: [] })
     const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as RegionListResponse
     expect(body.regions).toHaveLength(0)
   })
 
   it('normalises null owner_nation_id', async () => {
     const db = createMockD1({ regions: [{ id: 'reg2', name: 'Wild' }] })
     const res = await entityReads.request(makeRequest('/regions'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as RegionListResponse
     expect(body.regions[0].owner_nation_id).toBeNull()
   })
 })
@@ -569,7 +634,7 @@ describe('GET /quests', () => {
     })
     const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as QuestListResponse
     expect(body.quests[0].name).toBe('The Lost Sword')
     expect(body.total).toBe(1)
   })
@@ -578,14 +643,14 @@ describe('GET /quests', () => {
     const db = createMockD1({ quests: [] })
     const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as QuestListResponse
     expect(body.quests).toHaveLength(0)
   })
 
   it('normalises null giver and empty status', async () => {
     const db = createMockD1({ quests: [{ id: 'q2', name: 'Unknown Quest' }] })
     const res = await entityReads.request(makeRequest('/quests'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as QuestListResponse
     expect(body.quests[0].giver).toBeNull()
     expect(body.quests[0].status).toBe('')
   })
@@ -600,7 +665,7 @@ describe('GET /items', () => {
     })
     const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     expect(body.items[0].name).toBe('Iron Crown')
     expect(body.total).toBe(1)
   })
@@ -609,14 +674,14 @@ describe('GET /items', () => {
     const db = createMockD1({ items: [] })
     const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     expect(body.items).toHaveLength(0)
   })
 
   it('normalises missing value and weight to 0', async () => {
     const db = createMockD1({ items: [{ id: 'i2', name: 'Mystery Box' }] })
     const res = await entityReads.request(makeRequest('/items'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     expect(body.items[0].value).toBe(0)
     expect(body.items[0].weight).toBe(0)
   })
@@ -657,7 +722,7 @@ describe('GET /characters/:id/relationships', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterRelationshipsResponse
     expect(body.npc_relationships).toHaveLength(1)
     expect(body.npc_relationships[0].target_name).toBe('Elara')
     expect(body.npc_relationships[0].familiarity).toBe('friend')
@@ -678,7 +743,7 @@ describe('GET /characters/:id/relationships', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterRelationshipsResponse
     expect(body.npc_relationships).toHaveLength(0)
     expect(body.party_members).toHaveLength(0)
   })
@@ -693,7 +758,7 @@ describe('GET /characters/:id/relationships', () => {
       undefined,
       makeEnv(db),
     )
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NPCRelationshipsResponse
     const rel = body.npc_relationships[0]
     expect(rel.target_name).toBe('Unknown')
     expect(rel.familiarity).toBe('stranger')
@@ -720,7 +785,7 @@ describe('GET /characters/:id/relationships', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 rel fail')
   })
 })
@@ -759,7 +824,7 @@ describe('GET /characters/:id/inventory', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     expect(body.items).toHaveLength(2)
     expect(body.total).toBe(2)
     expect(body.items[0].name).toBe('Iron Sword')
@@ -780,7 +845,7 @@ describe('GET /characters/:id/inventory', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     expect(body.items).toHaveLength(0)
     expect(body.total).toBe(0)
   })
@@ -792,7 +857,7 @@ describe('GET /characters/:id/inventory', () => {
       undefined,
       makeEnv(db),
     )
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemListResponse
     const item = body.items[0]
     expect(item.name).toBe('Unknown')
     expect(item.type).toBe('')
@@ -820,7 +885,7 @@ describe('GET /characters/:id/inventory', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 inv fail')
   })
 })
@@ -834,14 +899,14 @@ describe('current_room_id in character responses', () => {
     })
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterListResponse
     expect(body.characters[0].current_room_id).toBe('room-east')
   })
 
   it('GET /characters returns null current_room_id when not set', async () => {
     const db = createMockD1({ characters: [{ id: 'c2', name: 'Elara' }] })
     const res = await entityReads.request(makeRequest('/characters'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterListResponse
     expect(body.characters[0].current_room_id).toBeNull()
   })
 
@@ -851,7 +916,7 @@ describe('current_room_id in character responses', () => {
     })
     const res = await entityReads.request(makeRequest('/characters/c3'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as CharacterResponse
     expect(body.character.current_room_id).toBe('room-keep')
   })
 })
@@ -877,7 +942,7 @@ describe('GET /locations/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/locations/r1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as LocationResponse
     const loc = body.location
     expect(loc.name).toBe('Eastgate')
     expect(loc.biome_context).toBe('urban')
@@ -893,7 +958,7 @@ describe('GET /locations/:id', () => {
     const db = createMockD1({ room_nodes: [] })
     const res = await entityReads.request(makeRequest('/locations/missing'), undefined, makeEnv(db))
     expect(res.status).toBe(404)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toBe('Not found')
   })
 
@@ -901,7 +966,7 @@ describe('GET /locations/:id', () => {
     const db = createMockD1({ room_nodes: [{ id: 'r2', name: 'Void' }] })
     const res = await entityReads.request(makeRequest('/locations/r2'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as LocationResponse
     const loc = body.location
     expect(loc.biome_context).toBeNull()
     expect(loc.base_description).toBeNull()
@@ -925,7 +990,7 @@ describe('GET /locations/:id', () => {
     }
     const res = await entityReads.request(makeRequest('/locations/x'), undefined, makeEnv(db))
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 loc fail')
   })
 })
@@ -960,7 +1025,7 @@ describe('GET /locations/:id/occupants', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as OccupantsResponse
     expect(body.occupants).toHaveLength(1)
     expect(body.total).toBe(1)
     expect(body.occupants[0].name).toBe('Aldric')
@@ -976,7 +1041,7 @@ describe('GET /locations/:id/occupants', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as OccupantsResponse
     expect(body.occupants).toHaveLength(0)
     expect(body.total).toBe(0)
   })
@@ -988,7 +1053,7 @@ describe('GET /locations/:id/occupants', () => {
       undefined,
       makeEnv(db),
     )
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as OccupantsResponse
     const occ = body.occupants[0]
     expect(occ.name).toBe('Unknown')
     expect(occ.level).toBe(1)
@@ -1012,7 +1077,7 @@ describe('GET /locations/:id/occupants', () => {
       makeEnv(db),
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 occ fail')
   })
 })
@@ -1037,7 +1102,7 @@ describe('GET /nations/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NationResponse
     expect(body.nation.name).toBe('Holmgard')
     expect(body.nation.leader).toBe('King Aldric')
     expect(body.nation.aggression).toBe(40)
@@ -1053,7 +1118,7 @@ describe('GET /nations/:id', () => {
   it('normalises all missing fields to defaults', async () => {
     const db = createMockD1({ nations: [{}] })
     const res = await entityReads.request(makeRequest('/nations/x'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as NationResponse
     expect(body.nation.id).toBe('')
     expect(body.nation.name).toBe('Unknown')
     expect(body.nation.aggression).toBe(50)
@@ -1079,7 +1144,7 @@ describe('GET /nations/:id', () => {
     }
     const res = await entityReads.request(makeRequest('/nations/n1'), undefined, makeEnv(db))
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 nation fail')
   })
 })
@@ -1101,7 +1166,7 @@ describe('GET /regions/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as RegionResponse
     expect(body.region.name).toBe('Northern March')
     expect(body.region.type).toBe('frontier')
     expect(body.region.owner_nation_name).toBe('Holmgard')
@@ -1116,7 +1181,7 @@ describe('GET /regions/:id', () => {
   it('normalises all missing fields to defaults and null owner', async () => {
     const db = createMockD1({ regions: [{ owner_nation_id: null, owner_nation_name: null }] })
     const res = await entityReads.request(makeRequest('/regions/x'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as RegionResponse
     expect(body.region.id).toBe('')
     expect(body.region.name).toBe('Unknown')
     expect(body.region.type).toBe('')
@@ -1142,7 +1207,7 @@ describe('GET /regions/:id', () => {
     }
     const res = await entityReads.request(makeRequest('/regions/reg1'), undefined, makeEnv(db))
     expect(res.status).toBe(500)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ErrorResponse
     expect(body.error).toContain('D1 region fail')
   })
 })
@@ -1164,7 +1229,7 @@ describe('GET /quests/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/quests/q1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as QuestResponse
     expect(body.quest.name).toBe('Retrieve the Crown')
     expect(body.quest.description).toBe('Find the Iron Crown.')
     expect(body.quest.status).toBe('active')
@@ -1180,7 +1245,7 @@ describe('GET /quests/:id', () => {
   it('normalises all missing fields to defaults and null giver', async () => {
     const db = createMockD1({ quests: [{}] })
     const res = await entityReads.request(makeRequest('/quests/x'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as QuestResponse
     expect(body.quest.id).toBe('')
     expect(body.quest.name).toBe('Unknown')
     expect(body.quest.description).toBe('')
@@ -1221,7 +1286,7 @@ describe('GET /quests/:id/log', () => {
     })
     const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as EntriesResponse
     expect(body.entries).toHaveLength(2)
     expect(body.entries[0].note).toBe('Quest received from Aldric.')
     expect(body.entries[1].created_at).toBe('2026-01-05')
@@ -1232,14 +1297,14 @@ describe('GET /quests/:id/log', () => {
     const db = createMockD1({ quest_logs: [] })
     const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as EntriesResponse
     expect(body.entries).toHaveLength(0)
   })
 
   it('normalises all missing log fields to empty strings', async () => {
     const db = createMockD1({ quest_logs: [{}] })
     const res = await entityReads.request(makeRequest('/quests/q1/log'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as EntriesResponse
     expect(body.entries[0].id).toBe('')
     expect(body.entries[0].note).toBe('')
     expect(body.entries[0].created_at).toBe('')
@@ -1275,7 +1340,7 @@ describe('GET /items/:id', () => {
     })
     const res = await entityReads.request(makeRequest('/items/i1'), undefined, makeEnv(db))
     expect(res.status).toBe(200)
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemResponse
     expect(body.item.name).toBe('Iron Crown')
     expect(body.item.type).toBe('relic')
     expect(body.item.value).toBe(5000)
@@ -1291,7 +1356,7 @@ describe('GET /items/:id', () => {
   it('normalises all missing fields to defaults', async () => {
     const db = createMockD1({ items: [{}] })
     const res = await entityReads.request(makeRequest('/items/x'), undefined, makeEnv(db))
-    const body = (await res.json()) as ApiResponse
+    const body = (await res.json()) as ItemResponse
     expect(body.item.id).toBe('')
     expect(body.item.name).toBe('Unknown')
     expect(body.item.type).toBe('')
