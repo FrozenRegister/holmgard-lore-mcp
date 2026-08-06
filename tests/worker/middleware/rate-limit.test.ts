@@ -98,29 +98,30 @@ describe('rateLimitMiddleware', () => {
     expect(r2).toBeUndefined()
   })
 
-  it('cleans up expired entries when map is large', async () => {
+  it('cleans up expired entries once the map grows past 10000 entries', async () => {
     const originalDateNow = Date.now
     let mockNow = 2000
-
     vi.spyOn(Date, 'now').mockImplementation(() => mockNow)
 
-    // Create multiple IPs to trigger cleanup (map size > 10000)
-    // Since we can't easily fill the map without many requests, we'll test the condition differently
-    // by verifying the cleanup path works when an entry is expired
-    const ctx = makeCtx({
-      req: {
-        header: (key: string) => (key === 'CF-Connecting-IP' ? '10.30.30.30' : undefined),
-      },
+    // Fill the map past the 10000-entry cleanup threshold with already-expired
+    // entries, all under one shared window so the sweep has real work to do.
+    for (let i = 0; i < 10001; i++) {
+      const ctx = makeCtx({
+        req: {
+          header: (key: string) => (key === 'CF-Connecting-IP' ? `10.99.${Math.floor(i / 255)}.${i % 255}` : undefined),
+        },
+      })
+      await rateLimitMiddleware(ctx, async () => 'ok')
+    }
+
+    // Advance time so every entry above is now expired, then push size over
+    // 10000 again with a fresh IP — this request is the one that observes
+    // `rateLimitMap.size > 10000` as true and runs the sweep.
+    mockNow += 70_000
+    const triggerCtx = makeCtx({
+      req: { header: (key: string) => (key === 'CF-Connecting-IP' ? '10.99.255.255' : undefined) },
     })
-
-    let result = await rateLimitMiddleware(ctx, async () => 'ok')
-    expect(result).toBeUndefined()
-
-    // Advance time past window
-    mockNow = 2000 + 70_000
-
-    // Next request should reset and be allowed
-    result = await rateLimitMiddleware(ctx, async () => 'ok')
+    const result = await rateLimitMiddleware(triggerCtx, async () => 'ok')
     expect(result).toBeUndefined()
 
     Date.now = originalDateNow
@@ -342,27 +343,36 @@ describe('wsReconnectRateLimit', () => {
     expect(result2).toBe('second')
   })
 
-  it('cleans up expired entries when map is large', async () => {
+  it('cleans up expired entries once the map grows past 5000 entries', async () => {
     const originalDateNow = Date.now
     let mockNow = 3000
-
     vi.spyOn(Date, 'now').mockImplementation(() => mockNow)
 
-    const ctx = makeCtx({
+    // Fill the map past the 5000-entry cleanup threshold with already-expired
+    // entries, all under one shared window so the sweep has real work to do.
+    for (let i = 0; i < 5001; i++) {
+      const ctx = makeCtx({
+        req: {
+          header: (key: string) => {
+            if (key === 'CF-Connecting-IP') return `10.88.${Math.floor(i / 255)}.${i % 255}`
+            if (key === 'Upgrade') return 'websocket'
+            return undefined
+          },
+        },
+      })
+      await wsReconnectRateLimit(ctx, async () => 'ok')
+    }
+
+    // Advance time so every entry above is now expired, then push size over
+    // 5000 again with a fresh IP — this request is the one that observes
+    // `wsReconnectMap.size > 5000` as true and runs the sweep.
+    mockNow += 70_000
+    const triggerCtx = makeCtx({
       req: {
-        header: (key: string) => (key === 'CF-Connecting-IP' ? '10.60.60.60' : 'websocket'),
+        header: (key: string) => (key === 'CF-Connecting-IP' ? '10.88.255.255' : 'websocket'),
       },
     })
-
-    // First request
-    let result = await wsReconnectRateLimit(ctx, async () => 'ok')
-    expect(result).toBe('ok')
-
-    // Advance time past the window
-    mockNow = 3000 + 70_000
-
-    // Next request should be allowed (counter reset)
-    result = await wsReconnectRateLimit(ctx, async () => 'ok')
+    const result = await wsReconnectRateLimit(triggerCtx, async () => 'ok')
     expect(result).toBe('ok')
 
     Date.now = originalDateNow
