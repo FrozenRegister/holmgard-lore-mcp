@@ -3,7 +3,7 @@ import { describe } from './support/helpers'
 import { env } from 'cloudflare:test'
 import { expect, it, beforeEach } from 'vitest'
 import { setupRpgDb } from './support/setup-d1'
-import { handleWorldMap } from '@/rpg/handlers/world-map'
+import { handleWorldMap, computeLandingZone } from '@/rpg/handlers/world-map'
 import { handleBiomeManage } from '@/rpg/handlers/biome-manage'
 import { handleZoneTypeManage } from '@/rpg/handlers/zone-type-manage'
 import { handleWaypointManage } from '@/rpg/handlers/waypoint-manage'
@@ -1961,5 +1961,186 @@ describe('handleWorldMap', () => {
     )
     expect(avoided.routable).toBe(true)
     expect(avoided.path.some((p: { q: number; r: number }) => p.q === 1 && p.r === 0)).toBe(false)
+  })
+
+  // ── #436 — Landing Zone Classification ────────────────────────────────
+
+  describe('computeLandingZone', () => {
+    it('returns water for lake biome', () => {
+      expect(computeLandingZone('lake', 0)).toBe('water')
+      expect(computeLandingZone('lake', 100)).toBe('water')
+    })
+
+    it('returns water for calm_sea biome', () => {
+      expect(computeLandingZone('calm_sea', 0)).toBe('water')
+      expect(computeLandingZone('calm_sea', 100)).toBe('water')
+    })
+
+    it('returns unlandable for forest biome', () => {
+      expect(computeLandingZone('forest', 0)).toBe('unlandable')
+    })
+
+    it('returns unlandable for marsh biome', () => {
+      expect(computeLandingZone('marsh', 0)).toBe('unlandable')
+    })
+
+    it('returns unlandable for ravine biome', () => {
+      expect(computeLandingZone('ravine', 0)).toBe('unlandable')
+    })
+
+    it('returns unlandable for dense_urban biome', () => {
+      expect(computeLandingZone('dense_urban', 0)).toBe('unlandable')
+    })
+
+    it('returns unlandable for rock_face biome', () => {
+      expect(computeLandingZone('rock_face', 0)).toBe('unlandable')
+    })
+
+    it('returns unlandable for any biome with slope > 10', () => {
+      expect(computeLandingZone('grassland', 11)).toBe('unlandable')
+      expect(computeLandingZone('beach', 15)).toBe('unlandable')
+      expect(computeLandingZone('glade', 20)).toBe('unlandable')
+    })
+
+    it('returns slope for slope in range [5, 10]', () => {
+      expect(computeLandingZone('grassland', 5)).toBe('slope')
+      expect(computeLandingZone('grassland', 7)).toBe('slope')
+      expect(computeLandingZone('grassland', 10)).toBe('slope')
+    })
+
+    it('returns clearing for clearing-eligible biomes with slope <= 2', () => {
+      expect(computeLandingZone('glade', 0)).toBe('clearing')
+      expect(computeLandingZone('glade', 2)).toBe('clearing')
+      expect(computeLandingZone('heath', 1)).toBe('clearing')
+      expect(computeLandingZone('grassland', 0)).toBe('clearing')
+      expect(computeLandingZone('beach', 2)).toBe('clearing')
+    })
+
+    it('returns null for clearing-eligible biomes with slope > 2', () => {
+      expect(computeLandingZone('glade', 3)).toBeNull()
+      expect(computeLandingZone('glade', 4)).toBeNull()
+      expect(computeLandingZone('heath', 3)).toBeNull()
+    })
+
+    it('returns road for road biome with slope <= 2', () => {
+      expect(computeLandingZone('road', 0)).toBe('road')
+      expect(computeLandingZone('road', 2)).toBe('road')
+    })
+
+    it('returns null for road biome with slope > 2 and < 5', () => {
+      expect(computeLandingZone('road', 3)).toBeNull()
+      expect(computeLandingZone('road', 4)).toBeNull()
+    })
+
+    it('returns slope for road biome with slope in [5, 10]', () => {
+      expect(computeLandingZone('road', 5)).toBe('slope')
+      expect(computeLandingZone('road', 10)).toBe('slope')
+    })
+
+    it('returns null for unrecognized biomes', () => {
+      expect(computeLandingZone('unknown_biome', 0)).toBeNull()
+      expect(computeLandingZone('', 0)).toBeNull()
+    })
+  })
+
+  it('hexes action computes landing_zone field from biome and neighbor elevations', async () => {
+    await createWorld()
+    // Create a 3x3 grid with controlled elevations to test different landing zones
+    await handleWorldMap(db(), {
+      action: 'patch',
+      worldId: WORLD,
+      hexes: [
+        { q: 0, r: 0, biome: 'grassland', elevation: 100 },
+        { q: 1, r: 0, biome: 'grassland', elevation: 100 },
+        { q: 2, r: 0, biome: 'grassland', elevation: 100 },
+        { q: 0, r: 1, biome: 'grassland', elevation: 100 },
+        { q: 1, r: 1, biome: 'glade', elevation: 100 }, // center — all neighbors at same elevation
+        { q: 2, r: 1, biome: 'grassland', elevation: 100 },
+        { q: 0, r: 2, biome: 'lake', elevation: 100 }, // same elevation as neighbors
+        { q: 1, r: 2, biome: 'forest', elevation: 100 },
+        { q: 2, r: 2, biome: 'beach', elevation: 107 }, // elevation 107: neighbors include 100 → slope 7 → 'slope'
+      ],
+    })
+
+    const r = await handleWorldMap(db(), {
+      action: 'hexes',
+      worldId: WORLD,
+      q: 0,
+      r: 0,
+      width: 3,
+      height: 3,
+    })
+    const body = JSON.parse(r.content[0].text) as {
+      success: boolean
+      hexes: Array<{
+        q: number
+        r: number
+        biome: string
+        elevation: number
+        landing_zone: string | null
+      }>
+    }
+
+    expect(body.success).toBe(true)
+    expect(body.hexes).toHaveLength(9)
+
+    // Center hex (1, 1): glade with all neighbors at same elevation (100) → slope 0 → 'clearing'
+    const center = body.hexes.find((h) => h.q === 1 && h.r === 1)
+    expect(center?.biome).toBe('glade')
+    expect(center?.elevation).toBe(100)
+    expect(center?.landing_zone).toBe('clearing')
+
+    // Lake hex (0, 2): water biome → 'water' (slope irrelevant)
+    const lake = body.hexes.find((h) => h.q === 0 && h.r === 2)
+    expect(lake?.biome).toBe('lake')
+    expect(lake?.landing_zone).toBe('water')
+
+    // Forest hex (1, 2): forest biome → 'unlandable' (slope irrelevant)
+    const forest = body.hexes.find((h) => h.q === 1 && h.r === 2)
+    expect(forest?.biome).toBe('forest')
+    expect(forest?.landing_zone).toBe('unlandable')
+
+    // Beach hex (2, 2): beach at elevation 107 with neighbors at 100 → slope 7 → 'slope'
+    const beach = body.hexes.find((h) => h.q === 2 && h.r === 2)
+    expect(beach?.biome).toBe('beach')
+    expect(beach?.elevation).toBe(107)
+    expect(beach?.landing_zone).toBe('slope')
+  })
+
+  it('hexes action handles hexes with missing neighbors gracefully', async () => {
+    await createWorld()
+    // Only create hexes on the edge — neighbors outside the query bounds
+    // should be treated as not present (slope = 0)
+    await handleWorldMap(db(), {
+      action: 'patch',
+      worldId: WORLD,
+      hexes: [
+        { q: 10, r: 10, biome: 'glade', elevation: 50 }, // isolated hex
+      ],
+    })
+
+    const r = await handleWorldMap(db(), {
+      action: 'hexes',
+      worldId: WORLD,
+      q: 10,
+      r: 10,
+      width: 1,
+      height: 1,
+    })
+    const body = JSON.parse(r.content[0].text) as {
+      success: boolean
+      hexes: Array<{
+        q: number
+        r: number
+        biome: string
+        landing_zone: string | null
+      }>
+    }
+
+    expect(body.success).toBe(true)
+    expect(body.hexes).toHaveLength(1)
+    const hex = body.hexes[0]
+    // Isolated glade with no neighbors in result set → slope 0 → 'clearing'
+    expect(hex.landing_zone).toBe('clearing')
   })
 })
