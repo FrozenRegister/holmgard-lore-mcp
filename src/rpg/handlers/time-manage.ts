@@ -448,7 +448,9 @@ export async function handleTimeManage(
     case 'advance': {
       if (!a.world_id) return err('"world_id" is required')
       if (!a.by)
-        return err('"by" is required (e.g. "3 months", "1 year", "7 days", "6 hours", "10 minutes")')
+        return err(
+          '"by" is required (e.g. "3 months", "1 year", "7 days", "6 hours", "10 minutes")',
+        )
       const parsed_by = parseByString(a.by)
       if (!parsed_by)
         return err(
@@ -488,16 +490,19 @@ export async function handleTimeManage(
       const oldHour = ws.hour ?? 12
       const oldMinute = ws.minute ?? 0
       const oldSimMinutes = ws.sim_minutes ?? oldHour * 60 + oldMinute
-      const { date: newDate, hour: newHour, minute: newMinute } =
-        parsed_by.unit === 'minutes'
-          ? advanceByMinutes(oldDate, oldHour, oldMinute, parsed_by.amount)
-          : parsed_by.unit === 'hours'
-            ? { ...advanceByHours(oldDate, oldHour, parsed_by.amount), minute: oldMinute }
-            : {
-                date: addToDate(oldDate, parsed_by.amount, parsed_by.unit),
-                hour: oldHour,
-                minute: oldMinute,
-              }
+      const {
+        date: newDate,
+        hour: newHour,
+        minute: newMinute,
+      } = parsed_by.unit === 'minutes'
+        ? advanceByMinutes(oldDate, oldHour, oldMinute, parsed_by.amount)
+        : parsed_by.unit === 'hours'
+          ? { ...advanceByHours(oldDate, oldHour, parsed_by.amount), minute: oldMinute }
+          : {
+              date: addToDate(oldDate, parsed_by.amount, parsed_by.unit),
+              hour: oldHour,
+              minute: oldMinute,
+            }
       const now = new Date().toISOString()
       // #671 — elapsed sim-minutes for this call, computed once regardless of
       // unit. sim_minutes is now the source of truth world_day derives from

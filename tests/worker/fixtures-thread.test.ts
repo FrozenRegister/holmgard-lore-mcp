@@ -87,11 +87,9 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   it('get_thread_comparison handles multiple entities in same thread', async () => {
     await seedKV(
       'entity:subject-alpha-2',
-      [
-        'Thread: primary-processing-cycle',
-        'Timeline-Value: 15',
-        'Current-Date: cycle-day-1',
-      ].join('\n'),
+      ['Thread: primary-processing-cycle', 'Timeline-Value: 15', 'Current-Date: cycle-day-1'].join(
+        '\n',
+      ),
     )
     // Now primary-processing-cycle has 2 entities
     const res = await callTool('world_manage', {
@@ -108,19 +106,11 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   it('get_thread_comparison handles threads with no Timeline-Value', async () => {
     await seedKV(
       'entity:subject-no-timeline',
-      [
-        'Thread: timeline-less',
-        'Current-Date: some-date',
-        'Status: Active',
-      ].join('\n'),
+      ['Thread: timeline-less', 'Current-Date: some-date', 'Status: Active'].join('\n'),
     )
     await seedKV(
       'entity:other-thread-entity',
-      [
-        'Thread: other-thread',
-        'Timeline-Value: 20',
-        'Current-Date: some-date',
-      ].join('\n'),
+      ['Thread: other-thread', 'Timeline-Value: 20', 'Current-Date: some-date'].join('\n'),
     )
     const res = await callTool('world_manage', {
       action: 'get_thread_comparison',
@@ -165,19 +155,15 @@ describe('canonical fixture — thread comparison: primary vs secondary processi
   it('check_convergence with shared locations but no shared dates', async () => {
     await seedKV(
       'entity:shared-loc-a',
-      [
-        'Thread: thread-loc-a',
-        'Current-Date: date-a-only',
-        'Location: location:common-room',
-      ].join('\n'),
+      ['Thread: thread-loc-a', 'Current-Date: date-a-only', 'Location: location:common-room'].join(
+        '\n',
+      ),
     )
     await seedKV(
       'entity:shared-loc-b',
-      [
-        'Thread: thread-loc-b',
-        'Current-Date: date-b-only',
-        'Location: location:common-room',
-      ].join('\n'),
+      ['Thread: thread-loc-b', 'Current-Date: date-b-only', 'Location: location:common-room'].join(
+        '\n',
+      ),
     )
     const res = await callTool('world_manage', {
       action: 'check_convergence',

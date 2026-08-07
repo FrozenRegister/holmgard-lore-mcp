@@ -764,7 +764,7 @@ describe('fuzzy-enum utilities', () => {
       expect(schema.parse('move_hex')).toBe('move_hex')
       expect(schema.parse('go')).toBe('move_hex')
 
-      const   result = schema.safeParse('invalid')
+      const result = schema.safeParse('invalid')
       expect(result.success).toBe(false)
     })
   })

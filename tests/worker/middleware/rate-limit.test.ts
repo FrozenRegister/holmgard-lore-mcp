@@ -108,7 +108,8 @@ describe('rateLimitMiddleware', () => {
     for (let i = 0; i < 10001; i++) {
       const ctx = makeCtx({
         req: {
-          header: (key: string) => (key === 'CF-Connecting-IP' ? `10.99.${Math.floor(i / 255)}.${i % 255}` : undefined),
+          header: (key: string) =>
+            key === 'CF-Connecting-IP' ? `10.99.${Math.floor(i / 255)}.${i % 255}` : undefined,
         },
       })
       await rateLimitMiddleware(ctx, async () => 'ok')
