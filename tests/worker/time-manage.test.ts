@@ -1247,6 +1247,49 @@ describe('handleTimeManage', () => {
     expect(typeof body.tick_driver.narrator_summary).toBe('string')
   })
 
+  // #644 — a multi-day advance should thread daysElapsed into the tick
+  // driver so per-day-loop hooks (encounter_check, weather_update,
+  // creature_ai_tick) run once per elapsed calendar day instead of once
+  // per call.
+  it('advance by multiple days threads daysElapsed so encounter_check loops once per day', async () => {
+    await seedWorld('w-tick-multiday', '2184-07-01')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-multiday',
+          by: '5 days',
+          hooks: ['encounter_check'],
+        })
+      ).content[0].text,
+    )
+    expect(body.success).toBe(true)
+    expect(body.day_fraction).toBe(5)
+    const data = body.tick_driver.flagged[0].data as { days: number; daily: unknown[] }
+    expect(data.days).toBe(5)
+    expect(data.daily).toHaveLength(5)
+  })
+
+  it('advance by hours (no day boundary crossed) does not trigger per-day looping', async () => {
+    await seedWorld('w-tick-subday-loop', '2184-07-01')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-tick-subday-loop',
+          by: '3 hours',
+          hooks: ['encounter_check'],
+        })
+      ).content[0].text,
+    )
+    expect(body.success).toBe(true)
+    const data = body.tick_driver.flagged[0].data as Record<string, unknown>
+    // Single-fire shape — no `days`/`daily` wrapper.
+    expect(data.days).toBeUndefined()
+    expect(data.daily).toBeUndefined()
+    expect(data.parties_checked).toBe(0)
+  })
+
   it('advance with invalid hook name still returns success=true with empty results', async () => {
     await seedWorld('w-tick-invalid', '2184-07-01')
     // Non-existent hook names are silently skipped

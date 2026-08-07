@@ -475,6 +475,22 @@ day elapsed. Injuries created via `encounter.resolve` also stamp `created_at_sim
 `health_degradation` hook can diff untreated-wound time against the sim clock rather than
 wall-clock time.
 
+**Known Behavior (#644):** Tick hooks fall into two categories for a multi-day `time.advance`
+call. Continuous-rate hooks (`resource_consume`, `health_degradation`, `dissolution_flag`) already
+scale correctly for any elapsed time via `day_fraction`/sim-time diffing (#671) — they run once per
+call regardless of how many days elapsed, and that's correct because they're rates/state-diffs, not
+per-day rolls. Point-event hooks (`weather_update`, `encounter_check`, `creature_ai_tick`) are
+different: each `execute()` represents a single day's check or roll, so `runTickDriver` now runs
+them once per elapsed calendar day instead of once per call — a 10-day advance gets 10 independent
+encounter rolls, 10 days of weather lookups, and 10 creature AI ticks, not 1. Their responses gain
+`days` (iteration count) and a `daily` array (one entry per day); `weather_update` also reports
+`found_count`, `encounter_check` reports `triggered_total`, and `creature_ai_tick` reports summed
+`creatures_moved`/`hunts_initiated`/`claims_cleared` across all days. A sub-day advance (or any
+call crossing zero day boundaries) still checks exactly once — the single-fire response shape from
+before this feature existed, with no `days`/`daily` wrapper. `creature_ai_tick` re-reads
+creature/prey state fresh from D1 on every iteration (no internal caching), so day 2's movement
+correctly builds on day 1's just-written position without any extra state-threading.
+
 **Known Behavior (#445, creature AI — feral + Shaper):** `rpg{sub:"creature"}` is the CRUD
 surface for the per-world `creature_ai_state` table read by the `creature_ai_tick` hook (a Phase 3
 tick hook, **off by default** — a world only runs it if `creature_ai_tick` is in its `time.advance`

@@ -779,6 +779,135 @@ describe('Tick Hooks - Conflict Resolution', () => {
     expect(result.resolved[0].narrator_summary).toContain('No weather recorded')
   })
 
+  // ── perDayLoop hooks (#644) ─────────────────────────────────────────────────
+
+  it('weather_update loops once per elapsed day, reporting each day (#644)', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-13', world_day: 10 })
+      } else if (query.includes('weather_log')) {
+        mockStmt.first.mockResolvedValue({
+          conditions: 'clear',
+          temperature_high: 10,
+          temperature_low: 2,
+        })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-13', {
+      hooks: ['weather_update'],
+      daysElapsed: 3,
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.resolved[0].data as { days: number; found_count: number; daily: unknown[] }
+    expect(data.days).toBe(3)
+    expect(data.found_count).toBe(3)
+    expect(data.daily).toHaveLength(3)
+    expect(result.resolved[0].narrator_summary).toContain('across 3 day(s)')
+  })
+
+  it('daysElapsed of 1 does not trigger per-day-loop merging (single-fire shape preserved) (#644)', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-11', {
+      hooks: ['weather_update'],
+      daysElapsed: 1,
+    })
+
+    const data = result.resolved[0].data as Record<string, unknown>
+    expect(data.days).toBeUndefined()
+    expect(data.daily).toBeUndefined()
+    expect(data.found).toBe(false)
+  })
+
+  it('daysElapsed of 0 (sub-day advance, no day crossed) still checks exactly once (#644)', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-10', {
+      hooks: ['weather_update'],
+      daysElapsed: 0,
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.resolved[0].data as Record<string, unknown>
+    expect(data.days).toBeUndefined()
+  })
+
+  it('encounter_check loops once per elapsed day, aggregating triggered counts (#644)', async () => {
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: query.includes('world_locks')
+          ? vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } })
+          : vi.fn().mockResolvedValue({ success: true }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', weather: null })
+      } else if (query.includes('parties')) {
+        mockStmt.all.mockResolvedValue({ results: [{ id: 'party-1', q: 0, r: 0 }] })
+      } else if (query.includes('hexes')) {
+        mockStmt.first.mockResolvedValue({ biome: 'grassland' })
+      }
+
+      return mockStmt
+    })
+
+    const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-14', {
+      hooks: ['encounter_check'],
+      daysElapsed: 4,
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.flagged[0].data as {
+      days: number
+      parties_checked: number
+      triggered_total: number
+      daily: unknown[]
+    }
+    expect(data.days).toBe(4)
+    expect(data.parties_checked).toBe(1)
+    expect(data.daily).toHaveLength(4)
+    expect(typeof data.triggered_total).toBe('number')
+  })
+
+  it('encounter_check with no positioned parties still loops N times, all reporting zero (#644)', async () => {
+    const testEnv = { ...mockEnv, RPG_DB: mockDb }
+
+    const result = await runTickDriver(testEnv, mockDb, 'world-1', '2187-01-10', '2187-01-15', {
+      hooks: ['encounter_check'],
+      daysElapsed: 5,
+    })
+
+    expect(result.success).toBe(true)
+    const data = result.flagged[0].data as {
+      days: number
+      parties_checked: number
+      triggered_total: number
+    }
+    expect(data.days).toBe(5)
+    expect(data.parties_checked).toBe(0)
+    expect(data.triggered_total).toBe(0)
+  })
+
   it('resource_consume hook ticks degradation for every owner at the current world_day', async () => {
     mockEnv.RPG_DB = mockDb
 
