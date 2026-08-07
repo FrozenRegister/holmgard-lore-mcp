@@ -565,9 +565,8 @@ describe('handleTimeManage', () => {
   it('advance by minutes within the same hour', async () => {
     await seedWorld('w-minutes', '2184-07-15')
     const body = JSON.parse(
-      (
-        await handleTimeManage(db(), { action: 'advance', world_id: 'w-minutes', by: '20 minutes' })
-      ).content[0].text,
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-minutes', by: '20 minutes' }))
+        .content[0].text,
     )
     expect(body.success).toBe(true)
     expect(body.old_minute).toBe(0)
@@ -691,9 +690,8 @@ describe('handleTimeManage', () => {
   it('advance by hours reports sim_minutes/elapsed_minutes/day_fraction', async () => {
     await seedWorld('w-sim-hours', '2184-07-15')
     const body = JSON.parse(
-      (
-        await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-hours', by: '3 hours' })
-      ).content[0].text,
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-hours', by: '3 hours' }))
+        .content[0].text,
     )
     expect(body.elapsed_minutes).toBe(180)
     expect(body.sim_minutes).toBe(720 + 180)
@@ -703,9 +701,8 @@ describe('handleTimeManage', () => {
   it('advance by days reports sim_minutes/elapsed_minutes/day_fraction', async () => {
     await seedWorld('w-sim-days', '2184-07-15')
     const body = JSON.parse(
-      (
-        await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-days', by: '2 days' })
-      ).content[0].text,
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-days', by: '2 days' }))
+        .content[0].text,
     )
     expect(body.elapsed_minutes).toBe(2 * 1440)
     expect(body.sim_minutes).toBe(720 + 2 * 1440)
@@ -722,9 +719,8 @@ describe('handleTimeManage', () => {
   it('advance by 3 hours (no day boundary crossed) reports the real elapsed fraction and leaves world_day unchanged', async () => {
     await seedWorld('w-drift-fix', '2184-07-15')
     const body = JSON.parse(
-      (
-        await handleTimeManage(db(), { action: 'advance', world_id: 'w-drift-fix', by: '3 hours' })
-      ).content[0].text,
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-drift-fix', by: '3 hours' }))
+        .content[0].text,
     )
     expect(body.elapsed_minutes).toBe(180)
     expect(body.day_fraction).toBe(0.125)
