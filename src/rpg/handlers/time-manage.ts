@@ -221,18 +221,22 @@ function computeAge(
 
 function parseByString(
   by: string,
-): { amount: number; unit: 'hours' | 'days' | 'months' | 'years' } | null {
-  const m = by.trim().match(/^(\d+)\s*(hour|hours|day|days|month|months|year|years)$/i)
+): { amount: number; unit: 'minutes' | 'hours' | 'days' | 'months' | 'years' } | null {
+  const m = by
+    .trim()
+    .match(/^(\d+)\s*(minute|minutes|hour|hours|day|days|month|months|year|years)$/i)
   if (!m) return null
   const amount = parseInt(m[1], 10)
   const raw = m[2].toLowerCase()
-  const unit: 'hours' | 'days' | 'months' | 'years' = raw.startsWith('h')
-    ? 'hours'
-    : raw.startsWith('y')
-      ? 'years'
-      : raw.startsWith('mo')
-        ? 'months'
-        : 'days'
+  const unit: 'minutes' | 'hours' | 'days' | 'months' | 'years' = raw.startsWith('mi')
+    ? 'minutes'
+    : raw.startsWith('h')
+      ? 'hours'
+      : raw.startsWith('y')
+        ? 'years'
+        : raw.startsWith('mo')
+          ? 'months'
+          : 'days'
   return { amount, unit }
 }
 
@@ -250,6 +254,57 @@ function advanceByHours(
   const daysCarried = Math.floor(totalHours / 24)
   const newHour = ((totalHours % 24) + 24) % 24
   return { date: daysCarried === 0 ? date : addToDate(date, daysCarried, 'days'), hour: newHour }
+}
+
+// #671 — sub-hour clock. `minute` is a plain 0-59 int; advancing by minutes
+// rolls over into hours (via the same carry math as advanceByHours) and,
+// past 24h worth of minutes, into whole days via addToDate('days'). Advancing
+// by hours/days/months/years leaves `minute` untouched, mirroring how
+// advanceByHours already leaves `minute`'s predecessor (day-level units)
+// untouched — sub-hour precision only moves when the caller asks for it.
+function advanceByMinutes(
+  date: string,
+  hour: number,
+  minute: number,
+  amount: number,
+): { date: string; hour: number; minute: number } {
+  const totalMinutes = hour * 60 + minute + amount
+  const daysCarried = Math.floor(totalMinutes / 1440)
+  const minutesOfDay = ((totalMinutes % 1440) + 1440) % 1440
+  return {
+    date: daysCarried === 0 ? date : addToDate(date, daysCarried, 'days'),
+    hour: Math.floor(minutesOfDay / 60),
+    minute: minutesOfDay % 60,
+  }
+}
+
+// #671 — elapsed real minutes for one time.advance call, regardless of unit.
+// This is the single source of truth tick-hooks.ts scales day-cadence hooks
+// by (elapsedMinutes / 1440) and world_day derives from — replacing the old
+// `world_day + dateDiff(oldDate, newDate)` calculation, which silently
+// stayed at 0 for hour/minute-only advances that didn't cross a calendar
+// day. minutes/hours/days convert directly (a day is always exactly 1440
+// minutes); months/years go through dateDiff on the already-computed
+// newDate, since calendar month/year lengths vary and addToDate already
+// handles that arithmetic correctly — reusing it here avoids a second,
+// possibly-inconsistent implementation of "how many days is 3 months."
+function elapsedMinutesFor(
+  unit: 'minutes' | 'hours' | 'days' | 'months' | 'years',
+  amount: number,
+  oldDate: string,
+  newDate: string,
+): number {
+  switch (unit) {
+    case 'minutes':
+      return amount
+    case 'hours':
+      return amount * 60
+    case 'days':
+      return amount * 1440
+    case 'months':
+    case 'years':
+      return dateDiff(oldDate, newDate) * 1440
+  }
 }
 
 // ── World state seeding (#330) ───────────────────────────────────────────────
@@ -323,9 +378,14 @@ export async function handleTimeManage(
     case 'get_date': {
       if (!a.world_id) return err('"world_id" is required')
       const row = (await db
-        .prepare('SELECT "current_date", era, hour FROM world_state WHERE world_id = ?')
+        .prepare('SELECT "current_date", era, hour, minute FROM world_state WHERE world_id = ?')
         .bind(a.world_id)
-        .first()) as { current_date: string; era: string | null; hour: number | null } | null
+        .first()) as {
+        current_date: string
+        era: string | null
+        hour: number | null
+        minute: number | null
+      } | null
       if (!row) return err(`No world_state found for world_id: ${a.world_id}`)
       const [, month] = parseDateParts(row.current_date)
       const [year] = parseDateParts(row.current_date)
@@ -338,6 +398,7 @@ export async function handleTimeManage(
         season: season(month),
         days_in_month: daysInMonth(year, month),
         hour: row.hour ?? 12,
+        minute: row.minute ?? 0,
       })
     }
 
@@ -386,16 +447,17 @@ export async function handleTimeManage(
 
     case 'advance': {
       if (!a.world_id) return err('"world_id" is required')
-      if (!a.by) return err('"by" is required (e.g. "3 months", "1 year", "7 days", "6 hours")')
+      if (!a.by)
+        return err('"by" is required (e.g. "3 months", "1 year", "7 days", "6 hours", "10 minutes")')
       const parsed_by = parseByString(a.by)
       if (!parsed_by)
         return err(
-          '"by" must be a whole number followed by hours/days/months/years (e.g. "3 months")',
+          '"by" must be a whole number followed by minutes/hours/days/months/years (e.g. "3 months")',
         )
 
       const ws = (await db
         .prepare(
-          'SELECT "current_date", time_owner, world_day, hour FROM world_state WHERE world_id = ?',
+          'SELECT "current_date", time_owner, world_day, hour, minute, sim_minutes FROM world_state WHERE world_id = ?',
         )
         .bind(a.world_id)
         .first()) as {
@@ -403,6 +465,8 @@ export async function handleTimeManage(
         time_owner: string | null
         world_day: number | null
         hour: number | null
+        minute: number | null
+        sim_minutes: number | null
       } | null
       if (!ws) return err(`No world_state found for world_id: ${a.world_id}`)
 
@@ -422,30 +486,53 @@ export async function handleTimeManage(
 
       const oldDate = ws.current_date
       const oldHour = ws.hour ?? 12
-      const { date: newDate, hour: newHour } =
-        parsed_by.unit === 'hours'
-          ? advanceByHours(oldDate, oldHour, parsed_by.amount)
-          : { date: addToDate(oldDate, parsed_by.amount, parsed_by.unit), hour: oldHour }
+      const oldMinute = ws.minute ?? 0
+      const oldSimMinutes = ws.sim_minutes ?? oldHour * 60 + oldMinute
+      const { date: newDate, hour: newHour, minute: newMinute } =
+        parsed_by.unit === 'minutes'
+          ? advanceByMinutes(oldDate, oldHour, oldMinute, parsed_by.amount)
+          : parsed_by.unit === 'hours'
+            ? { ...advanceByHours(oldDate, oldHour, parsed_by.amount), minute: oldMinute }
+            : {
+                date: addToDate(oldDate, parsed_by.amount, parsed_by.unit),
+                hour: oldHour,
+                minute: oldMinute,
+              }
       const now = new Date().toISOString()
-      // #629 — general-purpose day-counter for tick-hooks.ts's day-based
-      // sub-hooks (resource_consume, weather_update), independent of
-      // production-manage.ts's production_day. Advances by the same
-      // days_elapsed already computed below for the response.
-      const newWorldDay = (ws.world_day ?? 0) + dateDiff(oldDate, newDate)
+      // #671 — elapsed sim-minutes for this call, computed once regardless of
+      // unit. sim_minutes is now the source of truth world_day derives from
+      // (floor(sim_minutes / 1440)), fixing the drift #629's dateDiff-only
+      // calculation had: hour/minute-only advances that don't cross a
+      // calendar day used to leave world_day at +0 even though real time
+      // passed, and advances crossing midnight bumped it by a full day for
+      // only a partial day's elapsed time. See #671 for the full analysis.
+      const elapsedMinutes = elapsedMinutesFor(parsed_by.unit, parsed_by.amount, oldDate, newDate)
+      const newSimMinutes = oldSimMinutes + elapsedMinutes
+      const newWorldDay = Math.floor(newSimMinutes / 1440)
 
       if (willClaim) {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ?, world_day = ?, hour = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, time_owner = ?, time_owner_since = ?, world_day = ?, hour = ?, minute = ?, sim_minutes = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, identifiedOwner, now, newWorldDay, newHour, a.world_id)
+          .bind(
+            newDate,
+            now,
+            identifiedOwner,
+            now,
+            newWorldDay,
+            newHour,
+            newMinute,
+            newSimMinutes,
+            a.world_id,
+          )
           .run()
       } else {
         await db
           .prepare(
-            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, world_day = ?, hour = ? WHERE world_id = ?',
+            'UPDATE world_state SET "current_date" = ?, last_advanced_at = ?, world_day = ?, hour = ?, minute = ?, sim_minutes = ? WHERE world_id = ?',
           )
-          .bind(newDate, now, newWorldDay, newHour, a.world_id)
+          .bind(newDate, now, newWorldDay, newHour, newMinute, newSimMinutes, a.world_id)
           .run()
       }
 
@@ -484,6 +571,15 @@ export async function handleTimeManage(
         world_day: newWorldDay,
         old_hour: oldHour,
         hour: newHour,
+        old_minute: oldMinute,
+        minute: newMinute,
+        sim_minutes: newSimMinutes,
+        elapsed_minutes: elapsedMinutes,
+        // #671 — fraction of a day-cadence hook's rate this call represents;
+        // same value runTickDriver derives internally, surfaced here so a
+        // caller inspecting the plain (non-tick_driver) response can see why
+        // e.g. resource_consume would only apply a partial day's rate.
+        day_fraction: elapsedMinutes / 1440,
         birthdays_triggered: birthdaysTriggered,
         time_owner: willClaim ? identifiedOwner : ws.time_owner,
       }
@@ -495,6 +591,9 @@ export async function handleTimeManage(
         const tickInput: TickDriverInput = {
           hooks: a.hooks,
           dry_run: a.dry_run ?? false,
+          // #671 — lets day-cadence hooks (resource_consume) scale their
+          // per-day rate instead of assuming "one call = one full day."
+          elapsedMinutes,
         }
         const tickResult = await runTickDriver(env, db, a.world_id, oldDate, newDate, tickInput)
         result.tick_driver = {

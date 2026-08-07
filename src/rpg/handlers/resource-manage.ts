@@ -464,6 +464,15 @@ export async function degradeOwnerResources(
     )
     .bind(ownerType, ownerId)
     .first()) as { days_without_food: number } | null
+  // #671 — known gap, not fixed here: daysWithoutFood always increments by
+  // exactly 1 per call regardless of the `days` (dayFraction) argument, so a
+  // world ticking resource_consume via several sub-day advances (e.g. eight
+  // 3-hour calls covering one real day) inflates this streak 8x versus a
+  // single once-a-day call covering the same elapsed time — "days without
+  // food" doesn't have an agreed-on fractional semantics yet (unlike the
+  // quantity degradation below, which scales cleanly). Needs its own design
+  // decision if sub-day resource_consume cadence becomes common; tracked
+  // alongside #671 rather than guessed at here.
   let daysWithoutFood = state?.days_without_food ?? 0
   daysWithoutFood = ateToday || hasFood ? 0 : daysWithoutFood + 1
   await db
@@ -485,10 +494,17 @@ export async function degradeOwnerResources(
 // Batch-ticks every owner holding resources in a world — used by
 // production-manage.ts's advance_day, which operates at world scope and has
 // no single character/party to target.
+//
+// #671 — dayFraction defaults to 1 (a full day's rate), unchanged for
+// production-manage.ts's existing call site. tick-hooks.ts's resource_consume
+// hook passes the actual elapsed fraction of a day a time.advance call
+// represents, so a 3-hour advance charges 0.125 of a day's degradation
+// instead of a full day's.
 export async function tickAllOwnersDegradation(
   db: D1Database,
   worldId: string,
   day: number,
+  dayFraction: number = 1,
 ): Promise<DegradeResult[]> {
   const { results: owners } = (await db
     .prepare('SELECT DISTINCT owner_type, owner_id FROM resource_inventory WHERE world_id = ?')
@@ -496,7 +512,9 @@ export async function tickAllOwnersDegradation(
     .all()) as { results: Array<{ owner_type: 'character' | 'party'; owner_id: string }> }
   const out: DegradeResult[] = []
   for (const o of owners)
-    out.push(await degradeOwnerResources(db, o.owner_type, o.owner_id, worldId, day, 1, false))
+    out.push(
+      await degradeOwnerResources(db, o.owner_type, o.owner_id, worldId, day, dayFraction, false),
+    )
   return out
 }
 

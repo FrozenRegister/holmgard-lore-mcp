@@ -593,6 +593,16 @@ export async function resolveEncounterCore(
   if (includeInjuries && selected.category === 'predator') {
     const severity = injurySeverityFromMargin(margin)
     const targets: Array<string | null> = characterIds.length > 0 ? characterIds : [null]
+    // #671 — stamp new injuries with the world's current sim-time so
+    // tick-hooks.ts's health_degradation hook can measure "hours untreated"
+    // against in-game elapsed time instead of wall-clock. Fetched once, not
+    // per-target: only reachable here when there's at least one predator
+    // injury to record.
+    const worldSimMinutes = (await db
+      .prepare('SELECT sim_minutes FROM world_state WHERE world_id = ?')
+      .bind(worldId)
+      .first()) as { sim_minutes: number | null } | null
+    const createdAtSimMinutes = worldSimMinutes?.sim_minutes ?? null
     for (const characterId of targets) {
       const injury = buildInjury(severity, selected.predator_name)
       let injuryId: string | null = null
@@ -600,7 +610,7 @@ export async function resolveEncounterCore(
         injuryId = crypto.randomUUID()
         await db
           .prepare(
-            'INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+            'INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at, created_at_sim_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
           )
           .bind(
             injuryId,
@@ -617,6 +627,7 @@ export async function resolveEncounterCore(
             injury.description,
             now,
             now,
+            createdAtSimMinutes,
           )
           .run()
       }
