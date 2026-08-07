@@ -418,8 +418,11 @@ const encounterCheckHook: HookRunner = {
       (sum, r) => sum + ((r.data as { triggered?: unknown[] }).triggered?.length ?? 0),
       0,
     )
-    const partiesChecked =
-      (daily[daily.length - 1]?.data as { parties_checked?: number })?.parties_checked ?? 0
+    // `daily` is always non-empty here (mergeDaily only runs when
+    // iterations > 1) and encounter_check's execute() always returns a
+    // defined parties_checked, so no `?.`/`?? 0` fallback is reachable.
+    const partiesChecked = (daily[daily.length - 1].data as { parties_checked: number })
+      .parties_checked
     return {
       category: 'flagged',
       data: {
@@ -785,8 +788,11 @@ const creatureAiTickHook: HookRunner = {
     )
     const sum = (field: string) =>
       daily.reduce((total, r) => total + ((r.data as Record<string, number>)[field] ?? 0), 0)
-    const creaturesEvaluated =
-      (daily[daily.length - 1]?.data as { creatures_evaluated?: number })?.creatures_evaluated ?? 0
+    // Same reasoning as encounter_check's mergeDaily above: daily is always
+    // non-empty here, and creature_ai_tick's execute() always returns a
+    // defined creatures_evaluated.
+    const creaturesEvaluated = (daily[daily.length - 1].data as { creatures_evaluated: number })
+      .creatures_evaluated
     const creaturesMoved = sum('creatures_moved')
     const huntsInitiated = sum('hunts_initiated')
     const claimsCleared = sum('claims_cleared')
