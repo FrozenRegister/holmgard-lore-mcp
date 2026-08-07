@@ -263,10 +263,7 @@ describe('get_faction_standing', () => {
   })
 
   it('detects membership via faction:TAG syntax in Tags field', async () => {
-    await seedKV(
-      'character:secret-member',
-      '**Tags:** faction:hidden-order, veteran, scarred',
-    )
+    await seedKV('character:secret-member', '**Tags:** faction:hidden-order, veteran, scarred')
     await seedKV('faction:hidden-order', 'A secret society')
     const res = await callTool('world_manage', {
       action: 'get_faction_standing',
@@ -632,10 +629,7 @@ describe('get_reachable_locations', () => {
   it('prefers YAML-style exits over inline Exits field', async () => {
     await seedKV(
       'location:yaml-priority',
-      [
-        '**Exits:** location:wrong-location',
-        '- target: location:correct-location',
-      ].join('\n'),
+      ['**Exits:** location:wrong-location', '- target: location:correct-location'].join('\n'),
     )
     await seedKV('location:correct-location', 'Text')
     await seedKV('location:wrong-location', 'Text')
@@ -686,10 +680,7 @@ describe('get_reachable_locations', () => {
   })
 
   it('supports Connections as an alias for Exits', async () => {
-    await seedKV(
-      'location:alt-exits',
-      '**Connections:** location:dest-1, location:dest-2',
-    )
+    await seedKV('location:alt-exits', '**Connections:** location:dest-1, location:dest-2')
     await seedKV('location:dest-1', 'Text')
     await seedKV('location:dest-2', 'Text')
 

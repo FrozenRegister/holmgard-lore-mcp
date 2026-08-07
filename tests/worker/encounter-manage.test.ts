@@ -228,6 +228,92 @@ describe('handleEncounterManage', () => {
     expect(row.world_id).toBe(WORLD)
   })
 
+  it('resolve stamps created_at_sim_minutes from world_state.sim_minutes when a world_state row exists (#671)', async () => {
+    await createWorld()
+    await env.RPG_DB.prepare(
+      `INSERT INTO world_state (world_id, current_date, sim_minutes) VALUES (?, ?, ?)`,
+    )
+      .bind(WORLD, '2184-07-15', 12345)
+      .run()
+    await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'deadly_ground',
+      baseThreat: 100,
+    })
+    await handleWorldMap(db(), {
+      action: 'patch',
+      worldId: WORLD,
+      hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }],
+    })
+    await handleEncounterManage(db(), {
+      action: 'add_type',
+      worldId: WORLD,
+      category: 'predator',
+      predatorName: 'giant_panther',
+    })
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'resolve',
+      worldId: WORLD,
+      q: 5,
+      r: 5,
+      characterIds: ['char-sim-1'],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.injuries).toHaveLength(1)
+    const injuryId = body.injuries[0].injuryId
+
+    const row = (await env.RPG_DB.prepare(
+      'SELECT created_at_sim_minutes FROM character_injuries WHERE id = ?',
+    )
+      .bind(injuryId)
+      .first()) as any
+    expect(row.created_at_sim_minutes).toBe(12345)
+  })
+
+  it('resolve creates an injury with created_at_sim_minutes: null when the world has no world_state row (#671)', async () => {
+    await createWorld()
+    // Deliberately no world_state row for WORLD.
+    await handleBiomeManage(db(), {
+      action: 'register',
+      worldId: WORLD,
+      name: 'deadly_ground',
+      baseThreat: 100,
+    })
+    await handleWorldMap(db(), {
+      action: 'patch',
+      worldId: WORLD,
+      hexes: [{ q: 5, r: 5, biome: 'deadly_ground' }],
+    })
+    await handleEncounterManage(db(), {
+      action: 'add_type',
+      worldId: WORLD,
+      category: 'predator',
+      predatorName: 'giant_panther',
+    })
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const r = await handleEncounterManage(db(), {
+      action: 'resolve',
+      worldId: WORLD,
+      q: 5,
+      r: 5,
+      characterIds: ['char-sim-2'],
+    })
+    const body = JSON.parse(r.content[0].text)
+    expect(body.success).toBe(true)
+    expect(body.injuries).toHaveLength(1)
+    const injuryId = body.injuries[0].injuryId
+
+    const row = (await env.RPG_DB.prepare(
+      'SELECT created_at_sim_minutes FROM character_injuries WHERE id = ?',
+    )
+      .bind(injuryId)
+      .first()) as any
+    expect(row).toBeTruthy()
+    expect(row.created_at_sim_minutes).toBeNull()
+  })
+
   it('resolve does not persist an injury when no characterIds are given (generic party)', async () => {
     await createWorld()
     await handleBiomeManage(db(), {

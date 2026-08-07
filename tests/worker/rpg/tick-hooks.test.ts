@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { runTickDriver, type HookResult } from '@/rpg/handlers/tick-hooks'
+import { runTickDriver, snapshotWorldState, type HookResult } from '@/rpg/handlers/tick-hooks'
 import type { AppBindings } from '@/types'
 import * as characterManager from '@/rpg/handlers/character-manage'
 import * as encounterManager from '@/rpg/handlers/encounter-manage'
@@ -821,13 +821,146 @@ describe('Tick Hooks - Conflict Resolution', () => {
       })
 
       expect(result.success).toBe(true)
-      expect(spy).toHaveBeenCalledWith(mockDb, 'world-1', 12)
+      // #671 — no `elapsedMinutes` passed in `input` above, so
+      // snapshotWorldState defaults to 1440 (a full day) → dayFraction 1,
+      // threaded through as tickAllOwnersDegradation's new 4th arg.
+      expect(spy).toHaveBeenCalledWith(mockDb, 'world-1', 12, 1)
       const data = result.resolved[0].data as Record<string, unknown>
       expect(data.day).toBe(12)
+      expect(data.day_fraction).toBe(1)
       expect(Array.isArray(data.results)).toBe(true)
-      expect(result.resolved[0].narrator_summary).toBe('2 owner(s) ticked, 1 with spoilage.')
+      expect(result.resolved[0].narrator_summary).toBe(
+        '2 owner(s) ticked (1.00× day rate), 1 with spoilage.',
+      )
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('resource_consume hook scales dayFraction when elapsedMinutes is passed (#671)', async () => {
+    mockEnv.RPG_DB = mockDb
+
+    vi.mocked(mockDb.prepare).mockImplementation((query: string) => {
+      const mockStmt: any = {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn(),
+        run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        raw: vi.fn().mockResolvedValue([]),
+      }
+
+      if (query.includes('world_state')) {
+        mockStmt.first.mockResolvedValue({ current_date: '2187-01-10', world_day: 12 })
+      }
+
+      return mockStmt
+    })
+
+    const spy = vi.spyOn(resourceManager, 'tickAllOwnersDegradation').mockResolvedValue([
+      {
+        ownerType: 'party',
+        ownerId: 'party-1',
+        spoiled: [],
+        daysWithoutFood: 0,
+        starvation: { deathSaveRequired: false } as any,
+      },
+    ])
+
+    try {
+      // 180 minutes elapsed (3 hours) → dayFraction 0.125
+      const result = await runTickDriver(mockEnv, mockDb, 'world-1', '2187-01-10', '2187-01-10', {
+        hooks: ['resource_consume'],
+        elapsedMinutes: 180,
+      })
+
+      expect(result.success).toBe(true)
+      expect(spy).toHaveBeenCalledWith(mockDb, 'world-1', 12, 0.125)
+      const data = result.resolved[0].data as Record<string, unknown>
+      expect(data.day_fraction).toBe(0.125)
+      expect(result.resolved[0].narrator_summary).toBe(
+        '1 owner(s) ticked (0.13× day rate), 0 with spoilage.',
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
+
+describe('snapshotWorldState (#671)', () => {
+  it('populates minute/simMinutes/elapsedDayFraction from a world_state row', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue({
+          current_date: '2187-01-10',
+          world_day: 12,
+          hour: 15,
+          minute: 42,
+          sim_minutes: 18102,
+          weather: null,
+        }),
+      }),
+    } as unknown as D1Database
+
+    const snapshot = await snapshotWorldState(db, 'world-1', 180)
+
+    expect(snapshot.date).toBe('2187-01-10')
+    expect(snapshot.day).toBe(12)
+    expect(snapshot.hour).toBe(15)
+    expect(snapshot.minute).toBe(42)
+    expect(snapshot.simMinutes).toBe(18102)
+    expect(snapshot.elapsedDayFraction).toBeCloseTo(0.125, 6)
+  })
+
+  it('defaults elapsedDayFraction to 1 when elapsedMinutes is omitted', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue({
+          current_date: '2187-01-10',
+          world_day: 12,
+          hour: 12,
+          minute: 0,
+          sim_minutes: 17280,
+        }),
+      }),
+    } as unknown as D1Database
+
+    const snapshot = await snapshotWorldState(db, 'world-1')
+
+    expect(snapshot.elapsedDayFraction).toBe(1)
+  })
+
+  it('defaults minute/simMinutes when the world_state row lacks them (unset columns)', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue({ current_date: '2187-01-10' }),
+      }),
+    } as unknown as D1Database
+
+    const snapshot = await snapshotWorldState(db, 'world-1', 720)
+
+    expect(snapshot.hour).toBe(12)
+    expect(snapshot.minute).toBe(0)
+    expect(snapshot.simMinutes).toBe(0)
+    expect(snapshot.elapsedDayFraction).toBe(0.5)
+  })
+
+  it('falls back to defaults when no world_state row exists for the world', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue(null),
+      }),
+    } as unknown as D1Database
+
+    const snapshot = await snapshotWorldState(db, 'nonexistent-world')
+
+    expect(snapshot.day).toBe(0)
+    expect(snapshot.hour).toBe(12)
+    expect(snapshot.minute).toBe(0)
+    expect(snapshot.simMinutes).toBe(0)
+    expect(snapshot.elapsedDayFraction).toBe(1)
   })
 })

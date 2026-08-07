@@ -551,6 +551,236 @@ describe('handleTimeManage', () => {
     expect(body.hour).toBe(12)
   })
 
+  it('get_date reports the current minute (default 0 when unset)', async () => {
+    await seedWorld('w-get-minute', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'get_date', world_id: 'w-get-minute' })).content[0]
+        .text,
+    )
+    expect(body.minute).toBe(0)
+  })
+
+  // ── advance by minutes (#671 sim-minutes clock) ──────────────────────────
+
+  it('advance by minutes within the same hour', async () => {
+    await seedWorld('w-minutes', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-minutes', by: '20 minutes' }))
+        .content[0].text,
+    )
+    expect(body.success).toBe(true)
+    expect(body.old_minute).toBe(0)
+    expect(body.minute).toBe(20)
+    expect(body.old_hour).toBe(12)
+    expect(body.hour).toBe(12)
+    expect(body.new_date).toBe('2184-07-15')
+  })
+
+  it('advance by minutes rolls over into the next hour', async () => {
+    await seedWorld('w-minute-rollover', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-minute-rollover',
+          by: '75 minutes',
+        })
+      ).content[0].text,
+    )
+    // 12:00 + 75 minutes = 13:15
+    expect(body.old_hour).toBe(12)
+    expect(body.hour).toBe(13)
+    expect(body.minute).toBe(15)
+    expect(body.new_date).toBe('2184-07-15')
+  })
+
+  it('advance by minutes rolls over into the next hour and day', async () => {
+    await seedWorld('w-minute-day-rollover', '2184-07-15')
+    // Set the clock to 23:45 first, then advance by 90 minutes to cross midnight.
+    // sim_minutes must be kept consistent with hour/minute (23*60+45=1425) —
+    // it's the actual source of truth world_day derives from.
+    await env.RPG_DB.prepare(
+      'UPDATE world_state SET hour = 23, minute = 45, sim_minutes = 1425 WHERE world_id = ?',
+    )
+      .bind('w-minute-day-rollover')
+      .run()
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-minute-day-rollover',
+          by: '90 minutes',
+        })
+      ).content[0].text,
+    )
+    // 23:45 + 90 minutes = 01:15 the next day.
+    expect(body.old_hour).toBe(23)
+    expect(body.old_minute).toBe(45)
+    expect(body.hour).toBe(1)
+    expect(body.minute).toBe(15)
+    expect(body.new_date).toBe('2184-07-16')
+    expect(body.world_day).toBe(1)
+  })
+
+  it('successive minute-advances accumulate correctly', async () => {
+    await seedWorld('w-minute-accum', '2184-07-15')
+    const first = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-minute-accum',
+          by: '40 minutes',
+        })
+      ).content[0].text,
+    )
+    expect(first.minute).toBe(40)
+    expect(first.hour).toBe(12)
+
+    const second = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-minute-accum',
+          by: '30 minutes',
+        })
+      ).content[0].text,
+    )
+    // 12:40 + 30 minutes = 13:10
+    expect(second.old_minute).toBe(40)
+    expect(second.minute).toBe(10)
+    expect(second.hour).toBe(13)
+  })
+
+  it('advance rejects a malformed minute unit', async () => {
+    await seedWorld('w-bad-minute', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-bad-minute',
+          by: '10 minuteX',
+        })
+      ).content[0].text,
+    )
+    expect(body.error).toBe(true)
+  })
+
+  // ── sim_minutes / elapsed_minutes / day_fraction (#671 drift fix) ────────
+  //
+  // A freshly seeded world starts consistent: hour DEFAULT 12, minute DEFAULT
+  // 0, sim_minutes DEFAULT 720 (= 12*60) — noon on day 0.
+
+  it('advance by minutes reports sim_minutes/elapsed_minutes/day_fraction', async () => {
+    await seedWorld('w-sim-minutes', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-sim-minutes',
+          by: '30 minutes',
+        })
+      ).content[0].text,
+    )
+    expect(body.elapsed_minutes).toBe(30)
+    expect(body.sim_minutes).toBe(720 + 30)
+    expect(body.day_fraction).toBeCloseTo(30 / 1440, 6)
+    expect(body.world_day).toBe(0)
+  })
+
+  it('advance by hours reports sim_minutes/elapsed_minutes/day_fraction', async () => {
+    await seedWorld('w-sim-hours', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-hours', by: '3 hours' }))
+        .content[0].text,
+    )
+    expect(body.elapsed_minutes).toBe(180)
+    expect(body.sim_minutes).toBe(720 + 180)
+    expect(body.day_fraction).toBeCloseTo(0.125, 6)
+  })
+
+  it('advance by days reports sim_minutes/elapsed_minutes/day_fraction', async () => {
+    await seedWorld('w-sim-days', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-sim-days', by: '2 days' }))
+        .content[0].text,
+    )
+    expect(body.elapsed_minutes).toBe(2 * 1440)
+    expect(body.sim_minutes).toBe(720 + 2 * 1440)
+    expect(body.day_fraction).toBeCloseTo(2, 6)
+    expect(body.world_day).toBe(2)
+  })
+
+  // This is the actual bug #671 was filed to fix: a sub-day advance that does
+  // not cross a calendar day boundary must leave world_day unchanged, and
+  // must report the real elapsed_minutes/day_fraction instead of the old
+  // dateDiff-based calculation which silently stayed at world_day + 0 for
+  // hour-only advances (true, but for the wrong non-reason — it never
+  // computed any partial-day fraction at all).
+  it('advance by 3 hours (no day boundary crossed) reports the real elapsed fraction and leaves world_day unchanged', async () => {
+    await seedWorld('w-drift-fix', '2184-07-15')
+    const body = JSON.parse(
+      (await handleTimeManage(db(), { action: 'advance', world_id: 'w-drift-fix', by: '3 hours' }))
+        .content[0].text,
+    )
+    expect(body.elapsed_minutes).toBe(180)
+    expect(body.day_fraction).toBe(0.125)
+    expect(body.world_day).toBe(0) // unchanged from before the call (noon start, floor(900/1440) = 0)
+  })
+
+  it('advance by hours crossing midnight reports a real (non-1.0) day_fraction even though world_day increments', async () => {
+    await seedWorld('w-midnight-fraction', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-midnight-fraction',
+          by: '10 hours',
+        })
+      ).content[0].text,
+    )
+    // Noon + 10 hours = 22:00 same day — no midnight crossing here, use a
+    // second call to actually cross midnight and verify world_day still only
+    // reflects the fractional day elapsed, not a flat 1.0.
+    expect(body.new_date).toBe('2184-07-15')
+    expect(body.day_fraction).toBeCloseTo(10 / 24, 4)
+
+    const second = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-midnight-fraction',
+          by: '10 hours',
+        })
+      ).content[0].text,
+    )
+    // 22:00 + 10 hours = 08:00 the next day — crosses midnight.
+    expect(second.new_date).toBe('2184-07-16')
+    expect(second.world_day).toBe(1)
+    // Each individual call still only elapsed 10 real hours, not a full day.
+    expect(second.day_fraction).toBeCloseTo(10 / 24, 4)
+  })
+
+  it('advance with hooks on a sub-day advance still threads elapsedMinutes without breaking tick_driver/dry_run', async () => {
+    await seedWorld('w-subday-hooks', '2184-07-15')
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-subday-hooks',
+          by: '3 hours',
+          hooks: ['weather_update'],
+          dry_run: true,
+        })
+      ).content[0].text,
+    )
+    expect(body.success).toBe(true)
+    expect(body.elapsed_minutes).toBe(180)
+    expect(body.day_fraction).toBeCloseTo(0.125, 6)
+    expect(body.tick_driver).toBeDefined()
+    expect(body.tick_driver.success).toBe(true)
+    expect(body.tick_driver.mutations).toBeDefined() // dry_run returns mutations
+  })
+
   it('advance triggers birthday for character born in range', async () => {
     await seedWorld('w-bday-adv', '2184-07-01')
     await seedChar('c-bday-adv', '2166-07-10') // birthday July 10
@@ -1259,12 +1489,13 @@ describe('handleTimeManage', () => {
     severity: string,
     hoursAgo: number,
     treated = 0,
+    createdAtSimMinutes: number | null = null,
   ): Promise<string> {
     const id = crypto.randomUUID()
     const createdAt = new Date(Date.now() - hoursAgo * 3600000).toISOString()
     await env.RPG_DB.prepare(
-      `INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO character_injuries (id, character_id, world_id, severity, injury_type, location, ability, ability_modifier, bleeding_rate, infection_risk, recovery, description, treated, created_at, updated_at, created_at_sim_minutes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -1282,6 +1513,7 @@ describe('handleTimeManage', () => {
         treated,
         createdAt,
         createdAt,
+        createdAtSimMinutes,
       )
       .run()
     return id
@@ -1424,6 +1656,64 @@ describe('handleTimeManage', () => {
     const data = hook.data as { injuries_checked: number; worsened: unknown[] }
     expect(data.injuries_checked).toBe(0)
     expect(data.worsened).toEqual([])
+  })
+
+  // ── health_degradation sim-time diffing (#671) ───────────────────────────
+
+  it('health_degradation escalates using sim-time diff, not wall-clock, when created_at_sim_minutes is set', async () => {
+    await seedWorld('w-hd-simtime', '2184-07-01')
+    // Injury is created "now" by wall-clock (hoursAgo: 0 — would NOT escalate
+    // under the old wall-clock-only rule), but stamped at sim_minutes 720
+    // (the world's noon-default seed value). Advancing the world clock by 50
+    // sim-hours without touching wall-clock time proves escalation is driven
+    // by the sim-time diff, not Date.now().
+    const injuryId = await createTestInjury('w-hd-simtime', 'moderate', 0, 0, 720)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-simtime',
+          by: '50 hours',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as {
+      worsened: Array<{ injuryId: string; previousSeverity: string; severity: string }>
+    }
+    expect(data.worsened).toHaveLength(1)
+    expect(data.worsened[0].injuryId).toBe(injuryId)
+    expect(data.worsened[0].previousSeverity).toBe('moderate')
+    expect(data.worsened[0].severity).toBe('severe')
+  })
+
+  it('health_degradation falls back to wall-clock diff when created_at_sim_minutes is null (legacy injury)', async () => {
+    await seedWorld('w-hd-legacy', '2184-07-01')
+    // No sim-time stamp (legacy row) but 50h wall-clock old — escalates via
+    // the fallback path even though the world's sim clock has barely moved.
+    const injuryId = await createTestInjury('w-hd-legacy', 'moderate', 50, 0, null)
+    const body = JSON.parse(
+      (
+        await handleTimeManage(db(), {
+          action: 'advance',
+          world_id: 'w-hd-legacy',
+          by: '1 minute',
+          hooks: ['health_degradation'],
+        })
+      ).content[0].text,
+    )
+    const hook = body.tick_driver.resolved.find(
+      (h: HookResult) => (h.data as { action: string }).action === 'health_degradation',
+    )
+    const data = hook.data as {
+      worsened: Array<{ injuryId: string; previousSeverity: string; severity: string }>
+    }
+    expect(data.worsened).toHaveLength(1)
+    expect(data.worsened[0].injuryId).toBe(injuryId)
+    expect(data.worsened[0].severity).toBe('severe')
   })
 
   it('advance tick_driver fields exist regardless of hook results', async () => {

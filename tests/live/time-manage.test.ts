@@ -77,6 +77,40 @@ describe.skipIf(!MCP_API_KEY)('rpg time advance by hours — sub-day clock (#534
   })
 })
 
+describe.skipIf(!MCP_API_KEY)('rpg time advance by minutes — sim-minutes clock (#671)', () => {
+  it('advances the minute, rolls over into the next hour, and reports sim_minutes/day_fraction', async () => {
+    const worldRes = parseResult(
+      await tool('rpg', { sub: 'world', action: 'create', name: `Minute Clock World ${uid()}` }),
+    )
+    expect(worldRes.success).toBe(true)
+    const worldId = worldRes.worldId
+    await tool('rpg', { sub: 'time', action: 'set_date', world_id: worldId, date: '2184-07-15' })
+
+    const initialDate = parseResult(
+      await tool('rpg', { sub: 'time', action: 'get_date', world_id: worldId }),
+    )
+    expect(initialDate.hour).toBe(12) // migration default (noon)
+    expect(initialDate.minute).toBe(0)
+
+    const rollover = parseResult(
+      await tool('rpg', { sub: 'time', action: 'advance', world_id: worldId, by: '75 minutes' }),
+    )
+    expect(rollover.success).toBe(true)
+    expect(rollover.hour).toBe(13)
+    expect(rollover.minute).toBe(15)
+    expect(rollover.new_date).toBe('2184-07-15')
+    expect(rollover.elapsed_minutes).toBe(75)
+    expect(rollover.day_fraction).toBeCloseTo(75 / 1440, 6)
+
+    const afterDate = parseResult(
+      await tool('rpg', { sub: 'time', action: 'get_date', world_id: worldId }),
+    )
+    expect(afterDate.hour).toBe(13)
+    expect(afterDate.minute).toBe(15)
+    expect(afterDate.current_date).toBe('2184-07-15')
+  })
+})
+
 describe.skipIf(!MCP_API_KEY)(
   'rpg time set_owner / get_owner / advance ownership guard (#312)',
   () => {

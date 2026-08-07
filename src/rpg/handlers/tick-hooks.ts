@@ -69,6 +69,22 @@ export interface WorldSnapshot {
   // today's always-daytime creature behavior instead of silently flipping to
   // night the moment this snapshot starts being read.
   hour: number
+  // #671 — sub-hour clock (world_state.minute, 0-59). Defaults to 0 when
+  // unset, matching the migration's default.
+  minute: number
+  // #671 — monotonic elapsed-minutes counter (world_state.sim_minutes), the
+  // source of truth `day`/`hour`/`minute` are all now derived from in
+  // time-manage.ts. Read here in case a future hook needs the raw counter
+  // rather than the derived day/hour/minute split.
+  simMinutes: number
+  // #671 — what fraction of a full day this tick's elapsed time represents
+  // (elapsedMinutes / 1440), e.g. 0.125 for a 3-hour advance. Day-cadence
+  // hooks (resource_consume) scale their per-day rate by this instead of
+  // assuming every call represents exactly one full day. Defaults to 1 (a
+  // full day) when the caller doesn't pass elapsedMinutes to runTickDriver —
+  // preserves prior behavior for direct callers (tests, or a future caller)
+  // that don't thread the value through.
+  elapsedDayFraction: number
   parties: Map<string, any>
   characters: Map<string, any>
   encounters: Map<string, any>
@@ -161,7 +177,16 @@ export async function releaseWorldLock(
 
 // ── Shadow State System ───────────────────────────────────────────────────────
 
-export async function snapshotWorldState(db: D1Database, worldId: string): Promise<WorldSnapshot> {
+// #671 — elapsedMinutes defaults to 1440 (a full day), so a caller that
+// doesn't pass it (a direct test call, or a future call site not yet
+// threading it through) gets elapsedDayFraction: 1 — the same "one call =
+// one full day" assumption day-cadence hooks made before this parameter
+// existed, rather than silently scaling to zero.
+export async function snapshotWorldState(
+  db: D1Database,
+  worldId: string,
+  elapsedMinutes: number = 1440,
+): Promise<WorldSnapshot> {
   const ws = (await db
     .prepare('SELECT * FROM world_state WHERE world_id = ?')
     .bind(worldId)
@@ -172,6 +197,9 @@ export async function snapshotWorldState(db: D1Database, worldId: string): Promi
     date: dateStr,
     day: (ws?.world_day as number | undefined) ?? 0,
     hour: (ws?.hour as number | undefined) ?? 12,
+    minute: (ws?.minute as number | undefined) ?? 0,
+    simMinutes: (ws?.sim_minutes as number | undefined) ?? 0,
+    elapsedDayFraction: elapsedMinutes / 1440,
     parties: new Map(),
     characters: new Map(),
     encounters: new Map(),
@@ -241,13 +269,28 @@ const resourceConsumeHook: HookRunner = {
     snapshot: WorldSnapshot,
   ): Promise<HookResult> => {
     const db = env.RPG_DB!
-    const results = await tickAllOwnersDegradation(db, worldId, snapshot.day)
+    // #671 — scale the per-day consumption rate by how much of a day this
+    // call actually represents, instead of always charging a full day's
+    // ration for e.g. a 3-hour advance.
+    const results = await tickAllOwnersDegradation(
+      db,
+      worldId,
+      snapshot.day,
+      snapshot.elapsedDayFraction,
+    )
     const spoiledCount = results.filter((r) => r.spoiled.length > 0).length
 
     return {
       category: 'resolved',
-      data: { action: 'resource_consume', worldId, date, day: snapshot.day, results },
-      narrator_summary: `${results.length} owner(s) ticked, ${spoiledCount} with spoilage.`,
+      data: {
+        action: 'resource_consume',
+        worldId,
+        date,
+        day: snapshot.day,
+        day_fraction: snapshot.elapsedDayFraction,
+        results,
+      },
+      narrator_summary: `${results.length} owner(s) ticked (${snapshot.elapsedDayFraction.toFixed(2)}× day rate), ${spoiledCount} with spoilage.`,
     }
   },
 }
@@ -350,15 +393,15 @@ const encounterCheckHook: HookRunner = {
 // original severity on every call (idempotent, no persisted escalation
 // state/history needed).
 //
-// Known gap: character_injuries.created_at is a real wall-clock timestamp
-// (`new Date().toISOString()` at injury-creation time in
-// encounter-manage.ts), not in-game simulation time — there is no in-game
-// timestamp column on character_injuries to diff against the tick driver's
-// in-game `date` argument (the same real-time/in-game-time domain split
-// already called out for claims.ts claimed_at/claimed_until, #444). This
-// hook therefore measures "hours untreated" against real wall-clock time
-// (Date.now() - created_at), consistent with the other known elapsed-time
-// gaps documented at the top of this file, rather than in-game elapsed time.
+// #671 — character_injuries.created_at is still a real wall-clock timestamp,
+// but encounter-manage.ts now also stamps created_at_sim_minutes (in-game
+// sim time, same clock as world_state.sim_minutes) at injury-creation time.
+// This hook diffs against that column when present, matching the
+// in-game-time rule claims.ts already enforces for claimed_at/claimed_until
+// (#444). Injuries created before this column existed have
+// created_at_sim_minutes = NULL; for those legacy rows the hook falls back
+// to the old wall-clock diff (Date.now() - created_at) rather than
+// fabricating a sim-time value that was never recorded.
 
 const WOUND_SEVERITY_TIERS = ['minor', 'moderate', 'severe', 'critical'] as const
 type WoundSeverityTier = (typeof WOUND_SEVERITY_TIERS)[number]
@@ -408,13 +451,13 @@ const healthDegradationHook: HookRunner = {
     env: AppBindings,
     worldId: string,
     date: string,
-    _snapshot: WorldSnapshot, // eslint-disable-line @typescript-eslint/no-unused-vars
+    snapshot: WorldSnapshot,
   ): Promise<HookResult> => {
     const db = env.RPG_DB!
 
     const injuriesResult = await db
       .prepare(
-        `SELECT id, character_id, severity, created_at
+        `SELECT id, character_id, severity, created_at, created_at_sim_minutes
          FROM character_injuries
          WHERE world_id = ? AND treated = 0`,
       )
@@ -426,6 +469,7 @@ const healthDegradationHook: HookRunner = {
       character_id: string | null
       severity: string
       created_at: string
+      created_at_sim_minutes: number | null
     }>
 
     const now = Date.now()
@@ -439,7 +483,13 @@ const healthDegradationHook: HookRunner = {
     }> = []
 
     for (const injury of injuries) {
-      const hoursUntreated = Math.max(0, (now - new Date(injury.created_at).getTime()) / 3600000)
+      // #671 — prefer sim-time when the injury has a sim-time stamp; fall
+      // back to the old wall-clock diff for injuries created before that
+      // column existed (created_at_sim_minutes is NULL for those rows).
+      const hoursUntreated =
+        injury.created_at_sim_minutes !== null
+          ? Math.max(0, (snapshot.simMinutes - injury.created_at_sim_minutes) / 60)
+          : Math.max(0, (now - new Date(injury.created_at).getTime()) / 3600000)
       const escalation = computeWoundEscalation(injury.severity, hoursUntreated)
       if (escalation.escalated) {
         worsened.push({
@@ -711,6 +761,11 @@ function topologicalSort(hookNames: string[]): string[] {
 export interface TickDriverInput {
   hooks?: string[]
   dry_run?: boolean
+  // #671 — real elapsed minutes this time.advance call represents, computed
+  // by time-manage.ts regardless of the `by` unit used. Threaded into the
+  // world snapshot as elapsedDayFraction so day-cadence hooks can scale
+  // their per-day rate instead of assuming every call is a full day.
+  elapsedMinutes?: number
 }
 
 export interface TickDriverOutput {
@@ -774,7 +829,7 @@ export async function runTickDriver(
   endDate: string,
   input: TickDriverInput = {},
 ): Promise<TickDriverOutput> {
-  const { hooks = [], dry_run = false } = input
+  const { hooks = [], dry_run = false, elapsedMinutes } = input
 
   // Backward compat: no hooks → no changes, return success
   if (hooks.length === 0) {
@@ -819,7 +874,7 @@ export async function runTickDriver(
     }
 
     // Snapshot world state
-    const snapshot = await snapshotWorldState(db, worldId)
+    const snapshot = await snapshotWorldState(db, worldId, elapsedMinutes)
 
     // Run hooks against snapshot
     const resolved: HookResult[] = []
