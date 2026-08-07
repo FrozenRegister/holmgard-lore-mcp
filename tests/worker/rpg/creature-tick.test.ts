@@ -165,6 +165,60 @@ describe('creature_ai_tick hook + death-clearing (#445)', () => {
     expect(byId['char:faction']).toBe('faction:sterling')
   })
 
+  // #644 — a multi-day time.advance should loop creature_ai_tick once per
+  // elapsed day instead of once per call, so a slow predator actually closes
+  // distance over the full elapsed time instead of moving one AI-tick's
+  // worth regardless of how many days passed.
+  it('loops once per elapsed day, moving the creature incrementally each day', async () => {
+    await insertCharacter('char:deer', { q: 5, r: 0 })
+    const reg = parse(
+      await register({
+        creatureKey: 'creature:panther',
+        predatorTaxonomy: 'feral',
+        currentState: 'hunting',
+        hunger: 80,
+        movementSpeed: 1,
+        currentHexQ: 0,
+        currentHexR: 0,
+      }),
+    )
+
+    const result = await runTickDriver(bindings(), env.RPG_DB, WORLD, DATE, DATE, {
+      hooks: ['creature_ai_tick'],
+      daysElapsed: 3,
+    })
+    expect(result.success).toBe(true)
+    const data = result.flagged[0].data as {
+      days: number
+      creatures_moved: number
+      daily: unknown[]
+    }
+    expect(data.days).toBe(3)
+    expect(data.daily).toHaveLength(3)
+    // Distance to prey is 5 hexes at movement_speed 1 — 3 days of movement
+    // moves it 3 hexes closer, not the 1 hex a single (unlooped) tick would.
+    expect(data.creatures_moved).toBe(3)
+
+    const row = await env.RPG_DB.prepare(
+      'SELECT current_hex_q, current_hex_r FROM creature_ai_state WHERE id = ?',
+    )
+      .bind(reg.creatureId)
+      .first<{ current_hex_q: number; current_hex_r: number }>()
+    // Started at q=0, moved 3 hexes toward q=5 — not yet at melee range.
+    expect(row?.current_hex_q).toBe(3)
+    expect(row?.current_hex_r).toBe(0)
+  })
+
+  it('dry_run rejection happens before any per-day loop iteration runs', async () => {
+    const result = await runTickDriver(bindings(), env.RPG_DB, WORLD, DATE, DATE, {
+      hooks: ['creature_ai_tick'],
+      dry_run: true,
+      daysElapsed: 5,
+    })
+    expect(result.success).toBe(false)
+    expect(result.narrator_summary).toContain('dry_run is not supported')
+  })
+
   it('reports zero work for a world with no creatures', async () => {
     const result = await tick()
     const data = result.flagged[0].data as { creatures_evaluated: number }

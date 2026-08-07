@@ -599,6 +599,11 @@ export async function handleTimeManage(
           // #671 — lets day-cadence hooks (resource_consume) scale their
           // per-day rate instead of assuming "one call = one full day."
           elapsedMinutes,
+          // #644 — how many calendar-day boundaries this call crossed. Lets
+          // perDayLoop hooks (weather_update, encounter_check,
+          // creature_ai_tick) run once per elapsed day instead of once per
+          // call, so a multi-day advance doesn't under-simulate them.
+          daysElapsed: newWorldDay - (ws.world_day ?? 0),
         }
         const tickResult = await runTickDriver(env, db, a.world_id, oldDate, newDate, tickInput)
         result.tick_driver = {

@@ -103,6 +103,16 @@ export interface HookConfig {
   // without this, a hook that writes directly to D1 inside execute() would
   // already have committed by the time the dry_run check ran.
   mutates?: boolean
+  // #644 — marks a hook whose execute() represents a single day's
+  // point-in-time check or roll (weather lookup, encounter probability,
+  // creature AI step) rather than a continuous rate/state-diff. Unlike
+  // resource_consume/health_degradation (which scale correctly for any
+  // elapsed time via WorldSnapshot.elapsedDayFraction — see #671), a
+  // point-event hook doesn't have a "rate" to scale: rolling one encounter
+  // check for a 10-day advance isn't equivalent to rolling ten. When true,
+  // runTickDriver calls execute() once per elapsed calendar day instead of
+  // once per call, then merges the results via the hook's mergeDaily.
+  perDayLoop?: boolean
 }
 
 export interface HookRunner {
@@ -116,6 +126,11 @@ export interface HookRunner {
     date: string,
     snapshot: WorldSnapshot,
   ) => Promise<HookResult>
+  // #644 — required when config.perDayLoop is true, unused otherwise. Merges
+  // one HookResult per elapsed calendar day into the single HookResult the
+  // rest of the driver (resolved/flagged arrays, conflict resolution,
+  // hook_failures) expects one of, per hook, per call.
+  mergeDaily?: (dailyResults: HookResult[]) => HookResult
 }
 
 // ── World-Level Lock (Concurrency Control) ──────────────────────────────────
@@ -215,7 +230,10 @@ export async function snapshotWorldState(
 // weather, exactly like weather-manage.ts's own get_forecast action does.
 const weatherUpdateHook: HookRunner = {
   name: 'weather_update',
-  config: { enabled: true, batch_mode: true },
+  // #644 — point-in-time cache lookup keyed purely on `snapshot.day`; a
+  // 10-day advance should surface all 10 days' forecasts, not just the
+  // final one, so this loops once per elapsed calendar day.
+  config: { enabled: true, batch_mode: true, perDayLoop: true },
   dependsOn: [],
   batchMode: true,
   execute: async (
@@ -252,6 +270,22 @@ const weatherUpdateHook: HookRunner = {
       category: 'resolved',
       data: { action: 'weather_update', worldId, date, day, found: false },
       narrator_summary: `No weather recorded for day ${day} — narrator should fill it via rpg{sub:"weather", action:"set_forecast"}.`,
+    }
+  },
+  mergeDaily: (daily) => {
+    const foundCount = daily.filter((r) => (r.data as { found?: boolean }).found).length
+    return {
+      category: 'resolved',
+      data: {
+        action: 'weather_update',
+        days: daily.length,
+        found_count: foundCount,
+        daily: daily.map((r) => r.data),
+      },
+      narrator_summary: `Weather across ${daily.length} day(s): ${daily
+        .map((r) => r.narrator_summary)
+        .filter(Boolean)
+        .join(' ')}`,
     }
   },
 }
@@ -298,7 +332,11 @@ const resourceConsumeHook: HookRunner = {
 // encounter_check — flagged hook
 const encounterCheckHook: HookRunner = {
   name: 'encounter_check',
-  config: { enabled: true, batch_mode: false },
+  // #644 — rolls one encounter-probability check per elapsed calendar day
+  // instead of once per call: a 10-day advance gets ten independent rolls,
+  // not one (parties don't move during time.advance itself, so each day's
+  // roll targets the same hex — that's the intended semantics, not a bug).
+  config: { enabled: true, batch_mode: false, perDayLoop: true },
   dependsOn: ['weather_update'],
   batchMode: false,
   execute: async (
@@ -373,6 +411,28 @@ const encounterCheckHook: HookRunner = {
         triggered,
       },
       narrator_summary: `${parties.length} party(ies) checked, ${triggeredCount} encounter(s) eligible.`,
+    }
+  },
+  mergeDaily: (daily) => {
+    const triggeredTotal = daily.reduce(
+      (sum, r) => sum + ((r.data as { triggered?: unknown[] }).triggered?.length ?? 0),
+      0,
+    )
+    // `daily` is always non-empty here (mergeDaily only runs when
+    // iterations > 1) and encounter_check's execute() always returns a
+    // defined parties_checked, so no `?.`/`?? 0` fallback is reachable.
+    const partiesChecked = (daily[daily.length - 1].data as { parties_checked: number })
+      .parties_checked
+    return {
+      category: 'flagged',
+      data: {
+        action: 'encounter_check',
+        days: daily.length,
+        parties_checked: partiesChecked,
+        triggered_total: triggeredTotal,
+        daily: daily.map((r) => r.data),
+      },
+      narrator_summary: `Encounter checks across ${daily.length} day(s): ${partiesChecked} party(ies) checked per day, ${triggeredTotal} encounter(s) eligible total.`,
     }
   },
 }
@@ -597,7 +657,13 @@ const dissolutionFlagHook: HookRunner = {
 // (#512) so dry_run rejects previewing it — the hook writes to D1 unconditionally.
 const creatureAiTickHook: HookRunner = {
   name: 'creature_ai_tick',
-  config: { enabled: true, batch_mode: false, mutates: true },
+  // #644 — each execute() call is one AI-tick's worth of movement/hunger
+  // (creatureAiTick's own step logic, not scaled by elapsed time), and it
+  // re-reads creature/prey state fresh from D1 every call rather than
+  // caching it — so looping this hook N times for an N-day advance correctly
+  // lets day 2's movement build on day 1's just-written position, with no
+  // extra state-threading needed here.
+  config: { enabled: true, batch_mode: false, mutates: true, perDayLoop: true },
   dependsOn: ['resource_consume'],
   batchMode: false,
   execute: async (
@@ -716,6 +782,35 @@ const creatureAiTickHook: HookRunner = {
       narrator_summary: `Creature AI: ${creatures.length} creature(s), ${creaturesMoved} moved, ${huntsInitiated} hunt(s) flagged, ${deathClearing.cleared.length} stale claim(s) cleared.`,
     }
   },
+  mergeDaily: (daily) => {
+    const events = daily.flatMap(
+      (r) => ((r.data as { events?: FlaggedEvent[] }).events ?? []) as FlaggedEvent[],
+    )
+    const sum = (field: string) =>
+      daily.reduce((total, r) => total + ((r.data as Record<string, number>)[field] ?? 0), 0)
+    // Same reasoning as encounter_check's mergeDaily above: daily is always
+    // non-empty here, and creature_ai_tick's execute() always returns a
+    // defined creatures_evaluated.
+    const creaturesEvaluated = (daily[daily.length - 1].data as { creatures_evaluated: number })
+      .creatures_evaluated
+    const creaturesMoved = sum('creatures_moved')
+    const huntsInitiated = sum('hunts_initiated')
+    const claimsCleared = sum('claims_cleared')
+    return {
+      category: 'flagged',
+      data: {
+        action: 'creature_ai_tick',
+        days: daily.length,
+        events,
+        creatures_evaluated: creaturesEvaluated,
+        creatures_moved: creaturesMoved,
+        hunts_initiated: huntsInitiated,
+        claims_cleared: claimsCleared,
+        daily: daily.map((r) => r.data),
+      },
+      narrator_summary: `Creature AI across ${daily.length} day(s): ${creaturesEvaluated} creature(s), ${creaturesMoved} moved, ${huntsInitiated} hunt(s) flagged, ${claimsCleared} stale claim(s) cleared.`,
+    }
+  },
 }
 
 // ── Hook Registry & Topological Sort ──────────────────────────────────────────
@@ -766,6 +861,14 @@ export interface TickDriverInput {
   // world snapshot as elapsedDayFraction so day-cadence hooks can scale
   // their per-day rate instead of assuming every call is a full day.
   elapsedMinutes?: number
+  // #644 — number of calendar-day boundaries this call crossed
+  // (newWorldDay - oldWorldDay from time-manage.ts, always >= 0). Drives how
+  // many times a perDayLoop hook's execute() runs — floor(elapsedMinutes /
+  // 1440) would double-count against elapsedMinutes for a partial-day
+  // remainder, so this is threaded through separately rather than derived
+  // from elapsedMinutes here. Defaults to 1 when omitted (a direct caller
+  // that doesn't pass it gets today's single-fire-per-call behavior).
+  daysElapsed?: number
 }
 
 export interface TickDriverOutput {
@@ -829,7 +932,11 @@ export async function runTickDriver(
   endDate: string,
   input: TickDriverInput = {},
 ): Promise<TickDriverOutput> {
-  const { hooks = [], dry_run = false, elapsedMinutes } = input
+  const { hooks = [], dry_run = false, elapsedMinutes, daysElapsed } = input
+  // #644 — how many times a perDayLoop hook's execute() runs this call.
+  // Always at least 1: a sub-day advance that crosses no day boundary still
+  // gets exactly one check, same as before this feature existed.
+  const iterations = Math.max(1, daysElapsed ?? 1)
 
   // Backward compat: no hooks → no changes, return success
   if (hooks.length === 0) {
@@ -897,7 +1004,27 @@ export async function runTickDriver(
       if (!hook.config.enabled) continue
 
       try {
-        const result = await hook.execute(env, worldId, startDate, snapshot)
+        let result: HookResult
+        if (hook.config.perDayLoop && iterations > 1) {
+          // #644 — one execute() per elapsed calendar day, each against a
+          // snapshot whose `day` is that iteration's absolute day number
+          // (snapshot.day is the final/post-advance day; iteration i of
+          // `iterations` maps to snapshot.day - iterations + i, so the last
+          // iteration always lands on the same day a single-fire call
+          // would have used). Everything else on the snapshot (hour,
+          // simMinutes, elapsedDayFraction) is shared across iterations —
+          // only weather_update actually reads `day`; encounter_check and
+          // creature_ai_tick re-derive their own state from D1 each call.
+          const baseDay = snapshot.day - iterations
+          const daily: HookResult[] = []
+          for (let i = 1; i <= iterations; i++) {
+            const iterSnapshot: WorldSnapshot = { ...snapshot, day: baseDay + i }
+            daily.push(await hook.execute(env, worldId, startDate, iterSnapshot))
+          }
+          result = hook.mergeDaily!(daily)
+        } else {
+          result = await hook.execute(env, worldId, startDate, snapshot)
+        }
         if (hook.config.log_only) {
           // Log what would happen, but don't mutate
           console.log(`[tick-driver-log-only] ${hookName}: ${JSON.stringify(result)}`)

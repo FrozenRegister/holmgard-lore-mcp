@@ -1,0 +1,7 @@
+### Per-day looping for point-event tick hooks (#644)
+
+- `weather_update`, `encounter_check`, and `creature_ai_tick` now run once per elapsed calendar day on a multi-day `time.advance` call instead of once per call — a 10-day advance now gets 10 independent encounter rolls, 10 days of weather lookups, and 10 creature AI ticks, closing the under-simulation gap tracked since #644 (originally filed against #440's tick-driver design).
+- New `HookConfig.perDayLoop` + `HookRunner.mergeDaily` mechanism in `tick-hooks.ts`: `runTickDriver` calls a flagged hook's `execute()` once per day (via a new `TickDriverInput.daysElapsed`, computed by `time-manage.ts` as `newWorldDay - oldWorldDay`), then merges the per-day results into one `HookResult` via the hook's `mergeDaily`.
+- `resource_consume`/`health_degradation`/`dissolution_flag` are unaffected — they already scale correctly for any elapsed time via `#671`'s `day_fraction`/sim-time mechanisms and are not point-event hooks.
+- A sub-day advance (or any call crossing zero day boundaries) still checks exactly once, with the original single-fire response shape — no `days`/`daily` wrapper added.
+- `creature_ai_tick` (a mutating hook) re-reads creature/prey state fresh from D1 on every loop iteration, so multi-day movement correctly builds day-over-day without extra state-threading; `dry_run` rejection for mutating hooks is unaffected (it happens before any iteration runs).
