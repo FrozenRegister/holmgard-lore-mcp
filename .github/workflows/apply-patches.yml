@@ -78,3 +78,5 @@ jobs:
         with:
           commit_message: 'chore: apply patch ${{ github.event.pull_request.head.sha }}'
           file_pattern: 'docs/** .changelog/fragments/** README.md CONTRIBUTING.md TODO.md src/** tests/** .patches/*.patch'
+
+# Workflow registration refreshed to fix corrupted GitHub trigger state
