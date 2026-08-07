@@ -410,6 +410,77 @@ describe('handleResourceManage', () => {
     expect(body.daysWithoutFood).toBe(0)
   })
 
+  // ── daysWithoutFood fractional accumulation (#673) ──────────────────────
+
+  it('sub-day degrade calls accumulate the starvation streak fractionally instead of a flat +1', async () => {
+    await createWorld()
+    const r1 = await handleResourceManage(db(), {
+      action: 'degrade',
+      ownerType: 'character',
+      ownerId: 'char-frac-1',
+      worldId: WORLD,
+      days: 0.5,
+    })
+    const body1 = JSON.parse(r1.content[0].text)
+    // 0.5 accumulated days without food hasn't completed a full day yet —
+    // still "Fed", not tier 1.
+    expect(body1.daysWithoutFood).toBe(0.5)
+    expect(body1.starvation.note).toBe('Fed.')
+
+    const r2 = await handleResourceManage(db(), {
+      action: 'degrade',
+      ownerType: 'character',
+      ownerId: 'char-frac-1',
+      worldId: WORLD,
+      days: 0.5,
+    })
+    const body2 = JSON.parse(r2.content[0].text)
+    // Two 0.5-day calls with no food in between now sum to exactly 1
+    // completed day — crosses into tier 1, matching what a single
+    // once-a-day call would report.
+    expect(body2.daysWithoutFood).toBe(1)
+    expect(body2.starvation.note).toBe('Day 1 without food.')
+    expect(body2.starvation.conPenalty).toBe(-1)
+  })
+
+  it('eight 3-hour-equivalent (0.125 dayFraction) degrade calls reach the same streak as one full day, not 8x', async () => {
+    await createWorld()
+    let body: Record<string, unknown> = {}
+    for (let i = 0; i < 8; i++) {
+      const r = await handleResourceManage(db(), {
+        action: 'degrade',
+        ownerType: 'character',
+        ownerId: 'char-frac-2',
+        worldId: WORLD,
+        days: 0.125,
+      })
+      body = JSON.parse(r.content[0].text)
+    }
+    // 8 * 0.125 = 1.0 — the same accumulated total a single dayFraction:1
+    // call would produce, not the 8 a flat +1-per-call accumulator gave
+    // before #673.
+    expect(body.daysWithoutFood).toBe(1)
+    expect((body.starvation as Record<string, unknown>).note).toBe('Day 1 without food.')
+  })
+
+  it('fractional accumulation still reaches the day-4+ death-save tier once it crosses 4.0', async () => {
+    await createWorld()
+    let body: Record<string, unknown> = {}
+    for (let i = 0; i < 8; i++) {
+      const r = await handleResourceManage(db(), {
+        action: 'degrade',
+        ownerType: 'character',
+        ownerId: 'char-frac-3',
+        worldId: WORLD,
+        days: 0.5,
+      })
+      body = JSON.parse(r.content[0].text)
+    }
+    // 8 * 0.5 = 4.0 exactly.
+    expect(body.daysWithoutFood).toBe(4)
+    expect((body.starvation as Record<string, unknown>).deathSaveRequired).toBe(true)
+  })
+
   it('degradeOwnerResources and tickAllOwnersDegradation are directly usable by production-manage', async () => {
     await createWorld()
     await seedInventory('party', 'party-1', 'Standard Ration Pack', {
@@ -444,6 +515,10 @@ describe('handleResourceManage', () => {
     // degradeOwnerResources subtracts `days` (here, dayFraction) from the
     // timer — 10 - 0.25 = 9.75, not the full 10 - 1 = 9 a default call would give.
     expect(row?.degradation_timer).toBe(9.75)
+    // #673 — the same dayFraction also scales daysWithoutFood (party-2 has
+    // no food item, only a medical one), not a flat +1.
+    const result = batch.find((r) => r.ownerId === 'party-2')
+    expect(result?.daysWithoutFood).toBe(0.25)
   })
 
   // ── improvise / craft ────────────────────────────────────────────────────

@@ -379,7 +379,17 @@ function starvationTier(daysWithoutFood: number): {
   note: string
   deathSaveRequired: boolean
 } {
-  if (daysWithoutFood <= 0)
+  // #673 — daysWithoutFood is now a real-valued accumulator (degradeOwnerResources
+  // adds dayFraction per call, not a flat 1), so it can arrive here as e.g. 0.5
+  // or 1.125 after sub-day resource_consume ticks. Floor to the count of fully
+  // completed days *before* any tier check — "0.9 days without food" is still
+  // Fed, not tier 1, until it actually crosses 1.0; "1.9" is still tier 1, not
+  // tier 2, until it crosses 2.0. When dayFraction is always 1 (every call
+  // before #673, and production-manage.ts's call site today), Math.floor(N) ===
+  // N for every integer N, so this is bit-for-bit identical to the old
+  // behavior for whole-day cadence.
+  const completedDays = Math.floor(daysWithoutFood)
+  if (completedDays <= 0)
     return {
       conPenalty: 0,
       strPenalty: 0,
@@ -387,7 +397,7 @@ function starvationTier(daysWithoutFood: number): {
       note: 'Fed.',
       deathSaveRequired: false,
     }
-  if (daysWithoutFood >= 4)
+  if (completedDays >= 4)
     return {
       conPenalty: -3,
       strPenalty: -3,
@@ -395,10 +405,10 @@ function starvationTier(daysWithoutFood: number): {
       note: 'Day 4+ — CON DC 12 death save (3 failures = dead from starvation).',
       deathSaveRequired: true,
     }
-  // daysWithoutFood is always an integer streak counter incremented by
-  // exactly 1 per degrade tick, so only 1, 2, or 3 ever reach here — every
-  // value STARVATION_TIERS is missing a key for is already handled above.
-  return { ...STARVATION_TIERS[daysWithoutFood], deathSaveRequired: false }
+  // completedDays is now guaranteed to be 1, 2, or 3 here (0 handled above,
+  // 4+ handled above) — every value STARVATION_TIERS is missing a key for is
+  // already handled.
+  return { ...STARVATION_TIERS[completedDays], deathSaveRequired: false }
 }
 
 export interface DegradeResult {
@@ -464,17 +474,16 @@ export async function degradeOwnerResources(
     )
     .bind(ownerType, ownerId)
     .first()) as { days_without_food: number } | null
-  // #671 — known gap, not fixed here: daysWithoutFood always increments by
-  // exactly 1 per call regardless of the `days` (dayFraction) argument, so a
-  // world ticking resource_consume via several sub-day advances (e.g. eight
-  // 3-hour calls covering one real day) inflates this streak 8x versus a
-  // single once-a-day call covering the same elapsed time — "days without
-  // food" doesn't have an agreed-on fractional semantics yet (unlike the
-  // quantity degradation below, which scales cleanly). Needs its own design
-  // decision if sub-day resource_consume cadence becomes common; tracked
-  // alongside #671 rather than guessed at here.
+  // #673 — daysWithoutFood accumulates by `days` (the same dayFraction that
+  // already scales degradation_timer below), not a flat 1, so a world ticking
+  // resource_consume via several sub-day advances (e.g. eight 3-hour calls
+  // covering one real day) ends up with the same accumulated total as a
+  // single once-a-day call covering the same elapsed time, instead of
+  // inflating it 8x. starvationTier() floors this to a completed-day count
+  // before its tier lookup, so a fractional accumulator doesn't break its
+  // exact-integer dictionary lookup.
   let daysWithoutFood = state?.days_without_food ?? 0
-  daysWithoutFood = ateToday || hasFood ? 0 : daysWithoutFood + 1
+  daysWithoutFood = ateToday || hasFood ? 0 : daysWithoutFood + days
   await db
     .prepare(
       'INSERT INTO resource_owner_state (owner_type, owner_id, world_id, days_without_food, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_type, owner_id) DO UPDATE SET days_without_food = excluded.days_without_food, updated_at = excluded.updated_at',
