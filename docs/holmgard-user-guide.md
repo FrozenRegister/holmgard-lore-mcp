@@ -464,6 +464,17 @@ Archisector (early eras, hours/days/consumption-stage ticks) and the Calder Arch
 eras, quarters/Judicial-Council sessions) both call this MCP against the same world's timeline —
 not a hypothetical narrative-vs-tactical split.
 
+**Known Behavior (#671):** `rpg{sub:"time"}`'s `advance` action now accepts a `minutes` unit
+alongside hours/days/months/years (e.g. `by: "90 minutes"`), and `world_state.world_day` is derived
+from a new monotonic `sim_minutes` counter instead of a calendar-date diff — this fixes a drift
+where hour/minute-only advances left `world_day` frozen and midnight-crossing advances over-charged
+a full day's worth of tick-hook rate. The `advance` response gains `minute`, `sim_minutes`,
+`elapsed_minutes`, and `day_fraction` (elapsed_minutes / 1440); day-cadence tick hooks (currently
+`resource_consume`) scale their per-day rate by `day_fraction` instead of always assuming a full
+day elapsed. Injuries created via `encounter.resolve` also stamp `created_at_sim_minutes` so the
+`health_degradation` hook can diff untreated-wound time against the sim clock rather than
+wall-clock time.
+
 **Known Behavior (#445, creature AI — feral + Shaper):** `rpg{sub:"creature"}` is the CRUD
 surface for the per-world `creature_ai_state` table read by the `creature_ai_tick` hook (a Phase 3
 tick hook, **off by default** — a world only runs it if `creature_ai_tick` is in its `time.advance`

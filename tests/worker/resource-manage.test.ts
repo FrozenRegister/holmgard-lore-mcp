@@ -428,6 +428,24 @@ describe('handleResourceManage', () => {
     expect(batch).toEqual([])
   })
 
+  it('tickAllOwnersDegradation threads an explicit dayFraction through to degradation_timer decay (#671)', async () => {
+    await createWorld()
+    const itemId = await seedInventory('party', 'party-2', 'Homebrew Tonic', {
+      category: 'medical',
+      degradationTimer: 10,
+    })
+    const batch = await tickAllOwnersDegradation(env.RPG_DB, WORLD, 3, 0.25)
+    expect(batch.some((r) => r.ownerId === 'party-2')).toBe(true)
+    const row = await env.RPG_DB.prepare(
+      'SELECT degradation_timer FROM resource_inventory WHERE id = ?',
+    )
+      .bind(itemId)
+      .first<{ degradation_timer: number }>()
+    // degradeOwnerResources subtracts `days` (here, dayFraction) from the
+    // timer — 10 - 0.25 = 9.75, not the full 10 - 1 = 9 a default call would give.
+    expect(row?.degradation_timer).toBe(9.75)
+  })
+
   // ── improvise / craft ────────────────────────────────────────────────────
 
   it('improvise/craft require biomeName and itemName', async () => {
