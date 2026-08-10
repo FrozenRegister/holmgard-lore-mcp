@@ -22,7 +22,7 @@ jobs:
           # behavior) until AUTO_FIX_PAT is actually configured as a secret.
           token: ${{ secrets.AUTO_FIX_PAT || secrets.GITHUB_TOKEN }}
 
-      - uses: pnpm/action-setup@v6.0.9
+      - uses: pnpm/action-setup@v6.0.10
         with:
           version: '10.15.0'
 
