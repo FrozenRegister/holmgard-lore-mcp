@@ -4,14 +4,21 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../../unit/mocks'
-import { toolRegistry } from '@/tools/registry'
+import { wrap } from '@/rpg/registry'
+import { handleSearchTools } from '@/rpg/handlers/search-tools'
+import { handleLoadToolSchema } from '@/rpg/handlers/load-tool-schema'
+
+const handlers: Record<string, ReturnType<typeof wrap>> = {
+  search_tools: wrap(handleSearchTools),
+  load_tool_schema: wrap(handleLoadToolSchema),
+}
 
 function callTool(
   ctx: ReturnType<typeof createMockContext>,
   toolName: string,
   args: Record<string, unknown>,
 ) {
-  const handler = toolRegistry[toolName]
+  const handler = handlers[toolName]
   return handler({ c: ctx, id: 'test-id', isAuthenticated: true, args })
 }
 

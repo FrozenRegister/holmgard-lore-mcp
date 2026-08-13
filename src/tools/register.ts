@@ -45,6 +45,29 @@ export function getToolHandler(name: string): ToolHandler | undefined {
   return _tools.find((t) => t.name === name)?.handler
 }
 
+/**
+ * Convert a tool's Zod inputSchema to JSON Schema, normalized to match the
+ * shape MCP clients (and this repo's own tests, e.g. protocol-basics.test.ts's
+ * "every tool inputSchema declares type: object at the root" check) expect.
+ *
+ * zod-to-json-schema@3.25 serializes both z.discriminatedUnion and a
+ * top-level z.union (used by tools with alias-OR actions, e.g. world_manage)
+ * as a bare `{ anyOf: [...] }` with no root `type`, whereas this repo's
+ * hand-written schemas (and the original design in #545) always used a
+ * root `{ type: 'object', oneOf: [...] }`. Every branch of these unions is
+ * itself `type: 'object'`, and — because every action branch is keyed on a
+ * mutually-exclusive `action` literal — `oneOf` semantics are what's
+ * actually intended, not `anyOf`. Rewrite rather than leave the raw output.
+ */
+export function toJsonSchema(tool: RegisteredTool): Record<string, unknown> {
+  const raw = zodToJsonSchema(tool.inputSchema) as Record<string, unknown>
+  if (Array.isArray(raw.anyOf)) {
+    const { anyOf, ...rest } = raw
+    return { type: 'object', oneOf: anyOf, ...rest }
+  }
+  return raw
+}
+
 /** Serialize a tool definition for tools/list (Zod → JSON Schema). */
 export function getToolDefinition(name: string): SerializedToolDefinition | undefined {
   const tool = _tools.find((t) => t.name === name)
@@ -54,11 +77,11 @@ export function getToolDefinition(name: string): SerializedToolDefinition | unde
     title: tool.title,
     version: tool.version,
     description: tool.description,
-    inputSchema: zodToJsonSchema(tool.inputSchema) as Record<string, unknown>,
+    inputSchema: toJsonSchema(tool),
   }
 }
 
-/** Convert a tool's Zod inputSchema to JSON Schema. */
-export function toJsonSchema(tool: RegisteredTool): Record<string, unknown> {
-  return zodToJsonSchema(tool.inputSchema) as Record<string, unknown>
+/** All registered tools, serialized for tools/list, in insertion order. */
+export function getAllToolDefinitions(): SerializedToolDefinition[] {
+  return _tools.map((t) => getToolDefinition(t.name)!)
 }

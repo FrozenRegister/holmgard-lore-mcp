@@ -4,7 +4,7 @@ import { getCurrentAgent } from 'agents'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { DOEnv } from '../types'
-import { toolDefinitions } from '../tools/definitions'
+import { getAllToolDefinitions } from '../tools/definitions'
 import { dispatchToolCall } from '../tools/dispatch'
 import { coerceTransportArgs } from '../lib/coerce-transport-args'
 import { normalizeParamCasing } from '../lib/normalize-param-casing'
@@ -20,7 +20,7 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
   async init(): Promise<void> {
     // Return verbatim JSON Schema definitions — no round-trip through McpServer.tool()
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: toolDefinitions,
+      tools: getAllToolDefinitions(),
     }))
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {

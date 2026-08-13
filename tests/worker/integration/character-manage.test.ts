@@ -4,10 +4,11 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../../unit/mocks'
-import { toolRegistry } from '@/tools/registry'
+import { wrap } from '@/rpg/registry'
+import { handleCharacterManage } from '@/rpg/handlers/character-manage'
 
 function callChar(ctx: ReturnType<typeof createMockContext>, args: Record<string, unknown>) {
-  const handler = toolRegistry['character_manage']
+  const handler = wrap(handleCharacterManage)
   return handler({ c: ctx, id: 'test-id', isAuthenticated: true, args })
 }
 

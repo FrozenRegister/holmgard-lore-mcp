@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import {
   dispatchToolCall,
   type DispatchResult,
@@ -7,8 +7,27 @@ import {
   type DispatchNotFound,
 } from '../../src/tools/dispatch'
 import { toolRegistry } from '../../src/tools/registry'
+import { getToolHandler } from '../../src/tools/register'
+import { registerLoreManageTool } from '../../src/tools/register-lore-manage'
+import { registerEntityManageTool } from '../../src/tools/register-entity-manage'
+import { registerWorldManageTool } from '../../src/tools/register-world-manage'
+
+function registerOnce(fn: () => void) {
+  try {
+    fn()
+  } catch (e: unknown) {
+    if (!(e instanceof Error) || !e.message?.includes('already registered')) throw e
+  }
+}
 
 describe('dispatchToolCall', () => {
+  beforeAll(() => {
+    registerOnce(registerLoreManageTool)
+    registerOnce(registerEntityManageTool)
+    registerOnce(registerWorldManageTool)
+  })
+
+
   describe('ping special-case', () => {
     it('short-circuits lore_manage ping when authenticated', () => {
       const result = dispatchToolCall('lore_manage', { action: 'ping' }, { authenticated: true })
@@ -69,7 +88,7 @@ describe('dispatchToolCall', () => {
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
       expect(typeof handler.handler).toBe('function')
-      expect(handler.handler).toBe(toolRegistry['lore_manage'])
+      expect(handler.handler).toBe(getToolHandler('lore_manage'))
     })
 
     it('falls through to registry when lore_manage action is missing', () => {
@@ -77,7 +96,7 @@ describe('dispatchToolCall', () => {
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
-      expect(handler.handler).toBe(toolRegistry['lore_manage'])
+      expect(handler.handler).toBe(getToolHandler('lore_manage'))
     })
 
     it('falls through to registry when lore_manage action is not a string', () => {
@@ -85,7 +104,7 @@ describe('dispatchToolCall', () => {
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
-      expect(handler.handler).toBe(toolRegistry['lore_manage'])
+      expect(handler.handler).toBe(getToolHandler('lore_manage'))
     })
   })
 
@@ -96,7 +115,7 @@ describe('dispatchToolCall', () => {
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
       expect(typeof handler.handler).toBe('function')
-      expect(handler.handler).toBe(toolRegistry['entity_manage'])
+      expect(handler.handler).toBe(getToolHandler('entity_manage'))
     })
 
     it('returns handler for another known tool in registry', () => {
@@ -104,7 +123,16 @@ describe('dispatchToolCall', () => {
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
-      expect(handler.handler).toBe(toolRegistry['world_manage'])
+      expect(handler.handler).toBe(getToolHandler('world_manage'))
+    })
+
+    it('falls back to the legacy toolRegistry for tools not yet migrated (rpg)', () => {
+      const result = dispatchToolCall('rpg', { sub: 'character', action: 'list' }, { authenticated: true })
+
+      expect(result.kind).toBe('handler')
+      const handler = result as DispatchHandler
+      expect(getToolHandler('rpg')).toBeUndefined()
+      expect(handler.handler).toBe(toolRegistry['rpg'])
     })
   })
 

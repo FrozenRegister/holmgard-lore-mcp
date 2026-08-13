@@ -1,17 +1,12 @@
 // src/tools/registry.ts
+//
+// The 5 lore-family tools were migrated to registerTool() (see
+// register-lore-manage.ts and its siblings) and removed from here —
+// #539/#540's registration-cutover. `rpg` (via rpgToolRegistry) is the one
+// tool still served the old way.
 import type { ToolHandler } from './types'
-import { handle_lore_manage } from './lore-manage'
-import { handle_entity_manage } from './entity-manage'
-import { handle_world_manage } from './world-manage'
-import { handle_scene_manage } from './scene-manage'
-import { handle_continuity_manage } from './continuity-manage'
 import { rpgToolRegistry } from '../rpg/registry'
 
 export const toolRegistry: Record<string, ToolHandler> = {
-  lore_manage: handle_lore_manage,
-  entity_manage: handle_entity_manage,
-  world_manage: handle_world_manage,
-  scene_manage: handle_scene_manage,
-  continuity_manage: handle_continuity_manage,
   ...rpgToolRegistry,
 }
