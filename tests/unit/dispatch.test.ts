@@ -27,7 +27,6 @@ describe('dispatchToolCall', () => {
     registerOnce(registerWorldManageTool)
   })
 
-
   describe('ping special-case', () => {
     it('short-circuits lore_manage ping when authenticated', () => {
       const result = dispatchToolCall('lore_manage', { action: 'ping' }, { authenticated: true })
@@ -127,7 +126,11 @@ describe('dispatchToolCall', () => {
     })
 
     it('falls back to the legacy toolRegistry for tools not yet migrated (rpg)', () => {
-      const result = dispatchToolCall('rpg', { sub: 'character', action: 'list' }, { authenticated: true })
+      const result = dispatchToolCall(
+        'rpg',
+        { sub: 'character', action: 'list' },
+        { authenticated: true },
+      )
 
       expect(result.kind).toBe('handler')
       const handler = result as DispatchHandler
