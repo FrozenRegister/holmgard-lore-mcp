@@ -42,17 +42,17 @@ describe('entity_manage registration (Phase 4 #545)', () => {
   })
 
   describe('schema serialization', () => {
-    it('produces a valid JSON Schema with anyOf branches', () => {
+    it('produces a valid JSON Schema with oneOf branches', () => {
       const def = getToolDefinition('entity_manage')
       const schema = def!.inputSchema as Record<string, unknown>
-      expect(schema).toHaveProperty('anyOf')
-      const anyOf = schema.anyOf as Array<Record<string, unknown>>
+      expect(schema).toHaveProperty('oneOf')
+      const anyOf = schema.oneOf as Array<Record<string, unknown>>
       expect(anyOf.length).toBeGreaterThanOrEqual(19) // all 19 actions
     })
 
     it('includes all action branches', () => {
       const def = getToolDefinition('entity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const actions = anyOf
         .map((branch: Record<string, unknown>) => {
           const props = branch.properties as Record<string, unknown> | undefined
@@ -86,7 +86,7 @@ describe('entity_manage registration (Phase 4 #545)', () => {
 
     it('includes enum for utility_vector', () => {
       const def = getToolDefinition('entity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const auBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -108,7 +108,7 @@ describe('entity_manage registration (Phase 4 #545)', () => {
 
     it('list_active_threads has no required fields beyond action', () => {
       const def = getToolDefinition('entity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const latBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -120,7 +120,7 @@ describe('entity_manage registration (Phase 4 #545)', () => {
 
     it('transfer_item has optional quantity', () => {
       const def = getToolDefinition('entity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const tiBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
