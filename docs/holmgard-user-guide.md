@@ -521,10 +521,12 @@ tick hook, **off by default** — a world only runs it if `creature_ai_tick` is 
   claims whose `claimed_by` is `creature:`-prefixed **and** no longer matches a live
   `creature_ai_state` row — faction/other claims are never touched. Register creatures with a
   `creature:`-prefixed `creatureKey` for death-clearing to apply.
-- **Prey are all positioned characters, not a world-scoped set.** The `characters` table has no
-  `world_id`, so the hook treats every character with a `current_hex_q/r` as candidate prey, and a
-  Shaper's `yieldPreference` currently falls back to nearest-prey (characters carry no yield-grade
-  column yet).
+- **Prey is scoped by `characters.world_id` (#533).** The hook only considers a character candidate
+  prey if its `world_id` matches the creature's world — a character with `world_id` unset (legacy
+  rows predating migration 0009, or created without one) is not eligible prey in any world, not
+  eligible prey in every world. A Shaper's `yieldPreference` still falls back to nearest-prey
+  regardless of world scoping — characters carry no yield-grade column yet, a separate, still-open
+  gap (#533 Gap 2).
 - **Partial-tick writes are not rolled back.** Same Phase 0.5–2 gap as the rest of the tick driver
   (#512): if the hook throws mid-loop, creatures already moved/claimed this tick stay moved/claimed.
 

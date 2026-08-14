@@ -679,13 +679,23 @@ const creatureAiTickHook: HookRunner = {
 
     // Batch-load creatures for this world and every positioned prey character
     // in parallel (KV/D1 batch-read rule — no sequential awaits).
+    //
+    // #533 — prey is scoped by characters.world_id (added in migration 0009
+    // for character.list/search, #268), not just hex-position presence. Two
+    // worlds with overlapping hex coordinates used to make a creature in
+    // world A "detect" and hunt a character positioned in world B; a
+    // character with no world_id set (pre-#268 legacy rows, or created
+    // without one) is simply not eligible prey in any world rather than
+    // eligible prey in every world.
     const [creatureRes, preyRes] = await Promise.all([
       db.prepare('SELECT * FROM creature_ai_state WHERE world_id = ?').bind(worldId).all(),
       db
         .prepare(
           `SELECT id, current_hex_q AS q, current_hex_r AS r, hp, claimed_by
-           FROM characters WHERE current_hex_q IS NOT NULL AND current_hex_r IS NOT NULL`,
+           FROM characters
+           WHERE world_id = ? AND current_hex_q IS NOT NULL AND current_hex_r IS NOT NULL`,
         )
+        .bind(worldId)
         .all(),
     ])
 
