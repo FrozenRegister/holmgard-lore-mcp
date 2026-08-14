@@ -8,7 +8,7 @@ import { kvGet, kvList, getKV } from './lib/kv'
 import { parseKvEntry } from './lib/lore'
 import rateLimitMiddleware, { wsReconnectRateLimit } from './middleware/rate-limit'
 import { requestIdMiddleware, type RequestIdVariables } from './middleware/request-id'
-import { toolDefinitions } from './tools/definitions'
+import { getAllToolDefinitions } from './tools/definitions'
 import { dispatchToolCall } from './tools/dispatch'
 import { coerceTransportArgs } from './lib/coerce-transport-args'
 import { normalizeParamCasing } from './lib/normalize-param-casing'
@@ -55,13 +55,15 @@ registerSceneManageTool()
 registerContinuityManageTool()
 
 // Initialize meta-tool indexes once at module load time
-setToolIndex(toolDefinitions.map((t: any) => ({ name: t.name, description: t.description ?? '' })))
+setToolIndex(
+  getAllToolDefinitions().map((t: any) => ({ name: t.name, description: t.description ?? '' })),
+)
 // mathManageSchemaDoc is schema-index-only — it documents rpg({sub:'math',...})'s
 // dice-notation grammar for load_tool_schema, but "math_manage" has no registry
 // handler of its own, so it must not be added to the tool index (that would
 // advertise a callable tool that 404s on tools/call).
 setSchemaIndex(
-  [...toolDefinitions, mathManageSchemaDoc].map((t: any) => ({
+  [...getAllToolDefinitions(), mathManageSchemaDoc].map((t: any) => ({
     name: t.name,
     description: t.description ?? '',
     inputSchema: t.inputSchema,
@@ -1992,7 +1994,7 @@ app.post('/mcp', async (c) => {
     if (method === 'tools/list') {
       c.header('Cache-Control', 'no-store')
       c.header('Content-Type', 'application/json')
-      return c.json(makeResult(id, { tools: toolDefinitions }), 200)
+      return c.json(makeResult(id, { tools: getAllToolDefinitions() }), 200)
     }
 
     // ── tools/call ────────────────────────────────────────────────────────────

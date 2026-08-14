@@ -11,8 +11,13 @@
 // are always authenticated by the time they reach dispatch; JSON-RPC callers
 // may not be), so `authenticated` is an input the caller computes, not
 // something this function derives itself.
+//
+// Handler lookup checks the registerTool() registry first (#539/#540's
+// registration-cutover — everything but `rpg` lives there now), falling
+// back to the legacy `toolRegistry` for `rpg` itself.
 import type { ToolHandler } from './types'
 import { toolRegistry } from './registry'
+import { getToolHandler } from './register'
 
 export interface DispatchContent {
   type: 'text'
@@ -42,8 +47,9 @@ export type DispatchResult = DispatchShortCircuit | DispatchNotFound | DispatchH
  * either transport's request/response objects:
  *
  * - `short-circuit`: `lore_manage`'s `ping`/`auth_check` actions, answered
- *   directly without consulting `toolRegistry` at all.
- * - `not-found`: no matching entry in `toolRegistry`.
+ *   directly without consulting the registry at all.
+ * - `not-found`: no matching entry in either the registerTool() registry
+ *   or the legacy `toolRegistry`.
  * - `handler`: the resolved `ToolHandler`, left uninvoked — each transport
  *   calls it with its own `ToolContext` (real vs. synthetic Hono context,
  *   `id`, and its own already-computed `authenticated` value).
@@ -81,7 +87,7 @@ export function dispatchToolCall(
     // fall through to registry for all other lore_manage actions
   }
 
-  const handler = toolRegistry[toolName]
+  const handler = getToolHandler(toolName) ?? toolRegistry[toolName]
   if (!handler) return { kind: 'not-found', toolName }
 
   return { kind: 'handler', handler }

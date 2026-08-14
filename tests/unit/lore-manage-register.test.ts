@@ -42,17 +42,17 @@ describe('lore_manage registration (Phase 4 #545)', () => {
   })
 
   describe('schema serialization', () => {
-    it('produces a valid JSON Schema with anyOf branches', () => {
+    it('produces a valid JSON Schema with oneOf branches', () => {
       const def = getToolDefinition('lore_manage')
       const schema = def!.inputSchema as Record<string, unknown>
-      expect(schema).toHaveProperty('anyOf')
-      const anyOf = schema.anyOf as Array<Record<string, unknown>>
+      expect(schema).toHaveProperty('oneOf')
+      const anyOf = schema.oneOf as Array<Record<string, unknown>>
       expect(anyOf.length).toBeGreaterThanOrEqual(17)
     })
 
     it('includes all action branches', () => {
       const def = getToolDefinition('lore_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const actions = anyOf
         .map((branch: Record<string, unknown>) => {
           const props = branch.properties as Record<string, unknown> | undefined
@@ -84,7 +84,7 @@ describe('lore_manage registration (Phase 4 #545)', () => {
 
     it('treats optional fields correctly (e.g. dry_run)', () => {
       const def = getToolDefinition('lore_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const setBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -99,7 +99,7 @@ describe('lore_manage registration (Phase 4 #545)', () => {
 
     it('includes enum fields (e.g. match_mode)', () => {
       const def = getToolDefinition('lore_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const searchBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -113,7 +113,7 @@ describe('lore_manage registration (Phase 4 #545)', () => {
 
     it('enforces minLength on string fields', () => {
       const def = getToolDefinition('lore_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const getBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -126,7 +126,7 @@ describe('lore_manage registration (Phase 4 #545)', () => {
 
     it('enforces minItems on array fields', () => {
       const def = getToolDefinition('lore_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const getBatchBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined

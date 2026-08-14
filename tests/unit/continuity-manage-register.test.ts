@@ -34,15 +34,15 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
   })
 
   describe('schema serialization', () => {
-    it('produces a valid JSON Schema with anyOf (top-level union)', () => {
+    it('produces a valid JSON Schema with oneOf (top-level union)', () => {
       const def = getToolDefinition('continuity_manage')
       const schema = def!.inputSchema as Record<string, unknown>
-      expect(schema).toHaveProperty('anyOf')
+      expect(schema).toHaveProperty('oneOf')
     })
 
     it('includes all action branches', () => {
       const def = getToolDefinition('continuity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
 
       const collectActions = (branches: Array<Record<string, unknown>>, acc: Set<string>): void => {
         for (const b of branches) {
@@ -82,7 +82,7 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
 
     it('append_event has many optional fields', () => {
       const def = getToolDefinition('continuity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const aeBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -99,7 +99,7 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
 
     it('plant_setup is represented as nested anyOf (id OR setup_id)', () => {
       const def = getToolDefinition('continuity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
 
       const collectNestedBranches = (
         branches: Array<Record<string, unknown>>,
@@ -131,7 +131,7 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
 
     it('set_goal is a flat object with all aliased fields optional', () => {
       const def = getToolDefinition('continuity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const sgBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -144,7 +144,7 @@ describe('continuity_manage registration (Phase 4 #545)', () => {
 
     it('set_goal has all six alias fields present', () => {
       const def = getToolDefinition('continuity_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const sgBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined

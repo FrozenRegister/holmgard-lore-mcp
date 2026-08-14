@@ -34,15 +34,15 @@ describe('world_manage registration (Phase 4 #545)', () => {
   })
 
   describe('schema serialization', () => {
-    it('produces a valid JSON Schema with anyOf (top-level union)', () => {
+    it('produces a valid JSON Schema with oneOf (top-level union)', () => {
       const def = getToolDefinition('world_manage')
       const schema = def!.inputSchema as Record<string, unknown>
-      expect(schema).toHaveProperty('anyOf')
+      expect(schema).toHaveProperty('oneOf')
     })
 
     it('includes thread_tick as a simple branch', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const ttBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -55,7 +55,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('includes get_relationship branch', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const grBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -66,7 +66,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('includes get_reachable_locations branch', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const grlBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -77,7 +77,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('includes check_convergence branch', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const ccBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -88,7 +88,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('get_faction_standing is represented as a nested anyOf (4-way OR)', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const nestedBranch = anyOf.find((b: Record<string, unknown>) => {
         return b.anyOf !== undefined
       })
@@ -102,7 +102,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('get_entity_knowledge is represented as nested anyOf (2-way OR)', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const nestedBranches = anyOf.filter((b: Record<string, unknown>) => {
         if (!b.anyOf || !Array.isArray(b.anyOf)) return false
         const nested = b.anyOf as Array<Record<string, unknown>>
@@ -116,7 +116,7 @@ describe('world_manage registration (Phase 4 #545)', () => {
 
     it('sense_environment is represented as nested anyOf with location_key', () => {
       const def = getToolDefinition('world_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const nestedBranches = anyOf.filter((b: Record<string, unknown>) => {
         if (!b.anyOf || !Array.isArray(b.anyOf)) return false
         const nested = b.anyOf as Array<Record<string, unknown>>

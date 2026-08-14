@@ -36,7 +36,7 @@ describe('scene_manage registration (Phase 4 #545)', () => {
   describe('schema serialization', () => {
     it('includes all 6 action branches', () => {
       const def = getToolDefinition('scene_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const actions = anyOf
         .map((branch: Record<string, unknown>) => {
           const props = branch.properties as Record<string, unknown> | undefined
@@ -57,7 +57,7 @@ describe('scene_manage registration (Phase 4 #545)', () => {
 
     it('activate requires scene_key', () => {
       const def = getToolDefinition('scene_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const actBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -69,7 +69,7 @@ describe('scene_manage registration (Phase 4 #545)', () => {
 
     it('render_pov has optional scene_key and location_key', () => {
       const def = getToolDefinition('scene_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const rpBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -83,7 +83,7 @@ describe('scene_manage registration (Phase 4 #545)', () => {
 
     it('brief has nested include object', () => {
       const def = getToolDefinition('scene_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const briefBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined
@@ -97,7 +97,7 @@ describe('scene_manage registration (Phase 4 #545)', () => {
 
     it('render_pov includes reveal_threshold with min/max', () => {
       const def = getToolDefinition('scene_manage')
-      const anyOf = def!.inputSchema.anyOf as Array<Record<string, unknown>>
+      const anyOf = def!.inputSchema.oneOf as Array<Record<string, unknown>>
       const rpBranch = anyOf.find((b: Record<string, unknown>) => {
         const props = b.properties as Record<string, unknown> | undefined
         const action = props?.action as Record<string, unknown> | undefined

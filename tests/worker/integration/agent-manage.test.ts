@@ -5,13 +5,14 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockContext } from '../../unit/mocks'
-import { toolRegistry } from '@/tools/registry'
+import { wrap } from '@/rpg/registry'
+import { handleAgentManage } from '@/rpg/handlers/agent-manage'
 
 const CHARACTER_KEY = 'character:thorn'
 const CHARACTER_TEXT = `**Name:** Thorn\n**Role:** rogue\n**Species:** Human\n**Class:** Rogue\n**Level:** 3`
 
 function callAgent(ctx: ReturnType<typeof createMockContext>, args: Record<string, unknown>) {
-  const handler = toolRegistry['agent_manage']
+  const handler = wrap(handleAgentManage)
   return handler({ c: ctx, id: 'test-id', isAuthenticated: true, args })
 }
 
