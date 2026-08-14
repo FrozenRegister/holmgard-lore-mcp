@@ -33,15 +33,21 @@ describe('creature_ai_tick hook + death-clearing (#445)', () => {
 
   async function insertCharacter(
     id: string,
-    opts: { q?: number | null; r?: number | null; hp?: number; claimedBy?: string | null } = {},
+    opts: {
+      q?: number | null
+      r?: number | null
+      hp?: number
+      claimedBy?: string | null
+      worldId?: string | null
+    } = {},
   ) {
     const now = new Date().toISOString()
     const claimedBy = opts.claimedBy ?? null
     await env.RPG_DB.prepare(
       `INSERT INTO characters
         (id, name, stats, hp, max_hp, ac, level, created_at, updated_at,
-         current_hex_q, current_hex_r, claimed_by, claimed_until)
-       VALUES (?, ?, '{}', ?, ?, 10, 1, ?, ?, ?, ?, ?, ?)`,
+         current_hex_q, current_hex_r, claimed_by, claimed_until, world_id)
+       VALUES (?, ?, '{}', ?, ?, 10, 1, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -54,6 +60,7 @@ describe('creature_ai_tick hook + death-clearing (#445)', () => {
         opts.r ?? null,
         claimedBy,
         claimedBy ? '2999-01-01T00:00:00.000Z' : null,
+        opts.worldId === undefined ? WORLD : opts.worldId,
       )
       .run()
   }
@@ -224,5 +231,71 @@ describe('creature_ai_tick hook + death-clearing (#445)', () => {
     const data = result.flagged[0].data as { creatures_evaluated: number }
     expect(data.creatures_evaluated).toBe(0)
     expect(result.narrator_summary).toContain('0 creature(s)')
+  })
+
+  // #533 Gap 1 — a creature must not detect/hunt prey positioned in a
+  // different world, even when the hex coordinates coincide.
+  it('a creature in one world ignores a positioned character in another world', async () => {
+    const OTHER_WORLD = 'other-world'
+    const now = new Date().toISOString()
+    await env.RPG_DB.prepare(
+      'INSERT OR IGNORE INTO worlds (id, name, seed, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(OTHER_WORLD, OTHER_WORLD, 'seed', 100, 100, now, now)
+      .run()
+
+    // Same hex as the predator would need to close to melee range on.
+    await insertCharacter('char:other-world-deer', { q: 0, r: 0, worldId: OTHER_WORLD })
+
+    const reg = parse(
+      await register({
+        creatureKey: 'creature:panther',
+        predatorTaxonomy: 'feral',
+        currentState: 'hunting',
+        hunger: 80,
+        movementSpeed: 3,
+        currentHexQ: 0,
+        currentHexR: 0,
+      }),
+    )
+
+    const result = await tick()
+    expect(result.success).toBe(true)
+    const data = result.flagged[0].data as { events: unknown[]; creatures_moved: number }
+    // No prey in this world, so the creature never moves and never hunts —
+    // it must not have detected the other world's character despite sharing
+    // the exact hex coordinates it started at.
+    expect(data.creatures_moved).toBe(0)
+    expect(data.events).toHaveLength(0)
+
+    const row = await env.RPG_DB.prepare('SELECT claimed_by FROM characters WHERE id = ?')
+      .bind('char:other-world-deer')
+      .first<{ claimed_by: string | null }>()
+    expect(row?.claimed_by).toBeNull()
+
+    // Sanity check the registration succeeded in this world.
+    expect(reg.creatureId).toBeTruthy()
+  })
+
+  // A character with no world_id set (legacy row, or created without one)
+  // is not eligible prey in any world — the safe default, not a silent
+  // fallback to "every world".
+  it('a character with no world_id set is not eligible prey', async () => {
+    await insertCharacter('char:worldless', { q: 0, r: 0, worldId: null })
+
+    await register({
+      creatureKey: 'creature:panther',
+      predatorTaxonomy: 'feral',
+      currentState: 'hunting',
+      hunger: 80,
+      movementSpeed: 3,
+      currentHexQ: 0,
+      currentHexR: 0,
+    })
+
+    const result = await tick()
+    const data = result.flagged[0].data as { events: unknown[]; creatures_moved: number }
+    expect(data.creatures_moved).toBe(0)
+    expect(data.events).toHaveLength(0)
   })
 })
