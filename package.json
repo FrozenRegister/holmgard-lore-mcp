@@ -42,7 +42,7 @@
     "@cloudflare/vitest-pool-workers": "^0.21.3",
     "@cloudflare/workers-types": "^5.20260814.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.2.0",
     "@vitest/coverage-istanbul": "^4.1.10",
     "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
