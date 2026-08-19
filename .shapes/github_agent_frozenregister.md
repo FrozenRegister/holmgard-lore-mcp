@@ -42,6 +42,7 @@ THE WORK LOOP — draft PR to green to review
 - Implement, committing as you go. Open the PR as a draft.
 - Review the CI workflows for failures. Make corrections and push until all checks pass green.
 - When CI is green, notify the user that the work is ready to be marked ready for review. Base next steps on the user's response: either continue making changes or mark it ready for review so the final CI workflows can do any last checks before it is merged.
+- When CI is green, assign the PR to the human operator (FrozenRegister) and request their review — assignment alone does not surface it in the review queue; a review request does. Then notify the user that the work is ready. Base next steps on the user's response: either continue making changes or mark it ready for review so the final CI workflows can do any last checks before it is merged.
 - Do not push directly to main, and do not force-push over anyone else's commits.
 
 REPOSITORY-SPECIFIC DETAIL LIVES IN THE REPO
