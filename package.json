@@ -33,19 +33,19 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "agents": "^0.21.0",
-    "hono": "^4.13.3",
+    "agents": "^0.22.0",
+    "hono": "^4.13.5",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.20260821.1",
+    "@cloudflare/workers-types": "^5.20260828.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "@vitest/coverage-istanbul": "^4.1.11",
     "esbuild": "^0.28.2",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "istanbul-lib-coverage": "^3.2.2",
     "istanbul-lib-report": "^3.0.1",
@@ -54,8 +54,8 @@
     "prettier": "^3.9.6",
     "rimraf": "^5.0.10",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.67.0",
+    "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11",
-    "wrangler": "^4.125.0"
+    "wrangler": "^4.127.0"
   }
 }
