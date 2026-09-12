@@ -1950,11 +1950,16 @@ app.post('/mcp', async (c) => {
 
   try {
     try {
-      const b = body as { method?: string; params?: { name?: string } } | null
+      const b = body as {
+        method?: string
+        params?: { name?: string; clientInfo?: { name?: string; version?: string } }
+      } | null
       const summary =
         b?.method === 'tools/call'
           ? { method: b.method, tool: b?.params?.name }
-          : { method: b?.method }
+          : b?.method === 'initialize'
+            ? { method: b.method, clientInfo: b?.params?.clientInfo }
+            : { method: b?.method }
       console.log('MCP incoming:', JSON.stringify({ request_id: requestId, ...summary }))
     } catch {
       /* ignore log error */

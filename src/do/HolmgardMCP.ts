@@ -18,6 +18,19 @@ export class HolmgardMCP extends McpAgent<DOEnv> {
   )
 
   async init(): Promise<void> {
+    // Capture the client's self-reported identity on handshake completion.
+    // Name + version only — no payload — per the #500 precedent of keeping
+    // MCP logs structural-metadata-only. See docs/mcp-client-detection.md:
+    // we don't yet know what `clientInfo.name` a Shapes-agent handshake
+    // actually sends, and any future per-client response-shape branching
+    // needs that confirmed first.
+    this.server.oninitialized = () => {
+      console.log(
+        'MCP initialize (DO transport):',
+        JSON.stringify({ clientInfo: this.server.getClientVersion() }),
+      )
+    }
+
     // Return verbatim JSON Schema definitions — no round-trip through McpServer.tool()
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: getAllToolDefinitions(),
