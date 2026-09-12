@@ -119,6 +119,26 @@ describe('DO transport — initialize', () => {
     const { result } = await initialize()
     expect(result.result?.capabilities?.tools).toBeDefined()
   })
+
+  it('completes the handshake (notifications/initialized) without breaking the session', async () => {
+    // A spec-conformant client sends this notification after the initialize
+    // response, completing the handshake and firing the SDK's `oninitialized`
+    // callback — where clientInfo capture (#698) is logged. No response body
+    // is expected for a JSON-RPC notification.
+    const { sessionId } = await initialize()
+    const res = await SELF.fetch('http://example.com/mcp', {
+      method: 'POST',
+      headers: { ...STREAMABLE_HEADERS, 'Mcp-Session-Id': sessionId },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+    })
+    expect(res.status).toBeLessThan(300)
+
+    const { data } = await mcpPost(
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      { 'Mcp-Session-Id': sessionId },
+    )
+    expect(data.result?.tools).toBeDefined()
+  })
 })
 
 describe('DO transport — tools/list', () => {
