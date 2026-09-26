@@ -142,7 +142,12 @@ jobs:
         run: pnpm run type-check
       - name: Generate type-check diagnostics
         if: always()
-        run: npx tsc --noEmit --pretty false 2>&1 | head -n 5000 > tsc-diagnostics.txt || true
+        # `pnpm exec` rather than `npx`: if `tsc` ever stops resolving from the
+        # local install, `npx` silently downloads the newest tsc from the npm
+        # registry and runs that instead, so a misconfigured lockfile produces a
+        # green-looking report from a version CI never pinned. `pnpm exec` fails
+        # closed instead (ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL).
+        run: pnpm exec tsc --noEmit --pretty false 2>&1 | head -n 5000 > tsc-diagnostics.txt || true
       - name: Upload type-check diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -169,7 +174,9 @@ jobs:
         run: pnpm run lint
       - name: Generate structured lint report
         if: always()
-        run: npx eslint --format json src tests > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
+        # `pnpm exec` rather than `npx` — same reason as the type-check
+        # diagnostics step above: never let a tool resolve from the registry.
+        run: pnpm exec eslint --format json src tests > eslint-report.json 2>/dev/null || echo '[]' > eslint-report.json
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v7

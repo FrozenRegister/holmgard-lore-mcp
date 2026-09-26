@@ -342,7 +342,7 @@ Modify files under docs/, or add a ## Documentation section to the PR body.
 
 **Purpose:** Apply any pending `schema/migrations/*.sql` files to the production `holmgard-rpg` D1 database whenever they land on `main`. Cloudflare Workers Builds deploys the *code* automatically on every push but never ran migrations — this closes that gap. See CLAUDE.md's "Deployment notes" for the incident (migrations 0007/0008 sat unapplied in production for days) that motivated this workflow.
 
-**How it works:** Runs `npx wrangler d1 migrations apply holmgard-rpg --remote`, which only applies migrations not yet recorded in the database's own `d1_migrations` table — safe to run on every push, since already-applied migrations are skipped rather than re-run. Requires `CLOUDFLARE_API_TOKEN` (D1:Edit scope) and `CLOUDFLARE_ACCOUNT_ID` repo secrets.
+**How it works:** Runs `pnpm exec wrangler d1 migrations apply holmgard-rpg --remote`, which only applies migrations not yet recorded in the database's own `d1_migrations` table — safe to run on every push, since already-applied migrations are skipped rather than re-run. Requires `CLOUDFLARE_API_TOKEN` (D1:Edit scope) and `CLOUDFLARE_ACCOUNT_ID` repo secrets.
 
 **Do not remove this workflow** — it exists specifically so migrations can't silently sit unapplied again.
 
