@@ -32,30 +32,30 @@
     "db:status": "wrangler d1 migrations list holmgard-rpg --local"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.30.1",
     "agents": "^0.24.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.9",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.20260918.1",
+    "@cloudflare/workers-types": "^5.20260925.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.2",
     "@vitest/coverage-istanbul": "^4.1.11",
     "esbuild": "^0.28.2",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "istanbul-lib-coverage": "^3.2.2",
     "istanbul-lib-report": "^3.0.1",
     "istanbul-reports": "^3.2.0",
-    "markdownlint-cli2": "^0.23.2",
-    "prettier": "^3.9.8",
+    "markdownlint-cli2": "^0.23.3",
+    "prettier": "^3.9.9",
     "rimraf": "^5.0.10",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.70.0",
+    "typescript-eslint": "^8.70.1",
     "vitest": "^4.1.11",
-    "wrangler": "^4.134.0"
+    "wrangler": "^4.140.0"
   }
 }
