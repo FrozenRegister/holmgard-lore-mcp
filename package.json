@@ -32,17 +32,17 @@
     "db:status": "wrangler d1 migrations list holmgard-rpg --local"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "agents": "^0.30.0",
-    "hono": "^4.13.13",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "agents": "^0.32.0",
+    "hono": "^4.13.14",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.23.0",
-    "@cloudflare/workers-types": "^5.20261023.1",
+    "@cloudflare/workers-types": "^5.20261030.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-istanbul": "^4.1.11",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
@@ -54,8 +54,8 @@
     "prettier": "^3.9.10",
     "rimraf": "^5.0.10",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.72.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.11",
-    "wrangler": "^4.152.0"
+    "wrangler": "^4.156.0"
   }
 }
